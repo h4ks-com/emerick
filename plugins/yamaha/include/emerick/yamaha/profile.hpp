@@ -2,6 +2,7 @@
 
 #include <array>
 #include <filesystem>
+#include <nlohmann/json.hpp>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -18,6 +19,8 @@ struct Part {
 
 // Channels 1 to 16 as the Genos2 transmits them; icons are Phosphor names.
 const std::array<Part, 16>& genos2Parts();
+inline constexpr std::string_view kChordsIcon = "music-notes-simple";
+inline constexpr std::string_view kStyleIcon = "metronome";
 
 struct Voice {
     int channel = 1;
@@ -33,6 +36,10 @@ struct Voice {
 // Lines read "channel msb lsb program(1-128) volume pan name"; blank lines and # lines are skipped.
 std::vector<Voice> parseVoices(std::string_view text);
 std::vector<Voice> loadVoices(const std::filesystem::path& path);
+
+// from_json throws std::invalid_argument for a field out of its MIDI range.
+void to_json(nlohmann::json& json, const Voice& voice);
+void from_json(const nlohmann::json& json, Voice& voice);
 
 // Bank MSB, LSB, Program Change, Volume and Pan per voice, gapTicks apart.
 std::vector<RawEvent> voiceMessages(const std::vector<Voice>& voices, core::Ticks at, core::Ticks gapTicks);

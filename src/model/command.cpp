@@ -1,6 +1,7 @@
 #include "emerick/model/command.hpp"
 
 #include <algorithm>
+#include <ranges>
 
 #include "emerick/core/overloaded.hpp"
 
@@ -40,6 +41,14 @@ void moveTrack(Document& document, std::size_t from, std::size_t to) {
     }
 }
 
+void setPluginData(Document& document, const std::string& plugin, const nlohmann::json& value) {
+    if (value.is_null()) {
+        document.pluginData.erase(plugin);
+    } else {
+        document.pluginData[plugin] = value;
+    }
+}
+
 }  // namespace
 
 void apply(Document& document, const Command& command) {
@@ -48,7 +57,13 @@ void apply(Document& document, const Command& command) {
                           [&](const ReplaceTrack& op) { replaceTrack(document, op.after); },
                           [&](const MoveTrack& op) { moveTrack(document, op.from, op.to); },
                           [&](const SetTempo& op) { document.tempo = op.after; },
-                          [&](const SetClockPorts& op) { document.clockPorts = op.after; }},
+                          [&](const SetClockPorts& op) { document.clockPorts = op.after; },
+                          [&](const SetPluginData& op) { setPluginData(document, op.plugin, op.after); },
+                          [&](const Group& op) {
+                              for (const Command& step : op.commands) {
+                                  apply(document, step);
+                              }
+                          }},
                command.operation);
 }
 
@@ -58,7 +73,13 @@ void revert(Document& document, const Command& command) {
                           [&](const ReplaceTrack& op) { replaceTrack(document, op.before); },
                           [&](const MoveTrack& op) { moveTrack(document, op.to, op.from); },
                           [&](const SetTempo& op) { document.tempo = op.before; },
-                          [&](const SetClockPorts& op) { document.clockPorts = op.before; }},
+                          [&](const SetClockPorts& op) { document.clockPorts = op.before; },
+                          [&](const SetPluginData& op) { setPluginData(document, op.plugin, op.before); },
+                          [&](const Group& op) {
+                              for (const Command& step : op.commands | std::views::reverse) {
+                                  revert(document, step);
+                              }
+                          }},
                command.operation);
 }
 
@@ -66,7 +87,8 @@ Change changeOf(const Command& command) {
     return std::visit(
         Overloaded{[](const ReplaceTrack& op) { return Change{op.after.id}; }, [](const AddTrack&) { return Change{}; },
                    [](const RemoveTrack&) { return Change{}; }, [](const MoveTrack&) { return Change{}; },
-                   [](const SetTempo&) { return Change{}; }, [](const SetClockPorts&) { return Change{}; }},
+                   [](const SetTempo&) { return Change{}; }, [](const SetClockPorts&) { return Change{}; },
+                   [](const SetPluginData&) { return Change{}; }, [](const Group&) { return Change{}; }},
         command.operation);
 }
 

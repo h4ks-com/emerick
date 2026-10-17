@@ -133,9 +133,7 @@ Rectangle {
                     delegate: Button {
                         id: sectionButton
                         required property var modelData
-                        required property int index
-                        // The registry lists the sections in SettingsTab order, so a section's index is its tab.
-                        readonly property bool current: index === Nav.settingsTab
+                        readonly property bool current: modelData.key === Nav.settingsTab
                         objectName: "settings.show." + modelData.key
                         text: modelData.title
                         flat: true
@@ -164,7 +162,7 @@ Rectangle {
             Layout.fillWidth: true
             Layout.fillHeight: true
             Layout.margins: Theme.space5
-            currentIndex: Nav.settingsTab
+            currentIndex: sections.findIndex(section => section.key === Nav.settingsTab)
             Repeater {
                 model: sections
                 delegate: ColumnLayout {

@@ -19,13 +19,13 @@ inline constexpr std::size_t kMaxChordIntervals = 5;
 struct ChordType {
     constexpr ChordType(std::string_view typeName, std::initializer_list<int> typeIntervals)
         : name(typeName), count(typeIntervals.size()) {
-        std::ranges::copy(typeIntervals, slots.begin());
+        std::ranges::copy(typeIntervals, storage.begin());
     }
 
-    [[nodiscard]] constexpr std::span<const int> intervals() const { return std::span(slots).first(count); }
+    [[nodiscard]] constexpr std::span<const int> intervals() const { return std::span(storage).first(count); }
 
     std::string_view name;
-    std::array<int, kMaxChordIntervals> slots{};
+    std::array<int, kMaxChordIntervals> storage{};
     std::size_t count = 0;
 };
 

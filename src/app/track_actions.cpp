@@ -8,7 +8,7 @@
 #include <utility>
 #include <vector>
 
-#include "action_params.hpp"
+#include "emerick/app/action_params.hpp"
 #include "emerick/app/audio_file.hpp"
 #include "emerick/app/project_actions.hpp"
 #include "emerick/app/project_state.hpp"
@@ -93,6 +93,20 @@ model::MidiRoute defaultMidiInput(ProjectController& controller) {
     return port == ports.end() ? model::MidiRoute{} : model::MidiRoute{port->id, 0, false, false};
 }
 
+// A track listening to one channel of a profiled device takes that channel's part name and icon.
+void applyDeviceProfile(const Registry& registry, model::Track& track) {
+    const MidiDeviceProfile* profile = registry.midiDeviceProfile(track.midiIn.portId);
+    if (profile == nullptr) {
+        return;
+    }
+    if (const auto name = profile->channelNames.find(track.midiIn.channel); name != profile->channelNames.end()) {
+        track.name = name->second;
+    }
+    if (const auto icon = profile->channelIcons.find(track.midiIn.channel); icon != profile->channelIcons.end()) {
+        track.icon = icon->second;
+    }
+}
+
 Json routeParams(const Json& params, const char* key) {
     return optionalParam<Json>(params, key).value_or(Json::object());
 }
@@ -101,8 +115,13 @@ Json routeParams(const Json& params, const char* key) {
 Json addTrack(ProjectController& controller, Nav& nav, const TrackType& type, model::Track track, const Json& params) {
     const std::size_t count = controller.project().document().tracks.size();
     track.kind = type.kind;
-    track.icon = type.icon;
-    track.name = optionalParam<std::string>(params, "name").value_or(type.title + " " + std::to_string(count + 1));
+    if (track.icon.empty()) {
+        track.icon = type.icon;
+    }
+    if (track.name.empty()) {
+        track.name = type.title + " " + std::to_string(count + 1);
+    }
+    track.name = optionalParam<std::string>(params, "name").value_or(track.name);
     track.color = static_cast<int>(count % kTrackColors);
     const model::TrackId id = track.id;
     controller.project().addTrack(std::move(track));
@@ -177,6 +196,7 @@ void registerMidiKind(Registry& registry, ProjectController& controller, Nav& na
         track.midiIn =
             mergeMidiRoute(controller, defaultMidiInput(controller), routeParams(params, "midiIn"), Direction::input);
         track.midiOut = mergeMidiRoute(controller, {}, routeParams(params, "midiOut"), Direction::output);
+        applyDeviceProfile(registry, track);
         return addTrack(controller, nav, *registry.trackType("midi"), std::move(track), params);
     };
     registry.addAction(std::move(add));
@@ -219,23 +239,27 @@ void registerRouteActions(Registry& registry, ProjectController& controller) {
 
     const auto addMidiRoute = [&](const char* actionId, const char* title, Direction direction,
                                   model::MidiRoute model::Track::* field) {
-        registry.addAction(
-            {.id = actionId,
-             .title = title,
-             .aliases = {direction == Direction::input ? "midi input" : "midi output"},
-             .category = "Tracks / Routing",
-             .schema = {{"required", {"track"}},
-                        {"properties",
-                         {{"port", {{"type", "string"}}},
-                          {"channel", {{"type", "integer"}}},
-                          {"thru", {{"type", "boolean"}}},
-                          {"sysex", {{"type", "boolean"}}}}}},
-             .run = [&controller, title, direction, field](const Json& params) {
-                 const auto id = trackParam(controller.project(), params);
-                 const auto route =
-                     mergeMidiRoute(controller, controller.project().track(id)->*field, params, direction);
-                 return editTrack(controller, id, title, [&](model::Track& track) { track.*field = route; });
-             }});
+        registry.addAction({.id = actionId,
+                            .title = title,
+                            .aliases = {direction == Direction::input ? "midi input" : "midi output"},
+                            .category = "Tracks / Routing",
+                            .schema = {{"required", {"track"}},
+                                       {"properties",
+                                        {{"port", {{"type", "string"}}},
+                                         {"channel", {{"type", "integer"}}},
+                                         {"thru", {{"type", "boolean"}}},
+                                         {"sysex", {{"type", "boolean"}}}}}},
+                            .run = [&registry, &controller, title, direction, field](const Json& params) {
+                                const auto id = trackParam(controller.project(), params);
+                                const auto route = mergeMidiRoute(controller, controller.project().track(id)->*field,
+                                                                  params, direction);
+                                return editTrack(controller, id, title, [&](model::Track& track) {
+                                    track.*field = route;
+                                    if (direction == Direction::input) {
+                                        applyDeviceProfile(registry, track);
+                                    }
+                                });
+                            }});
     };
     addMidiRoute("track.setMidiIn", "Set track MIDI input", Direction::input, &model::Track::midiIn);
     addMidiRoute("track.setMidiOut", "Set track MIDI output", Direction::output, &model::Track::midiOut);

@@ -39,7 +39,7 @@ Each track names its own audio input and output (device id plus channels) and MI
 
 ## Plugins
 
-A plugin calls `registerWith(Registry&)` and can add track types (data schema, QML header and lane, engine MIDI processor), actions, settings, MIDI device profiles (channel names, icons) and a QML module. The first plugin, `plugins/yamaha`, adds the Chord and Style tracks for the Genos2. Plugins are compiled in; dynamic loading waits for a third-party plugin.
+A plugin calls `registerWith(Registry&, ProjectController&, Nav&)` and can add track types (data schema, QML header and lane, engine MIDI processor), actions, settings and their settings section, MIDI device profiles (channel names, icons), project-level data in `Document::pluginData` and a QML module. A lane component gets `trackId`, `trackData` and `pixelsPerTick` from the tracks area. The first plugin, `plugins/yamaha`, adds the Chords and Style tracks, the arranger setup and the voice table for the Genos2. Plugins are compiled in; dynamic loading waits for a third-party plugin.
 
 ## Agent interface
 
@@ -48,7 +48,7 @@ The app serves MCP over streamable HTTP on loopback (`--mcp-port`). Tools: `ui.t
 ## Testing
 
 - Catch2 unit tests per target. The engine runs on `OfflineBackend`, faster than realtime, with golden renders.
-- `NullAudioBackend` and an in-process virtual MIDI port, selected with `--audio=null --midi=virtual`, let the app run anywhere.
+- `NullAudioBackend` and an in-process virtual MIDI port, selected with `--audio=null --midi=virtual`, let the app run anywhere. With the virtual port, `midi.inject` feeds it and `midi.sent` lists what the app sent to it.
 - `docker/` runs the app headless (`QT_QPA_PLATFORM=offscreen`) in Ubuntu 24.04 with Qt 6.11, exposes the MCP port, and `e2e/` drives it over MCP.
 
 ## Libraries

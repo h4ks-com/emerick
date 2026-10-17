@@ -24,6 +24,9 @@ FetchContent_Declare(miniaudio
 
 set(LIBREMIDI_EXAMPLES OFF CACHE BOOL "" FORCE)
 set(LIBREMIDI_TESTS OFF CACHE BOOL "" FORCE)
+# libremidi picks its byte container by whether Boost is on the include path, so a target that sees Homebrew's Boost
+# and one that does not would disagree on the message layout; we keep it on std::vector everywhere.
+set(LIBREMIDI_NO_BOOST ON CACHE BOOL "" FORCE)
 if(APPLE)
     set(LIBREMIDI_NO_JACK ON CACHE BOOL "" FORCE)
 endif()

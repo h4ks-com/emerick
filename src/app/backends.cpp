@@ -1,12 +1,14 @@
 #include "emerick/app/backends.hpp"
 
 #include <algorithm>
+#include <chrono>
+#include <cstdint>
 #include <functional>
 #include <string>
 #include <utility>
 #include <vector>
 
-#include "emerick/app/registry.hpp"
+#include "emerick/app/params.hpp"
 
 namespace emerick::app {
 
@@ -29,6 +31,42 @@ std::unique_ptr<Backend> makeBackend(std::string_view name, const std::vector<Ba
 }
 
 }  // namespace
+
+void registerVirtualMidiActions(Registry& registry, engine::VirtualMidiBackend& midi) {
+    registry.addAction({.id = "midi.inject",
+                        .title = "Inject MIDI into a virtual port",
+                        .aliases = {"send test midi"},
+                        .category = "Devices",
+                        .schema = {{"required", {"port", "bytes"}},
+                                   {"properties", {{"port", {{"type", "string"}}}, {"bytes", {{"type", "array"}}}}}},
+                        .run = [&midi](const Json& params) {
+                            const auto port = param<std::string>(params, "port");
+                            const auto bytes = param<std::vector<std::uint8_t>>(params, "bytes");
+                            if (bytes.empty()) {
+                                throw AppError("bytes must hold one MIDI message");
+                            }
+                            const auto now = std::chrono::duration_cast<std::chrono::nanoseconds>(
+                                std::chrono::steady_clock::now().time_since_epoch());
+                            midi.inject(port, bytes, now.count());
+                            return Json{{"port", port}, {"bytes", bytes}};
+                        }});
+    registry.addAction({.id = "midi.sent",
+                        .title = "List MIDI sent to a virtual port",
+                        .category = "Devices",
+                        .schema = {{"required", {"port"}},
+                                   {"properties", {{"port", {{"type", "string"}}}, {"clear", {{"type", "boolean"}}}}}},
+                        .run = [&midi](const Json& params) {
+                            const auto port = param<std::string>(params, "port");
+                            Json messages = Json::array();
+                            for (const engine::SentMidi& sent : midi.sent(port)) {
+                                messages.push_back(sent.bytes);
+                            }
+                            if (optionalParam<bool>(params, "clear").value_or(false)) {
+                                midi.clearSent();
+                            }
+                            return Json{{"port", port}, {"messages", std::move(messages)}};
+                        }});
+}
 
 std::unique_ptr<engine::AudioBackend> makeAudioBackend(std::string_view name) {
     static const std::vector<BackendFactory<engine::AudioBackend>> factories{

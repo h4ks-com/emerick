@@ -36,6 +36,8 @@ public:
         audioRoutes,
         midiRoutes,
         clips,
+        trackData,
+        laneComponent,
     };
 
     TrackListModel(model::Project& project, const Registry& registry, QObject* parent = nullptr);

@@ -103,7 +103,8 @@ nlohmann::json toJson(const Document& document) {
               {"numerator", document.tempo.meter.numerator},
               {"denominator", document.tempo.meter.denominator}}},
             {"tracks", std::move(tracks)},
-            {"clockPorts", document.clockPorts}};
+            {"clockPorts", document.clockPorts},
+            {"pluginData", document.pluginData}};
 }
 
 Document documentFromJson(const nlohmann::json& json) {
@@ -113,7 +114,8 @@ Document documentFromJson(const nlohmann::json& json) {
     const auto& tempo = json.at("tempo");
     Document document{{tempo.at("bpm"), {tempo.at("numerator"), tempo.at("denominator")}},
                       {},
-                      json.value("clockPorts", std::vector<std::string>{})};
+                      json.value("clockPorts", std::vector<std::string>{}),
+                      json.value("pluginData", nlohmann::json::object())};
     for (const auto& track : json.at("tracks")) {
         document.tracks.push_back(trackFromJson(track));
     }

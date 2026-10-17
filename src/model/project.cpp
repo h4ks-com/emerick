@@ -43,6 +43,24 @@ void Project::setClockPorts(std::vector<std::string> ports) {
     execute({"set clock out", SetClockPorts{document_.clockPorts, std::move(ports)}});
 }
 
+void Project::setPluginData(const std::string& plugin, nlohmann::json value, std::string name) {
+    nlohmann::json before = document_.pluginData.contains(plugin) ? document_.pluginData.at(plugin) : nlohmann::json{};
+    execute({std::move(name), SetPluginData{plugin, std::move(before), std::move(value)}});
+}
+
+void Project::group(std::string name, const std::function<void()>& edits) {
+    const std::size_t first = next_;
+    edits();
+    if (next_ == first) {
+        return;
+    }
+    const auto begin = history_.begin() + static_cast<std::ptrdiff_t>(first);
+    std::vector<Command> commands(std::make_move_iterator(begin), std::make_move_iterator(history_.end()));
+    history_.erase(begin, history_.end());
+    history_.push_back({std::move(name), Group{std::move(commands)}});
+    next_ = history_.size();
+}
+
 bool Project::editTrack(const TrackId& id, std::string name, const std::function<void(Track&)>& edit) {
     const Track* current = track(id);
     if (current == nullptr) {

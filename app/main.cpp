@@ -50,7 +50,8 @@ int run(int argc, char** argv) {
     }
     ProjectController controller(
         registry, makeAudioBackend(backends.audio), std::move(midiBackend),
-        {.sampleRate = 48000.0, .blockFrames = registry.settingValue("audio.bufferSize").get<emerick::core::Frames>()});
+        {.sampleRate = registry.settingValue("audio.sampleRate").get<double>(),
+         .blockFrames = registry.settingValue("audio.bufferSize").get<emerick::core::Frames>()});
     registerProjectActions(registry, controller, nav);
     emerick::yamaha::registerWith(registry, controller, nav);
     TrackListModel tracks(controller.project(), registry);

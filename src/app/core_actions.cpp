@@ -114,6 +114,15 @@ void registerCoreActions(Registry& registry, Nav& nav, const Backends& backends)
                          .choices = {64, 128, 256, 512, 1024, 2048},
                          .hint = "Frames per block",
                          .location = "settings.audio"});
+    registry.addSetting({.id = "audio.sampleRate",
+                         .title = "Sample rate",
+                         .aliases = {"hz", "rate"},
+                         .category = "Settings / Audio",
+                         .type = SettingType::Choice,
+                         .defaultValue = 48000,
+                         .choices = {44100, 48000, 88200, 96000},
+                         .hint = "Restart Emerick to apply",
+                         .location = "settings.audio"});
 }
 
 }  // namespace emerick::app

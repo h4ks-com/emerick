@@ -3,6 +3,7 @@
 #include <string>
 #include <vector>
 
+#include "emerick/app/backends.hpp"
 #include "project_rig.hpp"
 
 using namespace emerick;
@@ -81,4 +82,18 @@ TEST_CASE("an offline audio take becomes an audio clip file under the project fo
     const Json clips = projectState(*rig.controller).at("tracks").at(0).at("clips");
     REQUIRE(clips.size() == 2);
     CHECK(clips.at(0).at("file") != clips.at(1).at("file"));
+}
+
+TEST_CASE("midi.inject feeds a virtual port and midi.sent lists what the app sent") {
+    ProjectRig rig;
+    registerVirtualMidiActions(rig.registry, *rig.midi);
+    rig.run("track.addMidi", {{"midiOut", {{"port", kMidiPort}, {"channel", 2}, {"thru", true}}}});
+    CHECK_THROWS_AS(rig.run("midi.inject", {{"port", kMidiPort}, {"bytes", Json::array()}}), AppError);
+
+    rig.run("midi.inject", {{"port", kMidiPort}, {"bytes", {0x90, 60, 100}}});
+    rig.audio->process(kBlock);
+    REQUIRE(processUntil([&] { return rig.controller->engine().midiFlushed(); }));
+    CHECK(rig.run("midi.sent", {{"port", kMidiPort}, {"clear", true}}).at("messages") ==
+          Json::array({Json::array({0x91, 60, 100})}));
+    CHECK(rig.run("midi.sent", {{"port", kMidiPort}}).at("messages").empty());
 }

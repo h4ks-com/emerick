@@ -33,6 +33,21 @@ TEST_CASE("transport actions return the state the engine reached") {
     CHECK(rig.run("transport.stop").at("recording") == false);
 }
 
+TEST_CASE("play or pause keeps the position, and a second stop returns to the start") {
+    ProjectRig rig;
+    CHECK(rig.run("transport.togglePlay").at("playing") == true);
+    const Json paused = rig.run("transport.togglePlay");
+    CHECK(paused.at("playing") == false);
+    const auto ticks = paused.at("position").at("ticks").get<core::Ticks>();
+    CHECK(ticks > 0);
+    CHECK(rig.run("transport.togglePlay").at("position").at("ticks").get<core::Ticks>() >= ticks);
+    CHECK(rig.run("transport.stop").at("playing") == false);
+    rig.run("transport.locate", {{"position", "3.1.0"}});
+    CHECK(rig.run("transport.stop").at("position").at("ticks") == 0);
+    rig.run("transport.locate", {{"position", "3.1.0"}});
+    CHECK(rig.run("transport.gotoStart").at("position").at("ticks") == 0);
+}
+
 TEST_CASE("saving while recording stops the transport and keeps every take") {
     ProjectRig rig;
     const std::string vox = rig.run("track.addAudio", {{"name", "Vox"}}).at("id");

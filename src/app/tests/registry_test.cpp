@@ -167,6 +167,8 @@ TEST_CASE("view actions zoom and resize tracks within their limits") {
     }
     CHECK(nav.trackHeight() == kMinTrackHeight);
     CHECK(registry.state("nav").at("pixelsPerTick") == kMinPixelsPerTick);
+    CHECK(registry.run("view.toggleInspector").at("inspectorOpen") == false);
+    CHECK(registry.state("nav").at("inspectorOpen") == false);
 }
 
 TEST_CASE("the settings page reads its sections and rows from the registry") {

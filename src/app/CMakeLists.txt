@@ -27,6 +27,7 @@ qt_add_library(emerick_app STATIC
     include/emerick/app/session_mapping.hpp
     include/emerick/app/stem_export.hpp
     include/emerick/app/track_list_model.hpp
+    include/emerick/app/transport_clock.hpp
     include/emerick/app/ui_api.hpp
     introspector.cpp
     lua_host.cpp
@@ -42,6 +43,7 @@ qt_add_library(emerick_app STATIC
     stem_export.cpp
     track_actions.cpp
     track_list_model.cpp
+    transport_clock.cpp
     ui_api.cpp)
 target_include_directories(emerick_app PUBLIC include)
 target_compile_definitions(emerick_app PRIVATE EMERICK_VERSION="${PROJECT_VERSION}" SOL_PRINT_ERRORS=0)

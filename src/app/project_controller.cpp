@@ -9,6 +9,7 @@
 #include "emerick/app/event_wait.hpp"
 #include "emerick/app/project_state.hpp"
 #include "emerick/app/session_mapping.hpp"
+#include "emerick/app/stem_export.hpp"
 #include "emerick/model/json.hpp"
 
 namespace emerick::app {
@@ -278,6 +279,15 @@ QString ProjectController::positionText() const {
 QString ProjectController::tempoText() const {
     const core::TempoMap& tempo = project_.document().tempo;
     return QStringLiteral("%1   %2/%3").arg(tempo.bpm).arg(tempo.meter.numerator).arg(tempo.meter.denominator);
+}
+
+qint64 ProjectController::endTicks() const { return projectEnd(project_.document()); }
+
+qint64 ProjectController::snapped(qint64 ticks) const {
+    const core::Ticks beat = ticksPerBeat();
+    const core::Ticks result =
+        registry_.settingValue("edit.snap").get<bool>() ? (ticks + beat / 2) / beat * beat : ticks;
+    return std::max<core::Ticks>(result, 0);
 }
 
 QVariantMap ProjectController::routeChoices() { return toVariant(app::routeChoices(devicesState(*this))).toMap(); }

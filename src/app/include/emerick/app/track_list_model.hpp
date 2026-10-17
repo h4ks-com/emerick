@@ -5,6 +5,7 @@
 #include <QVariant>
 #include <cstdint>
 
+#include "emerick/app/project_controller.hpp"
 #include "emerick/app/registry.hpp"
 #include "emerick/model/project.hpp"
 
@@ -40,7 +41,7 @@ public:
         laneComponent,
     };
 
-    TrackListModel(model::Project& project, const Registry& registry, QObject* parent = nullptr);
+    TrackListModel(ProjectController& controller, const Registry& registry, QObject* parent = nullptr);
     ~TrackListModel() override;
     TrackListModel(const TrackListModel&) = delete;
     TrackListModel& operator=(const TrackListModel&) = delete;
@@ -54,6 +55,9 @@ public:
 private:
     void changed(const model::Change& change);
 
+    [[nodiscard]] QVariantList clipList(const model::Track& track) const;
+
+    ProjectController& controller_;
     model::Project& project_;
     const Registry& registry_;
     std::size_t listener_;

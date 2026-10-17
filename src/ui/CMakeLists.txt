@@ -7,13 +7,30 @@ qt_add_qml_module(emerick_ui
     VERSION 1.0
     QML_FILES
         ChromeButton.qml
+        ClipBody.qml
+        ClipItem.qml
         CommandPalette.qml
         GlassPanel.qml
         Inspector.qml
         Main.qml
         RouteCombo.qml
+        Ruler.qml
         SettingsPage.qml
         Theme.qml
-        TrackList.qml)
+        TrackHeader.qml
+        TrackList.qml
+    RESOURCES
+        icons/guitar.svg
+        icons/music-note.svg
+        icons/music-notes.svg
+        icons/piano-keys.svg
+        icons/squares-four.svg
+        icons/waveform.svg)
 
 target_link_libraries(emerick_ui PRIVATE Qt6::Quick Qt6::QuickControls2)
+
+if(EMERICK_BUILD_TESTS)
+    emerick_test(emerick_ui_tests tests/timeline_test.cpp)
+    target_include_directories(emerick_ui_tests PRIVATE ${PROJECT_SOURCE_DIR}/src/app/tests)
+    target_link_libraries(emerick_ui_tests PRIVATE emerick_app emerick_uiplugin Qt6::Quick Qt6::Test)
+endif()

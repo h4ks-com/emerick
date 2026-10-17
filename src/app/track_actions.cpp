@@ -183,7 +183,7 @@ void registerMidiKind(Registry& registry, ProjectController& controller, Nav& na
     registry.addTrackType(
         {.kind = "midi",
          .title = "MIDI",
-         .icon = "keyboard",
+         .icon = "piano-keys",
          .routes = {.midi = true},
          .toEngine = [](const model::Track& track, const PlaybackContext&) { return midiEngineTrack(track); },
          .fromTake =

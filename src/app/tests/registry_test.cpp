@@ -1,6 +1,7 @@
 #include "emerick/app/registry.hpp"
 
 #include <QTemporaryDir>
+#include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
 #include "emerick/app/core_actions.hpp"
@@ -146,6 +147,26 @@ TEST_CASE("core actions drive Nav") {
     CHECK(nav.aboutOpen());
     CHECK(registry.reveal("mcp.port").chain == std::vector<std::string>{"settings", "settings.general"});
     CHECK(registry.state("app").at("audio") == "null");
+}
+
+TEST_CASE("view actions zoom and resize tracks within their limits") {
+    QTemporaryDir dir;
+    Registry registry{dir.filePath("settings.ini")};
+    Nav nav;
+    registerCoreActions(registry, nav, {});
+
+    const double before = nav.pixelsPerTick();
+    registry.run("view.zoomIn");
+    registry.run("view.zoomOut");
+    CHECK(nav.pixelsPerTick() == Catch::Approx(before));
+    const int height = registry.run("view.trackTaller").at("trackHeight");
+    CHECK(height > kDefaultTrackHeight);
+    for (int step = 0; step < 40; ++step) {
+        registry.run("view.trackShorter");
+        registry.run("view.zoomOut");
+    }
+    CHECK(nav.trackHeight() == kMinTrackHeight);
+    CHECK(registry.state("nav").at("pixelsPerTick") == kMinPixelsPerTick);
 }
 
 TEST_CASE("the settings page reads its sections and rows from the registry") {

@@ -7,7 +7,7 @@ import Emerick.Ui
 Item {
     id: lane
     property string trackId
-    property real pixelsPerTick: Theme.pixelsPerTick
+    property real pixelsPerTick: Nav.pixelsPerTick
     property string actionPrefix
     property string nameParam
     property var blocks: []

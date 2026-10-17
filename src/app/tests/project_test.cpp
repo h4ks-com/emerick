@@ -97,6 +97,53 @@ TEST_CASE("track and clip actions round trip through undo and redo") {
     CHECK(devices.at("midiInputs").at(0).at("port") == kMidiPort);
 }
 
+TEST_CASE("clip actions without a clip act on the selection and the selection drops removed clips") {
+    ProjectRig rig;
+    const std::string track = rig.run("track.addAudio").at("id");
+    writeConstant(rig.path("ones.wav"), 48000, 1.0F);
+    const std::string clip =
+        rig.run("clip.import", {{"track", track}, {"path", rig.path("ones.wav").string()}}).at("id");
+    CHECK_THROWS_AS(rig.run("clip.delete"), AppError);
+
+    rig.nav.setSelectedTrack({});
+    CHECK(rig.run("selection.set", {{"clips", {clip}}}).at("selectedClips") == Json{clip});
+    CHECK(rig.nav.selectedTrack().toStdString() == track);
+    CHECK_THROWS_AS(rig.run("selection.set", {{"clips", {"nobody"}}}), AppError);
+
+    const Json copies = rig.run("clip.duplicate");
+    const std::string copy = copies.at("clips").at(0).at("id");
+    CHECK(copies.at("clips").at(0).at("start") == 1920);
+    CHECK(rig.nav.selectedClips() == QStringList{QString::fromStdString(copy)});
+
+    const Json splits = rig.run("clip.split", {{"at", 2880}});
+    CHECK(splits.at("splits").at(0).at("left").at("length") == 960);
+    CHECK_THROWS_AS(rig.run("clip.split", {{"at", 100}}), AppError);
+
+    rig.run("clip.delete");
+    CHECK(rig.nav.selectedClips().isEmpty());
+    CHECK(projectState(*rig.controller).at("tracks").at(0).at("clips").size() == 2);
+    rig.run("selection.set", {{"clips", {clip}}});
+    rig.run("project.undo");
+    rig.run("project.undo");
+    rig.run("project.undo");
+    rig.run("project.undo");
+    CHECK(rig.nav.selectedClips().isEmpty());
+}
+
+TEST_CASE("snapping rounds to the nearest beat until snap is toggled off") {
+    ProjectRig rig;
+    CHECK(rig.controller->snapped(1000) == 960);
+    CHECK(rig.controller->snapped(1500) == 1920);
+    CHECK(rig.controller->snapped(-300) == 0);
+    CHECK(rig.run("edit.toggleSnap").at("snap") == false);
+    CHECK(rig.controller->snapped(1000) == 1000);
+    rig.run("edit.toggleSnap");
+    rig.run("project.setTempo", {{"denominator", 8}});
+    CHECK(rig.controller->snapped(1000) == 960);
+    CHECK(rig.controller->snapped(800) == 960);
+    CHECK(rig.controller->snapped(200) == 0);
+}
+
 TEST_CASE("the session mapping turns the document into engine tracks") {
     ProjectRig rig;
     model::Document document;
@@ -265,7 +312,7 @@ TEST_CASE("the Lua one-liner mutes every track") {
 
 TEST_CASE("the track list model follows the document") {
     ProjectRig rig;
-    TrackListModel model{rig.controller->project(), rig.registry};
+    TrackListModel model{*rig.controller, rig.registry};
     const std::string id = rig.run("track.addAudio", {{"name", "Vox"}}).at("id");
     REQUIRE(model.rowCount() == 1);
     const QModelIndex row = model.index(0);

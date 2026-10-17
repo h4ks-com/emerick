@@ -29,6 +29,9 @@ class ProjectController : public QObject {
     Q_PROPERTY(bool playing READ playing NOTIFY transportChanged)
     Q_PROPERTY(bool recording READ recording NOTIFY transportChanged)
     Q_PROPERTY(QString tempoText READ tempoText NOTIFY projectChanged)
+    Q_PROPERTY(qint64 ticksPerBeat READ ticksPerBeat NOTIFY projectChanged)
+    Q_PROPERTY(qint64 ticksPerBar READ ticksPerBar NOTIFY projectChanged)
+    Q_PROPERTY(qint64 endTicks READ endTicks NOTIFY projectChanged)
     Q_PROPERTY(QVariantMap routeChoices READ routeChoices NOTIFY projectChanged)
     Q_PROPERTY(int midiChannelCount READ midiChannelCount CONSTANT)
     Q_PROPERTY(int trackColorCount READ trackColorCount CONSTANT)
@@ -75,6 +78,11 @@ public:
     [[nodiscard]] bool playing() const { return engine_.playing(); }
     [[nodiscard]] bool recording() const { return recording_; }
     [[nodiscard]] QString tempoText() const;
+    [[nodiscard]] qint64 ticksPerBeat() const { return project_.document().tempo.ticksPerBeat(); }
+    [[nodiscard]] qint64 ticksPerBar() const { return project_.document().tempo.ticksPerBar(); }
+    [[nodiscard]] qint64 endTicks() const;
+    // The nearest beat when the edit.snap setting is on, else ticks unchanged; never before bar 1.
+    Q_INVOKABLE qint64 snapped(qint64 ticks) const;
     [[nodiscard]] QVariantMap routeChoices();
     [[nodiscard]] static int midiChannelCount() { return kMidiChannels; }
     [[nodiscard]] static int trackColorCount() { return kTrackColors; }

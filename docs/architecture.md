@@ -26,7 +26,7 @@ The engine never sees the model. `emerick_app` turns the document into an engine
 
 ## Engine threading
 
-1. The UI thread builds an immutable `Session` snapshot and swaps it in by atomic pointer at the next block. Retired snapshots return to the UI thread for deletion.
+1. The UI thread builds an immutable `Session` snapshot once per event loop turn that changed the project, and swaps it in by atomic pointer at the next block. Retired snapshots return to the UI thread for deletion.
 2. Live changes (mute, arm, transport) go through an SPSC command queue drained at block start.
 3. The audio callback runs the graph single threaded; a worker pool joins later behind the same interface when profiling needs it.
 4. Armed audio tracks write into per-track rings; a writer thread writes the files. Clip playback reads ahead on a reader thread.
@@ -36,6 +36,8 @@ The engine never sees the model. `emerick_app` turns the document into an engine
 ## Devices
 
 Each track names its own audio input and output (device id plus channels) and MIDI input and output (port id plus channel). The engine opens every device a session needs. On macOS several devices become one hidden private aggregate device with drift compensation, so the user never builds one by hand. On Linux the devices are PipeWire or JACK ports. On Windows each WASAPI device runs its own stream and the engine resamples the others to the clock device.
+
+Listing devices asks CoreAudio and CoreMIDI about every device, so the engine lists them once at startup and keeps the list. It lists them again when the system reports a device appearing or going away, and on `devices.refresh`. A device that cannot run at the engine's sample rate is refused with the rate to set.
 
 ## Plugins
 

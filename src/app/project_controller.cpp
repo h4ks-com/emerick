@@ -32,10 +32,7 @@ ProjectController::ProjectController(const Registry& registry, std::unique_ptr<e
     untitled_.emplace();
     folder_ = untitled_->path().toStdString();
     std::filesystem::create_directories(folder_ / "audio");
-    project_.addListener([this](const model::Change&) {
-        publish();
-        emit projectChanged();
-    });
+    project_.addListener([this](const model::Change&) { scheduleFlush(); });
     publish();
     connect(&timer_, &QTimer::timeout, this, &ProjectController::poll);
     timer_.start(kPollPeriod);
@@ -119,8 +116,27 @@ void ProjectController::saveAs(const std::filesystem::path& folder) {
     }
     folder_ = folder;
     untitled_.reset();
+    scheduleFlush();
+}
+
+void ProjectController::scheduleFlush() {
+    if (std::exchange(flushPending_, true)) {
+        return;
+    }
+    QMetaObject::invokeMethod(this, &ProjectController::flush, Qt::QueuedConnection);
+}
+
+void ProjectController::flush() {
+    if (!std::exchange(flushPending_, false)) {
+        return;
+    }
     publish();
     emit projectChanged();
+}
+
+void ProjectController::refreshDevices() {
+    engine_.refreshDevices();
+    emit devicesChanged();
 }
 
 void ProjectController::waitForEngine(const std::function<bool()>& reached) {
@@ -131,6 +147,7 @@ void ProjectController::waitForEngine(const std::function<bool()>& reached) {
 }
 
 void ProjectController::play() {
+    flush();
     emit aboutToPlay();
     engine_.play();
     waitForEngine([this] { return engine_.playing(); });
@@ -153,6 +170,7 @@ void ProjectController::record() {
     if (recording_) {
         return;
     }
+    flush();
     for (const model::Track& track : project_.document().tracks) {
         if (track.armed && sessionAudioTracks_.contains(track.id.value)) {
             pendingAudioTakes_.insert(track.id.value);
@@ -166,6 +184,7 @@ void ProjectController::record() {
 }
 
 void ProjectController::locate(core::Ticks ticks) {
+    flush();
     const core::Ticks target = std::max<core::Ticks>(ticks, 0);
     const double rate = engine_.layout().sampleRate;
     const core::Frames frames = project_.document().tempo.ticksToFrames(target, rate);
@@ -224,6 +243,9 @@ void ProjectController::publish() {
 }
 
 void ProjectController::poll() {
+    if (engine_.devicesChanged()) {
+        refreshDevices();
+    }
     collectTakes();
     const core::Ticks ticks = engine_.position().ticks;
     const bool isPlaying = engine_.playing();
@@ -290,6 +312,8 @@ qint64 ProjectController::snapped(qint64 ticks) const {
     return std::max<core::Ticks>(result, 0);
 }
 
-QVariantMap ProjectController::routeChoices() { return toVariant(app::routeChoices(devicesState(*this))).toMap(); }
+QVariantMap ProjectController::routeChoices() const {
+    return toVariant(app::routeChoices(devicesState(*this))).toMap();
+}
 
 }  // namespace emerick::app

@@ -11,6 +11,7 @@
 #include "emerick/engine/audio_backend.hpp"
 
 #ifdef __APPLE__
+#include "device_list_listener.hpp"
 #include "private_aggregate.hpp"
 #endif
 
@@ -65,6 +66,20 @@ int maxChannels(const ma_device_info& info) {
     return static_cast<int>(channels);
 }
 
+// CoreAudio lists the nominal rates the hardware runs at; the other systems resample, so any rate works there.
+void addSampleRates(const ma_context& context, const ma_device_info& info, std::vector<double>& rates) {
+    if (context.backend != ma_backend_coreaudio) {
+        return;
+    }
+    for (ma_uint32 index = 0; index < info.nativeDataFormatCount; ++index) {
+        const auto rate = static_cast<double>(info.nativeDataFormats[index].sampleRate);
+        if (rate > 0 && !std::ranges::contains(rates, rate)) {
+            rates.push_back(rate);
+        }
+    }
+    std::ranges::sort(rates);
+}
+
 }  // namespace
 
 struct MiniaudioBackend::Impl {
@@ -78,6 +93,7 @@ struct MiniaudioBackend::Impl {
     std::vector<float*> outputPointers;
 #ifdef __APPLE__
     std::optional<PrivateAggregate> aggregate;
+    std::optional<DeviceListListener> listener;
 #endif
 
     static void onData(ma_device* device, void* output, const void* input, ma_uint32 frameCount) {
@@ -119,9 +135,15 @@ MiniaudioBackend::MiniaudioBackend() : impl_(std::make_unique<Impl>()) {
     if (ma_context_init(nullptr, 0, nullptr, &impl_->context) != MA_SUCCESS) {
         throw std::runtime_error("cannot start the audio system");
     }
+#ifdef __APPLE__
+    impl_->listener.emplace([this] { deviceListChanged(); });
+#endif
 }
 
 MiniaudioBackend::~MiniaudioBackend() {
+#ifdef __APPLE__
+    impl_->listener.reset();
+#endif
     close();
     ma_context_uninit(&impl_->context);
 }
@@ -142,12 +164,18 @@ std::vector<AudioDeviceInfo> MiniaudioBackend::devices() {
                 continue;
             }
             const std::string id = idText(impl_->context, listed);
+#ifdef __APPLE__
+            if (id.starts_with(kAggregateUidPrefix)) {
+                continue;
+            }
+#endif
             auto found = std::ranges::find(result, id, &AudioDeviceInfo::id);
             if (found == result.end()) {
                 result.push_back({id, fromChars(listed.name)});
                 found = std::prev(result.end());
             }
             (type == ma_device_type_playback ? found->outputChannels : found->inputChannels) = maxChannels(info);
+            addSampleRates(impl_->context, info, found->sampleRates);
         }
     };
     add({playback, playbackCount}, ma_device_type_playback);
@@ -157,7 +185,7 @@ std::vector<AudioDeviceInfo> MiniaudioBackend::devices() {
 
 StreamLayout MiniaudioBackend::open(const StreamRequest& request, AudioCallback callback) {
     close();
-    const std::vector<AudioDeviceInfo> available = devices();
+    const std::vector<AudioDeviceInfo>& available = request.available;
     std::string deviceId;
     AudioDeviceInfo opened{"default", "Default output", 0, 2};
     if (request.deviceIds.size() == 1) {

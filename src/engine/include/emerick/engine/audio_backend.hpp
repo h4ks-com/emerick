@@ -1,5 +1,6 @@
 #pragma once
 
+#include <atomic>
 #include <cstdint>
 #include <functional>
 #include <map>
@@ -22,7 +23,12 @@ struct AudioDeviceInfo {
     std::string name;
     int inputChannels = 0;
     int outputChannels = 0;
+    // Empty when the device runs at any rate; the default lets brace initializers skip it.
+    std::vector<double> sampleRates = {};  // NOLINT(readability-redundant-member-init)
 };
+
+// Names the device and the rates it runs at when it cannot run at sampleRate.
+std::optional<std::string> unsupportedRate(const AudioDeviceInfo& device, double sampleRate);
 
 struct DeviceChannels {
     std::string id;
@@ -48,6 +54,8 @@ struct StreamRequest {
     std::vector<std::string> deviceIds;  // empty opens the default output device
     double sampleRate = 48000.0;
     Frames blockFrames = 256;
+    // The last listing, so opening never lists devices again; the default lets brace initializers skip it.
+    std::vector<AudioDeviceInfo> available = {};  // NOLINT(readability-redundant-member-init)
 };
 
 struct AudioBlock {
@@ -68,10 +76,21 @@ public:
     AudioBackend& operator=(AudioBackend&&) = delete;
     virtual ~AudioBackend() = default;
 
+    // Listing asks the hardware about every device, which can take a while, so we call it only when the list changed.
     [[nodiscard]] virtual std::vector<AudioDeviceInfo> devices() = 0;
     // The callback runs on the audio thread from open until close returns.
     virtual StreamLayout open(const StreamRequest& request, AudioCallback callback) = 0;
     virtual void close() = 0;
+
+    // Grows each time the system reports a device appearing or going away.
+    [[nodiscard]] std::uint64_t deviceListVersion() const { return deviceListVersion_.load(std::memory_order_acquire); }
+
+protected:
+    // Safe to call from any thread, such as the one a hotplug notification arrives on.
+    void deviceListChanged() { deviceListVersion_.fetch_add(1, std::memory_order_acq_rel); }
+
+private:
+    std::atomic<std::uint64_t> deviceListVersion_{0};
 };
 
 StreamLayout concatenateDevices(const std::vector<AudioDeviceInfo>& available, const StreamRequest& request);

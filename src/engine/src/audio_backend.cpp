@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cmath>
 #include <ranges>
 #include <stdexcept>
 #include <utility>
@@ -19,7 +20,24 @@ const DeviceChannels* findDevice(const StreamLayout& layout, std::string_view de
     return found == layout.devices.end() ? nullptr : &*found;
 }
 
+std::string rateText(double rate) { return std::to_string(std::lround(rate)); }
+
 }  // namespace
+
+std::optional<std::string> unsupportedRate(const AudioDeviceInfo& device, double sampleRate) {
+    if (device.sampleRates.empty() || std::ranges::contains(device.sampleRates, sampleRate)) {
+        return std::nullopt;
+    }
+    if (device.sampleRates.size() == 1) {
+        const std::string rate = rateText(device.sampleRates.front());
+        return device.name + " runs at " + rate + " Hz; set Audio > Sample rate to " + rate + " and restart Emerick";
+    }
+    std::string rates;
+    for (const double rate : device.sampleRates) {
+        rates += (rates.empty() ? "" : ", ") + rateText(rate);
+    }
+    return device.name + " runs at " + rates + " Hz; set Audio > Sample rate to one of them and restart Emerick";
+}
 
 std::optional<int> StreamLayout::inputIndex(std::string_view deviceId, int channel) const {
     const DeviceChannels* device = findDevice(*this, deviceId);

@@ -39,10 +39,13 @@ model::AudioRoute mergeAudioRoute(ProjectController& controller, model::AudioRou
     if (route.deviceId.empty()) {
         return {};
     }
-    const auto devices = controller.engine().audio().devices();
+    const auto& devices = controller.engine().audioDevices();
     const auto device = std::ranges::find(devices, route.deviceId, &engine::AudioDeviceInfo::id);
     if (device == devices.end()) {
         throw AppError("no audio device " + route.deviceId + ", run devices.list for device ids");
+    }
+    if (const auto problem = engine::unsupportedRate(*device, controller.sampleRate())) {
+        throw AppError(*problem);
     }
     const int count = direction == Direction::input ? device->inputChannels : device->outputChannels;
     if (route.channels.empty() || std::ranges::any_of(route.channels, [&](int c) { return c < 1 || c > count; })) {
@@ -64,7 +67,7 @@ model::MidiRoute mergeMidiRoute(ProjectController& controller, model::MidiRoute 
     if (route.portId.empty()) {
         return route;
     }
-    const auto ports = controller.engine().midi().ports();
+    const auto& ports = controller.engine().midiPorts();
     const bool exists = std::ranges::any_of(ports, [&](const engine::MidiPortInfo& port) {
         return port.id == route.portId && port.isInput == (direction == Direction::input);
     });
@@ -76,11 +79,13 @@ model::MidiRoute mergeMidiRoute(ProjectController& controller, model::MidiRoute 
 }
 
 model::AudioRoute defaultAudioRoute(ProjectController& controller, Direction direction) {
-    const auto devices = controller.engine().audio().devices();
+    const auto& devices = controller.engine().audioDevices();
     const auto channels = [direction](const engine::AudioDeviceInfo& device) {
         return direction == Direction::input ? device.inputChannels : device.outputChannels;
     };
-    const auto device = std::ranges::find_if(devices, [&](const auto& d) { return channels(d) > 0; });
+    const auto device = std::ranges::find_if(devices, [&](const auto& d) {
+        return channels(d) > 0 && !engine::unsupportedRate(d, controller.sampleRate());
+    });
     if (device == devices.end()) {
         return {};
     }
@@ -88,7 +93,7 @@ model::AudioRoute defaultAudioRoute(ProjectController& controller, Direction dir
 }
 
 model::MidiRoute defaultMidiInput(ProjectController& controller) {
-    const auto ports = controller.engine().midi().ports();
+    const auto& ports = controller.engine().midiPorts();
     const auto port = std::ranges::find_if(ports, &engine::MidiPortInfo::isInput);
     return port == ports.end() ? model::MidiRoute{} : model::MidiRoute{port->id, 0, false, false};
 }

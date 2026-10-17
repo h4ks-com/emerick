@@ -59,12 +59,12 @@ std::string uniqueUid() {
     const auto text = CfRef<CFStringRef>(CFUUIDCreateString(nullptr, uuid.get()));
     std::array<char, 64> chars{};
     CFStringGetCString(text.get(), chars.data(), static_cast<CFIndex>(chars.size()), kCFStringEncodingUTF8);
-    return "emerick.aggregate." + std::string(chars.data());
+    return std::string{kAggregateUidPrefix} + chars.data();
 }
 
 void waitUntilListed(AudioObjectID device) {
     using namespace std::chrono_literals;
-    const auto deadline = std::chrono::steady_clock::now() + 2s;
+    const auto deadline = std::chrono::steady_clock::now() + 1s;
     while (!std::ranges::contains(deviceIds(), device) && std::chrono::steady_clock::now() < deadline) {
         std::this_thread::sleep_for(10ms);
     }

@@ -1,5 +1,6 @@
 #pragma once
 
+#include <atomic>
 #include <cstdint>
 #include <functional>
 #include <map>
@@ -52,10 +53,21 @@ public:
     MidiBackend& operator=(MidiBackend&&) = delete;
     virtual ~MidiBackend() = default;
 
+    // Listing asks the system about every port, so we call it only when the list changed.
     [[nodiscard]] virtual std::vector<MidiPortInfo> ports() = 0;
     // The receive callback runs on a MIDI thread until the returned input is destroyed.
     virtual std::unique_ptr<MidiInput> openInput(const std::string& portId, MidiReceive receive) = 0;
     virtual std::unique_ptr<MidiOutput> openOutput(const std::string& portId) = 0;
+
+    // Grows each time the system reports a port appearing or going away.
+    [[nodiscard]] std::uint64_t portListVersion() const { return portListVersion_.load(std::memory_order_acquire); }
+
+protected:
+    // Safe to call from any thread, such as the one a hotplug notification arrives on.
+    void portListChanged() { portListVersion_.fetch_add(1, std::memory_order_acq_rel); }
+
+private:
+    std::atomic<std::uint64_t> portListVersion_{0};
 };
 
 struct SentMidi {

@@ -129,7 +129,8 @@ Json tempoState(const core::TempoMap& tempo) {
     return {{"bpm", tempo.bpm}, {"numerator", tempo.meter.numerator}, {"denominator", tempo.meter.denominator}};
 }
 
-Json projectState(const ProjectController& controller) {
+Json projectState(ProjectController& controller) {
+    controller.flush();
     const model::Project& project = controller.project();
     const model::Document& document = project.document();
     Json result{{"path", controller.folder().string()},
@@ -159,15 +160,16 @@ Json transportState(const ProjectController& controller) {
             {"position", positionState(controller.positionTicks(), controller.project().document().tempo)}};
 }
 
-Json devicesState(ProjectController& controller) {
+Json devicesState(const ProjectController& controller) {
     Json audio = Json::array();
     Json inputs = Json::array();
     Json outputs = Json::array();
-    for (const engine::AudioDeviceInfo& device : controller.engine().audio().devices()) {
+    for (const engine::AudioDeviceInfo& device : controller.engine().audioDevices()) {
         audio.push_back({{"id", device.id},
                          {"name", device.name},
                          {"inputs", device.inputChannels},
-                         {"outputs", device.outputChannels}});
+                         {"outputs", device.outputChannels},
+                         {"sampleRates", device.sampleRates}});
         for (Json& choice : channelChoices(device, device.inputChannels)) {
             inputs.push_back(std::move(choice));
         }
@@ -177,7 +179,7 @@ Json devicesState(ProjectController& controller) {
     }
     Json midiInputs = Json::array();
     Json midiOutputs = Json::array();
-    for (const engine::MidiPortInfo& port : controller.engine().midi().ports()) {
+    for (const engine::MidiPortInfo& port : controller.engine().midiPorts()) {
         (port.isInput ? midiInputs : midiOutputs).push_back({{"port", port.id}, {"name", port.name}});
     }
     return {{"audio", audio},

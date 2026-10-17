@@ -175,7 +175,7 @@ void registerTransportActions(Registry& registry, ProjectController& controller)
                         .run = [&controller](const Json& params) {
                             const auto port = param<std::string>(params, "port");
                             const auto enabled = param<bool>(params, "enabled");
-                            const auto ports = controller.engine().midi().ports();
+                            const auto& ports = controller.engine().midiPorts();
                             if (std::ranges::none_of(ports, [&](const engine::MidiPortInfo& info) {
                                     return info.id == port && !info.isInput;
                                 })) {
@@ -254,6 +254,14 @@ void registerProjectActions(Registry& registry, ProjectController& controller, N
                         .aliases = {"show devices", "ports"},
                         .category = "Devices",
                         .run = [&controller](const Json&) { return devicesState(controller); }});
+    registry.addAction({.id = "devices.refresh",
+                        .title = "Refresh audio and MIDI devices",
+                        .aliases = {"rescan devices", "find new devices"},
+                        .category = "Devices",
+                        .run = [&controller](const Json&) {
+                            controller.refreshDevices();
+                            return devicesState(controller);
+                        }});
 }
 
 }  // namespace emerick::app

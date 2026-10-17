@@ -30,7 +30,7 @@ public:
     void setClockPorts(std::vector<std::string> ports);
     // A null value removes the plugin's data.
     void setPluginData(const std::string& plugin, nlohmann::json value, std::string name);
-    // Every edit made inside edits becomes one undo step named name.
+    // Every edit made inside edits becomes one undo step named name, and listeners hear one change at the end.
     void group(std::string name, const std::function<void()>& edits);
     // The one path for property and clip edits: we edit a copy of the track and store it as one undo step.
     bool editTrack(const TrackId& id, std::string name, const std::function<void(Track&)>& edit);
@@ -47,6 +47,19 @@ public:
     void removeListener(std::size_t handle);
 
 private:
+    class GroupScope {
+    public:
+        explicit GroupScope(Project& project);
+        ~GroupScope();
+        GroupScope(const GroupScope&) = delete;
+        GroupScope& operator=(const GroupScope&) = delete;
+        GroupScope(GroupScope&&) = delete;
+        GroupScope& operator=(GroupScope&&) = delete;
+
+    private:
+        Project& project_;
+    };
+
     void execute(Command command);
     void notify(const Change& change) const;
 
@@ -55,6 +68,8 @@ private:
     std::size_t next_ = 0;  // history_[next_ - 1] is the last applied command
     std::map<std::size_t, Listener> listeners_;
     std::size_t nextHandle_ = 1;
+    int groupDepth_ = 0;
+    bool groupChanged_ = false;
 };
 
 }  // namespace emerick::model

@@ -5,7 +5,11 @@
 #include <QVariantMap>
 #include <algorithm>
 #include <array>
+#include <cstddef>
 #include <filesystem>
+#include <iterator>
+#include <ranges>
+#include <span>
 #include <utility>
 #include <variant>
 
@@ -81,20 +85,24 @@ TrackListModel::TrackListModel(ProjectController& controller, const Registry& re
       controller_(controller),
       project_(controller.project()),
       registry_(registry),
+      rows_(project_.document().tracks | std::views::transform(&model::Track::id) | std::ranges::to<std::vector>()),
       listener_(project_.addListener([this](const model::Change& change) { changed(change); })) {}
 
 TrackListModel::~TrackListModel() { project_.removeListener(listener_); }
 
 int TrackListModel::rowCount(const QModelIndex& parent) const {
-    return parent.isValid() ? 0 : static_cast<int>(project_.document().tracks.size());
+    return parent.isValid() ? 0 : static_cast<int>(rows_.size());
 }
 
 QVariant TrackListModel::data(const QModelIndex& index, int role) const {
-    const auto& tracks = project_.document().tracks;
-    if (!index.isValid() || index.row() < 0 || static_cast<std::size_t>(index.row()) >= tracks.size()) {
+    if (!index.isValid() || index.row() < 0 || static_cast<std::size_t>(index.row()) >= rows_.size()) {
         return {};
     }
-    const model::Track& track = tracks[static_cast<std::size_t>(index.row())];
+    const model::Track* found = project_.track(rows_[static_cast<std::size_t>(index.row())]);
+    if (found == nullptr) {
+        return {};
+    }
+    const model::Track& track = *found;
     const TrackType* type = registry_.trackType(track.kind);
     const RouteSections routes = type != nullptr ? type->routes : RouteSections{};
     switch (static_cast<Role>(role)) {
@@ -180,15 +188,50 @@ QHash<int, QByteArray> TrackListModel::roleNames() const {
 }
 
 void TrackListModel::changed(const model::Change& change) {
-    const auto& tracks = project_.document().tracks;
-    const auto found = change.track ? std::ranges::find(tracks, *change.track, &model::Track::id) : tracks.end();
-    if (found == tracks.end()) {
-        beginResetModel();
-        endResetModel();
+    const auto row = change.track ? std::ranges::find(rows_, *change.track) : rows_.end();
+    if (row != rows_.end() && project_.track(*row) != nullptr) {
+        const QModelIndex at = index(static_cast<int>(row - rows_.begin()));
+        emit dataChanged(at, at);
         return;
     }
-    const QModelIndex row = index(static_cast<int>(found - tracks.begin()));
-    emit dataChanged(row, row);
+    syncRows();
+    if (!rows_.empty()) {
+        emit dataChanged(index(0), index(static_cast<int>(rows_.size()) - 1));
+    }
+}
+
+void TrackListModel::syncRows() {
+    const auto& tracks = project_.document().tracks;
+    for (auto row = static_cast<std::ptrdiff_t>(rows_.size()) - 1; row >= 0; --row) {
+        if (project_.track(rows_[static_cast<std::size_t>(row)]) == nullptr) {
+            beginRemoveRows({}, static_cast<int>(row), static_cast<int>(row));
+            rows_.erase(rows_.begin() + row);
+            endRemoveRows();
+        }
+    }
+    const auto held = [this](const model::TrackId& id) { return std::ranges::contains(rows_, id); };
+    for (std::size_t row = 0; row < tracks.size(); ++row) {
+        const auto at = rows_.begin() + static_cast<std::ptrdiff_t>(row);
+        if (row < rows_.size() && *at == tracks[row].id) {
+            continue;
+        }
+        if (const auto from = std::find(at, rows_.end(), tracks[row].id); from != rows_.end()) {
+            beginMoveRows({}, static_cast<int>(from - rows_.begin()), static_cast<int>(from - rows_.begin()), {},
+                          static_cast<int>(row));
+            std::rotate(at, from, std::next(from));
+            endMoveRows();
+            continue;
+        }
+        std::size_t end = row + 1;
+        while (end < tracks.size() && !held(tracks[end].id)) {
+            ++end;
+        }
+        beginInsertRows({}, static_cast<int>(row), static_cast<int>(end - 1));
+        const auto added = std::span(tracks).subspan(row, end - row) | std::views::transform(&model::Track::id);
+        rows_.insert(at, added.begin(), added.end());
+        endInsertRows();
+        row = end - 1;
+    }
 }
 
 }  // namespace emerick::app

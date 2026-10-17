@@ -50,15 +50,20 @@ void Project::setPluginData(const std::string& plugin, nlohmann::json value, std
 
 void Project::group(std::string name, const std::function<void()>& edits) {
     const std::size_t first = next_;
-    edits();
-    if (next_ == first) {
-        return;
+    {
+        const GroupScope scope(*this);
+        edits();
     }
-    const auto begin = history_.begin() + static_cast<std::ptrdiff_t>(first);
-    std::vector<Command> commands(std::make_move_iterator(begin), std::make_move_iterator(history_.end()));
-    history_.erase(begin, history_.end());
-    history_.push_back({std::move(name), Group{std::move(commands)}});
-    next_ = history_.size();
+    if (next_ != first) {
+        const auto begin = history_.begin() + static_cast<std::ptrdiff_t>(first);
+        std::vector<Command> commands(std::make_move_iterator(begin), std::make_move_iterator(history_.end()));
+        history_.erase(begin, history_.end());
+        history_.push_back({std::move(name), Group{std::move(commands)}});
+        next_ = history_.size();
+    }
+    if (groupDepth_ == 0 && std::exchange(groupChanged_, false)) {
+        notify(Change{});
+    }
 }
 
 bool Project::editTrack(const TrackId& id, std::string name, const std::function<void(Track&)>& edit) {
@@ -121,8 +126,17 @@ void Project::execute(Command command) {
     const Change change = changeOf(command);
     history_.push_back(std::move(command));
     ++next_;
-    notify(change);
+    if (groupDepth_ > 0) {
+        groupChanged_ = true;
+        return;
+    }
+    // A group whose edits threw never notified, so we report its edits along with this one.
+    notify(std::exchange(groupChanged_, false) ? Change{} : change);
 }
+
+Project::GroupScope::GroupScope(Project& project) : project_(project) { ++project_.groupDepth_; }
+
+Project::GroupScope::~GroupScope() { --project_.groupDepth_; }
 
 void Project::notify(const Change& change) const {
     const auto snapshot = listeners_;

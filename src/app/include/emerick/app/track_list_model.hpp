@@ -4,6 +4,7 @@
 #include <QHash>
 #include <QVariant>
 #include <cstdint>
+#include <vector>
 
 #include "emerick/app/project_controller.hpp"
 #include "emerick/app/registry.hpp"
@@ -54,12 +55,16 @@ public:
 
 private:
     void changed(const model::Change& change);
+    // Removes, moves and inserts rows until they match the document's tracks, so views keep their other delegates.
+    void syncRows();
 
     [[nodiscard]] QVariantList clipList(const model::Track& track) const;
 
     ProjectController& controller_;
     model::Project& project_;
     const Registry& registry_;
+    // The track ids the view holds rows for; data reads through them, so the rows stay right while we sync.
+    std::vector<model::TrackId> rows_;
     std::size_t listener_;
 };
 

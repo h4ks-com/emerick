@@ -3,6 +3,7 @@
 #include <expected>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "emerick/core/time.hpp"
 #include "emerick/model/document.hpp"
@@ -12,6 +13,15 @@ namespace emerick::model {
 Ticks clipStart(const Clip& clip);
 Ticks clipLength(const Clip& clip);
 Ticks clipEnd(const Clip& clip);
+
+struct NoteSpan {
+    Ticks at = 0;  // relative to the clip start
+    Ticks length = 0;
+    int key = 0;
+};
+
+// Pairs each note-on with its note-off; a note still held at the clip end lasts until the end.
+std::vector<NoteSpan> noteSpans(const MidiClip& clip);
 
 Clip moveClip(Clip clip, Ticks start);
 // The copy gets a new id.

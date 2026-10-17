@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <map>
 #include <optional>
 #include <set>
 #include <variant>
@@ -76,6 +77,27 @@ Ticks clipLength(const Clip& clip) {
 }
 
 Ticks clipEnd(const Clip& clip) { return clipStart(clip) + clipLength(clip); }
+
+std::vector<NoteSpan> noteSpans(const MidiClip& clip) {
+    std::vector<MidiEvent> events = clip.events;
+    std::ranges::stable_sort(events, {}, &MidiEvent::at);
+    std::multimap<Note, Ticks> held;
+    std::vector<NoteSpan> spans;
+    for (const MidiEvent& event : events) {
+        if (const auto on = noteOf(event, true)) {
+            held.emplace(*on, event.at);
+        } else if (const auto off = noteOf(event, false)) {
+            if (const auto found = held.find(*off); found != held.end()) {
+                spans.push_back({found->second, event.at - found->second, off->key});
+                held.erase(found);
+            }
+        }
+    }
+    for (const auto& [note, at] : held) {
+        spans.push_back({at, clip.length - at, note.key});
+    }
+    return spans;
+}
 
 Clip moveClip(Clip clip, Ticks start) {
     std::visit([start](auto& value) { value.start = start; }, clip);

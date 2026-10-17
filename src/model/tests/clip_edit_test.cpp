@@ -52,6 +52,14 @@ TEST_CASE("clip start, length and end read every clip kind") {
     CHECK(clipStart(copy) == 1440);
 }
 
+TEST_CASE("note spans pair each note-on with its note-off and hold to the clip end") {
+    const auto spans = noteSpans(heldNotes());
+    REQUIRE(spans.size() == 3);
+    CHECK((spans[0].at == 0 && spans[0].length == 1000 && spans[0].key == 60));
+    CHECK((spans[1].at == 100 && spans[1].length == 1700 && spans[1].key == 64));
+    CHECK((spans[2].at == 600 && spans[2].length == 1320 && spans[2].key == 67));
+}
+
 TEST_CASE("trimming an audio clip's start moves its source offset and keeps its end") {
     AudioClip audio;
     audio.start = 960;

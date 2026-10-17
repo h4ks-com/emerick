@@ -1,4 +1,5 @@
-// libremidi's input thread calls the receive callback for every incoming message.
+// libremidi's input thread calls the receive callback for every incoming message, and its observer reports added and
+// removed ports on a system MIDI thread.
 
 #include <algorithm>
 #include <libremidi/libremidi.hpp>
@@ -60,7 +61,13 @@ struct LibremidiBackend::Impl {
     libremidi::observer observer;
 };
 
-LibremidiBackend::LibremidiBackend() : impl_(std::make_unique<Impl>()) {}
+LibremidiBackend::LibremidiBackend()
+    : impl_(std::make_unique<Impl>(libremidi::observer{libremidi::observer_configuration{
+          .input_added = [this](const libremidi::input_port&) { portListChanged(); },
+          .input_removed = [this](const libremidi::input_port&) { portListChanged(); },
+          .output_added = [this](const libremidi::output_port&) { portListChanged(); },
+          .output_removed = [this](const libremidi::output_port&) { portListChanged(); },
+          .notify_in_constructor = 0U}})) {}
 
 LibremidiBackend::~LibremidiBackend() = default;
 

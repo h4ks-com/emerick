@@ -32,7 +32,7 @@ class ProjectController : public QObject {
     Q_PROPERTY(qint64 ticksPerBeat READ ticksPerBeat NOTIFY projectChanged)
     Q_PROPERTY(qint64 ticksPerBar READ ticksPerBar NOTIFY projectChanged)
     Q_PROPERTY(qint64 endTicks READ endTicks NOTIFY projectChanged)
-    Q_PROPERTY(QVariantMap routeChoices READ routeChoices NOTIFY projectChanged)
+    Q_PROPERTY(QVariantMap routeChoices READ routeChoices NOTIFY devicesChanged)
     Q_PROPERTY(int midiChannelCount READ midiChannelCount CONSTANT)
     Q_PROPERTY(int trackColorCount READ trackColorCount CONSTANT)
 
@@ -73,6 +73,11 @@ public:
     // Returns how many finished takes it added, one undo step each.
     int collectTakes();
 
+    // Project edits reach the engine and the views once per event loop turn; flush sends a pending one right away.
+    void flush();
+    // Lists the devices again; we also do this whenever a backend reports a device change.
+    void refreshDevices();
+
     [[nodiscard]] QString positionText() const;
     [[nodiscard]] qint64 positionTicks() const { return engine_.position().ticks; }
     [[nodiscard]] bool playing() const { return engine_.playing(); }
@@ -83,7 +88,7 @@ public:
     [[nodiscard]] qint64 endTicks() const;
     // The nearest beat when the edit.snap setting is on, else ticks unchanged; never before bar 1.
     Q_INVOKABLE qint64 snapped(qint64 ticks) const;
-    [[nodiscard]] QVariantMap routeChoices();
+    [[nodiscard]] QVariantMap routeChoices() const;
     [[nodiscard]] static int midiChannelCount() { return kMidiChannels; }
     [[nodiscard]] static int trackColorCount() { return kTrackColors; }
 
@@ -92,8 +97,10 @@ signals:
     void aboutToPlay();
     void transportChanged();
     void projectChanged();
+    void devicesChanged();
 
 private:
+    void scheduleFlush();
     void settleTakes();
     void waitForEngine(const std::function<bool()>& reached);
     void publish();
@@ -113,6 +120,7 @@ private:
     std::string sessionError_;
     std::vector<engine::SessionError> takeErrors_;
     bool recording_ = false;
+    bool flushPending_ = false;
     core::Ticks stopTicks_ = 0;
     core::Ticks lastTicks_ = -1;
     bool lastPlaying_ = false;

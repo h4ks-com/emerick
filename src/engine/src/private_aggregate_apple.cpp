@@ -59,7 +59,7 @@ std::string uniqueUid() {
     const auto text = CfRef<CFStringRef>(CFUUIDCreateString(nullptr, uuid.get()));
     std::array<char, 64> chars{};
     CFStringGetCString(text.get(), chars.data(), static_cast<CFIndex>(chars.size()), kCFStringEncodingUTF8);
-    return "emerick.aggregate." + std::string(chars.data());
+    return std::string{kAggregateUidPrefix} + chars.data();
 }
 
 void waitUntilListed(AudioObjectID device) {

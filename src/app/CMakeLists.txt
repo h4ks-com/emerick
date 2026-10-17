@@ -53,6 +53,7 @@ emerick_target(emerick_app)
 
 if(EMERICK_BUILD_TESTS)
     emerick_test(emerick_app_tests
+        tests/devices_test.cpp
         tests/introspector_test.cpp
         tests/lua_host_test.cpp
         tests/mcp_server_test.cpp

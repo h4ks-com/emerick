@@ -16,9 +16,10 @@ Json positionState(core::Ticks ticks, const core::TempoMap& tempo);
 Json clipState(const model::Clip& clip, const core::TempoMap& tempo, bool includeEvents = false);
 Json trackState(const model::Track& track, const core::TempoMap& tempo);
 Json tempoState(const core::TempoMap& tempo);
-Json projectState(const ProjectController& controller);
+// Sends a pending edit to the engine first, so sessionError and skippedClips describe the current project.
+Json projectState(ProjectController& controller);
 Json transportState(const ProjectController& controller);
-Json devicesState(ProjectController& controller);
+Json devicesState(const ProjectController& controller);
 
 // What the route pickers show: the current route as text, and each choice with the params that select it.
 std::string routeText(const model::AudioRoute& route);

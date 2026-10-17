@@ -90,6 +90,7 @@ TEST_CASE("midi.inject feeds a virtual port and midi.sent lists what the app sen
     rig.run("track.addMidi", {{"midiOut", {{"port", kMidiPort}, {"channel", 2}, {"thru", true}}}});
     CHECK_THROWS_AS(rig.run("midi.inject", {{"port", kMidiPort}, {"bytes", Json::array()}}), AppError);
 
+    rig.controller->flush();
     rig.run("midi.inject", {{"port", kMidiPort}, {"bytes", {0x90, 60, 100}}});
     rig.audio->process(kBlock);
     REQUIRE(processUntil([&] { return rig.controller->engine().midiFlushed(); }));

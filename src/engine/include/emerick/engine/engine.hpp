@@ -35,6 +35,13 @@ public:
     // We swap the session in at the next block and list every clip we skip in sessionErrors.
     void setSession(Session session);
 
+    // We list devices once at startup and again on refreshDevices, so reading these never asks the hardware.
+    [[nodiscard]] const std::vector<AudioDeviceInfo>& audioDevices() const;
+    [[nodiscard]] const std::vector<MidiPortInfo>& midiPorts() const;
+    // True once a backend reported a device change after the last listing.
+    [[nodiscard]] bool devicesChanged() const;
+    void refreshDevices();
+
     void play();
     void stop();
     void locate(Ticks ticks);

@@ -41,6 +41,11 @@ struct Engine::Impl {
     Options options;
     TakeInbox inbox;
 
+    std::vector<AudioDeviceInfo> audioDevices;
+    std::vector<MidiPortInfo> midiPorts;
+    std::uint64_t audioDevicesVersion = 0;
+    std::uint64_t midiPortsVersion = 0;
+
     Session session;
     StreamLayout layout;
     std::vector<std::string> openDevices;
@@ -109,6 +114,13 @@ struct Engine::Impl {
         builder.prune();
     }
 
+    void refreshDevices() {
+        audioDevicesVersion = audio->deviceListVersion();
+        midiPortsVersion = midi->portListVersion();
+        audioDevices = audio->devices();
+        midiPorts = midi->ports();
+    }
+
     // The callback can run as soon as open starts the stream, so we drop every snapshot built for the old layout first.
     void reopen(const std::vector<std::string>& devices) {
         if (streamOpen) {
@@ -118,7 +130,7 @@ struct Engine::Impl {
         deleteSnapshot(std::exchange(rt.current, nullptr));
         deleteSnapshot(rt.pending.exchange(nullptr, std::memory_order_acq_rel));
         freeRetired();
-        layout = audio->open({devices, options.sampleRate, options.blockFrames},
+        layout = audio->open({devices, options.sampleRate, options.blockFrames, audioDevices},
                              [this](const AudioBlock& block) { processBlock(rt, block); });
         openDevices = devices;
         streamOpen = true;
@@ -126,11 +138,24 @@ struct Engine::Impl {
 };
 
 Engine::Engine(std::unique_ptr<AudioBackend> audio, std::unique_ptr<MidiBackend> midi, Options options)
-    : impl_(std::make_unique<Impl>(std::move(audio), std::move(midi), options)) {}
+    : impl_(std::make_unique<Impl>(std::move(audio), std::move(midi), options)) {
+    impl_->refreshDevices();
+}
 
 Engine::~Engine() = default;
 
 void Engine::setSession(Session session) { impl_->setSession(std::move(session)); }
+
+const std::vector<AudioDeviceInfo>& Engine::audioDevices() const { return impl_->audioDevices; }
+
+const std::vector<MidiPortInfo>& Engine::midiPorts() const { return impl_->midiPorts; }
+
+bool Engine::devicesChanged() const {
+    return impl_->audio->deviceListVersion() != impl_->audioDevicesVersion ||
+           impl_->midi->portListVersion() != impl_->midiPortsVersion;
+}
+
+void Engine::refreshDevices() { impl_->refreshDevices(); }
 
 void Engine::play() { impl_->push({.type = Command::Type::play}); }
 

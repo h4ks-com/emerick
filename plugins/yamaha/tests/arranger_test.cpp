@@ -1,5 +1,6 @@
 #include <algorithm>
 #include <catch2/catch_test_macros.hpp>
+#include <chrono>
 #include <string>
 #include <vector>
 
@@ -13,6 +14,14 @@ using app::test::kBlock;
 using app::test::kMidiPort;
 
 namespace {
+
+constexpr std::chrono::milliseconds kSlowListing{50};
+// An unoptimized build runs several times slower than the Release build the 100 ms bound is for.
+#ifdef NDEBUG
+constexpr std::chrono::milliseconds kSetupBound{100};
+#else
+constexpr std::chrono::milliseconds kSetupBound{1000};
+#endif
 
 const std::string kKeyboard = "Digital Keyboard Port 1";
 const std::string kController = "Digital Keyboard Port 2";
@@ -175,4 +184,26 @@ TEST_CASE("chord sysex recorded from the keyboard lands on the Chords track and 
     const std::vector<Bytes> sent = sentTo(rig, kMidiPort);
     CHECK(std::ranges::contains(sent, Bytes{0x93, 50, 90}));
     CHECK(std::ranges::contains(sent, Bytes{0x93, 60, 90}));
+}
+
+TEST_CASE("setting up the arranger publishes the session once and quickly without listing devices") {
+    YamahaRig rig({kMidiPort}, kSlowListing);
+    const app::test::InspectorBindings inspector(*rig.controller);
+    REQUIRE(inspector.object);
+    int published = 0;
+    QObject::connect(rig.controller.get(), &app::ProjectController::projectChanged, [&] { ++published; });
+    const int audioListings = rig.audioLister->listings;
+    const int midiListings = rig.midiLister->listings;
+
+    const auto start = std::chrono::steady_clock::now();
+    const Json state = rig.runAsAgent("yamaha.setupArranger").at("state");
+    const auto elapsed =
+        std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - start);
+
+    CHECK(state.at("project").at("tracks").size() == 18);
+    CHECK(rig.audioLister->listings == audioListings);
+    CHECK(rig.midiLister->listings == midiListings);
+    CHECK(published == 1);
+    CAPTURE(elapsed.count());
+    CHECK(elapsed < kSetupBound);
 }

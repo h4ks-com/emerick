@@ -34,7 +34,7 @@ bool hasPort(const std::vector<engine::MidiPortInfo>& ports, const std::string& 
 
 // The keyboard port is one the keyboard both sends on and listens to.
 std::optional<std::string> keyboardPort(app::ProjectController& controller, const Json& params) {
-    const auto ports = controller.engine().midi().ports();
+    const auto& ports = controller.engine().midiPorts();
     if (const auto requested = app::optionalParam<std::string>(params, "port")) {
         if (!hasPort(ports, *requested, true) || !hasPort(ports, *requested, false)) {
             throw AppError("no MIDI port " + *requested + " with both an input and an output, run devices.list");
@@ -55,7 +55,7 @@ std::optional<std::string> keyboardPort(app::ProjectController& controller, cons
 std::string controllerPort(app::ProjectController& controller, const app::Registry& registry,
                            const std::string& keyboard) {
     const auto port = registry.settingValue(kControllerPortSetting).get<std::string>();
-    return hasPort(controller.engine().midi().ports(), port, false) ? port : keyboard;
+    return hasPort(controller.engine().midiPorts(), port, false) ? port : keyboard;
 }
 
 void addTrack(app::ProjectController& controller, model::Track track) {
@@ -139,7 +139,7 @@ std::optional<std::string> voicePort(const model::Document& document) {
 
 // We send the table back to back; voiceMessages takes a gap for a keyboard that drops messages.
 std::size_t sendVoices(app::ProjectController& controller, const std::string& port, const std::vector<Voice>& voices) {
-    if (!hasPort(controller.engine().midi().ports(), port, false)) {
+    if (!hasPort(controller.engine().midiPorts(), port, false)) {
         throw AppError("no MIDI output port " + port + ", run devices.list for port ids");
     }
     const auto messages = voiceMessages(voices, 0, 0);

@@ -11,7 +11,7 @@ add_library(emerick_engine
     src/take_recorder.cpp
     src/virtual_midi_backend.cpp)
 if(APPLE)
-    target_sources(emerick_engine PRIVATE src/private_aggregate_apple.cpp)
+    target_sources(emerick_engine PRIVATE src/device_list_listener_apple.cpp src/private_aggregate_apple.cpp)
     target_link_libraries(emerick_engine PRIVATE "-framework CoreAudio" "-framework CoreFoundation")
 endif()
 target_include_directories(emerick_engine PUBLIC include)

@@ -22,6 +22,8 @@ Rectangle {
             required property bool solo
             required property bool armed
             required property var clips
+            required property var trackData
+            required property string laneComponent
             width: ListView.view.width
             height: Theme.rowHeight
             color: Theme.graphite
@@ -73,8 +75,18 @@ Rectangle {
                 anchors.right: parent.right
                 height: parent.height
                 clip: true
+                Loader {
+                    anchors.fill: parent
+                    active: row.laneComponent !== ""
+                    source: row.laneComponent
+                    onLoaded: {
+                        item.trackId = Qt.binding(() => row.trackId)
+                        item.trackData = Qt.binding(() => row.trackData)
+                        item.pixelsPerTick = Theme.pixelsPerTick
+                    }
+                }
                 Repeater {
-                    model: row.clips
+                    model: row.laneComponent === "" ? row.clips : []
                     delegate: Rectangle {
                         required property var modelData
                         objectName: "clip:" + modelData.id

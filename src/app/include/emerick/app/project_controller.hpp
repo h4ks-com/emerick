@@ -80,6 +80,8 @@ public:
     [[nodiscard]] static int trackColorCount() { return kTrackColors; }
 
 signals:
+    // Play and record emit this just before the engine starts, so a listener can still send MIDI ahead of Start.
+    void aboutToPlay();
     void transportChanged();
     void projectChanged();
 

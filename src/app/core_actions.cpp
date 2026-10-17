@@ -4,6 +4,7 @@
 #include <QTimer>
 #include <array>
 #include <memory>
+#include <numbers>
 #include <string>
 
 namespace emerick::app {
@@ -23,7 +24,7 @@ struct ViewStep {
     int height;
 };
 
-constexpr double kZoomStep = 1.4142135623730951;
+constexpr double kZoomStep = std::numbers::sqrt2;
 constexpr int kTrackHeightStep = 12;
 
 constexpr std::array kViewSteps{

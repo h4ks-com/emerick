@@ -36,8 +36,9 @@ struct Timeline {
     }
 
     static Timeline& instance() {
-        static Timeline timeline;
-        return timeline;
+        // We never delete the view, because destroying Qt Quick during static teardown crashes.
+        static auto* timeline = new Timeline;
+        return *timeline;
     }
 
     // Adds an audio track holding one two-beat clip at bar 1 and returns the clip id.

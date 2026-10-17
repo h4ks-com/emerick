@@ -28,7 +28,7 @@ public:
     const Peaks& peaks(const std::filesystem::path& file);
 
 private:
-    // ponytail: one lock over reading, so two files load one after the other; lock per file if that shows up.
+    // We hold one lock over reading, so two files load one after the other.
     std::mutex mutex_;
     std::map<std::filesystem::path, Peaks> files_;
 };

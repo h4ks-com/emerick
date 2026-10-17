@@ -41,6 +41,7 @@ Document sampleDocument() {
     document.tracks.push_back(track);
     document.tracks.push_back(named("Bass"));
     document.clockPorts = {"Digital Keyboard Port 1"};
+    document.pluginData = {{"yamaha", {{"voices", {{{"channel", 9}}}}}}};
     return document;
 }
 
@@ -156,6 +157,41 @@ TEST_CASE("set clock ports undo and redo") {
     CHECK(project.document().clockPorts.empty());
     project.redo();
     CHECK(project.document().clockPorts.size() == 1);
+}
+
+TEST_CASE("plugin data sets, clears, undoes and redoes") {
+    Project project;
+    project.setPluginData("yamaha", {{"voices", 1}}, "load voices");
+    CHECK(project.document().pluginData.at("yamaha").at("voices") == 1);
+    project.setPluginData("yamaha", nullptr, "clear voices");
+    CHECK_FALSE(project.document().pluginData.contains("yamaha"));
+    project.undo();
+    CHECK(project.document().pluginData.at("yamaha").at("voices") == 1);
+    project.undo();
+    CHECK(project.document().pluginData.empty());
+    project.redo();
+    CHECK(project.undoName() == "load voices");
+}
+
+TEST_CASE("a group of edits undoes and redoes as one step") {
+    Project project;
+    project.addTrack(named("before"));
+    project.group("set up", [&] {
+        project.addTrack(named("a"));
+        project.addTrack(named("b"));
+        project.setClockPorts({"Port 1"});
+    });
+    CHECK(names(project) == std::vector<std::string>{"before", "a", "b"});
+    CHECK(project.undoName() == "set up");
+    project.undo();
+    CHECK(names(project) == std::vector<std::string>{"before"});
+    CHECK(project.document().clockPorts.empty());
+    project.redo();
+    CHECK(names(project) == std::vector<std::string>{"before", "a", "b"});
+    CHECK(project.document().clockPorts.size() == 1);
+    project.undo();
+    project.undo();
+    CHECK(project.document().tracks.empty());
 }
 
 TEST_CASE("a new edit clears the redo stack") {

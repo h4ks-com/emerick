@@ -81,7 +81,8 @@ struct Track {
 struct Document {
     core::TempoMap tempo;
     std::vector<Track> tracks;
-    std::vector<std::string> clockPorts;  // MIDI outputs that get clock, Start and Stop
+    std::vector<std::string> clockPorts;                   // MIDI outputs that get clock, Start and Stop
+    nlohmann::json pluginData = nlohmann::json::object();  // one plugin-owned value per plugin id
 };
 
 struct ClipRef {

@@ -104,6 +104,7 @@ struct Engine::Impl {
         }
         const std::vector<std::string> devices = devicesUsedBy(next);
         if (!streamOpen || devices != openDevices) {
+            checkRates(devices);
             reopen(devices);
         }
         BuiltSnapshot built = builder.build(next, layout);
@@ -119,6 +120,18 @@ struct Engine::Impl {
         midiPortsVersion = midi->portListVersion();
         audioDevices = audio->devices();
         midiPorts = midi->ports();
+    }
+
+    void checkRates(const std::vector<std::string>& devices) const {
+        for (const std::string& id : devices) {
+            const auto device = std::ranges::find(audioDevices, id, &AudioDeviceInfo::id);
+            if (device == audioDevices.end()) {
+                continue;
+            }
+            if (const auto problem = unsupportedRate(*device, options.sampleRate)) {
+                throw std::invalid_argument(*problem);
+            }
+        }
     }
 
     // The callback can run as soon as open starts the stream, so we drop every snapshot built for the old layout first.

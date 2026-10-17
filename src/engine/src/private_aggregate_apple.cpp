@@ -64,7 +64,7 @@ std::string uniqueUid() {
 
 void waitUntilListed(AudioObjectID device) {
     using namespace std::chrono_literals;
-    const auto deadline = std::chrono::steady_clock::now() + 2s;
+    const auto deadline = std::chrono::steady_clock::now() + 1s;
     while (!std::ranges::contains(deviceIds(), device) && std::chrono::steady_clock::now() < deadline) {
         std::this_thread::sleep_for(10ms);
     }

@@ -66,6 +66,20 @@ int maxChannels(const ma_device_info& info) {
     return static_cast<int>(channels);
 }
 
+// CoreAudio lists the nominal rates the hardware runs at; the other systems resample, so any rate works there.
+void addSampleRates(const ma_context& context, const ma_device_info& info, std::vector<double>& rates) {
+    if (context.backend != ma_backend_coreaudio) {
+        return;
+    }
+    for (ma_uint32 index = 0; index < info.nativeDataFormatCount; ++index) {
+        const auto rate = static_cast<double>(info.nativeDataFormats[index].sampleRate);
+        if (rate > 0 && !std::ranges::contains(rates, rate)) {
+            rates.push_back(rate);
+        }
+    }
+    std::ranges::sort(rates);
+}
+
 }  // namespace
 
 struct MiniaudioBackend::Impl {
@@ -161,6 +175,7 @@ std::vector<AudioDeviceInfo> MiniaudioBackend::devices() {
                 found = std::prev(result.end());
             }
             (type == ma_device_type_playback ? found->outputChannels : found->inputChannels) = maxChannels(info);
+            addSampleRates(impl_->context, info, found->sampleRates);
         }
     };
     add({playback, playbackCount}, ma_device_type_playback);

@@ -64,7 +64,7 @@ TEST_CASE("devices.refresh lists the devices again and tells the route pickers")
     CHECK(rig.audioLister->listings == audioListings + 1);
     CHECK(rig.midiLister->listings == midiListings + 1);
     CHECK(changes == 1);
-    CHECK(devices.at("audio").at(0).at("id") == "interface");
+    CHECK(devices.at("audio").at(1).at("sampleRates") == Json::array({44100.0}));
 }
 
 TEST_CASE("a device change reported on another thread lists the devices again on the UI thread") {
@@ -77,6 +77,23 @@ TEST_CASE("a device change reported on another thread lists the devices again on
     CHECK(rig.audioLister->listings == listings + 1);
     processUntil([] { return false; }, 100);
     CHECK(changes == 1);
+}
+
+TEST_CASE("a route to a device that cannot run at the engine's rate fails with the rate to set") {
+    ProjectRig rig;
+    const std::string vox = rig.run("track.addAudio").at("id");
+    rig.controller->flush();
+    const int opens = rig.audioLister->opens;
+    try {
+        rig.run("track.setAudioIn", {{"track", vox}, {"device", "keyboard"}, {"channels", {1, 2}}});
+        FAIL("the route action accepted a 44100 Hz device in a 48000 Hz engine");
+    } catch (const AppError& error) {
+        CHECK(std::string{error.what()} ==
+              "Digital Keyboard runs at 44100 Hz; set Audio > Sample rate to 44100 and restart Emerick");
+    }
+    rig.controller->flush();
+    CHECK(rig.controller->project().track(model::TrackId{vox})->audioIn.deviceId == "interface");
+    CHECK(rig.audioLister->opens == opens);
 }
 
 TEST_CASE("one group of edits publishes the session once and inserts its rows without a reset") {

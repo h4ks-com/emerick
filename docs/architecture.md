@@ -37,7 +37,7 @@ The engine never sees the model. `emerick_app` turns the document into an engine
 
 Each track names its own audio input and output (device id plus channels) and MIDI input and output (port id plus channel). The engine opens every device a session needs. On macOS several devices become one hidden private aggregate device with drift compensation, so the user never builds one by hand. On Linux the devices are PipeWire or JACK ports. On Windows each WASAPI device runs its own stream and the engine resamples the others to the clock device.
 
-Listing devices asks CoreAudio and CoreMIDI about every device, so the engine lists them once at startup and keeps the list. It lists them again when the system reports a device appearing or going away, and on `devices.refresh`.
+Listing devices asks CoreAudio and CoreMIDI about every device, so the engine lists them once at startup and keeps the list. It lists them again when the system reports a device appearing or going away, and on `devices.refresh`. A device that cannot run at the engine's sample rate is refused with the rate to set.
 
 ## Plugins
 

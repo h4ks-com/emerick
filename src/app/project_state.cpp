@@ -168,7 +168,8 @@ Json devicesState(const ProjectController& controller) {
         audio.push_back({{"id", device.id},
                          {"name", device.name},
                          {"inputs", device.inputChannels},
-                         {"outputs", device.outputChannels}});
+                         {"outputs", device.outputChannels},
+                         {"sampleRates", device.sampleRates}});
         for (Json& choice : channelChoices(device, device.inputChannels)) {
             inputs.push_back(std::move(choice));
         }

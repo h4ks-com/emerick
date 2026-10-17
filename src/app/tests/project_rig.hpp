@@ -100,8 +100,8 @@ struct ProjectRig {
     explicit ProjectRig(const std::vector<std::string>& midiPorts = {kMidiPort},
                         std::chrono::milliseconds listDelay = {}) {
         ensureApplication();
-        auto offline = std::make_unique<engine::OfflineBackend>(
-            std::vector<engine::AudioDeviceInfo>{{"interface", "Interface", 2, 2}});
+        auto offline = std::make_unique<engine::OfflineBackend>(std::vector<engine::AudioDeviceInfo>{
+            {"interface", "Interface", 2, 2}, {"keyboard", "Digital Keyboard", 2, 2, {44100.0}}});
         auto virtualMidi = std::make_unique<engine::VirtualMidiBackend>(midiPorts, midiPorts);
         audio = offline.get();
         midi = virtualMidi.get();

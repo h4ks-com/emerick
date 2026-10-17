@@ -23,7 +23,12 @@ struct AudioDeviceInfo {
     std::string name;
     int inputChannels = 0;
     int outputChannels = 0;
+    // Empty when the device runs at any rate; the default lets brace initializers skip it.
+    std::vector<double> sampleRates = {};  // NOLINT(readability-redundant-member-init)
 };
+
+// Names the device and the rates it runs at when it cannot run at sampleRate.
+std::optional<std::string> unsupportedRate(const AudioDeviceInfo& device, double sampleRate);
 
 struct DeviceChannels {
     std::string id;

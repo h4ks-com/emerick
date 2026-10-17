@@ -32,7 +32,8 @@ public:
     Engine(Engine&&) = delete;
     Engine& operator=(Engine&&) = delete;
 
-    // We swap the session in at the next block and list every clip we skip in sessionErrors.
+    // We swap the session in at the next block and list every clip we skip in sessionErrors. A device that cannot
+    // run at the engine's sample rate throws before the open stream changes.
     void setSession(Session session);
 
     // We list devices once at startup and again on refreshDevices, so reading these never asks the hardware.

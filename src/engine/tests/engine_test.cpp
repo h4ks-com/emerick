@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <catch2/catch_test_macros.hpp>
+#include <catch2/matchers/catch_matchers.hpp>
 #include <chrono>
 #include <ranges>
 
@@ -22,7 +23,11 @@ std::vector<Bytes> bytesOf(const std::vector<SentMidi>& sent) {
 // Runs one block of ones on every input inside open, as a realtime backend starts calling back right away.
 class EagerBackend final : public AudioBackend {
 public:
-    std::vector<AudioDeviceInfo> devices() override { return rigDevices(); }
+    std::vector<AudioDeviceInfo> devices() override {
+        std::vector<AudioDeviceInfo> listed = rigDevices();
+        listed.push_back({"slow", "Slow Keyboard", 2, 0, {44100.0}});
+        return listed;
+    }
 
     StreamLayout open(const StreamRequest& request, AudioCallback callback) override {
         const StreamLayout layout = concatenateDevices(devices(), request);
@@ -219,6 +224,21 @@ TEST_CASE("a reopened stream drops the snapshot built for the old devices") {
 
     CHECK(audio.opens == 2);
     CHECK(audio.loudestOpenBlock == 0.0F);
+}
+
+TEST_CASE("a session on a device that cannot run at the engine's rate throws and keeps the open stream") {
+    auto owner = std::make_unique<EagerBackend>();
+    const EagerBackend& audio = *owner;
+    Engine engine(std::move(owner),
+                  std::make_unique<VirtualMidiBackend>(std::vector<std::string>{}, std::vector<std::string>{}),
+                  {kRate, kBlock});
+    engine.setSession({.tempo = kTempo});
+    Track keys{.id = "keys", .kind = TrackKind::audio};
+    keys.audioIn = {"slow", {1}};
+    REQUIRE_THROWS_WITH(engine.setSession({.tempo = kTempo, .tracks = {keys}}),
+                        "Slow Keyboard runs at 44100 Hz; set Audio > Sample rate to 44100 and restart Emerick");
+    CHECK(audio.opens == 1);
+    CHECK(engine.layout().devices.front().id == "interface");
 }
 
 TEST_CASE("armed MIDI tracks record their channel, and sysex goes to the claiming track") {

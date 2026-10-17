@@ -131,6 +131,7 @@ void ProjectController::waitForEngine(const std::function<bool()>& reached) {
 }
 
 void ProjectController::play() {
+    emit aboutToPlay();
     engine_.play();
     waitForEngine([this] { return engine_.playing(); });
 }
@@ -158,6 +159,7 @@ void ProjectController::record() {
         }
     }
     engine_.setRecording(true);
+    emit aboutToPlay();
     engine_.play();
     recording_ = true;
     waitForEngine([this] { return engine_.playing(); });

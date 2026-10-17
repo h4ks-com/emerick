@@ -1,5 +1,6 @@
 #include "emerick/yamaha/profile.hpp"
 
+#include <array>
 #include <charconv>
 #include <fstream>
 #include <sstream>
@@ -26,27 +27,46 @@ std::string_view trim(std::string_view text) {
                                            : text.substr(first, text.find_last_not_of(" \t\r") - first + 1);
 }
 
-int takeNumber(std::string_view& line, int low, int high) {
+struct VoiceField {
+    std::string_view name;
+    int Voice::* field;
+    int low;
+    int high;
+};
+
+// The order is the order of a voice line's numbers.
+constexpr std::array kVoiceFields{
+    VoiceField{"channel", &Voice::channel, 1, 16},  VoiceField{"bankMsb", &Voice::bankMsb, 0, 127},
+    VoiceField{"bankLsb", &Voice::bankLsb, 0, 127}, VoiceField{"program", &Voice::program, 1, 128},
+    VoiceField{"volume", &Voice::volume, 0, 127},   VoiceField{"pan", &Voice::pan, 0, 127},
+};
+
+int inRange(const VoiceField& field, int value) {
+    if (value < field.low || value > field.high) {
+        throw std::invalid_argument("voice " + std::string(field.name) + " must be " + std::to_string(field.low) +
+                                    " to " + std::to_string(field.high) + ", got " + std::to_string(value));
+    }
+    return value;
+}
+
+int takeNumber(std::string_view& line, const VoiceField& field) {
     line = trim(line);
     const auto end = line.find_first_of(" \t");
     const auto word = line.substr(0, end);
     int value = 0;
     const auto [rest, error] = std::from_chars(word.data(), word.data() + word.size(), value);
-    if (word.empty() || error != std::errc{} || rest != word.data() + word.size() || value < low || value > high) {
+    if (word.empty() || error != std::errc{} || rest != word.data() + word.size()) {
         throw std::invalid_argument("bad voice line field: " + std::string(word));
     }
     line = end == std::string_view::npos ? std::string_view{} : line.substr(end);
-    return value;
+    return inRange(field, value);
 }
 
 Voice parseVoice(std::string_view line) {
     Voice voice;
-    voice.channel = takeNumber(line, 1, 16);
-    voice.bankMsb = takeNumber(line, 0, 127);
-    voice.bankLsb = takeNumber(line, 0, 127);
-    voice.program = takeNumber(line, 1, 128);
-    voice.volume = takeNumber(line, 0, 127);
-    voice.pan = takeNumber(line, 0, 127);
+    for (const VoiceField& field : kVoiceFields) {
+        voice.*field.field = takeNumber(line, field);
+    }
     voice.name = std::string(trim(line));
     return voice;
 }
@@ -96,6 +116,20 @@ std::vector<Voice> loadVoices(const std::filesystem::path& path) {
     std::ostringstream text;
     text << file.rdbuf();
     return parseVoices(text.str());
+}
+
+void to_json(nlohmann::json& json, const Voice& voice) {
+    json = {{"name", voice.name}};
+    for (const VoiceField& field : kVoiceFields) {
+        json[std::string(field.name)] = voice.*field.field;
+    }
+}
+
+void from_json(const nlohmann::json& json, Voice& voice) {
+    voice.name = json.at("name").get<std::string>();
+    for (const VoiceField& field : kVoiceFields) {
+        voice.*field.field = inRange(field, json.at(std::string(field.name)).get<int>());
+    }
 }
 
 std::vector<RawEvent> voiceMessages(const std::vector<Voice>& voices, core::Ticks at, core::Ticks gapTicks) {

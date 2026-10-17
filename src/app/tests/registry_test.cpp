@@ -139,7 +139,7 @@ TEST_CASE("core actions drive Nav") {
     CHECK_THROWS_AS(registry.run("settings.close"), AppError);
     registry.run("settings.show.audio");
     CHECK(nav.page() == Page::Settings);
-    CHECK(nav.settingsTab() == SettingsTab::Audio);
+    CHECK(nav.settingsTab() == "audio");
     CHECK(registry.state("nav").at("settingsTab") == "audio");
     registry.run("settings.close");
     CHECK(nav.page() == Page::Main);

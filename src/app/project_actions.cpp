@@ -7,7 +7,7 @@
 #include <utility>
 #include <vector>
 
-#include "action_params.hpp"
+#include "emerick/app/action_params.hpp"
 #include "emerick/app/project_state.hpp"
 #include "emerick/app/session_mapping.hpp"
 #include "emerick/app/stem_export.hpp"

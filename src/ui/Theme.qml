@@ -35,7 +35,6 @@ QtObject {
     readonly property int hairline: 1
     readonly property int buttonHeight: 28
     readonly property int headerHeight: 52
-    readonly property int rowHeight: 48
     readonly property int listRowHeight: 36
     readonly property int swatchSize: 24
     readonly property int inspectorWidth: 260

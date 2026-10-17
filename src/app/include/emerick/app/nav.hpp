@@ -21,7 +21,7 @@ inline constexpr int kDefaultTrackHeight = 60;
 class Nav : public QObject {
     Q_OBJECT
     Q_PROPERTY(emerick::app::Page page READ page WRITE setPage NOTIFY changed)
-    Q_PROPERTY(emerick::app::SettingsTab settingsTab READ settingsTab WRITE setSettingsTab NOTIFY changed)
+    Q_PROPERTY(QString settingsTab READ settingsTab WRITE setSettingsTab NOTIFY changed)
     Q_PROPERTY(QString selectedTrack READ selectedTrack WRITE setSelectedTrack NOTIFY changed)
     Q_PROPERTY(bool paletteOpen READ paletteOpen WRITE setPaletteOpen NOTIFY changed)
     Q_PROPERTY(bool aboutOpen READ aboutOpen WRITE setAboutOpen NOTIFY changed)
@@ -33,7 +33,7 @@ public:
     using QObject::QObject;
 
     [[nodiscard]] Page page() const { return page_; }
-    [[nodiscard]] SettingsTab settingsTab() const { return settingsTab_; }
+    [[nodiscard]] QString settingsTab() const { return settingsTab_; }
     [[nodiscard]] QString selectedTrack() const { return selectedTrack_; }
     [[nodiscard]] bool paletteOpen() const { return paletteOpen_; }
     [[nodiscard]] bool aboutOpen() const { return aboutOpen_; }
@@ -42,7 +42,7 @@ public:
     [[nodiscard]] int trackHeight() const { return trackHeight_; }
 
     void setPage(Page value) { assign(page_, value, &Nav::changed); }
-    void setSettingsTab(SettingsTab value) { assign(settingsTab_, value, &Nav::changed); }
+    void setSettingsTab(const QString& value) { assign(settingsTab_, value, &Nav::changed); }
     void setSelectedTrack(const QString& value) { assign(selectedTrack_, value, &Nav::changed); }
     void setPaletteOpen(bool value) { assign(paletteOpen_, value, &Nav::changed); }
     void setAboutOpen(bool value) { assign(aboutOpen_, value, &Nav::changed); }
@@ -60,7 +60,7 @@ public:
             clips.push_back(clip.toStdString());
         }
         return {{"page", enumKey(page_)},
-                {"settingsTab", enumKey(settingsTab_)},
+                {"settingsTab", settingsTab_.toStdString()},
                 {"selectedTrack", selectedTrack_.toStdString()},
                 {"selectedClips", clips},
                 {"pixelsPerTick", pixelsPerTick_},
@@ -84,7 +84,7 @@ private:
     }
 
     Page page_ = Page::Main;
-    SettingsTab settingsTab_ = SettingsTab::General;
+    QString settingsTab_ = QStringLiteral("general");
     QString selectedTrack_;
     bool paletteOpen_ = false;
     bool aboutOpen_ = false;

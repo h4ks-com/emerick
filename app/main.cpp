@@ -4,6 +4,7 @@
 #include <QtLogging>
 #include <exception>
 #include <optional>
+#include <utility>
 
 #include "emerick/app/backends.hpp"
 #include "emerick/app/core_actions.hpp"
@@ -18,6 +19,7 @@
 #include "emerick/app/registry.hpp"
 #include "emerick/app/track_list_model.hpp"
 #include "emerick/app/ui_api.hpp"
+#include "emerick/yamaha/plugin.hpp"
 
 using namespace emerick::app;
 
@@ -44,10 +46,15 @@ int run(int argc, char** argv) {
     Nav nav;
     const Backends backends{parser.value(audio).toStdString(), parser.value(midi).toStdString()};
     registerCoreActions(registry, nav, backends);
+    auto midiBackend = makeMidiBackend(backends.midi);
+    if (auto* virtualMidi = dynamic_cast<emerick::engine::VirtualMidiBackend*>(midiBackend.get())) {
+        registerVirtualMidiActions(registry, *virtualMidi);
+    }
     ProjectController controller(
-        registry, makeAudioBackend(backends.audio), makeMidiBackend(backends.midi),
+        registry, makeAudioBackend(backends.audio), std::move(midiBackend),
         {.sampleRate = 48000.0, .blockFrames = registry.settingValue("audio.bufferSize").get<emerick::core::Frames>()});
     registerProjectActions(registry, controller, nav);
+    emerick::yamaha::registerWith(registry, controller, nav);
     TrackListModel tracks(controller, registry);
 
     bool validPort = true;

@@ -34,11 +34,12 @@ struct ProjectRig {
     // The offline backend only runs when asked, so while the controller waits on the engine this plays the device.
     QTimer clock;
 
-    ProjectRig() {
+    // Each MIDI port name is both an input and an output.
+    explicit ProjectRig(const std::vector<std::string>& midiPorts = {kMidiPort}) {
         ensureApplication();
         auto audioOwner = std::make_unique<engine::OfflineBackend>(
             std::vector<engine::AudioDeviceInfo>{{"interface", "Interface", 2, 2}});
-        auto midiOwner = std::make_unique<engine::VirtualMidiBackend>(std::vector{kMidiPort}, std::vector{kMidiPort});
+        auto midiOwner = std::make_unique<engine::VirtualMidiBackend>(midiPorts, midiPorts);
         audio = audioOwner.get();
         midi = midiOwner.get();
         controller = std::make_unique<ProjectController>(registry, std::move(audioOwner), std::move(midiOwner),

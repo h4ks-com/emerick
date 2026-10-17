@@ -28,6 +28,10 @@ public:
     bool moveTrack(const TrackId& id, std::size_t index);
     void setTempo(const core::TempoMap& tempo);
     void setClockPorts(std::vector<std::string> ports);
+    // A null value removes the plugin's data.
+    void setPluginData(const std::string& plugin, nlohmann::json value, std::string name);
+    // Every edit made inside edits becomes one undo step named name.
+    void group(std::string name, const std::function<void()>& edits);
     // The one path for property and clip edits: we edit a copy of the track and store it as one undo step.
     bool editTrack(const TrackId& id, std::string name, const std::function<void(Track&)>& edit);
 

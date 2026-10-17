@@ -32,6 +32,16 @@ TEST_CASE("bad voice lines are rejected") {
     CHECK_THROWS_AS(loadVoices("/nonexistent/voices.txt"), std::runtime_error);
 }
 
+TEST_CASE("a voice round trips through json and json out of range is rejected") {
+    const Voice voice{9, 127, 0, 1, 100, 64, "Standard Kit"};
+    const nlohmann::json json = voice;
+    CHECK(json.at("program") == 1);
+    CHECK(json.get<Voice>() == voice);
+    nlohmann::json bad = json;
+    bad["channel"] = 0;
+    CHECK_THROWS_AS(bad.get<Voice>(), std::invalid_argument);
+}
+
 TEST_CASE("a voice renders bank, program, volume and pan spaced by the gap") {
     const auto events = voiceMessages(parseVoices("# header\n\n12 11 1 2 78 64 AmericanBallad (FM)\n"), 100, 5);
     CHECK(events == std::vector<RawEvent>{{100, Bytes{0xBB, 0, 11}},

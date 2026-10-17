@@ -1,11 +1,11 @@
 qt_add_library(emerick_app STATIC
     action_params.cpp
-    action_params.hpp
     audio_file.cpp
     backends.cpp
     clip_actions.cpp
     clip_notes.cpp
     core_actions.cpp
+    include/emerick/app/action_params.hpp
     include/emerick/app/audio_file.hpp
     include/emerick/app/backends.hpp
     include/emerick/app/clip_notes.hpp

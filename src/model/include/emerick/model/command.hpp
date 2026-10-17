@@ -46,9 +46,23 @@ struct SetClockPorts {
     std::vector<std::string> after;
 };
 
+struct SetPluginData {
+    std::string plugin;
+    nlohmann::json before;
+    nlohmann::json after;
+};
+
+struct Command;
+
+// Several commands that undo and redo as one step.
+struct Group {
+    std::vector<Command> commands;
+};
+
 struct Command {
     std::string name;
-    std::variant<AddTrack, RemoveTrack, ReplaceTrack, MoveTrack, SetTempo, SetClockPorts> operation;
+    std::variant<AddTrack, RemoveTrack, ReplaceTrack, MoveTrack, SetTempo, SetClockPorts, SetPluginData, Group>
+        operation;
 };
 
 void apply(Document& document, const Command& command);

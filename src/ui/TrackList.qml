@@ -128,6 +128,8 @@ Rectangle {
             required property bool monitor
             required property real gainDb
             required property var clips
+            required property var trackData
+            required property string laneComponent
             readonly property color trackColor: Theme.trackColors[colorIndex % Project.trackColorCount]
             width: ListView.view.width
             height: Nav.trackHeight
@@ -150,9 +152,20 @@ Rectangle {
 
                 Item {
                     x: -area.scrollTicks * area.pixelsPerTick
+                    width: area.totalTicks * area.pixelsPerTick
                     height: parent.height
+                    Loader {
+                        anchors.fill: parent
+                        active: row.laneComponent !== ""
+                        source: row.laneComponent
+                        onLoaded: {
+                            item.trackId = Qt.binding(() => row.trackId)
+                            item.trackData = Qt.binding(() => row.trackData)
+                            item.pixelsPerTick = Qt.binding(() => area.pixelsPerTick)
+                        }
+                    }
                     Repeater {
-                        model: row.clips
+                        model: row.laneComponent === "" ? row.clips : []
                         delegate: ClipItem {
                             required property var modelData
                             clip: modelData

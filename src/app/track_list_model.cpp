@@ -140,12 +140,16 @@ QVariant TrackListModel::data(const QModelIndex& index, int role) const {
             return routes.midi;
         case Role::clips:
             return clipList(track);
+        case Role::trackData:
+            return toVariant(track.data);
+        case Role::laneComponent:
+            return qs(type != nullptr ? type->laneComponent : std::string{});
     }
     return {};
 }
 
 QHash<int, QByteArray> TrackListModel::roleNames() const {
-    static constexpr std::array<std::pair<Role, const char*>, 21> kNames{{{Role::id, "trackId"},
+    static constexpr std::array<std::pair<Role, const char*>, 23> kNames{{{Role::id, "trackId"},
                                                                           {Role::name, "name"},
                                                                           {Role::kind, "kind"},
                                                                           {Role::icon, "icon"},
@@ -165,7 +169,9 @@ QHash<int, QByteArray> TrackListModel::roleNames() const {
                                                                           {Role::midiOutText, "midiOutText"},
                                                                           {Role::audioRoutes, "audioRoutes"},
                                                                           {Role::midiRoutes, "midiRoutes"},
-                                                                          {Role::clips, "clips"}}};
+                                                                          {Role::clips, "clips"},
+                                                                          {Role::trackData, "trackData"},
+                                                                          {Role::laneComponent, "laneComponent"}}};
     QHash<int, QByteArray> names;
     for (const auto& [role, name] : kNames) {
         names.insert(static_cast<int>(role), name);

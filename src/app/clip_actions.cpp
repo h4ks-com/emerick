@@ -8,7 +8,7 @@
 #include <variant>
 #include <vector>
 
-#include "action_params.hpp"
+#include "emerick/app/action_params.hpp"
 #include "emerick/app/audio_file.hpp"
 #include "emerick/app/project_actions.hpp"
 #include "emerick/app/project_state.hpp"

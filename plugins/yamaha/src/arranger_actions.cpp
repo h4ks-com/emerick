@@ -137,7 +137,7 @@ std::optional<std::string> voicePort(const model::Document& document) {
                                                                             : std::optional{chords->midiIn.portId};
 }
 
-// ponytail: we send the table back to back, add voiceMessages' gap if a keyboard drops messages.
+// We send the table back to back; voiceMessages takes a gap for a keyboard that drops messages.
 std::size_t sendVoices(app::ProjectController& controller, const std::string& port, const std::vector<Voice>& voices) {
     if (!hasPort(controller.engine().midi().ports(), port, false)) {
         throw AppError("no MIDI output port " + port + ", run devices.list for port ids");

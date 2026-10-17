@@ -11,8 +11,10 @@
 #include "emerick/app/mcp_server.hpp"
 #include "emerick/app/mcp_tools.hpp"
 #include "emerick/app/nav.hpp"
+#include "emerick/app/peak_cache.hpp"
 #include "emerick/app/project_actions.hpp"
 #include "emerick/app/project_controller.hpp"
+#include "emerick/app/qml_exposure.hpp"
 #include "emerick/app/registry.hpp"
 #include "emerick/app/track_list_model.hpp"
 #include "emerick/app/ui_api.hpp"
@@ -46,7 +48,7 @@ int run(int argc, char** argv) {
         registry, makeAudioBackend(backends.audio), makeMidiBackend(backends.midi),
         {.sampleRate = 48000.0, .blockFrames = registry.settingValue("audio.bufferSize").get<emerick::core::Frames>()});
     registerProjectActions(registry, controller, nav);
-    TrackListModel tracks(controller.project(), registry);
+    TrackListModel tracks(controller, registry);
 
     bool validPort = true;
     const auto port = parser.isSet(mcpPort) ? parser.value(mcpPort).toUShort(&validPort)
@@ -67,14 +69,9 @@ int run(int argc, char** argv) {
         qInfo("MCP on http://%s:%u/mcp", parser.isSet(mcpBindAny) ? "0.0.0.0" : "127.0.0.1", bound);
     }
 
-    qmlRegisterUncreatableMetaObject(emerick::app::staticMetaObject, "Emerick.App", 1, 0, "App",
-                                     "App only holds enums");
-    qmlRegisterSingletonInstance("Emerick.App", 1, 0, "Registry", &registry);
-    qmlRegisterSingletonInstance("Emerick.App", 1, 0, "Nav", &nav);
-    qmlRegisterSingletonInstance("Emerick.App", 1, 0, "Project", &controller);
-    qmlRegisterSingletonInstance("Emerick.App", 1, 0, "Tracks", &tracks);
-
+    PeakCache peaks;
     QQmlApplicationEngine engine;
+    exposeToQml(engine, registry, nav, controller, tracks, peaks);
     QObject::connect(
         &engine, &QQmlApplicationEngine::objectCreationFailed, &application, [] { QCoreApplication::exit(1); },
         Qt::QueuedConnection);

@@ -3,6 +3,7 @@
 #include <QCoreApplication>
 #include <QMetaEnum>
 #include <QTimer>
+#include <array>
 #include <memory>
 
 namespace emerick::app {
@@ -28,6 +29,40 @@ void registerSettingsSections(Registry& registry, Nav& nav) {
              .aliases = {section + " preferences"},
              .category = "Settings",
              .run = [&registry, tab](const Json&) { return revealChain(registry, "settings." + enumKey(tab)); }});
+    }
+}
+
+struct ViewStep {
+    const char* id;
+    const char* title;
+    const char* alias;
+    const char* shortcut;
+    double zoom;
+    int height;
+};
+
+constexpr double kZoomStep = 1.4142135623730951;
+constexpr int kTrackHeightStep = 12;
+
+constexpr std::array kViewSteps{
+    ViewStep{"view.zoomIn", "Zoom in", "wider timeline", "Ctrl+=", kZoomStep, 0},
+    ViewStep{"view.zoomOut", "Zoom out", "narrower timeline", "Ctrl+-", 1 / kZoomStep, 0},
+    ViewStep{"view.trackTaller", "Make tracks taller", "vertical zoom in", "Ctrl+Down", 1, kTrackHeightStep},
+    ViewStep{"view.trackShorter", "Make tracks shorter", "vertical zoom out", "Ctrl+Up", 1, -kTrackHeightStep},
+};
+
+void registerViewActions(Registry& registry, Nav& nav) {
+    for (const ViewStep& step : kViewSteps) {
+        registry.addAction({.id = step.id,
+                            .title = step.title,
+                            .aliases = {step.alias},
+                            .category = "View",
+                            .shortcut = step.shortcut,
+                            .run = [&nav, step](const Json&) {
+                                nav.setPixelsPerTick(nav.pixelsPerTick() * step.zoom);
+                                nav.setTrackHeight(nav.trackHeight() + step.height);
+                                return Json{{"pixelsPerTick", nav.pixelsPerTick()}, {"trackHeight", nav.trackHeight()}};
+                            }});
     }
 }
 
@@ -72,6 +107,7 @@ void registerCoreActions(Registry& registry, Nav& nav, const Backends& backends)
                                 nav.setPage(Page::Main);
                                 return Json::object();
                             }});
+    registerViewActions(registry, nav);
     registry.addAction({.id = "app.about",
                         .title = "About Emerick",
                         .aliases = {"version"},

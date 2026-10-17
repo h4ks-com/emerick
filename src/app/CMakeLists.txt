@@ -4,9 +4,11 @@ qt_add_library(emerick_app STATIC
     audio_file.cpp
     backends.cpp
     clip_actions.cpp
+    clip_notes.cpp
     core_actions.cpp
     include/emerick/app/audio_file.hpp
     include/emerick/app/backends.hpp
+    include/emerick/app/clip_notes.hpp
     include/emerick/app/core_actions.hpp
     include/emerick/app/enums.hpp
     include/emerick/app/event_wait.hpp
@@ -16,9 +18,11 @@ qt_add_library(emerick_app STATIC
     include/emerick/app/mcp_tools.hpp
     include/emerick/app/nav.hpp
     include/emerick/app/params.hpp
+    include/emerick/app/peak_cache.hpp
     include/emerick/app/project_actions.hpp
     include/emerick/app/project_controller.hpp
     include/emerick/app/project_state.hpp
+    include/emerick/app/qml_exposure.hpp
     include/emerick/app/registry.hpp
     include/emerick/app/session_mapping.hpp
     include/emerick/app/stem_export.hpp
@@ -28,9 +32,11 @@ qt_add_library(emerick_app STATIC
     lua_host.cpp
     mcp_server.cpp
     mcp_tools.cpp
+    peak_cache.cpp
     project_actions.cpp
     project_controller.cpp
     project_state.cpp
+    qml_exposure.cpp
     registry.cpp
     session_mapping.cpp
     stem_export.cpp
@@ -50,6 +56,7 @@ if(EMERICK_BUILD_TESTS)
         tests/introspector_test.cpp
         tests/lua_host_test.cpp
         tests/mcp_server_test.cpp
+        tests/peak_cache_test.cpp
         tests/project_test.cpp
         tests/recording_test.cpp
         tests/registry_test.cpp

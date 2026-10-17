@@ -5,11 +5,14 @@
 #include <QVariantMap>
 #include <algorithm>
 #include <array>
+#include <filesystem>
 #include <utility>
 #include <variant>
 
+#include "emerick/app/peak_cache.hpp"
 #include "emerick/app/project_state.hpp"
 #include "emerick/core/overloaded.hpp"
+#include "emerick/model/clip_edit.hpp"
 
 namespace emerick::app {
 
@@ -25,31 +28,60 @@ QVariantMap midiRoute(const model::MidiRoute& route) {
     return {{"port", qs(route.portId)}, {"channel", route.channel}, {"thru", route.thru}, {"sysex", route.sysex}};
 }
 
-QVariantMap clipEntry(const model::Clip& clip) {
-    const auto common = [](const auto& value, const char* type) {
-        return QVariantMap{{"id", qs(value.id.value)},
-                           {"type", type},
-                           {"start", QVariant::fromValue(value.start)},
-                           {"length", QVariant::fromValue(value.length)}};
-    };
-    return std::visit(core::Overloaded{[&](const model::AudioClip& audio) { return common(audio, "audio"); },
-                                       [&](const model::MidiClip& midi) { return common(midi, "midi"); }},
-                      clip);
-}
-
-QVariantList clipList(const model::Track& track) {
-    QVariantList clips;
-    std::ranges::transform(track.clips, std::back_inserter(clips), clipEntry);
-    return clips;
+QVariantList noteList(const model::MidiClip& clip) {
+    QVariantList notes;
+    for (const model::NoteSpan& note : model::noteSpans(clip)) {
+        notes.append(QVariantMap{
+            {"at", QVariant::fromValue(note.at)}, {"length", QVariant::fromValue(note.length)}, {"key", note.key}});
+    }
+    return notes;
 }
 
 }  // namespace
 
-TrackListModel::TrackListModel(model::Project& project, const Registry& registry, QObject* parent)
+QVariantList TrackListModel::clipList(const model::Track& track) const {
+    const core::TempoMap& tempo = project_.document().tempo;
+    const double rate = controller_.sampleRate();
+    QVariantList clips;
+    int take = 0;
+    for (const model::Clip& clip : track.clips) {
+        const core::Ticks start = model::clipStart(clip);
+        const core::Ticks end = model::clipEnd(clip);
+        QVariantMap entry{{"id", qs(model::clipId(clip).value)},
+                          {"take", ++take},
+                          {"start", QVariant::fromValue(start)},
+                          {"length", QVariant::fromValue(end - start)},
+                          {"startText", qs(tempo.toBarBeatTick(start).format())},
+                          {"endText", qs(tempo.toBarBeatTick(end).format())},
+                          {"lengthText", qs(durationText(end - start, tempo))}};
+        std::visit(
+            core::Overloaded{[&](const model::AudioClip& audio) {
+                                 const std::filesystem::path file{audio.file};
+                                 const core::Frames frames =
+                                     tempo.ticksToFrames(end, rate) - tempo.ticksToFrames(start, rate);
+                                 entry.insert(QVariantMap{
+                                     {"type", "audio"},
+                                     {"fadeIn", QVariant::fromValue(audio.fadeIn)},
+                                     {"fadeOut", QVariant::fromValue(audio.fadeOut)},
+                                     {"gainDb", audio.gainDb},
+                                     {"peaks", peakSource(file.is_absolute() ? file : controller_.folder() / file,
+                                                          audio.sourceOffset, frames)}});
+                             },
+                             [&](const model::MidiClip& midi) {
+                                 entry.insert(QVariantMap{{"type", "midi"}, {"notes", noteList(midi)}});
+                             }},
+            clip);
+        clips.append(entry);
+    }
+    return clips;
+}
+
+TrackListModel::TrackListModel(ProjectController& controller, const Registry& registry, QObject* parent)
     : QAbstractListModel(parent),
-      project_(project),
+      controller_(controller),
+      project_(controller.project()),
       registry_(registry),
-      listener_(project.addListener([this](const model::Change& change) { changed(change); })) {}
+      listener_(project_.addListener([this](const model::Change& change) { changed(change); })) {}
 
 TrackListModel::~TrackListModel() { project_.removeListener(listener_); }
 

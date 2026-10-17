@@ -50,12 +50,6 @@ Json midiChoices(const Json& ports) {
     return choices;
 }
 
-// A length counts whole bars and beats from zero, so two beats read "0.2.0".
-std::string durationText(core::Ticks ticks, const core::TempoMap& tempo) {
-    const core::BarBeatTick position = tempo.toBarBeatTick(ticks);
-    return core::BarBeatTick{position.bar - 1, position.beat - 1, position.tick}.format();
-}
-
 Json timing(core::Ticks start, core::Ticks length, const core::TempoMap& tempo) {
     return {{"start", start},
             {"startBbt", tempo.toBarBeatTick(start).format()},
@@ -71,6 +65,11 @@ Json midiRoute(const model::MidiRoute& route) {
 }
 
 }  // namespace
+
+std::string durationText(core::Ticks ticks, const core::TempoMap& tempo) {
+    const core::BarBeatTick position = tempo.toBarBeatTick(ticks);
+    return core::BarBeatTick{position.bar - 1, position.beat - 1, position.tick}.format();
+}
 
 Json positionState(core::Ticks ticks, const core::TempoMap& tempo) {
     return {{"ticks", ticks}, {"bbt", tempo.toBarBeatTick(ticks).format()}, {"seconds", tempo.ticksToSeconds(ticks)}};

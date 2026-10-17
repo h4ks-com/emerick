@@ -12,6 +12,7 @@ void registerProjectActions(Registry& registry, ProjectController& controller, N
 
 // The audio and MIDI track kinds with their add actions, and every track action.
 void registerTrackActions(Registry& registry, ProjectController& controller, Nav& nav);
-void registerClipActions(Registry& registry, ProjectController& controller);
+// Clip actions without a clip param act on the selected clips, so their shortcuts work on what the user selected.
+void registerClipActions(Registry& registry, ProjectController& controller, Nav& nav);
 
 }  // namespace emerick::app

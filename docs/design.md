@@ -23,13 +23,13 @@ Glass: the control bar and popovers use a translucent `slate` at 88% with a 1 px
 
 - System sans (SF Pro on macOS, bundled Inter on Linux) for all UI, sizes 11, 12, 13 and 15 px. Track names 13 px medium, inspector labels 12 px regular `ink-dim`.
 - Tabular figures for every number that changes: bars, beats, tempo, dB.
-- The transport counter is the one display moment: 28 px, light weight, tabular, in `tape` on `graphite`, like a tape machine's counter.
+- The transport counter is the one display moment: 28 px, light weight, tabular, in `tape` on `graphite`, like a tape machine's counter. It shows bar, beat, division (a sixteenth) and tick from 1.1.1.1 as Logic does, then tempo and meter, each over an 11 px lowercase `ink-dim` label.
 
 ## Layout
 
 ```
 +----------------------------------------------------------------------+
-| control bar (glass): ◀◀ ▶ ● ⟲   |  27 . 3 . 2   96   4/4  Cmaj |  ⌘K |
+| ▯   control bar (glass): ⏮ ▶ ● ■ | 27  3  2  1 | 96  4/4 |  ≋ ⌸ ⌕ ⚙  |
 +-----------+----------------------------------------------------------+
 | inspector | ruler 1   5   9   13                                     |
 |  track    |----------------------------------------------------------|

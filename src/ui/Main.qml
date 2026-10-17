@@ -18,6 +18,7 @@ ApplicationWindow {
             required property var modelData
             sequence: modelData.shortcut
             context: Qt.ApplicationShortcut
+            enabled: !(window.activeFocusItem instanceof TextInput)
             onActivated: Registry.activate(modelData.id)
         }
     }
@@ -32,52 +33,45 @@ ApplicationWindow {
             height: Theme.hairline
             color: Theme.rule
         }
-        RowLayout {
-            anchors.fill: parent
+        ChromeButton {
+            objectName: "view.toggleInspector"
+            anchors.left: parent.left
             anchors.leftMargin: Theme.space3
+            anchors.verticalCenter: parent.verticalCenter
+            iconName: "sidebar-simple"
+            active: Nav.inspectorOpen
+            activeColor: Theme.ink
+        }
+        Row {
+            anchors.centerIn: parent
+            spacing: Theme.space3
+            TransportBar {
+                anchors.verticalCenter: parent.verticalCenter
+            }
+            TransportDisplay {
+                anchors.verticalCenter: parent.verticalCenter
+            }
+        }
+        Row {
+            anchors.right: parent.right
             anchors.rightMargin: Theme.space3
-            spacing: Theme.space2
-            ChromeButton {
-                objectName: "transport.play"
-                active: Project.playing && !Project.recording
-            }
-            ChromeButton {
-                objectName: "transport.stop"
-            }
-            ChromeButton {
-                objectName: "transport.record"
-                active: Project.recording
-                activeColor: Theme.rec
-            }
-            Label {
-                objectName: "transport.position"
-                text: Project.positionText
-                color: Theme.tape
-                font.pixelSize: Theme.textCounter
-                font.weight: Font.Light
-                font.features: {"tnum": 1}
-                Layout.leftMargin: Theme.space4
-            }
-            Label {
-                text: Project.tempoText
-                color: Theme.inkDim
-                font.pixelSize: Theme.textBody
-                font.features: {"tnum": 1}
-                Layout.leftMargin: Theme.space4
-                Layout.fillWidth: true
-            }
+            anchors.verticalCenter: parent.verticalCenter
+            spacing: Theme.space1
             ChromeButton {
                 objectName: "track.addAudio"
+                iconName: "waveform"
             }
             ChromeButton {
                 objectName: "track.addMidi"
-            }
-            ChromeButton {
-                objectName: "settings.open"
+                iconName: "piano-keys"
             }
             ChromeButton {
                 objectName: "palette.open"
-                text: shortcutText
+                iconName: "magnifying-glass"
+            }
+            ChromeButton {
+                objectName: "settings.open"
+                iconName: "gear-six"
             }
         }
     }
@@ -87,10 +81,12 @@ ApplicationWindow {
         visible: Nav.page === App.Main
         spacing: 0
         Inspector {
+            visible: Nav.inspectorOpen
             Layout.preferredWidth: Theme.inspectorWidth
             Layout.fillHeight: true
         }
         Rectangle {
+            visible: Nav.inspectorOpen
             Layout.preferredWidth: Theme.hairline
             Layout.fillHeight: true
             color: Theme.rule

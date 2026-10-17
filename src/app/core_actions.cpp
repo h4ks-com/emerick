@@ -1,9 +1,9 @@
 #include "emerick/app/core_actions.hpp"
 
 #include <QCoreApplication>
-#include <QMetaEnum>
 #include <QTimer>
 #include <memory>
+#include <string>
 
 namespace emerick::app {
 
@@ -13,27 +13,23 @@ constexpr int kMaxPort = 65535;
 
 Json revealChain(Registry& registry, const std::string& id) { return Json{{"chain", registry.reveal(id).chain}}; }
 
-void registerSettingsSections(Registry& registry, Nav& nav) {
-    const QMetaEnum tabs = QMetaEnum::fromType<SettingsTab>();
-    for (int index = 0; index < tabs.keyCount(); ++index) {
-        const auto tab = static_cast<SettingsTab>(tabs.value(index));
-        const std::string section = enumKey(tab);
-        const std::string location = "settings." + section;
-        registry.addLocation({.id = location, .parent = "settings", .title = enumTitle(tab), .reveal = [&nav, tab] {
-                                  nav.setSettingsTab(tab);
-                              }});
-        registry.addAction(
-            {.id = "settings.show." + section,
-             .title = "Show " + section + " settings",
-             .aliases = {section + " preferences"},
-             .category = "Settings",
-             .run = [&registry, tab](const Json&) { return revealChain(registry, "settings." + enumKey(tab)); }});
-    }
-}
-
 }  // namespace
 
 const char* appVersion() { return EMERICK_VERSION; }
+
+void addSettingsSection(Registry& registry, Nav& nav, const std::string& key, const std::string& title) {
+    // Copies of the handlers share the key, so copying a handler never allocates.
+    auto section = std::make_shared<const std::string>(key);
+    registry.addLocation({.id = "settings." + key, .parent = "settings", .title = title, .reveal = [&nav, section] {
+                              nav.setSettingsTab(qs(*section));
+                          }});
+    registry.addAction(
+        {.id = "settings.show." + key,
+         .title = "Show " + key + " settings",
+         .aliases = {key + " preferences"},
+         .category = "Settings",
+         .run = [&registry, section](const Json&) { return revealChain(registry, "settings." + *section); }});
+}
 
 void registerCoreActions(Registry& registry, Nav& nav, const Backends& backends) {
     registry.addStateProvider("nav", [&nav] { return nav.toJson(); });
@@ -48,7 +44,8 @@ void registerCoreActions(Registry& registry, Nav& nav, const Backends& backends)
                               nav.setPaletteOpen(false);
                               nav.setPage(Page::Settings);
                           }});
-    registerSettingsSections(registry, nav);
+    addSettingsSection(registry, nav, "general", "General");
+    addSettingsSection(registry, nav, "audio", "Audio");
 
     registry.addAction({.id = "palette.open",
                         .title = "Open command palette",

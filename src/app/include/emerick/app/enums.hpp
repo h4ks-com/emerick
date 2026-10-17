@@ -19,10 +19,6 @@ Q_ENUM_NS(EntryKind)
 enum class Page : std::uint8_t { Main, Settings };
 Q_ENUM_NS(Page)
 
-// The settings page shows one section per tab, in this order.
-enum class SettingsTab : std::uint8_t { General, Audio };
-Q_ENUM_NS(SettingsTab)
-
 // QML needs capitalized enum keys, so we lower the first letter for ids and JSON.
 template <class Enum>
 std::string enumKey(Enum value) {

@@ -1,0 +1,146 @@
+#include "emerick/model/json.hpp"
+
+#include <algorithm>
+#include <array>
+#include <fstream>
+#include <stdexcept>
+#include <string>
+#include <string_view>
+#include <variant>
+
+#include "emerick/core/overloaded.hpp"
+
+namespace emerick::model {
+
+// NOLINTBEGIN(modernize-use-constraints): the nlohmann macro expands to enable_if
+NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(AudioRoute, deviceId, channels)
+NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(MidiRoute, portId, channel, thru, sysex)
+NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(MidiEvent, at, bytes)
+// NOLINTEND(modernize-use-constraints)
+
+namespace {
+
+struct ClipType {
+    std::string_view name;
+    Clip (*fromJson)(const nlohmann::json& json);
+};
+
+// We index the table by the clip variant's index, so its rows follow the order of Clip's alternatives.
+constexpr std::array kClipTypes{
+    ClipType{"audio",
+             [](const nlohmann::json& json) -> Clip {
+                 return AudioClip{ClipId{json.at("id")}, json.at("start"),  json.at("length"), json.at("sourceOffset"),
+                                  json.at("file"),       json.at("gainDb"), json.at("fadeIn"), json.at("fadeOut")};
+             }},
+    ClipType{"midi",
+             [](const nlohmann::json& json) -> Clip {
+                 return MidiClip{ClipId{json.at("id")}, json.at("start"), json.at("length"), json.at("events")};
+             }},
+};
+static_assert(kClipTypes.size() == std::variant_size_v<Clip>);
+
+nlohmann::json clipToJson(const Clip& clip) {
+    nlohmann::json json = std::visit(
+        core::Overloaded{
+            [](const AudioClip& audio) -> nlohmann::json {
+                return {{"id", audio.id.value},   {"start", audio.start},
+                        {"length", audio.length}, {"sourceOffset", audio.sourceOffset},
+                        {"file", audio.file},     {"gainDb", audio.gainDb},
+                        {"fadeIn", audio.fadeIn}, {"fadeOut", audio.fadeOut}};
+            },
+            [](const MidiClip& midi) -> nlohmann::json {
+                return {{"id", midi.id.value}, {"start", midi.start}, {"length", midi.length}, {"events", midi.events}};
+            }},
+        clip);
+    json["type"] = kClipTypes.at(clip.index()).name;
+    return json;
+}
+
+Clip clipFromJson(const nlohmann::json& json) {
+    const auto& type = json.at("type").get_ref<const std::string&>();
+    const auto* const found = std::ranges::find(kClipTypes, type, &ClipType::name);
+    if (found == kClipTypes.end()) {
+        throw std::runtime_error("unknown clip type: " + type);
+    }
+    return found->fromJson(json);
+}
+
+nlohmann::json trackToJson(const Track& track) {
+    nlohmann::json clips = nlohmann::json::array();
+    for (const Clip& clip : track.clips) {
+        clips.push_back(clipToJson(clip));
+    }
+    return {{"id", track.id.value},   {"name", track.name},       {"kind", track.kind},
+            {"icon", track.icon},     {"color", track.color},     {"mute", track.mute},
+            {"solo", track.solo},     {"armed", track.armed},     {"monitor", track.monitor},
+            {"gainDb", track.gainDb}, {"audioIn", track.audioIn}, {"audioOut", track.audioOut},
+            {"midiIn", track.midiIn}, {"midiOut", track.midiOut}, {"clips", std::move(clips)},
+            {"data", track.data}};
+}
+
+Track trackFromJson(const nlohmann::json& json) {
+    Track track{
+        TrackId{json.at("id")}, json.at("name"),     json.at("kind"),   json.at("icon"),    json.at("color"),
+        json.at("mute"),        json.at("solo"),     json.at("armed"),  json.at("monitor"), json.value("gainDb", 0.0),
+        json.at("audioIn"),     json.at("audioOut"), json.at("midiIn"), json.at("midiOut"), {},
+        json.at("data")};
+    for (const auto& clip : json.at("clips")) {
+        track.clips.push_back(clipFromJson(clip));
+    }
+    return track;
+}
+
+}  // namespace
+
+nlohmann::json toJson(const Document& document) {
+    nlohmann::json tracks = nlohmann::json::array();
+    for (const Track& track : document.tracks) {
+        tracks.push_back(trackToJson(track));
+    }
+    return {{"format", kFormatVersion},
+            {"tempo",
+             {{"bpm", document.tempo.bpm},
+              {"numerator", document.tempo.meter.numerator},
+              {"denominator", document.tempo.meter.denominator}}},
+            {"tracks", std::move(tracks)},
+            {"clockPorts", document.clockPorts}};
+}
+
+Document documentFromJson(const nlohmann::json& json) {
+    if (json.at("format") != kFormatVersion) {
+        throw std::runtime_error("unsupported project format: " + json.at("format").dump());
+    }
+    const auto& tempo = json.at("tempo");
+    Document document{{tempo.at("bpm"), {tempo.at("numerator"), tempo.at("denominator")}},
+                      {},
+                      json.value("clockPorts", std::vector<std::string>{})};
+    for (const auto& track : json.at("tracks")) {
+        document.tracks.push_back(trackFromJson(track));
+    }
+    return document;
+}
+
+void saveProject(const Document& document, const std::filesystem::path& folder) {
+    std::filesystem::create_directories(folder / "audio");
+    const std::filesystem::path path = folder / "project.json";
+    std::filesystem::path temporary = path;
+    temporary += ".tmp";
+    std::ofstream out(temporary);
+    out << toJson(document).dump(2) << '\n';
+    out.close();
+    if (!out) {
+        std::filesystem::remove(temporary);
+        throw std::runtime_error("cannot write " + path.string());
+    }
+    std::filesystem::rename(temporary, path);
+}
+
+Document loadProject(const std::filesystem::path& folder) {
+    std::ifstream in(folder / "project.json");
+    if (!in) {
+        throw std::runtime_error("cannot read " + (folder / "project.json").string());
+    }
+    return documentFromJson(nlohmann::json::parse(in));
+}
+
+}  // namespace emerick::model

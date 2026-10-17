@@ -1,0 +1,9 @@
+build/
+.cache/
+compile_commands.json
+*.user
+.DS_Store
+.rev-ok
+e2e/out/
+.claude/worktrees/
+__pycache__/

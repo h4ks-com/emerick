@@ -1,0 +1,84 @@
+#include <catch2/catch_test_macros.hpp>
+#include <filesystem>
+#include <string>
+#include <vector>
+
+#include "project_rig.hpp"
+
+using namespace emerick;
+using namespace emerick::app;
+using namespace emerick::app::test;
+
+namespace {
+
+void recordWhile(ProjectRig& rig, const std::function<void()>& during) {
+    rig.run("transport.record");
+    rig.audio->process(kBlock);
+    during();
+    rig.run("transport.stop");
+    rig.audio->process(kBlock);
+}
+
+}  // namespace
+
+TEST_CASE("a virtual MIDI take becomes a MIDI clip, takes stack and undo removes them") {
+    ProjectRig rig;
+    const std::string id = rig.run("track.addMidi", {{"name", "Keys"}}).at("id");
+    CHECK(rig.run("track.setArm", {{"track", id}, {"value", true}}).at("midiIn").at("port") == kMidiPort);
+
+    const auto playNote = [&] {
+        const auto now = [&] { return rig.audio->hostTimeAt(rig.audio->processedFrames()); };
+        rig.midi->inject(kMidiPort, std::vector<std::uint8_t>{0x90, 60, 100}, now());
+        rig.audio->process(24000);
+        rig.midi->inject(kMidiPort, std::vector<std::uint8_t>{0x80, 60, 0}, now());
+        rig.audio->process(24000);
+    };
+    recordWhile(rig, playNote);
+    REQUIRE(rig.waitForTakes(1) == 1);
+    Json clip = projectState(*rig.controller).at("tracks").at(0).at("clips").at(0);
+    CHECK(clip.at("type") == "midi");
+    CHECK(clip.at("eventCount") == 2);
+    CHECK(clip.at("start") == 0);
+    CHECK(clip.at("length") >= 1920);
+    CHECK_FALSE(clip.contains("events"));
+    const Json events = rig.run("project.clipEvents", {{"clip", clip.at("id")}}).at("events");
+    CHECK(events.at(0).at("bytes") == Json::array({0x90, 60, 100}));
+    CHECK(events.at(1).at("at").get<int>() >= 900);
+
+    rig.run("transport.locate", {{"position", "1.1.0"}});
+    recordWhile(rig, playNote);
+    REQUIRE(rig.waitForTakes(1) == 1);
+    Json state = projectState(*rig.controller);
+    CHECK(state.at("tracks").at(0).at("clips").size() == 2);
+    CHECK(state.at("undo") == "record take on Keys");
+
+    state = rig.run("project.undo");
+    CHECK(state.at("tracks").at(0).at("clips").size() == 1);
+    CHECK(state.at("tracks").at(0).at("clips").at(0).at("id") == clip.at("id"));
+}
+
+TEST_CASE("an offline audio take becomes an audio clip file under the project folder") {
+    ProjectRig rig;
+    const std::string id = rig.run("track.addAudio", {{"name", "Vox"}}).at("id");
+    rig.run("track.setArm", {{"track", id}, {"value", true}});
+    recordWhile(rig, [&] {
+        rig.audio->setInput("interface", 1, std::vector<float>(48000, 0.25F));
+        rig.audio->process(48000);
+    });
+    REQUIRE(rig.waitForTakes(1) == 1);
+
+    const Json clip = projectState(*rig.controller).at("tracks").at(0).at("clips").at(0);
+    CHECK(clip.at("type") == "audio");
+    const std::filesystem::path file = rig.controller->folder() / clip.at("file").get<std::string>();
+    CHECK(clip.at("file").get<std::string>().starts_with("audio/"));
+    const auto info = readAudioInfo(file);
+    REQUIRE(info);
+    CHECK(info->frames >= 48000);
+    CHECK(clip.at("length") == rig.controller->project().document().tempo.framesToTicks(info->frames, kRate));
+
+    recordWhile(rig, [&] { rig.audio->process(4800); });
+    REQUIRE(rig.waitForTakes(1) == 1);
+    const Json clips = projectState(*rig.controller).at("tracks").at(0).at("clips");
+    REQUIRE(clips.size() == 2);
+    CHECK(clips.at(0).at("file") != clips.at(1).at("file"));
+}

@@ -1,0 +1,246 @@
+#include "emerick/app/lua_host.hpp"
+
+#include <array>
+#include <cstdint>
+#include <cstdlib>
+#include <exception>
+#include <optional>
+#include <sol/sol.hpp>
+
+namespace emerick::app {
+
+namespace {
+
+constexpr int kMaxDepth = 64;
+constexpr int kInstructionLimit = 100'000'000;
+constexpr std::size_t kMemoryLimit = std::size_t{256} << 20;
+constexpr std::array kRemovedGlobals{"dofile", "loadfile", "load", "require"};
+// Lua patterns backtrack without a bound and run in C, where the instruction hook never fires, so scripts get only
+// plain string.find.
+constexpr auto kPlainStringSearch = R"(
+local find = string.find
+string.find = function(text, needle, init) return find(text, needle, init, true) end
+string.match, string.gmatch, string.gsub = nil, nil, nil
+)";
+
+struct MemoryBudget {
+    std::size_t used = 0;
+};
+
+// We follow lua_Alloc's contract, which is realloc and free with a byte budget on top.
+void* limitedAlloc(void* budgetPointer, void* block, std::size_t oldSize, std::size_t newSize) {
+    auto* budget = static_cast<MemoryBudget*>(budgetPointer);
+    const std::size_t held = block == nullptr ? 0 : oldSize;
+    if (newSize == 0) {
+        std::free(block);  // NOLINT(cppcoreguidelines-no-malloc)
+        budget->used -= held;
+        return nullptr;
+    }
+    if (newSize > held && budget->used + (newSize - held) > kMemoryLimit) {
+        return nullptr;
+    }
+    void* moved = std::realloc(block, newSize);  // NOLINT(cppcoreguidelines-no-malloc)
+    if (moved != nullptr) {
+        budget->used = budget->used - held + newSize;
+    }
+    return moved;
+}
+
+// A pcall in the script catches one error, so after the limit we raise again on every instruction until it ends.
+void stopRunawayScript(lua_State* state, lua_Debug* /*debug*/) {
+    lua_sethook(state, stopRunawayScript, LUA_MASKCOUNT, 1);
+    lua_pushstring(state, "script ran over 100000000 instructions");
+    lua_error(state);
+}
+
+class InstructionLimit {
+public:
+    explicit InstructionLimit(lua_State* state) : state_(state) {
+        lua_sethook(state_, stopRunawayScript, LUA_MASKCOUNT, kInstructionLimit);
+    }
+    ~InstructionLimit() { lua_sethook(state_, nullptr, 0, 0); }
+    InstructionLimit(const InstructionLimit&) = delete;
+    InstructionLimit& operator=(const InstructionLimit&) = delete;
+    InstructionLimit(InstructionLimit&&) = delete;
+    InstructionLimit& operator=(InstructionLimit&&) = delete;
+
+private:
+    lua_State* state_;
+};
+
+sol::object toLua(sol::state_view lua, const Json& value) {
+    switch (value.type()) {
+        case Json::value_t::boolean:
+            return sol::make_object(lua, value.get<bool>());
+        case Json::value_t::number_integer:
+        case Json::value_t::number_unsigned:
+            return sol::make_object(lua, value.get<std::int64_t>());
+        case Json::value_t::number_float:
+            return sol::make_object(lua, value.get<double>());
+        case Json::value_t::string:
+            return sol::make_object(lua, value.get<std::string>());
+        case Json::value_t::array: {
+            sol::table table = lua.create_table(static_cast<int>(value.size()), 0);
+            for (std::size_t i = 0; i < value.size(); ++i) {
+                table[i + 1] = toLua(lua, value[i]);
+            }
+            return table;
+        }
+        case Json::value_t::object: {
+            sol::table table = lua.create_table(0, static_cast<int>(value.size()));
+            for (const auto& [key, item] : value.items()) {
+                table[key] = toLua(lua, item);
+            }
+            return table;
+        }
+        default:
+            return sol::make_object(lua, sol::lua_nil);
+    }
+}
+
+std::size_t rawLength(const sol::table& table) {
+    table.push();
+    const auto length = static_cast<std::size_t>(lua_rawlen(table.lua_state(), -1));
+    lua_pop(table.lua_state(), 1);
+    return length;
+}
+
+// Only raw access, so no metamethod runs while we convert a result.
+Json fromLua(const sol::object& value, int depth = 0) {
+    if (depth > kMaxDepth) {
+        throw AppError("Lua table nests deeper than 64 levels or contains a cycle");
+    }
+    switch (value.get_type()) {
+        case sol::type::boolean:
+            return value.as<bool>();
+        case sol::type::number: {
+            value.push();
+            const bool integer = lua_isinteger(value.lua_state(), -1) != 0;
+            lua_pop(value.lua_state(), 1);
+            return integer ? Json(value.as<std::int64_t>()) : Json(value.as<double>());
+        }
+        case sol::type::string:
+            return value.as<std::string>();
+        case sol::type::table: {
+            const auto table = value.as<sol::table>();
+            const std::size_t length = rawLength(table);
+            std::size_t count = 0;
+            table.for_each([&count](const sol::object&, const sol::object&) { ++count; });
+            if (length > 0 && length == count) {
+                Json array = Json::array();
+                for (std::size_t i = 1; i <= length; ++i) {
+                    array.push_back(fromLua(table.raw_get<sol::object>(i), depth + 1));
+                }
+                return array;
+            }
+            Json object = Json::object();
+            table.for_each([&](const sol::object& key, const sol::object& item) {
+                const std::string name =
+                    key.get_type() == sol::type::string ? key.as<std::string>() : fromLua(key, depth + 1).dump();
+                object[name] = fromLua(item, depth + 1);
+            });
+            return object;
+        }
+        default:
+            return nullptr;
+    }
+}
+
+Json fromLuaArgument(const sol::optional<sol::object>& value) {
+    return value && value->valid() ? fromLua(*value) : Json::object();
+}
+
+}  // namespace
+
+struct LuaHost::State {
+    MemoryBudget memory;
+    sol::state lua{sol::default_at_panic, limitedAlloc, &memory};
+    std::string output;
+
+    Json run(const std::string& code) {
+        const sol::load_result chunk = lua.load(code, "eval", sol::load_mode::text);
+        if (!chunk.valid()) {
+            return {{"error", chunk.get<sol::error>().what()}};
+        }
+        const sol::protected_function_result call = chunk.get<sol::protected_function>()();
+        if (!call.valid()) {
+            return {{"error", call.get<sol::error>().what()}};
+        }
+        return {{"ok", true}, {"result", call.return_count() > 0 ? fromLua(call.get<sol::object>(0)) : Json(nullptr)}};
+    }
+};
+
+LuaHost::LuaHost(Registry& registry, const UiApi& ui) : state_(std::make_unique<State>()) {
+    sol::state& lua = state_->lua;
+    lua.open_libraries(sol::lib::base, sol::lib::string, sol::lib::table, sol::lib::math, sol::lib::utf8);
+    for (const char* name : kRemovedGlobals) {
+        lua[name] = sol::lua_nil;
+    }
+    lua.script(kPlainStringSearch);
+
+    lua["print"] = [this](sol::variadic_args args, sol::this_state current) {
+        const sol::protected_function toString = sol::state_view{current}.get<sol::protected_function>("tostring");
+        std::string line;
+        for (const auto& arg : args) {
+            const sol::protected_function_result text = toString(arg);
+            if (!text.valid()) {
+                throw sol::error(text.get<sol::error>());
+            }
+            if (!line.empty()) {
+                line += '\t';
+            }
+            line += text.get<std::string>();
+        }
+        state_->output += line + '\n';
+    };
+
+    sol::table emerick = lua.create_named_table("emerick");
+    emerick["run"] = [&registry](const std::string& id, const sol::optional<sol::object>& params,
+                                 sol::this_state current) {
+        return toLua(current, registry.run(id, fromLuaArgument(params)));
+    };
+    emerick["actions"] = [&registry](const sol::optional<std::string>& query, sol::this_state current) {
+        return toLua(current, registry.describeActions(query.value_or("")));
+    };
+    emerick["setting"] = [&registry](const std::string& id, const sol::optional<sol::object>& value,
+                                     sol::this_state current) {
+        if (value && value->valid()) {
+            return toLua(current, registry.setSetting(id, fromLua(*value)));
+        }
+        return toLua(current, registry.settingValue(id));
+    };
+    emerick["state"] = [&registry](const std::string& name, sol::this_state current) {
+        return toLua(current, registry.state(name));
+    };
+    emerick["project"] = [&registry](sol::this_state current) { return toLua(current, registry.state("project")); };
+
+    sol::table uiTable = emerick.create_named("ui");
+    uiTable["find"] = [&ui](const std::string& query, sol::this_state current) {
+        return toLua(current, ui.find(query));
+    };
+    uiTable["reveal"] = [&ui](const std::string& id, sol::this_state current) { return toLua(current, ui.reveal(id)); };
+    uiTable["set"] = [&ui](const std::string& id, const sol::object& value, const sol::optional<std::string>& property,
+                           sol::this_state current) {
+        return toLua(current, ui.set(id, fromLua(value), property ? std::optional{*property} : std::nullopt));
+    };
+    uiTable["invoke"] = [&ui](const std::string& id, sol::this_state current) { return toLua(current, ui.invoke(id)); };
+}
+
+LuaHost::~LuaHost() = default;
+
+Json LuaHost::eval(const std::string& code) {
+    state_->output.clear();
+    Json result{{"ok", false}};
+    {
+        const InstructionLimit limit{state_->lua.lua_state()};
+        try {
+            result.update(state_->run(code));
+        } catch (const std::exception& error) {
+            result["error"] = error.what();
+        }
+    }
+    result["output"] = state_->output;
+    return result;
+}
+
+}  // namespace emerick::app

@@ -1,0 +1,67 @@
+# Emerick architecture
+
+Emerick is a small native DAW in C++23 and Qt 6.11 QML, built to be driven by a person and by an agent through the same actions. The core records and plays audio and MIDI on tracks of clips. Everything specific to an instrument or a workflow is a plugin.
+
+## Layers
+
+Each layer is one CMake target. A layer only depends on the layers above it in this list.
+
+| Target | Qt | Owns |
+|---|---|---|
+| `emerick_core` | no | units and time (frames, ticks at 960 PPQ, tempo map, positions), strong ids, SPSC queues, fuzzy matcher |
+| `emerick_model` | no | the project document: tracks, clips, track I/O, plugin track data, undo commands, JSON load and save |
+| `emerick_engine` | no | audio and MIDI backends, transport, playback graph, recording to disk, MIDI capture, offline render and export |
+| `emerick_app` | yes | the registry, document and engine controllers, QML models, navigation and reveal, introspection, MCP server, Lua host, settings |
+| `emerick_ui` | yes | the QML module `Emerick.Ui`: theme tokens and every view |
+| `plugins/*` | both | one folder per plugin; pure C++ parts in their own target with tests |
+| `emerick` | yes | the executable: parses flags, wires backends, loads plugins |
+
+The engine never sees the model. `emerick_app` turns the document into an engine `Session` (plain structs) and publishes it to the audio thread. This keeps the engine testable with no project, and the model testable with no audio.
+
+## Single source of truth
+
+- **Document.** All project state lives in `model::Document`. Views, MCP and Lua read it through `emerick_app`; every change is a `model::Command`, so undo, autosave and change notifications have one path.
+- **Registry.** Every action, setting, track type, MIDI device profile and plugin QML component is registered once in `app::Registry`. Menus, shortcuts, the Cmd+K palette, MCP tools and Lua all read the registry. A control's QML `objectName` is its registry id.
+- **Locations.** Each registry entry can name a UI location (`settings.audio.bufferSize`). Revealing a location changes the `Nav` state object only; QML binds to `Nav`, so the same call works for a click, the palette, an agent and a test.
+
+## Engine threading
+
+1. The UI thread builds an immutable `Session` snapshot and swaps it in by atomic pointer at the next block. Retired snapshots return to the UI thread for deletion.
+2. Live changes (mute, arm, transport) go through an SPSC command queue drained at block start.
+3. The audio callback runs the graph single threaded; a worker pool joins later behind the same interface when profiling needs it.
+4. Armed audio tracks write into per-track rings; a writer thread writes the files. Clip playback reads ahead on a reader thread.
+5. MIDI arrives with absolute timestamps on the MIDI thread, goes through an SPSC queue, and is placed on the timeline in the callback.
+6. The audio thread never allocates, locks or frees.
+
+## Devices
+
+Each track names its own audio input and output (device id plus channels) and MIDI input and output (port id plus channel). The engine opens every device a session needs. On macOS several devices become one hidden private aggregate device with drift compensation, so the user never builds one by hand. On Linux the devices are PipeWire or JACK ports. On Windows each WASAPI device runs its own stream and the engine resamples the others to the clock device.
+
+## Plugins
+
+A plugin calls `registerWith(Registry&)` and can add track types (data schema, QML header and lane, engine MIDI processor), actions, settings, MIDI device profiles (channel names, icons) and a QML module. The first plugin, `plugins/yamaha`, adds the Chord and Style tracks for the Genos2. Plugins are compiled in; dynamic loading waits for a third-party plugin.
+
+## Agent interface
+
+The app serves MCP over streamable HTTP on loopback (`--mcp-port`). Tools: `ui.tree`, `ui.find`, `ui.reveal`, `ui.invoke`, `ui.set`, `actions.list`, `actions.run`, `settings.get`, `settings.set`, `state.get`, `lua.eval`, `screenshot`. Every tool returns the state after the change. Lua (5.4 through sol2) sees the same document and registry, and its `ui` functions and the `ui.*` tools both go through `UiApi`, so a script and an agent can do anything a click can.
+
+## Testing
+
+- Catch2 unit tests per target. The engine runs on `OfflineBackend`, faster than realtime, with golden renders.
+- `NullAudioBackend` and an in-process virtual MIDI port, selected with `--audio=null --midi=virtual`, let the app run anywhere.
+- `docker/` runs the app headless (`QT_QPA_PLATFORM=offscreen`) in Ubuntu 24.04 with Qt 6.11, exposes the MCP port, and `e2e/` drives it over MCP.
+
+## Libraries
+
+| Use | Library |
+|---|---|
+| UI | Qt 6.11: Quick, QuickControls2, HttpServer |
+| Audio IO | miniaudio, plus a CoreAudio shim for private aggregates |
+| MIDI IO and MIDI files | libremidi |
+| Audio files | libsndfile |
+| Queues | moodycamel readerwriterqueue |
+| JSON | nlohmann_json |
+| Lua | Lua 5.4 and sol2 |
+| Tests | Catch2 v3 |
+
+License: GPL-3.0-or-later.

@@ -1,0 +1,314 @@
+#include <sndfile.h>
+
+#include <catch2/catch_approx.hpp>
+#include <catch2/catch_test_macros.hpp>
+#include <filesystem>
+#include <string>
+#include <vector>
+
+#include "emerick/app/lua_host.hpp"
+#include "emerick/app/session_mapping.hpp"
+#include "emerick/app/track_list_model.hpp"
+#include "emerick/model/json.hpp"
+#include "project_rig.hpp"
+
+using namespace emerick;
+using namespace emerick::app;
+using namespace emerick::app::test;
+using Catch::Approx;
+
+namespace {
+
+std::vector<float> readChannel(const std::filesystem::path& path, int channel) {
+    SF_INFO info{};
+    SNDFILE* file = sf_open(path.c_str(), SFM_READ, &info);
+    REQUIRE(file != nullptr);
+    std::vector<float> interleaved(static_cast<std::size_t>(info.frames * info.channels));
+    sf_readf_float(file, interleaved.data(), info.frames);
+    sf_close(file);
+    std::vector<float> samples;
+    for (std::size_t frame = 0; frame < static_cast<std::size_t>(info.frames); ++frame) {
+        samples.push_back(
+            interleaved[frame * static_cast<std::size_t>(info.channels) + static_cast<std::size_t>(channel)]);
+    }
+    return samples;
+}
+
+}  // namespace
+
+TEST_CASE("track and clip actions round trip through undo and redo") {
+    ProjectRig rig;
+    const Json added = rig.run("track.addAudio", {{"name", "Vox"}});
+    const std::string id = added.at("id");
+    CHECK(added.at("audioIn").at("device") == "interface");
+    CHECK(rig.nav.selectedTrack().toStdString() == id);
+
+    CHECK(rig.run("track.rename", {{"track", "Vox"}, {"name", "Lead"}}).at("name") == "Lead");
+    CHECK(rig.run("track.setMute", {{"track", id}, {"value", true}}).at("mute") == true);
+    CHECK(rig.run("track.setGain", {{"track", "Lead"}, {"db", -6.0}}).at("gainDb") == -6.0);
+    CHECK_THROWS_AS(rig.run("track.setMute", {{"track", "nobody"}, {"value", true}}), AppError);
+    CHECK_THROWS_AS(rig.run("track.setAudioIn", {{"track", id}, {"device", "interface"}, {"channels", {3}}}), AppError);
+
+    Json state = rig.run("project.undo");
+    CHECK(state.at("tracks").at(0).at("gainDb") == 0.0);
+    CHECK(state.at("redo") == "set track gain");
+    state = rig.run("project.undo");
+    CHECK(state.at("tracks").at(0).at("mute") == false);
+    state = rig.run("project.redo");
+    CHECK(state.at("tracks").at(0).at("mute") == true);
+
+    writeConstant(rig.path("ones.wav"), 48000, 1.0F);
+    const Json imported =
+        rig.run("clip.import", {{"track", id}, {"path", rig.path("ones.wav").string()}, {"at", "2.1.0"}});
+    CHECK(imported.at("start") == 3840);
+    CHECK(imported.at("startBbt") == "2.1.0");
+    CHECK(imported.at("length") == 1920);
+    CHECK(imported.at("lengthBbt") == "0.2.0");
+    CHECK(std::filesystem::exists(rig.controller->folder() / imported.at("file").get<std::string>()));
+    const std::string clip = imported.at("id");
+
+    CHECK(rig.run("clip.move", {{"clip", clip}, {"start", 960}}).at("startBbt") == "1.2.0");
+    const Json split = rig.run("clip.split", {{"clip", clip}, {"at", "1.3.0"}});
+    CHECK(split.at("left").at("length") == 960);
+    CHECK(split.at("right").at("start") == 1920);
+    CHECK(split.at("right").at("sourceOffset") == 24000);
+    const Json resized = rig.run("clip.resize", {{"clip", split.at("right").at("id")}, {"start", 2400}});
+    CHECK(resized.at("length") == 480);
+    CHECK(resized.at("sourceOffset") == 36000);
+    CHECK(rig.run("clip.setFade", {{"clip", clip}, {"fadeIn", 100}}).at("fadeIn") == 100);
+    CHECK(rig.run("clip.duplicate", {{"clip", clip}}).at("start") == 1920);
+    CHECK(projectState(*rig.controller).at("tracks").at(0).at("clips").size() == 3);
+    rig.run("project.undo");
+    rig.run("project.undo");
+    rig.run("project.undo");
+    CHECK(projectState(*rig.controller).at("tracks").at(0).at("clips").size() == 2);
+    rig.run("project.undo");
+    CHECK(projectState(*rig.controller).at("tracks").at(0).at("clips").size() == 1);
+    CHECK(rig.run("clip.delete", {{"clip", clip}}).at("tracks").at(0).at("clips").empty());
+
+    CHECK(rig.run("project.setTempo", {{"bpm", 96}, {"numerator", 3}}).at("numerator") == 3);
+    CHECK_THROWS_AS(rig.run("project.setTempo", {{"denominator", 5}}), AppError);
+    CHECK(rig.run("transport.setClockOut", {{"port", kMidiPort}, {"enabled", true}}).at("clockOut").size() == 1);
+    CHECK(rig.run("track.remove", {{"track", id}}).at("tracks").empty());
+
+    const Json devices = rig.run("devices.list");
+    CHECK(devices.at("audioInputs").at(2) ==
+          Json{{"device", "interface"}, {"channels", {1, 2}}, {"label", "Interface 1-2"}});
+    CHECK(devices.at("midiInputs").at(0).at("port") == kMidiPort);
+}
+
+TEST_CASE("the session mapping turns the document into engine tracks") {
+    ProjectRig rig;
+    model::Document document;
+    model::Track audio;
+    audio.name = "Pad";
+    audio.gainDb = -20.0;
+    audio.audioOut = {"interface", {1, 2}};
+    model::AudioClip clip;
+    clip.file = "audio/pad.wav";
+    clip.length = 960;
+    clip.gainDb = 20.0;
+    audio.clips.emplace_back(clip);
+    model::Track midi;
+    midi.kind = "midi";
+    midi.audioIn = {"interface", {1}};
+    midi.midiIn = {kMidiPort, 2, false, true};
+    midi.midiOut = {kMidiPort, 3, true, false};
+    model::MidiClip notes;
+    notes.start = 480;
+    notes.length = 960;
+    notes.events = {{0, {0x90, 60, 100}}, {959, {0x80, 60, 0}}, {960, {0x90, 62, 100}}};
+    midi.clips.emplace_back(notes);
+    model::Track unknown;
+    unknown.kind = "nobody.knows";
+    document.tracks = {audio, midi, unknown};
+    document.clockPorts = {kMidiPort};
+
+    const engine::Session session = toSession(document, rig.registry, "/projects/song");
+    REQUIRE(session.tracks.size() == 2);
+    CHECK(session.takeFolder == "/projects/song/audio");
+    CHECK(session.clockPorts == std::vector{kMidiPort});
+    const engine::Track& pad = session.tracks[0];
+    CHECK(pad.id == audio.id.value);
+    CHECK(pad.kind == engine::TrackKind::audio);
+    CHECK(pad.gain == Approx(0.1F));
+    CHECK(pad.audioClips.at(0).path == "/projects/song/audio/pad.wav");
+    CHECK(pad.audioClips.at(0).gain == Approx(10.0F));
+    const engine::Track& keys = session.tracks[1];
+    CHECK(keys.kind == engine::TrackKind::midi);
+    CHECK(keys.audioIn.deviceId.empty());
+    CHECK(keys.midiIn.channel == 2);
+    CHECK(keys.claimsSysex);
+    CHECK(keys.midiThru);
+    CHECK(keys.midiClips.at(0).start == 480);
+    CHECK(keys.midiClips.at(0).events.size() == 2);
+}
+
+TEST_CASE("save then open restores everything") {
+    ProjectRig rig;
+    const std::string id = rig.run("track.addAudio", {{"name", "Vox"}}).at("id");
+    rig.run("track.addMidi", {{"name", "Keys"}, {"midiIn", {{"port", kMidiPort}, {"channel", 4}, {"sysex", true}}}});
+    rig.run("project.setTempo", {{"bpm", 96}});
+    writeConstant(rig.path("ones.wav"), 4800, 1.0F);
+    rig.run("clip.import", {{"track", id}, {"path", rig.path("ones.wav").string()}});
+    CHECK_THROWS_AS(rig.run("project.save"), AppError);
+
+    const auto folder = rig.path("song");
+    const Json saved = rig.run("project.saveAs", {{"path", folder.string()}});
+    CHECK(saved.at("untitled") == false);
+    CHECK(std::filesystem::exists(folder / "audio" / "ones.wav"));
+    const Json before = model::toJson(rig.controller->project().document());
+
+    CHECK(rig.run("project.new").at("tracks").empty());
+    const Json opened = rig.run("project.open", {{"path", folder.string()}});
+    CHECK(model::toJson(rig.controller->project().document()) == before);
+    CHECK(opened.at("path") == folder.string());
+    CHECK(opened.at("tracks").at(1).at("midiIn").at("channel") == 4);
+    CHECK(opened.at("tempo").at("bpm") == 96.0);
+    CHECK_FALSE(opened.contains("sessionError"));
+    CHECK_THROWS_AS(rig.run("project.open", {{"path", rig.path("missing").string()}}), AppError);
+}
+
+TEST_CASE("export stems renders each audio track from bar 1 to the project end") {
+    ProjectRig rig;
+    const std::string pad = rig.run("track.addAudio", {{"name", "Pad"}}).at("id");
+    const std::string bass = rig.run("track.addAudio", {{"name", "Bass"}}).at("id");
+    writeConstant(rig.path("ones.wav"), 48000, 1.0F);
+    writeConstant(rig.path("half.wav"), 24000, 1.0F);
+    rig.run("clip.import", {{"track", pad}, {"path", rig.path("ones.wav").string()}});
+    rig.run("clip.import", {{"track", bass}, {"path", rig.path("half.wav").string()}, {"at", "2.1.0"}});
+    rig.run("track.setGain", {{"track", pad}, {"db", -6.0206}});
+    rig.run("track.setMute", {{"track", bass}, {"value", true}});
+
+    const auto folder = rig.path("stems");
+    const Json result = rig.run("export.stems", {{"folder", folder.string()}});
+    REQUIRE(result.at("files").size() == 2);
+    CHECK(result.at("end").at("seconds") == 2.5);
+    for (const char* name : {"Pad.wav", "Bass.wav"}) {
+        const auto info = readAudioInfo(folder / name);
+        REQUIRE(info);
+        CHECK(info->frames == 120000);
+        CHECK(info->channels == 2);
+    }
+    const auto padSamples = readChannel(folder / "Pad.wav", 1);
+    CHECK(padSamples[24000] == Approx(0.5F).margin(1e-4));
+    CHECK(padSamples[60000] == 0.0F);
+    CHECK(readChannel(folder / "Bass.wav", 0)[100000] == Approx(1.0F));
+
+    rig.run("export.mix", {{"path", (folder / "mix.wav").string()}});
+    const auto mix = readChannel(folder / "mix.wav", 0);
+    CHECK(mix[24000] == Approx(0.5F).margin(1e-4));
+    CHECK(mix[100000] == 0.0F);
+
+    CHECK(rig.run("export.stems", {{"folder", rig.path("one").string()}, {"tracks", {"Bass"}}}).at("files").size() ==
+          1);
+}
+
+TEST_CASE("a plugin track kind renders to MIDI and folds takes into its data") {
+    ProjectRig rig;
+    rig.registry.addTrackType(
+        {.kind = "test.chord",
+         .title = "Chord",
+         .toEngine =
+             [](const model::Track& track, const PlaybackContext& context) {
+                 engine::Track playback = midiEngineTrack(track);
+                 playback.midiOut = {kMidiPort, 5};
+                 playback.midiClips = {
+                     {.start = context.tempo.ticksPerBar(),
+                      .events = {{0, {0x90, static_cast<std::uint8_t>(track.data.value("root", 60)), 100}}}}};
+                 return playback;
+             },
+         .fromTake = [](model::Track& track, const engine::RecordedTake& take,
+                        const TakeContext&) { track.data["recorded"] = take.midiEvents.size(); }});
+    model::Track chord;
+    chord.kind = "test.chord";
+    chord.name = "Chords";
+    chord.midiIn = {kMidiPort, 0, false, false};
+    chord.data = {{"root", 62}};
+    rig.controller->project().addTrack(chord);
+
+    const engine::Session session =
+        toSession(rig.controller->project().document(), rig.registry, rig.controller->folder());
+    REQUIRE(session.tracks.size() == 1);
+    CHECK(session.tracks[0].kind == engine::TrackKind::midi);
+    CHECK(session.tracks[0].midiOut.portId == kMidiPort);
+    CHECK(session.tracks[0].midiOut.channel == 5);
+    CHECK(session.tracks[0].midiClips.at(0).start == 3840);
+    CHECK(session.tracks[0].midiClips.at(0).events.at(0).bytes == std::vector<std::uint8_t>{0x90, 62, 100});
+
+    rig.run("track.setArm", {{"track", "Chords"}, {"value", true}});
+    rig.run("transport.record");
+    rig.audio->process(kBlock);
+    const std::vector<std::uint8_t> note{0x90, 64, 90};
+    rig.midi->inject(kMidiPort, note, rig.audio->hostTimeAt(rig.audio->processedFrames()));
+    rig.audio->process(kBlock * 4);
+    rig.run("transport.stop");
+    REQUIRE(rig.waitForTakes(1) == 1);
+    const Json track = projectState(*rig.controller).at("tracks").at(0);
+    CHECK(track.at("data").at("recorded") == 1);
+    CHECK(track.at("clips").empty());
+}
+
+TEST_CASE("the Lua one-liner mutes every track") {
+    ProjectRig rig;
+    rig.run("track.addAudio");
+    rig.run("track.addMidi");
+    const UiApi ui{rig.registry};
+    LuaHost lua{rig.registry, ui};
+    const Json result = lua.eval(
+        R"(for _, t in ipairs(emerick.project().tracks) do emerick.run("track.setMute", {track=t.id, value=true}) end)");
+    CHECK(result.at("ok") == true);
+    for (const Json& track : projectState(*rig.controller).at("tracks")) {
+        CHECK(track.at("mute") == true);
+    }
+}
+
+TEST_CASE("the track list model follows the document") {
+    ProjectRig rig;
+    TrackListModel model{rig.controller->project(), rig.registry};
+    const std::string id = rig.run("track.addAudio", {{"name", "Vox"}}).at("id");
+    REQUIRE(model.rowCount() == 1);
+    const QModelIndex row = model.index(0);
+    CHECK(model.data(row, static_cast<int>(TrackListModel::Role::name)).toString() == "Vox");
+    rig.run("track.setArm", {{"track", id}, {"value", true}});
+    CHECK(model.data(row, static_cast<int>(TrackListModel::Role::armed)).toBool());
+    writeConstant(rig.path("ones.wav"), 4800, 1.0F);
+    rig.run("clip.import", {{"track", id}, {"path", rig.path("ones.wav").string()}});
+    const QVariantList clips = model.data(row, static_cast<int>(TrackListModel::Role::clips)).toList();
+    REQUIRE(clips.size() == 1);
+    CHECK(clips.front().toMap().value("length").toLongLong() == 192);
+    CHECK(model.roleNames().value(static_cast<int>(TrackListModel::Role::clips)) == "clips");
+    CHECK(model.data(row, static_cast<int>(TrackListModel::Role::audioInText)).toString() == "interface 1-2");
+    CHECK(model.data(row, static_cast<int>(TrackListModel::Role::midiInText)).toString() == "None");
+    CHECK(model.data(row, static_cast<int>(TrackListModel::Role::audioRoutes)).toBool());
+    CHECK_FALSE(model.data(row, static_cast<int>(TrackListModel::Role::midiRoutes)).toBool());
+}
+
+TEST_CASE("route actions merge the given fields into the current route") {
+    ProjectRig rig;
+    const std::string keys =
+        rig.run("track.addMidi", {{"midiIn", {{"port", kMidiPort}, {"channel", 4}, {"sysex", true}}}}).at("id");
+    Json route = rig.run("track.setMidiIn", {{"track", keys}, {"channel", 9}}).at("midiIn");
+    CHECK(route == Json{{"port", kMidiPort}, {"channel", 9}, {"thru", false}, {"sysex", true}});
+    route = rig.run("track.setMidiIn", {{"track", keys}, {"port", ""}}).at("midiIn");
+    CHECK(route.at("port") == "");
+    CHECK(route.at("channel") == 9);
+    CHECK(rig.run("track.setMidiOut", {{"track", keys}, {"port", kMidiPort}}).at("midiOut").at("channel") == 0);
+    CHECK_THROWS_AS(rig.run("track.setMidiOut", {{"track", keys}, {"channel", 17}}), AppError);
+
+    const std::string vox = rig.run("track.addAudio").at("id");
+    route = rig.run("track.setAudioIn", {{"track", vox}, {"channels", {2}}}).at("audioIn");
+    CHECK(route == Json{{"device", "interface"}, {"channels", {2}}});
+    CHECK(rig.run("track.setAudioOut", {{"track", vox}, {"device", ""}}).at("audioOut").at("channels").empty());
+}
+
+TEST_CASE("the inspector's route choices start with None and carry only the params they set") {
+    ProjectRig rig;
+    const QVariantMap choices = rig.controller->routeChoices();
+    const QVariantMap none = choices.value("midiIn").toList().front().toMap();
+    CHECK(none.value("label").toString() == "None");
+    CHECK(none.value("params").toMap() == QVariantMap{{"port", ""}});
+    const QVariantMap stereo = choices.value("audioIn").toList().at(3).toMap();
+    CHECK(stereo.value("label").toString() == "Interface 1-2");
+    CHECK(stereo.value("params").toMap().value("device").toString() == "interface");
+}

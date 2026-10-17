@@ -1,0 +1,12 @@
+    1.1  C
+    1.1  [Main A]
+    2.1  Am
+    3.1  F
+    3.2  [Fill]
+    4.1  G7
+    4.3  Dm7
+    5.2  [Main B (fill)]
+    6.1  Bbmaj7
+    7.2  [Break]
+    8.1  C
+    9.3  [Ending 1]

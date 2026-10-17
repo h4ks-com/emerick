@@ -1,0 +1,4 @@
+# channel msb lsb program volume pan name
+9  127 0  1  100 64 Standard Kit
+11 0   0  34 90  64 Finger Bass
+16 0   0  61 80  58 French Horn

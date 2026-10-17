@@ -109,17 +109,43 @@ void registerTransportActions(Registry& registry, ProjectController& controller)
                         .title = "Play",
                         .aliases = {"start playback"},
                         .category = "Transport",
-                        .shortcut = "Space",
                         .run = [&controller](const Json&) {
                             controller.play();
                             return transportState(controller);
                         }});
+    registry.addAction({.id = "transport.togglePlay",
+                        .title = "Play or pause",
+                        .aliases = {"pause", "resume"},
+                        .category = "Transport",
+                        .shortcut = "Space",
+                        .run = [&controller](const Json&) {
+                            if (controller.playing()) {
+                                controller.stop();
+                            } else {
+                                controller.play();
+                            }
+                            return transportState(controller);
+                        }});
+    // We return to the start on a stop while stopped, as Logic's stop button does.
     registry.addAction({.id = "transport.stop",
                         .title = "Stop",
-                        .aliases = {"pause", "stop recording"},
+                        .aliases = {"stop recording"},
                         .category = "Transport",
                         .run = [&controller](const Json&) {
-                            controller.stop();
+                            if (controller.playing()) {
+                                controller.stop();
+                            } else {
+                                controller.locate(0);
+                            }
+                            return transportState(controller);
+                        }});
+    registry.addAction({.id = "transport.gotoStart",
+                        .title = "Go to beginning",
+                        .aliases = {"rewind", "return to zero"},
+                        .category = "Transport",
+                        .shortcut = "Return",
+                        .run = [&controller](const Json&) {
+                            controller.locate(0);
                             return transportState(controller);
                         }});
     registry.addAction({.id = "transport.record",

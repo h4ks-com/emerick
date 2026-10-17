@@ -47,6 +47,15 @@ void registerViewActions(Registry& registry, Nav& nav) {
                                 return Json{{"pixelsPerTick", nav.pixelsPerTick()}, {"trackHeight", nav.trackHeight()}};
                             }});
     }
+    registry.addAction({.id = "view.toggleInspector",
+                        .title = "Show or hide inspector",
+                        .aliases = {"track inspector", "side panel"},
+                        .category = "View",
+                        .shortcut = "I",
+                        .run = [&nav](const Json&) {
+                            nav.setInspectorOpen(!nav.inspectorOpen());
+                            return Json{{"inspectorOpen", nav.inspectorOpen()}};
+                        }});
 }
 
 }  // namespace
@@ -84,8 +93,8 @@ void registerCoreActions(Registry& registry, Nav& nav, const Backends& backends)
     addSettingsSection(registry, nav, "audio", "Audio");
 
     registry.addAction({.id = "palette.open",
-                        .title = "Open command palette",
-                        .aliases = {"command palette", "search actions"},
+                        .title = "Search",
+                        .aliases = {"command palette", "search actions", "open command palette"},
                         .category = "General",
                         .shortcut = "Ctrl+K",
                         .run = [&registry](const Json&) { return revealChain(registry, "palette"); }});

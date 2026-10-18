@@ -196,7 +196,12 @@ Json invokeItem(const QString& objectName) {
             return node(target);
         }
     }
-    throw AppError(objectName.toStdString() + " has no click, toggle, trigger or open");
+    // A picker has no click method, so we open its list the way a click does.
+    if (auto* popup = target->property("popup").value<QObject*>()) {
+        QMetaObject::invokeMethod(popup, "open");
+        return node(target);
+    }
+    throw AppError(objectName.toStdString() + " has no click, toggle, trigger, open or popup");
 }
 
 Json screenshot(const QString& path) {

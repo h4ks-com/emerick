@@ -1,4 +1,5 @@
 #include <QCommandLineParser>
+#include <QFileOpenEvent>
 #include <QGuiApplication>
 #include <QQmlApplicationEngine>
 #include <QtLogging>
@@ -24,6 +25,28 @@
 using namespace emerick::app;
 
 namespace {
+
+// Finder hands a double-clicked .emerick bundle to the running app as a file open event.
+class FileOpenFilter final : public QObject {
+public:
+    explicit FileOpenFilter(const Registry& registry) : registry_(registry) {}
+
+    bool eventFilter(QObject* watched, QEvent* event) override {
+        const auto* open = dynamic_cast<QFileOpenEvent*>(event);
+        if (open == nullptr) {
+            return QObject::eventFilter(watched, event);
+        }
+        try {
+            registry_.run("project.open", {{"path", open->file().toStdString()}});
+        } catch (const AppError& error) {
+            qWarning("%s", error.what());
+        }
+        return true;
+    }
+
+private:
+    const Registry& registry_;
+};
 
 int run(int argc, char** argv) {
     QGuiApplication application(argc, argv);
@@ -57,6 +80,8 @@ int run(int argc, char** argv) {
     registerProjectActions(registry, controller, nav);
     emerick::yamaha::registerWith(registry, controller, nav);
     TrackListModel tracks(controller, registry);
+    FileOpenFilter fileOpen(registry);
+    QGuiApplication::instance()->installEventFilter(&fileOpen);
 
     bool validPort = true;
     const auto port = parser.isSet(mcpPort) ? parser.value(mcpPort).toUShort(&validPort)

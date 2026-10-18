@@ -141,6 +141,13 @@ void registerTrackKinds(app::Registry& registry) {
              [&registry](model::Track& track, const engine::RecordedTake& take, const app::TakeContext& context) {
                  Chart chart = chartFromTake(rawEvents(take), context.tempo, chartOptions(registry));
                  mergeTake(track, std::move(chart.chords), take.startTick, context.stopTicks);
+             },
+         .markers =
+             [](const model::Track& track) {
+                 return playableEvents<ChordEvent>(track) | std::views::transform([](const ChordEvent& event) {
+                            return app::Marker{.at = event.at, .text = event.chord.name()};
+                        }) |
+                        std::ranges::to<std::vector>();
              }});
     registry.addTrackType(
         {.kind = kStyleKind,
@@ -157,6 +164,13 @@ void registerTrackKinds(app::Registry& registry) {
              [&registry](model::Track& track, const engine::RecordedTake& take, const app::TakeContext& context) {
                  Chart chart = chartFromTake(rawEvents(take), context.tempo, chartOptions(registry));
                  mergeTake(track, std::move(chart.sections), take.startTick, context.stopTicks);
+             },
+         .markers =
+             [](const model::Track& track) {
+                 return playableEvents<SectionEvent>(track) | std::views::transform([](const SectionEvent& event) {
+                            return app::Marker{.at = event.at, .text = sectionName(event)};
+                        }) |
+                        std::ranges::to<std::vector>();
              }});
 }
 

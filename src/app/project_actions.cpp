@@ -2,15 +2,12 @@
 
 #include <algorithm>
 #include <array>
-#include <filesystem>
 #include <string>
 #include <utility>
 #include <vector>
 
 #include "emerick/app/action_params.hpp"
 #include "emerick/app/project_state.hpp"
-#include "emerick/app/session_mapping.hpp"
-#include "emerick/app/stem_export.hpp"
 
 namespace emerick::app {
 
@@ -20,41 +17,7 @@ constexpr double kMinBpm = 20.0;
 constexpr double kMaxBpm = 400.0;
 constexpr std::array kDenominators{1, 2, 4, 8, 16};
 
-void registerProjectFileActions(Registry& registry, ProjectController& controller) {
-    registry.addAction({.id = "project.new",
-                        .title = "New project",
-                        .aliases = {"start over", "empty project"},
-                        .category = "Project",
-                        .run = [&controller](const Json&) {
-                            controller.newProject();
-                            return projectState(controller);
-                        }});
-    registry.addAction({.id = "project.open",
-                        .title = "Open project",
-                        .aliases = {"load project"},
-                        .category = "Project",
-                        .schema = {{"required", {"path"}}},
-                        .run = [&controller](const Json& params) {
-                            controller.open(param<std::string>(params, "path"));
-                            return projectState(controller);
-                        }});
-    registry.addAction({.id = "project.save",
-                        .title = "Save project",
-                        .category = "Project",
-                        .shortcut = "Ctrl+S",
-                        .run = [&controller](const Json&) {
-                            controller.save();
-                            return projectState(controller);
-                        }});
-    registry.addAction({.id = "project.saveAs",
-                        .title = "Save project as",
-                        .aliases = {"save to folder"},
-                        .category = "Project",
-                        .schema = {{"required", {"path"}}},
-                        .run = [&controller](const Json& params) {
-                            controller.saveAs(param<std::string>(params, "path"));
-                            return projectState(controller);
-                        }});
+void registerProjectEditActions(Registry& registry, ProjectController& controller) {
     registry.addAction({.id = "project.undo",
                         .title = "Undo",
                         .category = "Project",
@@ -191,52 +154,6 @@ void registerTransportActions(Registry& registry, ProjectController& controller)
                         }});
 }
 
-engine::Session exportSession(ProjectController& controller, const Registry& registry, const Json& params) {
-    engine::Session session = toSession(controller.project().document(), registry, controller.folder());
-    const auto requested = optionalParam<std::vector<std::string>>(params, "tracks");
-    if (requested) {
-        std::vector<std::string> ids;
-        for (const std::string& track : *requested) {
-            ids.push_back(findTrackByIdOrName(controller.project(), track).value);
-        }
-        std::erase_if(session.tracks,
-                      [&](const engine::Track& track) { return std::ranges::find(ids, track.id) == ids.end(); });
-    }
-    return session;
-}
-
-void registerExportActions(Registry& registry, ProjectController& controller) {
-    registry.addAction({.id = "export.stems",
-                        .title = "Export stems",
-                        .aliases = {"bounce tracks", "render stems"},
-                        .category = "Export",
-                        .schema = {{"required", {"folder"}}, {"properties", {{"tracks", {{"type", "array"}}}}}},
-                        .run = [&controller, &registry](const Json& params) {
-                            const std::filesystem::path folder{param<std::string>(params, "folder")};
-                            const auto files =
-                                exportStems(exportSession(controller, registry, params),
-                                            controller.project().document(), folder, controller.sampleRate());
-                            Json written = Json::array();
-                            for (const auto& file : files) {
-                                written.push_back(file.string());
-                            }
-                            return Json{{"files", written},
-                                        {"end", positionState(projectEnd(controller.project().document()),
-                                                              controller.project().document().tempo)}};
-                        }});
-    registry.addAction({.id = "export.mix",
-                        .title = "Export mix",
-                        .aliases = {"bounce mix", "render mix"},
-                        .category = "Export",
-                        .schema = {{"required", {"path"}}},
-                        .run = [&controller, &registry](const Json& params) {
-                            const std::filesystem::path file{param<std::string>(params, "path")};
-                            exportMix(toSession(controller.project().document(), registry, controller.folder()),
-                                      controller.project().document(), file, controller.sampleRate());
-                            return Json{{"file", file.string()}};
-                        }});
-}
-
 }  // namespace
 
 void registerProjectActions(Registry& registry, ProjectController& controller, Nav& nav) {
@@ -245,10 +162,12 @@ void registerProjectActions(Registry& registry, ProjectController& controller, N
     registry.addStateProvider("devices", [&controller] { return devicesState(controller); });
 
     registerProjectFileActions(registry, controller);
+    registerProjectEditActions(registry, controller);
     registerTransportActions(registry, controller);
     registerTrackActions(registry, controller, nav);
     registerClipActions(registry, controller, nav);
     registerExportActions(registry, controller);
+    registerProjectFolderActions(registry, controller, nav);
     registry.addAction({.id = "devices.list",
                         .title = "List audio and MIDI devices",
                         .aliases = {"show devices", "ports"},

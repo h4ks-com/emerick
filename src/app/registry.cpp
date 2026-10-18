@@ -28,6 +28,8 @@ bool matchesType(const Setting& setting, const Json& value) {
             return std::ranges::find(setting.choices, value) != setting.choices.end();
         case SettingType::String:
             return value.is_string();
+        case SettingType::List:
+            return value.is_array() && std::ranges::all_of(value, &Json::is_string);
     }
     return false;
 }
@@ -328,8 +330,36 @@ QVariantMap Registry::settingsMap() const {
 
 QVariantList Registry::shortcuts() const {
     QVariantList result;
-    for (const Action& entry : actions_ | std::views::filter([](const Action& a) { return !a.shortcut.empty(); })) {
+    for (const Action& entry : actions_ | std::views::filter([](const Action& a) {
+                                   return !a.shortcut.empty() && !std::ranges::contains(a.menus, kFileMenu);
+                               })) {
         result.append(QVariantMap{{"id", qs(entry.id)}, {"shortcut", qs(entry.shortcut)}});
+    }
+    return result;
+}
+
+QVariantMap Registry::menus() const {
+    QVariantMap result;
+    for (const Action& entry : actions_) {
+        QVariantMap item{{"id", qs(entry.id)},
+                         {"title", qs(entry.title)},
+                         {"shortcut", qs(entry.shortcut)},
+                         {"enabled", isEnabled(entry)},
+                         {"row", static_cast<int>(entry.submenu ? MenuRow::Submenu : MenuRow::Command)}};
+        if (entry.submenu) {
+            QVariantList choices;
+            for (const MenuChoice& choice : entry.submenu()) {
+                choices.append(QVariantMap{
+                    {"id", qs(choice.id)}, {"title", qs(choice.title)}, {"params", toVariant(choice.params)}});
+            }
+            item.insert("choices", choices);
+        }
+        for (const std::string& menu : entry.menus) {
+            item.insert("bindsShortcut", menu == kFileMenu);
+            QVariantList items = result.value(qs(menu)).toList();
+            items.append(item);
+            result.insert(qs(menu), items);
+        }
     }
     return result;
 }
@@ -338,6 +368,10 @@ QVariantList Registry::palette(const QString& query) const {
     QVariantList result;
     for (const SearchHit& hit : search(query.toStdString())) {
         const Action* entry = action(hit.id);
+        // A submenu action needs one of its choices, which only a menu offers.
+        if (entry != nullptr && entry->submenu) {
+            continue;
+        }
         result.append(QVariantMap{{"id", qs(hit.id)},
                                   {"title", qs(hit.title)},
                                   {"category", qs(hit.category)},
@@ -386,8 +420,21 @@ QVariantList Registry::settingsAt(const QString& location) const {
 }
 
 void Registry::activate(const QString& id) {
+    const Action* found = action(id.toStdString());
+    if (found != nullptr && found->dialog) {
+        emit fileDialogRequested({{"id", id},
+                                  {"mode", static_cast<int>(found->dialog->mode)},
+                                  {"title", qs(found->title)},
+                                  {"nameFilter", qs(found->dialog->nameFilter)},
+                                  {"suffix", qs(found->dialog->suffix)}});
+        return;
+    }
+    if (found != nullptr && !found->confirm.empty()) {
+        emit confirmRequested({{"id", id}, {"title", qs(found->title)}, {"text", qs(found->confirm)}});
+        return;
+    }
     try {
-        if (action(id.toStdString()) != nullptr) {
+        if (found != nullptr) {
             run(id.toStdString());
         } else {
             reveal(id.toStdString());
@@ -406,6 +453,15 @@ QVariant Registry::runAction(const QString& id, const QVariantMap& params) const
         qWarning() << error.what();
     }
     return {};
+}
+
+QVariant Registry::runWithFile(const QString& id, const QUrl& file) const {
+    const Action* found = action(id.toStdString());
+    if (found == nullptr || !found->dialog) {
+        qWarning() << "action" << id << "has no file dialog";
+        return {};
+    }
+    return runAction(id, {{qs(found->dialog->param), file.toLocalFile()}});
 }
 
 bool Registry::setSettingValue(const QString& id, const QVariant& value) {

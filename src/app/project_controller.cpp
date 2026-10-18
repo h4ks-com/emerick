@@ -1,12 +1,16 @@
 #include "emerick/app/project_controller.hpp"
 
+#include <QCoreApplication>
 #include <QtLogging>
 #include <algorithm>
 #include <chrono>
 #include <stdexcept>
+#include <string>
+#include <system_error>
 #include <utility>
 
 #include "emerick/app/event_wait.hpp"
+#include "emerick/app/project_bundle.hpp"
 #include "emerick/app/project_state.hpp"
 #include "emerick/app/session_mapping.hpp"
 #include "emerick/app/stem_export.hpp"
@@ -22,27 +26,101 @@ constexpr auto kTakeTimeout = std::chrono::seconds{3};
 // The take writer polls every 5 ms, so a MIDI take that has events arrives well within this.
 constexpr auto kTakeSettle = std::chrono::milliseconds{50};
 constexpr double kLocateWindowSeconds = 0.25;
+constexpr auto kAutosaveDelay = std::chrono::seconds{2};
 
 }  // namespace
 
 ProjectController::ProjectController(const Registry& registry, std::unique_ptr<engine::AudioBackend> audio,
                                      std::unique_ptr<engine::MidiBackend> midi, engine::Engine::Options options,
-                                     QObject* parent)
-    : QObject(parent), registry_(registry), options_(options), engine_(std::move(audio), std::move(midi), options) {
-    untitled_.emplace();
-    folder_ = untitled_->path().toStdString();
-    std::filesystem::create_directories(folder_ / "audio");
-    project_.addListener([this](const model::Change&) { scheduleFlush(); });
+                                     const std::filesystem::path& projectsFolder, QObject* parent)
+    : QObject(parent),
+      registry_(registry),
+      options_(options),
+      engine_(std::move(audio), std::move(midi), options),
+      projectsFolder_(normalizedPath(projectsFolder.empty() ? defaultProjectsFolder() : projectsFolder)) {
+    project_.addListener([this](const model::Change&) {
+        setEdited(true);
+        scheduleFlush();
+    });
+    autosaveTimer_.setSingleShot(true);
+    autosaveTimer_.setInterval(kAutosaveDelay);
+    connect(&autosaveTimer_, &QTimer::timeout, this, &ProjectController::autosave);
+    connect(QCoreApplication::instance(), &QCoreApplication::aboutToQuit, this, [this] {
+        try {
+            leave();
+        } catch (const AppError& error) {
+            qWarning("cannot save %s: %s", folder_.c_str(), error.what());
+        }
+    });
+    createUntitled();
     publish();
     connect(&timer_, &QTimer::timeout, this, &ProjectController::poll);
     timer_.start(kPollPeriod);
 }
 
+void ProjectController::discardIfEmpty() {
+    if (untitled_ && holdsNothing(project_.document(), folder_)) {
+        std::error_code error;
+        std::filesystem::remove_all(folder_, error);
+    }
+}
+
+QString ProjectController::name() const { return QString::fromStdString(folder_.stem().string()); }
+
 void ProjectController::moveTo(const std::filesystem::path& folder, model::Document document) {
+    try {
+        std::filesystem::create_directories(folder / "audio");
+    } catch (const std::filesystem::filesystem_error& error) {
+        throw AppError(error.what());
+    }
     folder_ = folder;
+    untitled_ = false;
     takeErrors_.clear();
-    std::filesystem::create_directories(folder_ / "audio");
     project_.reset(std::move(document));
+    setEdited(false);
+    emit fileChanged();
+}
+
+void ProjectController::createUntitled() {
+    moveTo(nextUntitledBundle(projectsFolder_), {});
+    untitled_ = true;
+    write();
+}
+
+void ProjectController::write() {
+    try {
+        model::saveProject(project_.document(), folder_);
+    } catch (const std::runtime_error& error) {
+        throw AppError(error.what());
+    }
+    setEdited(false);
+}
+
+void ProjectController::autosave() {
+    try {
+        write();
+    } catch (const AppError& error) {
+        qWarning("cannot autosave: %s", error.what());
+    }
+}
+
+void ProjectController::setEdited(bool value) {
+    if (value) {
+        autosaveTimer_.start();
+    } else {
+        autosaveTimer_.stop();
+    }
+    if (std::exchange(edited_, value) != value) {
+        emit fileChanged();
+    }
+}
+
+void ProjectController::leave() {
+    settleTakes();
+    if (edited_) {
+        write();
+    }
+    discardIfEmpty();
 }
 
 void ProjectController::settleTakes() {
@@ -67,56 +145,67 @@ void ProjectController::settleTakes() {
 }
 
 void ProjectController::newProject() {
-    settleTakes();
-    untitled_.emplace();
-    moveTo(untitled_->path().toStdString(), {});
+    leave();
+    createUntitled();
 }
 
-void ProjectController::open(const std::filesystem::path& folder) {
-    settleTakes();
+void ProjectController::open(const std::filesystem::path& path) {
+    const std::filesystem::path bundle = bundleOf(path);
+    if (bundle == folder_) {
+        save();
+        return;
+    }
     model::Document document;
     try {
-        document = model::loadProject(folder);
+        document = model::loadProject(bundle);
     } catch (const std::runtime_error& error) {
         throw AppError(error.what());
     } catch (const nlohmann::json::exception& error) {
-        throw AppError("cannot read " + (folder / "project.json").string() + ": " + error.what());
+        throw AppError("cannot read " + (bundle / "project.json").string() + ": " + error.what());
     }
-    untitled_.reset();
-    moveTo(folder, std::move(document));
+    leave();
+    moveTo(bundle, std::move(document));
 }
 
 void ProjectController::save() {
     settleTakes();
-    if (untitled()) {
-        throw AppError("the project has no folder yet, run project.saveAs with a path");
-    }
-    try {
-        model::saveProject(project_.document(), folder_);
-    } catch (const std::runtime_error& error) {
-        throw AppError(error.what());
-    }
+    write();
 }
 
-void ProjectController::saveAs(const std::filesystem::path& folder) {
+void ProjectController::saveAs(const std::filesystem::path& path) {
+    const std::filesystem::path target = namedBundle(path);
     settleTakes();
+    if (target == folder_) {
+        write();
+        return;
+    }
+    if (std::filesystem::exists(target)) {
+        throw AppError(target.string() + " already exists, pass another path");
+    }
+    write();
     try {
-        std::filesystem::create_directories(folder / "audio");
-        if (std::filesystem::absolute(folder) != std::filesystem::absolute(folder_)) {
-            for (const auto& entry : std::filesystem::directory_iterator(folder_ / "audio")) {
-                std::filesystem::copy_file(entry.path(), folder / "audio" / entry.path().filename(),
-                                           std::filesystem::copy_options::skip_existing);
-            }
+        std::filesystem::create_directories(target.parent_path());
+        if (untitled_) {
+            moveBundle(folder_, target);
+        } else {
+            std::filesystem::copy(folder_, target, std::filesystem::copy_options::recursive);
         }
-        model::saveProject(project_.document(), folder);
     } catch (const std::filesystem::filesystem_error& error) {
         throw AppError(error.what());
-    } catch (const std::runtime_error& error) {
+    }
+    folder_ = target;
+    untitled_ = false;
+    scheduleFlush();
+    emit fileChanged();
+}
+
+std::vector<std::string> ProjectController::removeUnusedAudio() {
+    settleTakes();
+    try {
+        return app::removeUnusedAudio(project_.document(), folder_);
+    } catch (const std::filesystem::filesystem_error& error) {
         throw AppError(error.what());
     }
-    folder_ = folder;
-    untitled_.reset();
-    scheduleFlush();
 }
 
 void ProjectController::scheduleFlush() {

@@ -15,4 +15,8 @@ void registerTrackActions(Registry& registry, ProjectController& controller, Nav
 // Clip actions without a clip param act on the selected clips, so their shortcuts work on what the user selected.
 void registerClipActions(Registry& registry, ProjectController& controller, Nav& nav);
 
+void registerProjectFileActions(Registry& registry, ProjectController& controller);
+void registerProjectFolderActions(Registry& registry, ProjectController& controller, Nav& nav);
+void registerExportActions(Registry& registry, ProjectController& controller);
+
 }  // namespace emerick::app

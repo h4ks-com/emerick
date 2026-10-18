@@ -26,6 +26,7 @@ class Nav : public QObject {
     Q_PROPERTY(bool paletteOpen READ paletteOpen WRITE setPaletteOpen NOTIFY changed)
     Q_PROPERTY(bool aboutOpen READ aboutOpen WRITE setAboutOpen NOTIFY changed)
     Q_PROPERTY(bool inspectorOpen READ inspectorOpen WRITE setInspectorOpen NOTIFY changed)
+    Q_PROPERTY(bool projectMenuOpen READ projectMenuOpen WRITE setProjectMenuOpen NOTIFY changed)
     Q_PROPERTY(QStringList selectedClips READ selectedClips WRITE setSelectedClips NOTIFY selectionChanged)
     Q_PROPERTY(double pixelsPerTick READ pixelsPerTick WRITE setPixelsPerTick NOTIFY viewChanged)
     Q_PROPERTY(int trackHeight READ trackHeight WRITE setTrackHeight NOTIFY viewChanged)
@@ -39,6 +40,7 @@ public:
     [[nodiscard]] bool paletteOpen() const { return paletteOpen_; }
     [[nodiscard]] bool aboutOpen() const { return aboutOpen_; }
     [[nodiscard]] bool inspectorOpen() const { return inspectorOpen_; }
+    [[nodiscard]] bool projectMenuOpen() const { return projectMenuOpen_; }
     [[nodiscard]] QStringList selectedClips() const { return selectedClips_; }
     [[nodiscard]] double pixelsPerTick() const { return pixelsPerTick_; }
     [[nodiscard]] int trackHeight() const { return trackHeight_; }
@@ -49,6 +51,7 @@ public:
     void setPaletteOpen(bool value) { assign(paletteOpen_, value, &Nav::changed); }
     void setAboutOpen(bool value) { assign(aboutOpen_, value, &Nav::changed); }
     void setInspectorOpen(bool value) { assign(inspectorOpen_, value, &Nav::changed); }
+    void setProjectMenuOpen(bool value) { assign(projectMenuOpen_, value, &Nav::changed); }
     void setSelectedClips(const QStringList& value) { assign(selectedClips_, value, &Nav::selectionChanged); }
     void setPixelsPerTick(double value) {
         assign(pixelsPerTick_, std::clamp(value, kMinPixelsPerTick, kMaxPixelsPerTick), &Nav::viewChanged);
@@ -70,7 +73,8 @@ public:
                 {"trackHeight", trackHeight_},
                 {"paletteOpen", paletteOpen_},
                 {"aboutOpen", aboutOpen_},
-                {"inspectorOpen", inspectorOpen_}};
+                {"inspectorOpen", inspectorOpen_},
+                {"projectMenuOpen", projectMenuOpen_}};
     }
 
 signals:
@@ -93,6 +97,7 @@ private:
     bool paletteOpen_ = false;
     bool aboutOpen_ = false;
     bool inspectorOpen_ = true;
+    bool projectMenuOpen_ = false;
     QStringList selectedClips_;
     double pixelsPerTick_ = kDefaultPixelsPerTick;
     int trackHeight_ = kDefaultTrackHeight;

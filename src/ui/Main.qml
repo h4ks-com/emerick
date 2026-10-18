@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Controls.Basic
+import QtQuick.Dialogs
 import QtQuick.Layouts
 import Emerick.App
 
@@ -9,8 +10,79 @@ ApplicationWindow {
     width: Theme.windowWidth
     height: Theme.windowHeight
     visible: true
-    title: "Emerick"
+    title: Project.name + (Project.edited ? "  •" : "")
     color: Theme.graphite
+
+    // We set the palette for the stock controls and for the dialogs Qt draws itself on Linux.
+    palette.window: Theme.slate
+    palette.windowText: Theme.ink
+    palette.base: Theme.lift
+    palette.alternateBase: Theme.slate
+    palette.text: Theme.ink
+    palette.placeholderText: Theme.inkDim
+    palette.button: Theme.lift
+    palette.buttonText: Theme.ink
+    palette.brightText: Theme.ink
+    palette.highlight: Theme.rule
+    palette.highlightedText: Theme.ink
+    palette.light: Theme.lift
+    palette.midlight: Theme.rule
+    palette.mid: Theme.rule
+    palette.dark: Theme.inkDim
+    palette.shadow: Theme.graphite
+    palette.toolTipBase: Theme.slate
+    palette.toolTipText: Theme.ink
+
+    menuBar: MenuBar {
+        background: Rectangle {
+            color: Theme.slate
+        }
+        ActionMenu {
+            objectName: "menu.file"
+            title: menuName
+            menuName: "File"
+        }
+    }
+
+    FileDialog {
+        id: fileDialog
+        property string actionId
+        onAccepted: Registry.runWithFile(actionId, selectedFile)
+    }
+    FolderDialog {
+        id: folderDialog
+        property string actionId
+        onAccepted: Registry.runWithFile(actionId, selectedFolder)
+    }
+    MessageDialog {
+        id: confirmDialog
+        property string actionId
+        buttons: MessageDialog.Ok | MessageDialog.Cancel
+        onAccepted: Registry.runAction(actionId, {confirm: true})
+    }
+    Connections {
+        target: Registry
+        function onFileDialogRequested(request) {
+            if (request.mode === App.Folder) {
+                folderDialog.actionId = request.id
+                folderDialog.title = request.title
+                folderDialog.open()
+                return
+            }
+            fileDialog.actionId = request.id
+            fileDialog.title = request.title
+            fileDialog.fileMode = request.mode === App.Save ? FileDialog.SaveFile : FileDialog.OpenFile
+            fileDialog.nameFilters = request.nameFilter ? [request.nameFilter] : []
+            fileDialog.defaultSuffix = request.suffix
+            fileDialog.open()
+        }
+        function onConfirmRequested(request) {
+            confirmDialog.actionId = request.id
+            confirmDialog.title = request.title
+            confirmDialog.text = request.text
+            confirmDialog.open()
+        }
+    }
 
     Instantiator {
         model: Registry.shortcuts
@@ -33,14 +105,41 @@ ApplicationWindow {
             height: Theme.hairline
             color: Theme.rule
         }
-        ChromeButton {
-            objectName: "view.toggleInspector"
+        Row {
             anchors.left: parent.left
             anchors.leftMargin: Theme.space3
             anchors.verticalCenter: parent.verticalCenter
-            iconName: "sidebar-simple"
-            active: Nav.inspectorOpen
-            activeColor: Theme.ink
+            spacing: Theme.space1
+            ChromeButton {
+                objectName: "view.toggleInspector"
+                iconName: "sidebar-simple"
+                active: Nav.inspectorOpen
+                activeColor: Theme.ink
+            }
+            ChromeButton {
+                id: projectButton
+                objectName: "project.showMenu"
+                iconName: "file"
+                active: Nav.projectMenuOpen
+                activeColor: Theme.ink
+                ActionMenu {
+                    objectName: "menu.project"
+                    menuName: "Project"
+                    y: projectButton.height + Theme.space1
+                    visible: Nav.projectMenuOpen
+                    closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutsideParent
+                    onClosed: Nav.projectMenuOpen = false
+                }
+            }
+            Label {
+                anchors.verticalCenter: parent.verticalCenter
+                leftPadding: Theme.space1
+                text: window.title
+                color: Theme.inkDim
+                font.pixelSize: Theme.textLabel
+                elide: Text.ElideRight
+                width: Math.min(implicitWidth, Theme.labelWidth)
+            }
         }
         Row {
             anchors.centerIn: parent

@@ -14,7 +14,7 @@ Rectangle {
         Layout.topMargin: Theme.space2
     }
 
-    component ChannelBox: SpinBox {
+    component ChannelBox: ThemeSpinBox {
         required property string actionId
         required property string trackId
         objectName: actionId + ":" + trackId + ":channel"

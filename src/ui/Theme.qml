@@ -42,6 +42,7 @@ QtObject {
     readonly property int sidebarWidth: 200
     readonly property int labelWidth: 160
     readonly property int paletteWidth: 560
+    readonly property int menuWidth: 240
     readonly property int paletteTop: 72
     readonly property int paletteListHeight: 360
     readonly property int windowWidth: 1280
@@ -85,13 +86,18 @@ QtObject {
     readonly property color beatLine: Qt.rgba(1, 1, 1, 0.03)
 
     // Track icons are Phosphor names; an icon we do not bundle shows as a note.
-    readonly property var icons: ["circle", "gear-six", "guitar", "magnifying-glass", "music-note", "music-notes", "pause", "piano-keys", "play", "sidebar-simple", "skip-back", "squares-four", "stop", "waveform"]
+    readonly property var icons: ["circle", "file", "gear-six", "guitar", "magnifying-glass", "music-note", "music-notes", "pause", "piano-keys", "play", "sidebar-simple", "skip-back", "squares-four", "stop", "waveform"]
     function iconSource(name) {
         return "icons/" + (icons.indexOf(name) >= 0 ? name : "music-note") + ".svg"
     }
 
-    // Registry shortcuts use Qt's portable "Ctrl+" spelling, which macOS maps to Command.
+    // Registry shortcuts use Qt's portable "Ctrl+" spelling, which macOS maps to Command and writes as ⇧⌘S.
     function shortcutText(sequence) {
-        return Qt.platform.os === "osx" ? sequence.replace("Ctrl+", "⌘") : sequence
+        if (Qt.platform.os !== "osx") {
+            return sequence
+        }
+        const keys = sequence.split("+")
+        const key = keys.pop()
+        return (keys.includes("Alt") ? "⌥" : "") + (keys.includes("Shift") ? "⇧" : "") + (keys.includes("Ctrl") ? "⌘" : "") + key
     }
 }

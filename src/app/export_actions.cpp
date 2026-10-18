@@ -1,0 +1,144 @@
+#include <algorithm>
+#include <filesystem>
+#include <ranges>
+#include <string>
+#include <vector>
+
+#include "emerick/app/action_params.hpp"
+#include "emerick/app/midi_export.hpp"
+#include "emerick/app/project_actions.hpp"
+#include "emerick/app/project_state.hpp"
+#include "emerick/app/session_mapping.hpp"
+#include "emerick/app/stem_export.hpp"
+
+namespace emerick::app {
+
+namespace {
+
+// Listed tracks always export; without a list, skipMuted leaves the muted ones out.
+engine::Session exportSession(ProjectController& controller, const Registry& registry, const Json& params,
+                              bool skipMuted) {
+    const model::Document& document = controller.project().document();
+    engine::Session session = toSession(document, registry, controller.folder());
+    std::vector<std::string> ids;
+    if (const auto requested = optionalParam<std::vector<std::string>>(params, "tracks")) {
+        ids = *requested | std::views::transform([&](const std::string& track) {
+            return findTrackByIdOrName(controller.project(), track).value;
+        }) | std::ranges::to<std::vector>();
+    } else {
+        ids = document.tracks |
+              std::views::filter([&](const model::Track& track) { return !skipMuted || !track.mute; }) |
+              std::views::transform([](const model::Track& track) { return track.id.value; }) |
+              std::ranges::to<std::vector>();
+    }
+    std::erase_if(session.tracks,
+                  [&](const engine::Track& track) { return std::ranges::find(ids, track.id) == ids.end(); });
+    return session;
+}
+
+Json fileList(const std::vector<std::filesystem::path>& files) {
+    return files | std::views::transform([](const std::filesystem::path& file) { return file.string(); }) |
+           std::ranges::to<Json::array_t>();
+}
+
+// Stems carry track numbers, so we delete an earlier export's WAVs and MIDI file, or a reordered project would leave
+// stale stems beside the new ones.
+void removeEarlierExport(const std::filesystem::path& folder) {
+    if (!std::filesystem::is_directory(folder)) {
+        return;
+    }
+    for (const auto& entry : std::filesystem::directory_iterator(folder)) {
+        if (entry.is_regular_file() && (entry.path().extension() == ".wav" || entry.path().filename() == "MIDI.mid")) {
+            std::filesystem::remove(entry.path());
+        }
+    }
+}
+
+std::vector<std::filesystem::path> exportForLogic(ProjectController& controller, const Registry& registry,
+                                                  const engine::Session& session, const std::filesystem::path& folder) {
+    const model::Document& document = controller.project().document();
+    removeEarlierExport(folder);
+    std::vector<std::filesystem::path> files;
+    const bool hasAudio = std::ranges::any_of(
+        session.tracks, [](const engine::Track& track) { return track.kind == engine::TrackKind::audio; });
+    if (hasAudio && projectEnd(document) > 0) {
+        files = exportStems(session, document, folder, controller.sampleRate(), true);
+    }
+    files.push_back(folder / "MIDI.mid");
+    exportMidi(session, document, registry, controller.name().toStdString(), files.back());
+    return files;
+}
+
+}  // namespace
+
+void registerExportActions(Registry& registry, ProjectController& controller) {
+    const Json tracksSchema{{"tracks", {{"type", "array"}}}};
+    registry.addAction({.id = "export.stems",
+                        .title = "Export stems",
+                        .aliases = {"bounce tracks", "render stems"},
+                        .category = "Export",
+                        .schema = {{"required", {"folder"}}, {"properties", tracksSchema}},
+                        .run =
+                            [&controller, &registry](const Json& params) {
+                                const std::filesystem::path folder{param<std::string>(params, "folder")};
+                                const auto files =
+                                    exportStems(exportSession(controller, registry, params, false),
+                                                controller.project().document(), folder, controller.sampleRate());
+                                return Json{{"files", fileList(files)},
+                                            {"end", positionState(projectEnd(controller.project().document()),
+                                                                  controller.project().document().tempo)}};
+                            },
+                        .menus = {kFileMenu},
+                        .dialog = FileDialog{.param = "folder", .mode = FileDialogMode::Folder}});
+    registry.addAction(
+        {.id = "export.mix",
+         .title = "Export mix",
+         .aliases = {"bounce mix", "render mix"},
+         .category = "Export",
+         .schema = {{"required", {"path"}}},
+         .run =
+             [&controller, &registry](const Json& params) {
+                 const std::filesystem::path file{param<std::string>(params, "path")};
+                 exportMix(toSession(controller.project().document(), registry, controller.folder()),
+                           controller.project().document(), file, controller.sampleRate());
+                 return Json{{"file", file.string()}};
+             },
+         .menus = {kFileMenu},
+         .dialog = FileDialog{
+             .param = "path", .mode = FileDialogMode::Save, .nameFilter = "WAV files (*.wav)", .suffix = "wav"}});
+    registry.addAction({.id = "export.logic",
+                        .title = "Export for Logic",
+                        .aliases = {"logic pro", "send to logic"},
+                        .keywords = {"stems", "midi file", "markers"},
+                        .category = "Export",
+                        .schema = {{"required", {"folder"}}, {"properties", tracksSchema}},
+                        .run =
+                            [&controller, &registry](const Json& params) {
+                                const std::filesystem::path folder =
+                                    std::filesystem::path{param<std::string>(params, "folder")} /
+                                    (controller.name().toStdString() + " for Logic");
+                                const auto files = exportForLogic(
+                                    controller, registry, exportSession(controller, registry, params, true), folder);
+                                return Json{{"folder", folder.string()}, {"files", fileList(files)}};
+                            },
+                        .menus = {kFileMenu, kProjectMenu},
+                        .dialog = FileDialog{.param = "folder", .mode = FileDialogMode::Folder}});
+    registry.addAction(
+        {.id = "export.midi",
+         .title = "Export MIDI file",
+         .aliases = {"save midi", "standard midi file"},
+         .category = "Export",
+         .schema = {{"required", {"path"}}, {"properties", tracksSchema}},
+         .run =
+             [&controller, &registry](const Json& params) {
+                 const std::filesystem::path file{param<std::string>(params, "path")};
+                 exportMidi(exportSession(controller, registry, params, true), controller.project().document(),
+                            registry, controller.name().toStdString(), file);
+                 return Json{{"file", file.string()}};
+             },
+         .menus = {kFileMenu},
+         .dialog = FileDialog{
+             .param = "path", .mode = FileDialogMode::Save, .nameFilter = "MIDI files (*.mid)", .suffix = "mid"}});
+}
+
+}  // namespace emerick::app

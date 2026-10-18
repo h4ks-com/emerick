@@ -2,13 +2,11 @@
 
 #include <QObject>
 #include <QString>
-#include <QTemporaryDir>
 #include <QTimer>
 #include <QVariantMap>
 #include <filesystem>
 #include <functional>
 #include <memory>
-#include <optional>
 #include <set>
 #include <string>
 #include <vector>
@@ -35,28 +33,43 @@ class ProjectController : public QObject {
     Q_PROPERTY(QVariantMap routeChoices READ routeChoices NOTIFY devicesChanged)
     Q_PROPERTY(int midiChannelCount READ midiChannelCount CONSTANT)
     Q_PROPERTY(int trackColorCount READ trackColorCount CONSTANT)
+    Q_PROPERTY(QString name READ name NOTIFY fileChanged)
+    Q_PROPERTY(bool edited READ edited NOTIFY fileChanged)
 
 public:
+    // New projects go to projectsFolder, by default Emerick in the platform's music folder. When the app quits we
+    // leave the project the way newProject does.
     ProjectController(const Registry& registry, std::unique_ptr<engine::AudioBackend> audio,
                       std::unique_ptr<engine::MidiBackend> midi, engine::Engine::Options options = {},
-                      QObject* parent = nullptr);
+                      const std::filesystem::path& projectsFolder = {}, QObject* parent = nullptr);
 
     [[nodiscard]] model::Project& project() { return project_; }
     [[nodiscard]] const model::Project& project() const { return project_; }
     [[nodiscard]] engine::Engine& engine() { return engine_; }
     [[nodiscard]] const engine::Engine& engine() const { return engine_; }
+    // The project bundle, a folder named "<name>.emerick" holding project.json and audio/.
     [[nodiscard]] const std::filesystem::path& folder() const { return folder_; }
-    [[nodiscard]] bool untitled() const { return untitled_.has_value(); }
+    [[nodiscard]] const std::filesystem::path& projectsFolder() const { return projectsFolder_; }
+    // An untitled project keeps the name we gave it until saveAs names it.
+    [[nodiscard]] bool untitled() const { return untitled_; }
+    [[nodiscard]] QString name() const;
+    // Edited means project.json lags the document; autosave writes it about 2 s after the last edit.
+    [[nodiscard]] bool edited() const { return edited_; }
     [[nodiscard]] double sampleRate() const { return options_.sampleRate; }
     [[nodiscard]] const std::string& sessionError() const { return sessionError_; }
     // A damaged take still becomes a clip when the engine kept any of it, and its error stays listed here.
     [[nodiscard]] const std::vector<engine::SessionError>& takeErrors() const { return takeErrors_; }
 
-    // Each of these first stops the transport and keeps every pending take in the current project.
+    // Each of these first stops the transport and keeps every pending take in the current project. Leaving a
+    // project saves it, and an untitled project with nothing in it is deleted.
     void newProject();
-    void open(const std::filesystem::path& folder);
+    // Takes the bundle or the project.json inside it.
+    void open(const std::filesystem::path& path);
     void save();
-    void saveAs(const std::filesystem::path& folder);
+    // Adds the .emerick suffix when it is missing. An untitled bundle moves to the new path, any other is copied.
+    void saveAs(const std::filesystem::path& path);
+    // Deletes the files in audio/ that no clip uses and returns their names.
+    std::vector<std::string> removeUnusedAudio();
 
     // Each waits briefly until the engine reports the commanded state.
     void play();
@@ -98,8 +111,16 @@ signals:
     void transportChanged();
     void projectChanged();
     void devicesChanged();
+    // The folder, the name or the edited flag changed.
+    void fileChanged();
 
 private:
+    void createUntitled();
+    void leave();
+    void discardIfEmpty();
+    void write();
+    void autosave();
+    void setEdited(bool value);
     void scheduleFlush();
     void settleTakes();
     void waitForEngine(const std::function<bool()>& reached);
@@ -112,8 +133,11 @@ private:
     engine::Engine::Options options_;
     engine::Engine engine_;
     model::Project project_;
-    std::optional<QTemporaryDir> untitled_;
+    std::filesystem::path projectsFolder_;
     std::filesystem::path folder_;
+    bool untitled_ = false;
+    bool edited_ = false;
+    QTimer autosaveTimer_;
     std::set<std::string> sessionTracks_;
     std::set<std::string> sessionAudioTracks_;
     std::set<std::string> pendingAudioTakes_;

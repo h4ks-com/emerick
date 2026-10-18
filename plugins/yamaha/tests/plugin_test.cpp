@@ -6,6 +6,7 @@
 #include "../src/lane_blocks.hpp"
 #include "emerick/app/registry.hpp"
 #include "emerick/yamaha/chart.hpp"
+#include "midi_file.hpp"
 #include "yamaha_rig.hpp"
 
 using namespace emerick;
@@ -130,6 +131,31 @@ TEST_CASE("a style track presses section buttons on its MIDI out channel") {
           std::vector<Bytes>{{0xB0, 12, 127}, {0xB0, 12, 0}, {0xB0, 32, 127}, {0xB0, 32, 0}});
     rig.registry.setSetting("yamaha.controllerChannel", 2);
     CHECK(bytesOf(played(rig, id)).at(0).at(0) == 0xB1);
+}
+
+TEST_CASE("a MIDI export turns chords and sections into markers and chords into block chord notes") {
+    YamahaRig rig;
+    const std::string chords = rig.addTrack("yamaha.chord");
+    const std::string style = rig.addTrack("yamaha.style");
+    rig.run("yamaha.chord.set", {{"track", chords}, {"at", 0}, {"chord", "C"}});
+    rig.run("yamaha.chord.set", {{"track", chords}, {"at", kBar}, {"chord", "G7"}});
+    rig.run("yamaha.section.set", {{"track", style}, {"at", 0}, {"kind", "main"}, {"variation", 1}});
+    rig.run("yamaha.section.set", {{"track", style}, {"at", kBar}, {"name", "Ending 2"}});
+
+    const auto file = rig.path("song.mid");
+    rig.run("export.midi", {{"path", file.string()}});
+    const libremidi::reader midi = app::test::readMidiFile(file);
+    REQUIRE(midi.tracks.size() == 3);
+    CHECK(app::test::metaTexts(midi.tracks.at(0), libremidi::meta_event_type::MARKER) ==
+          std::vector<std::string>{"C, Main B", "G7, Ending 2"});
+    const auto markerTicks = midi.tracks.at(0) | std::views::filter([](const libremidi::track_event& event) {
+                                 return event.m.get_meta_event_type() == libremidi::meta_event_type::MARKER;
+                             }) |
+                             std::views::transform(&libremidi::track_event::tick) | std::ranges::to<std::vector>();
+    CHECK(markerTicks == std::vector<int>{0, static_cast<int>(kBar)});
+    CHECK(midi.tracks.at(1).at(1).m.bytes == libremidi::midi_bytes{0x93, 48, 90});
+    CHECK(app::test::metaTexts(midi.tracks.at(2), libremidi::meta_event_type::TRACK_NAME) ==
+          std::vector<std::string>{"yamaha.style"});
 }
 
 TEST_CASE("chord actions set, move and delete with undo and redo") {

@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <format>
 #include <memory>
 #include <ranges>
 #include <set>
@@ -109,7 +110,7 @@ core::Ticks projectEnd(const model::Document& document) {
 }
 
 std::vector<std::filesystem::path> exportStems(const engine::Session& session, const model::Document& document,
-                                               const std::filesystem::path& folder, double sampleRate) {
+                                               const std::filesystem::path& folder, double sampleRate, bool numbered) {
     const engine::Frames frames = renderFrames(document, sampleRate);
     std::vector<engine::Track> tracks = audioTracks(session);
     if (tracks.empty()) {
@@ -119,8 +120,14 @@ std::vector<std::filesystem::path> exportStems(const engine::Session& session, c
     std::vector<std::filesystem::path> files;
     std::set<std::string> used;
     for (engine::Track& track : tracks) {
-        const model::Track* source = model::findTrack(document, model::TrackId{track.id});
-        std::string stem = fileStem(source != nullptr ? source->name : track.id);
+        const auto source = std::ranges::find(document.tracks, model::TrackId{track.id}, &model::Track::id);
+        std::string stem = fileStem(source != document.tracks.end() ? source->name : track.id);
+        if (numbered) {
+            const std::string number = std::format("{:02} ", source - document.tracks.begin() + 1);
+            if (!stem.starts_with(number)) {
+                stem.insert(0, number);
+            }
+        }
         if (!used.insert(stem).second) {
             stem += "-" + track.id;
         }

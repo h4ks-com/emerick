@@ -198,9 +198,8 @@ TEST_CASE("save then open restores everything") {
     rig.run("project.setTempo", {{"bpm", 96}});
     writeConstant(rig.path("ones.wav"), 4800, 1.0F);
     rig.run("clip.import", {{"track", id}, {"path", rig.path("ones.wav").string()}});
-    CHECK_THROWS_AS(rig.run("project.save"), AppError);
 
-    const auto folder = rig.path("song");
+    const auto folder = rig.path("song.emerick");
     const Json saved = rig.run("project.saveAs", {{"path", folder.string()}});
     CHECK(saved.at("untitled") == false);
     CHECK(std::filesystem::exists(folder / "audio" / "ones.wav"));

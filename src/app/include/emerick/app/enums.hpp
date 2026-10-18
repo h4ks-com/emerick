@@ -10,8 +10,14 @@ namespace emerick::app {
 
 Q_NAMESPACE
 
-enum class SettingType : std::uint8_t { Integer, Number, String, Boolean, Color, Choice };
+enum class SettingType : std::uint8_t { Integer, Number, String, Boolean, Color, Choice, List };
 Q_ENUM_NS(SettingType)
+
+enum class FileDialogMode : std::uint8_t { Open, Save, Folder };
+Q_ENUM_NS(FileDialogMode)
+
+enum class MenuRow : std::uint8_t { Command, Submenu };
+Q_ENUM_NS(MenuRow)
 
 enum class EntryKind : std::uint8_t { Action, Setting };
 Q_ENUM_NS(EntryKind)

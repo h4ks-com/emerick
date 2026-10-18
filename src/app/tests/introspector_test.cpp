@@ -31,6 +31,7 @@ Window {
         TextField { objectName: "test.field"; text: "before" }
         Rectangle { objectName: "test.hidden"; width: 10; height: 10; visible: false }
         Item { Label { objectName: "test.label"; text: "Inner" } }
+        ComboBox { objectName: "test.picker"; model: ["One", "Two"] }
     }
 }
 )";
@@ -102,6 +103,13 @@ TEST_CASE("invoke clicks a button through its own method") {
     invokeItem("test.button");
     CHECK(itemProperty("test.button", "clicks") == 1);
     CHECK_THROWS_AS(invokeItem("test.hidden"), AppError);
+}
+
+TEST_CASE("invoke opens a picker's list the way a click does") {
+    Fixture fixture;
+    invokeItem("test.picker");
+    const QObject* picker = fixture.engine.rootObjects().front()->findChild<QObject*>("test.picker");
+    CHECK(picker->property("popup").value<QObject*>()->property("visible").toBool());
 }
 
 TEST_CASE("waiting for an item returns once it shows with its geometry") {

@@ -52,7 +52,7 @@ Rectangle {
             roleValue: App.Integer
             SettingRow {
                 id: integerRow
-                SpinBox {
+                ThemeSpinBox {
                     objectName: integerRow.modelData.id
                     enabled: !integerRow.modelData.readOnly
                     from: integerRow.modelData.minimum
@@ -104,7 +104,7 @@ Rectangle {
             roleValue: App.Choice
             SettingRow {
                 id: choiceRow
-                ComboBox {
+                ThemeComboBox {
                     objectName: choiceRow.modelData.id
                     enabled: !choiceRow.modelData.readOnly
                     model: choiceRow.modelData.choices

@@ -3,6 +3,7 @@
 #include <QObject>
 #include <QSettings>
 #include <QString>
+#include <QUrl>
 #include <QVariant>
 #include <filesystem>
 #include <functional>
@@ -28,8 +29,29 @@ struct AppError : std::runtime_error {
     using std::runtime_error::runtime_error;
 };
 
+// The menu bar's File menu binds the shortcuts of its actions, so the window skips them.
+inline constexpr const char* kFileMenu = "File";
+// The menu behind the document button in the header.
+inline constexpr const char* kProjectMenu = "Project";
+
 // We give every field a default so callers' designated initializers can skip it; this check calls those defaults
 // redundant. NOLINTBEGIN(readability-redundant-member-init)
+
+// A UI activation without params asks for this param with a file dialog; an agent passes it.
+struct FileDialog {
+    std::string param = {};
+    FileDialogMode mode = FileDialogMode::Open;
+    std::string nameFilter = {};
+    std::string suffix = {};
+};
+
+// One entry of an action's submenu, such as one recent project.
+struct MenuChoice {
+    std::string id = {};
+    std::string title = {};
+    Json params = {};
+};
+
 struct Action {
     std::string id = {};
     std::string title = {};
@@ -41,6 +63,16 @@ struct Action {
     Json schema = {};
     std::function<Json(const Json& params)> run = {};
     std::string location = {};
+    std::vector<std::string> menus = {};
+    std::optional<FileDialog> dialog = {};
+    // A UI activation asks this question first and runs the action with confirm: true.
+    std::string confirm = {};
+    std::function<std::vector<MenuChoice>()> submenu = {};
+};
+
+struct Marker {
+    core::Ticks at = 0;
+    std::string text = {};
 };
 
 struct Setting {
@@ -84,6 +116,8 @@ struct TrackType {
     RouteSections routes = {};
     std::function<engine::Track(const model::Track&, const PlaybackContext&)> toEngine = {};
     std::function<void(model::Track&, const engine::RecordedTake&, const TakeContext&)> fromTake = {};
+    // Names along the timeline, such as chords, that a MIDI export writes as markers.
+    std::function<std::vector<Marker>(const model::Track&)> markers = {};
 };
 
 struct MidiDeviceProfile {
@@ -119,6 +153,7 @@ class Registry : public QObject {
     Q_OBJECT
     Q_PROPERTY(QVariantMap settings READ settingsMap NOTIFY settingsChanged)
     Q_PROPERTY(QVariantList shortcuts READ shortcuts CONSTANT)
+    Q_PROPERTY(QVariantMap menus READ menus NOTIFY settingsChanged)
 
 public:
     // An empty path uses the platform's default QSettings store.
@@ -154,17 +189,25 @@ public:
 
     [[nodiscard]] QVariantMap settingsMap() const;
     [[nodiscard]] QVariantList shortcuts() const;
+    // Each menu's items in registration order. Only File menu items bind their shortcut.
+    [[nodiscard]] QVariantMap menus() const;
     Q_INVOKABLE QVariantList palette(const QString& query) const;
     Q_INVOKABLE QVariantMap actionInfo(const QString& id) const;
     Q_INVOKABLE QVariantList sections(const QString& parent) const;
     Q_INVOKABLE QVariantList settingsAt(const QString& location) const;
+    // The UI runs actions through here. An action with a file dialog or a confirm question asks the user first and
+    // runs from the answer.
     Q_INVOKABLE void activate(const QString& id);
     // QML gets an empty value for a failed action; we log the failure.
     Q_INVOKABLE QVariant runAction(const QString& id, const QVariantMap& params) const;
+    // Runs the action with the file a dialog picked as its dialog param.
+    Q_INVOKABLE QVariant runWithFile(const QString& id, const QUrl& file) const;
     Q_INVOKABLE bool setSettingValue(const QString& id, const QVariant& value);
 
 signals:
     void settingsChanged();
+    void fileDialogRequested(const QVariantMap& request);
+    void confirmRequested(const QVariantMap& request);
 
 private:
     std::unique_ptr<QSettings> store_;

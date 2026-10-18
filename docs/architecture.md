@@ -24,6 +24,13 @@ The engine never sees the model. `emerick_app` turns the document into an engine
 - **Registry.** Every action, setting, track type, MIDI device profile and plugin QML component is registered once in `app::Registry`. Menus, shortcuts, the Cmd+K palette, MCP tools and Lua all read the registry. A control's QML `objectName` is its registry id.
 - **Locations.** Each registry entry can name a UI location (`settings.audio.bufferSize`). Revealing a location changes the `Nav` state object only; QML binds to `Nav`, so the same call works for a click, the palette, an agent and a test.
 
+## Projects
+
+- A project is a bundle: a folder named `<Name>.emerick` holding `project.json` and `audio/`. On macOS the app's Info.plist declares it a document package, so Finder shows it as one file and opens it in Emerick.
+- A new project starts as `Untitled N.emerick` in the `Emerick` folder of the platform music folder, so every take lands in a real folder. Autosave writes `project.json` about 2 s after the last edit or take. Leaving an untitled project that holds nothing deletes it.
+- An action that takes a path, such as `project.open` or `export.logic`, opens a file dialog when the UI runs it without one. An agent passes the path, and a missing one is an error naming the param. An action that deletes files asks first in the UI; an agent passes `confirm: true`.
+- `export.logic` writes `<Name> for Logic/`: one numbered WAV per audio track from bar 1 to the project end, and `MIDI.mid` with the tempo, the meter, one named track per MIDI track and markers from the track types that name the timeline, such as chords and Style sections.
+
 ## Engine threading
 
 1. The UI thread builds an immutable `Session` snapshot once per event loop turn that changed the project, and swaps it in by atomic pointer at the next block. Retired snapshots return to the UI thread for deletion.

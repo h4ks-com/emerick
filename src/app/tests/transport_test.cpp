@@ -60,7 +60,7 @@ TEST_CASE("saving while recording stops the transport and keeps every take") {
                      rig.audio->hostTimeAt(rig.audio->processedFrames()));
     rig.audio->process(4800);
 
-    const auto folder = rig.path("song.emerick");
+    const auto folder = rig.path("song.erk");
     const Json saved = rig.run("project.saveAs", {{"path", folder.string()}});
     CHECK(rig.controller->recording() == false);
     CHECK(saved.at("tracks").at(0).at("clips").size() == 1);
@@ -103,7 +103,7 @@ TEST_CASE("saving right after recording writes the take into project.json") {
     ProjectRig rig;
     const std::string vox = rig.run("track.addAudio", {{"name", "Vox"}}).at("id");
     rig.run("track.setArm", {{"track", vox}, {"value", true}});
-    const auto folder = rig.path("song.emerick");
+    const auto folder = rig.path("song.erk");
     rig.run("project.saveAs", {{"path", folder.string()}});
     rig.run("transport.record");
     rig.audio->process(4800);

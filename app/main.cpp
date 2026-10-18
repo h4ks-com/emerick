@@ -26,7 +26,7 @@ using namespace emerick::app;
 
 namespace {
 
-// Finder hands a double-clicked .emerick bundle to the running app as a file open event.
+// Finder hands a double-clicked .erk bundle to the running app as a file open event.
 class FileOpenFilter final : public QObject {
 public:
     explicit FileOpenFilter(const Registry& registry) : registry_(registry) {}

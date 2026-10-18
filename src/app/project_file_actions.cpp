@@ -97,7 +97,7 @@ void registerProjectFileActions(Registry& registry, ProjectController& controlle
                         .menus = {kFileMenu, kProjectMenu},
                         .dialog = FileDialog{.param = "path",
                                              .mode = FileDialogMode::Open,
-                                             .nameFilter = "Emerick projects (*.emerick project.json)"}});
+                                             .nameFilter = "Emerick projects (*.erk project.json)"}});
     registry.addAction({.id = "project.openRecent",
                         .title = "Open recent project",
                         .aliases = {"recent projects"},
@@ -136,8 +136,8 @@ void registerProjectFileActions(Registry& registry, ProjectController& controlle
                         .menus = {kFileMenu, kProjectMenu},
                         .dialog = FileDialog{.param = "path",
                                              .mode = FileDialogMode::Save,
-                                             .nameFilter = "Emerick projects (*.emerick)",
-                                             .suffix = "emerick"}});
+                                             .nameFilter = "Emerick projects (*.erk)",
+                                             .suffix = "erk"}});
 }
 
 void registerProjectFolderActions(Registry& registry, ProjectController& controller, Nav& nav) {

@@ -115,7 +115,7 @@ TEST_CASE("the voice table loads into the project, saves, reopens and undoes") {
     rig.run("project.saveAs", {{"path", rig.path("song").string()}});
     rig.run("project.new");
     CHECK(rig.controller->project().document().pluginData.empty());
-    rig.run("project.open", {{"path", rig.path("song.emerick").string()}});
+    rig.run("project.open", {{"path", rig.path("song.erk").string()}});
     CHECK(rig.controller->project().document().pluginData.at("yamaha").at("voices") == loaded.at("voices"));
 
     rig.run("yamaha.voices.load", {{"path", dataPath("voices.txt")}});

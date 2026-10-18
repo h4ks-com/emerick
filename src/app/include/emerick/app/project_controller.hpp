@@ -47,7 +47,7 @@ public:
     [[nodiscard]] const model::Project& project() const { return project_; }
     [[nodiscard]] engine::Engine& engine() { return engine_; }
     [[nodiscard]] const engine::Engine& engine() const { return engine_; }
-    // The project bundle, a folder named "<name>.emerick" holding project.json and audio/.
+    // The project bundle, a folder named "<name>.erk" holding project.json and audio/.
     [[nodiscard]] const std::filesystem::path& folder() const { return folder_; }
     [[nodiscard]] const std::filesystem::path& projectsFolder() const { return projectsFolder_; }
     // An untitled project keeps the name we gave it until saveAs names it.
@@ -66,7 +66,7 @@ public:
     // Takes the bundle or the project.json inside it.
     void open(const std::filesystem::path& path);
     void save();
-    // Adds the .emerick suffix when it is missing. An untitled bundle moves to the new path, any other is copied.
+    // Adds the .erk suffix when it is missing. An untitled bundle moves to the new path, any other is copied.
     void saveAs(const std::filesystem::path& path);
     // Deletes the files in audio/ that no clip uses and returns their names.
     std::vector<std::string> removeUnusedAudio();

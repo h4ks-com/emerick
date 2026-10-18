@@ -1,5 +1,5 @@
 qt_add_executable(emerick MACOSX_BUNDLE main.cpp)
-# Info.plist declares .emerick bundles as Emerick document packages, so Finder shows one as a file.
+# Info.plist declares .erk bundles as Emerick document packages, so Finder shows one as a file.
 set_target_properties(emerick PROPERTIES
     MACOSX_BUNDLE_INFO_PLIST ${CMAKE_CURRENT_SOURCE_DIR}/Info.plist.in
     MACOSX_BUNDLE_BUNDLE_NAME Emerick

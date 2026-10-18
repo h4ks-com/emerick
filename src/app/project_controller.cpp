@@ -202,7 +202,12 @@ void ProjectController::saveAs(const std::filesystem::path& path) {
 std::vector<std::string> ProjectController::removeUnusedAudio() {
     settleTakes();
     try {
-        return app::removeUnusedAudio(project_.document(), folder_);
+        auto removed = app::removeUnusedAudio(project_.document(), folder_);
+        // We clear the undo history, because an undo could bring back a clip whose file is gone.
+        if (!removed.empty()) {
+            project_.reset(project_.document());
+        }
+        return removed;
     } catch (const std::filesystem::filesystem_error& error) {
         throw AppError(error.what());
     }

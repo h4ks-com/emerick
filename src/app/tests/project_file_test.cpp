@@ -212,4 +212,5 @@ TEST_CASE("remove unused audio deletes only files no clip uses after the agent c
     CHECK(result.at("removed") == Json::array({"drop.wav"}));
     CHECK(std::filesystem::exists(rig.controller->folder() / "audio" / "keep.wav"));
     CHECK_FALSE(std::filesystem::exists(rig.controller->folder() / "audio" / "drop.wav"));
+    CHECK_FALSE(rig.controller->project().undo());
 }

@@ -12,6 +12,7 @@ namespace emerick::app {
 namespace {
 
 constexpr int kMaxPort = 65535;
+constexpr int kMaxRecordingDelay = 8192;
 
 Json revealChain(Registry& registry, const std::string& id) { return Json{{"chain", registry.reveal(id).chain}}; }
 
@@ -158,7 +159,7 @@ void registerCoreActions(Registry& registry, Nav& nav, const Backends& backends)
                          .type = SettingType::Choice,
                          .defaultValue = 256,
                          .choices = {64, 128, 256, 512, 1024, 2048},
-                         .hint = "Frames per block",
+                         .hint = "Frames the device processes per cycle. Restart Emerick to apply",
                          .location = "settings.audio"});
     registry.addSetting({.id = "audio.sampleRate",
                          .title = "Sample rate",
@@ -167,7 +168,18 @@ void registerCoreActions(Registry& registry, Nav& nav, const Backends& backends)
                          .type = SettingType::Choice,
                          .defaultValue = 48000,
                          .choices = {44100, 48000, 88200, 96000},
-                         .hint = "Restart Emerick to apply",
+                         .hint = "Rate every device in the project runs at. Restart Emerick to apply",
+                         .location = "settings.audio"});
+    registry.addSetting({.id = "audio.recordingDelay",
+                         .title = "Recording delay",
+                         .aliases = {"latency compensation", "record offset"},
+                         .category = "Settings / Audio",
+                         .type = SettingType::Integer,
+                         .defaultValue = 0,
+                         .minimum = 0,
+                         .maximum = kMaxRecordingDelay,
+                         .hint = "Samples to move recorded audio earlier, beyond the latency the device reports. "
+                                 "Restart Emerick to apply",
                          .location = "settings.audio"});
 }
 

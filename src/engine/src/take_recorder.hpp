@@ -25,11 +25,12 @@ private:
 };
 
 // We call begin, the writes and end on the audio thread and poll on the writer thread, which writes WAV or collects
-// MIDI.
+// MIDI. An audio take skips its first captureOffset frames, the round trip from our output back to our input, so it
+// lines up with what the player heard.
 class TakeRecorder {
 public:
     TakeRecorder(std::string trackId, TrackKind kind, int channels, double sampleRate, Frames maxBlock,
-                 std::filesystem::path folder, TakeInbox& inbox);
+                 Frames captureOffset, std::filesystem::path folder, TakeInbox& inbox);
     ~TakeRecorder();
     TakeRecorder(const TakeRecorder&) = delete;
     TakeRecorder& operator=(const TakeRecorder&) = delete;
@@ -63,11 +64,13 @@ private:
     TrackKind trackKind_;
     int channels_;
     double sampleRate_;
+    Frames captureOffset_;
     std::filesystem::path folder_;
     TakeInbox& inbox_;
     SpscRing ring_;
 
     bool recording_ = false;
+    Frames framesToSkip_ = 0;
     std::uint32_t dropped_ = 0;
     std::vector<float> interleaved_;
 

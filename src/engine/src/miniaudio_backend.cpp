@@ -3,17 +3,14 @@
 #include <miniaudio.h>
 
 #include <algorithm>
+#include <array>
 #include <cstring>
 #include <optional>
 #include <stdexcept>
 
 #include "clock.hpp"
 #include "emerick/engine/audio_backend.hpp"
-
-#ifdef __APPLE__
-#include "device_list_listener.hpp"
-#include "private_aggregate.hpp"
-#endif
+#include "interleaved_io.hpp"
 
 namespace emerick::engine {
 
@@ -26,8 +23,6 @@ void toChars(const std::string& text, std::span<char> chars) { text.copy(chars.d
 std::string idText(const ma_context& context, const ma_device_info& info) {
     // NOLINTBEGIN(cppcoreguidelines-pro-type-union-access): ma_device_id is a union keyed by the context backend.
     switch (context.backend) {
-        case ma_backend_coreaudio:
-            return fromChars(info.id.coreaudio);
         case ma_backend_alsa:
             return fromChars(info.id.alsa);
         case ma_backend_pulseaudio:
@@ -42,9 +37,6 @@ ma_device_id idFromText(const ma_context& context, const std::string& text) {
     ma_device_id id{};
     // NOLINTBEGIN(cppcoreguidelines-pro-type-union-access): ma_device_id is a union keyed by the context backend.
     switch (context.backend) {
-        case ma_backend_coreaudio:
-            toChars(text, id.coreaudio);
-            break;
         case ma_backend_alsa:
             toChars(text, id.alsa);
             break;
@@ -66,20 +58,6 @@ int maxChannels(const ma_device_info& info) {
     return static_cast<int>(channels);
 }
 
-// CoreAudio lists the nominal rates the hardware runs at; the other systems resample, so any rate works there.
-void addSampleRates(const ma_context& context, const ma_device_info& info, std::vector<double>& rates) {
-    if (context.backend != ma_backend_coreaudio) {
-        return;
-    }
-    for (ma_uint32 index = 0; index < info.nativeDataFormatCount; ++index) {
-        const auto rate = static_cast<double>(info.nativeDataFormats[index].sampleRate);
-        if (rate > 0 && !std::ranges::contains(rates, rate)) {
-            rates.push_back(rate);
-        }
-    }
-    std::ranges::sort(rates);
-}
-
 }  // namespace
 
 struct MiniaudioBackend::Impl {
@@ -87,14 +65,7 @@ struct MiniaudioBackend::Impl {
     std::optional<ma_device> device;
     AudioCallback callback;
     StreamLayout layout;
-    std::vector<std::vector<float>> inputs;
-    std::vector<std::vector<float>> outputs;
-    std::vector<const float*> inputPointers;
-    std::vector<float*> outputPointers;
-#ifdef __APPLE__
-    std::optional<PrivateAggregate> aggregate;
-    std::optional<DeviceListListener> listener;
-#endif
+    PlanarAdapter adapter;
 
     static void onData(ma_device* device, void* output, const void* input, ma_uint32 frameCount) {
         static_cast<Impl*>(device->pUserData)
@@ -102,32 +73,10 @@ struct MiniaudioBackend::Impl {
     }
 
     void process(float* output, const float* input, ma_uint32 frameCount) {
-        const auto inputCount = inputs.size();
-        const auto outputCount = outputs.size();
-        auto remaining = static_cast<Frames>(frameCount);
-        std::int64_t hostTime = steadyNowNs();
-        while (remaining > 0) {
-            const Frames frames = std::min(remaining, layout.maxFrames);
-            for (std::size_t channel = 0; channel < inputCount; ++channel) {
-                for (Frames frame = 0; frame < frames; ++frame) {
-                    inputs[channel][static_cast<std::size_t>(frame)] =
-                        input != nullptr ? input[static_cast<std::size_t>(frame) * inputCount + channel] : 0.0F;
-                }
-            }
-            callback({frames, hostTime, inputPointers, outputPointers});
-            for (std::size_t channel = 0; channel < outputCount; ++channel) {
-                for (Frames frame = 0; frame < frames; ++frame) {
-                    output[static_cast<std::size_t>(frame) * outputCount + channel] =
-                        outputs[channel][static_cast<std::size_t>(frame)];
-                }
-            }
-            remaining -= frames;
-            if (input != nullptr) {
-                input += static_cast<std::size_t>(frames) * inputCount;
-            }
-            output += static_cast<std::size_t>(frames) * outputCount;
-            hostTime += framesToNs(frames, layout.sampleRate);
-        }
+        flushDenormalsToZero();
+        const std::array inputs{InterleavedInput{input, layout.inputChannels}};
+        const std::array outputs{InterleavedOutput{output, layout.outputChannels}};
+        adapter.process(inputs, outputs, static_cast<Frames>(frameCount), steadyNowNs(), layout.sampleRate, callback);
     }
 };
 
@@ -135,15 +84,9 @@ MiniaudioBackend::MiniaudioBackend() : impl_(std::make_unique<Impl>()) {
     if (ma_context_init(nullptr, 0, nullptr, &impl_->context) != MA_SUCCESS) {
         throw std::runtime_error("cannot start the audio system");
     }
-#ifdef __APPLE__
-    impl_->listener.emplace([this] { deviceListChanged(); });
-#endif
 }
 
 MiniaudioBackend::~MiniaudioBackend() {
-#ifdef __APPLE__
-    impl_->listener.reset();
-#endif
     close();
     ma_context_uninit(&impl_->context);
 }
@@ -164,18 +107,12 @@ std::vector<AudioDeviceInfo> MiniaudioBackend::devices() {
                 continue;
             }
             const std::string id = idText(impl_->context, listed);
-#ifdef __APPLE__
-            if (id.starts_with(kAggregateUidPrefix)) {
-                continue;
-            }
-#endif
             auto found = std::ranges::find(result, id, &AudioDeviceInfo::id);
             if (found == result.end()) {
                 result.push_back({id, fromChars(listed.name)});
                 found = std::prev(result.end());
             }
             (type == ma_device_type_playback ? found->outputChannels : found->inputChannels) = maxChannels(info);
-            addSampleRates(impl_->context, info, found->sampleRates);
         }
     };
     add({playback, playbackCount}, ma_device_type_playback);
@@ -185,27 +122,20 @@ std::vector<AudioDeviceInfo> MiniaudioBackend::devices() {
 
 StreamLayout MiniaudioBackend::open(const StreamRequest& request, AudioCallback callback) {
     close();
-    const std::vector<AudioDeviceInfo>& available = request.available;
+    if (request.deviceIds.size() > 1) {
+        throw std::invalid_argument(
+            "several audio devices in one session need a private aggregate device, "
+            "which only macOS provides; use PipeWire or JACK to combine devices");
+    }
     std::string deviceId;
     AudioDeviceInfo opened{"default", "Default output", 0, 2};
     if (request.deviceIds.size() == 1) {
         deviceId = request.deviceIds.front();
-        const auto found = std::ranges::find(available, deviceId, &AudioDeviceInfo::id);
-        if (found == available.end()) {
+        const auto found = std::ranges::find(request.available, deviceId, &AudioDeviceInfo::id);
+        if (found == request.available.end()) {
             throw std::invalid_argument("unknown audio device " + deviceId);
         }
         opened = *found;
-    } else if (request.deviceIds.size() > 1) {
-#ifdef __APPLE__
-        const StreamLayout combined = concatenateDevices(available, request);
-        impl_->aggregate.emplace(request.deviceIds, request.sampleRate);
-        deviceId = impl_->aggregate->uid();
-        opened = {deviceId, "Emerick aggregate", combined.inputChannels, combined.outputChannels};
-#else
-        throw std::invalid_argument(
-            "several audio devices in one session need a private aggregate device, "
-            "which only macOS provides; use PipeWire or JACK to combine devices");
-#endif
     }
 
     ma_device_type type = ma_device_type_playback;
@@ -221,37 +151,26 @@ StreamLayout MiniaudioBackend::open(const StreamRequest& request, AudioCallback 
     config.capture.format = ma_format_f32;
     config.playback.channels = static_cast<ma_uint32>(opened.outputChannels);
     config.capture.channels = static_cast<ma_uint32>(opened.inputChannels);
+    // Without a map miniaudio assumes speaker positions and remixes our channels into the device's; a blank map keeps
+    // every channel at its own index.
+    std::array<ma_channel, MA_MAX_CHANNELS> blankMap{};
+    config.playback.pChannelMap = blankMap.data();
+    config.capture.pChannelMap = blankMap.data();
     config.sampleRate = static_cast<ma_uint32>(request.sampleRate);
     config.periodSizeInFrames = static_cast<ma_uint32>(request.blockFrames);
-    config.coreaudio.allowNominalSampleRateChange = MA_TRUE;
     config.dataCallback = &Impl::onData;
     config.pUserData = impl_.get();
 
     impl_->device.emplace();
     if (ma_device_init(&impl_->context, &config, &*impl_->device) != MA_SUCCESS) {
         impl_->device.reset();
-        close();
         throw std::runtime_error("cannot open audio device " + opened.name);
     }
 
     StreamLayout& layout = impl_->layout;
     layout = concatenateDevices({opened}, {{opened.id}, request.sampleRate, request.blockFrames});
-    if (request.deviceIds.size() > 1) {
-        layout.devices = concatenateDevices(available, request).devices;
-    }
     layout.sampleRate = impl_->device->sampleRate;
-    impl_->inputs.assign(static_cast<std::size_t>(layout.inputChannels),
-                         std::vector<float>(static_cast<std::size_t>(layout.maxFrames)));
-    impl_->outputs.assign(static_cast<std::size_t>(layout.outputChannels),
-                          std::vector<float>(static_cast<std::size_t>(layout.maxFrames)));
-    impl_->inputPointers.clear();
-    impl_->outputPointers.clear();
-    for (const std::vector<float>& buffer : impl_->inputs) {
-        impl_->inputPointers.push_back(buffer.data());
-    }
-    for (std::vector<float>& buffer : impl_->outputs) {
-        impl_->outputPointers.push_back(buffer.data());
-    }
+    impl_->adapter = PlanarAdapter(layout.inputChannels, layout.outputChannels, layout.maxFrames);
     impl_->callback = std::move(callback);
     if (ma_device_start(&*impl_->device) != MA_SUCCESS) {
         close();
@@ -265,9 +184,6 @@ void MiniaudioBackend::close() {
         ma_device_uninit(&*impl_->device);
         impl_->device.reset();
     }
-#ifdef __APPLE__
-    impl_->aggregate.reset();
-#endif
 }
 
 }  // namespace emerick::engine

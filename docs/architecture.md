@@ -65,7 +65,7 @@ The app serves MCP over streamable HTTP on loopback (`--mcp-port`). Tools: `ui.t
 | Use | Library |
 |---|---|
 | UI | Qt 6.11: Quick, QuickControls2, HttpServer |
-| Audio IO | miniaudio, plus a CoreAudio shim for private aggregates |
+| Audio IO | the CoreAudio HAL on macOS, miniaudio elsewhere |
 | MIDI IO and MIDI files | libremidi |
 | Audio files | libsndfile |
 | Queues | moodycamel readerwriterqueue |

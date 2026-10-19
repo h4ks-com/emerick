@@ -30,7 +30,8 @@ public:
     SnapshotBuilder(SnapshotBuilder&&) = delete;
     SnapshotBuilder& operator=(SnapshotBuilder&&) = delete;
 
-    BuiltSnapshot build(const Session& session, const StreamLayout& layout);
+    // Audio takes skip their first captureOffset frames.
+    BuiltSnapshot build(const Session& session, const StreamLayout& layout, Frames captureOffset);
     void prune();
 
     [[nodiscard]] bool clipsBuffered() const;
@@ -42,7 +43,8 @@ private:
     void addClips(TrackState& state, const Track& track, const core::TempoMap& tempo, const StreamLayout& layout,
                   std::vector<SessionError>& errors);
     static void addMidiEvents(TrackState& state, const Track& track, const core::TempoMap& tempo, double sampleRate);
-    void addRecorder(TrackState& state, const Track& track, const Session& session, const StreamLayout& layout);
+    void addRecorder(TrackState& state, const Track& track, const Session& session, const StreamLayout& layout,
+                     Frames captureOffset);
 
     MidiBackend& midi_;
     TakeInbox& inbox_;

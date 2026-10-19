@@ -107,7 +107,8 @@ struct Engine::Impl {
             checkRates(devices);
             reopen(devices);
         }
-        BuiltSnapshot built = builder.build(next, layout);
+        BuiltSnapshot built =
+            builder.build(next, layout, layout.inputLatency + layout.outputLatency + options.recordingDelay);
         deleteSnapshot(rt.pending.exchange(built.snapshot.release(), std::memory_order_acq_rel));
         session = std::move(next);
         errors = std::move(built.errors);

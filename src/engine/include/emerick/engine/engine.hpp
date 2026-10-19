@@ -23,6 +23,8 @@ public:
     struct Options {
         double sampleRate = 48000.0;
         Frames blockFrames = 256;
+        // Frames an audio take skips beyond the round trip the device reports, for devices that report it wrong.
+        Frames recordingDelay = 0;
     };
 
     Engine(std::unique_ptr<AudioBackend> audio, std::unique_ptr<MidiBackend> midi, Options options);

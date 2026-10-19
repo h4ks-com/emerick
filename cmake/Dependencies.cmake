@@ -48,15 +48,14 @@ FetchContent_Declare(Catch2
 
 FetchContent_MakeAvailable(nlohmann_json readerwriterqueue libremidi sol2 Catch2)
 
-# miniaudio ships a single source file; we compile it once as our own target.
-FetchContent_GetProperties(miniaudio)
-if(NOT miniaudio_POPULATED)
-    FetchContent_Populate(miniaudio)
-endif()
-add_library(miniaudio STATIC ${miniaudio_SOURCE_DIR}/miniaudio.c)
-target_include_directories(miniaudio SYSTEM PUBLIC ${miniaudio_SOURCE_DIR})
-if(APPLE)
-    target_link_libraries(miniaudio PUBLIC "-framework CoreAudio" "-framework AudioToolbox" "-framework CoreFoundation")
+# miniaudio ships a single source file; we compile it once as our own target. macOS talks to CoreAudio directly.
+if(NOT APPLE)
+    FetchContent_GetProperties(miniaudio)
+    if(NOT miniaudio_POPULATED)
+        FetchContent_Populate(miniaudio)
+    endif()
+    add_library(miniaudio STATIC ${miniaudio_SOURCE_DIR}/miniaudio.c)
+    target_include_directories(miniaudio SYSTEM PUBLIC ${miniaudio_SOURCE_DIR})
 endif()
 
 list(APPEND CMAKE_MODULE_PATH ${catch2_SOURCE_DIR}/extras)

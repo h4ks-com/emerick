@@ -38,7 +38,7 @@ SnapshotBuilder::SnapshotBuilder(MidiBackend& midi, TakeInbox& inbox, PollingSet
                                  PollingSet<TakeRecorder>& writer, PollingSet<MidiOutputPort>& sender)
     : midi_(midi), inbox_(inbox), reader_(reader), writer_(writer), sender_(sender) {}
 
-BuiltSnapshot SnapshotBuilder::build(const Session& session, const StreamLayout& layout) {
+BuiltSnapshot SnapshotBuilder::build(const Session& session, const StreamLayout& layout, Frames captureOffset) {
     BuiltSnapshot built{std::make_unique<Snapshot>(), {}};
     Snapshot& snapshot = *built.snapshot;
     snapshot.tempo = session.tempo;
@@ -73,7 +73,7 @@ BuiltSnapshot SnapshotBuilder::build(const Session& session, const StreamLayout&
         }
         addClips(state, track, session.tempo, layout, built.errors);
         addMidiEvents(state, track, session.tempo, layout.sampleRate);
-        addRecorder(state, track, session, layout);
+        addRecorder(state, track, session, layout, captureOffset);
         snapshot.tracks.push_back(std::move(state));
     }
     return built;
@@ -122,17 +122,18 @@ void SnapshotBuilder::addMidiEvents(TrackState& state, const Track& track, const
 }
 
 void SnapshotBuilder::addRecorder(TrackState& state, const Track& track, const Session& session,
-                                  const StreamLayout& layout) {
+                                  const StreamLayout& layout, Frames captureOffset) {
     const bool canRecord = track.kind == TrackKind::audio ? !state.inputs.empty() : state.midiIn != nullptr;
     if (!canRecord) {
         return;
     }
     const int channels = static_cast<int>(state.inputs.size());
     const std::string key = track.id + "/" + std::to_string(static_cast<int>(track.kind)) + "/" +
-                            std::to_string(channels) + "/" + session.takeFolder.string();
+                            std::to_string(channels) + "/" + std::to_string(captureOffset) + "/" +
+                            session.takeFolder.string();
     state.recorder = cached(recorders_, key, [&] {
         auto made = std::make_shared<TakeRecorder>(track.id, track.kind, channels, layout.sampleRate, layout.maxFrames,
-                                                   session.takeFolder, inbox_);
+                                                   captureOffset, session.takeFolder, inbox_);
         writer_.add(made);
         return made;
     });

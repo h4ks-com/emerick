@@ -45,6 +45,10 @@ struct StreamLayout {
     std::vector<DeviceChannels> devices;
     int inputChannels = 0;
     int outputChannels = 0;
+    // Frames from a sound reaching the device input to our callback, and from our callback to the device output,
+    // buffer included. Zero where the backend cannot tell.
+    Frames inputLatency = 0;
+    Frames outputLatency = 0;
 
     [[nodiscard]] std::optional<int> inputIndex(std::string_view deviceId, int channel) const;
     [[nodiscard]] std::optional<int> outputIndex(std::string_view deviceId, int channel) const;
@@ -151,8 +155,28 @@ private:
     std::jthread thread_;
 };
 
-// Real devices through miniaudio. On macOS several devices open as one private aggregate device with drift
-// compensation; elsewhere a stream opens one device.
+#ifdef __APPLE__
+// Real devices through the CoreAudio HAL. Several devices open as one private aggregate device with drift
+// compensation. The device runs at the requested rate or open throws, and at the nearest buffer size it allows.
+class CoreAudioBackend final : public AudioBackend {
+public:
+    CoreAudioBackend();
+    ~CoreAudioBackend() override;
+    CoreAudioBackend(const CoreAudioBackend&) = delete;
+    CoreAudioBackend& operator=(const CoreAudioBackend&) = delete;
+    CoreAudioBackend(CoreAudioBackend&&) = delete;
+    CoreAudioBackend& operator=(CoreAudioBackend&&) = delete;
+
+    [[nodiscard]] std::vector<AudioDeviceInfo> devices() override;
+    StreamLayout open(const StreamRequest& request, AudioCallback callback) override;
+    void close() override;
+
+private:
+    struct Impl;
+    std::unique_ptr<Impl> impl_;
+};
+#else
+// Real devices through miniaudio; a stream opens one device.
 class MiniaudioBackend final : public AudioBackend {
 public:
     MiniaudioBackend();
@@ -170,5 +194,6 @@ private:
     struct Impl;
     std::unique_ptr<Impl> impl_;
 };
+#endif
 
 }  // namespace emerick::engine

@@ -1,5 +1,6 @@
 #include "take_recorder.hpp"
 
+#include <algorithm>
 #include <cmath>
 #include <utility>
 
@@ -33,11 +34,12 @@ std::vector<RecordedTake> TakeInbox::take() {
 }
 
 TakeRecorder::TakeRecorder(std::string trackId, TrackKind kind, int channels, double sampleRate, Frames maxBlock,
-                           std::filesystem::path folder, TakeInbox& inbox)
+                           Frames captureOffset, std::filesystem::path folder, TakeInbox& inbox)
     : trackId_(std::move(trackId)),
       trackKind_(kind),
       channels_(channels),
       sampleRate_(sampleRate),
+      captureOffset_(captureOffset),
       folder_(std::move(folder)),
       inbox_(inbox),
       ring_(kind == TrackKind::audio ? static_cast<std::size_t>(std::llround(kRecordRingSeconds * sampleRate)) *
@@ -55,14 +57,21 @@ TakeRecorder::~TakeRecorder() {
 
 void TakeRecorder::begin(Ticks startTick) {
     dropped_ = 0;
+    framesToSkip_ = captureOffset_;
     recording_ = writeKeepingRoomForEnd(Header{Kind::begin, 0, startTick}, std::span<const std::uint8_t>{});
 }
 
 void TakeRecorder::writeAudio(std::span<const float* const> channels, Frames frames) {
+    const Frames skipped = std::min(framesToSkip_, frames);
+    framesToSkip_ -= skipped;
+    frames -= skipped;
+    if (frames == 0) {
+        return;
+    }
     const auto width = channels.size();
     for (std::size_t channel = 0; channel < width; ++channel) {
         for (Frames frame = 0; frame < frames; ++frame) {
-            interleaved_[static_cast<std::size_t>(frame) * width + channel] = channels[channel][frame];
+            interleaved_[static_cast<std::size_t>(frame) * width + channel] = channels[channel][skipped + frame];
         }
     }
     const auto samples = std::span<const float>(interleaved_).first(static_cast<std::size_t>(frames) * width);

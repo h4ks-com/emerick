@@ -16,23 +16,16 @@ Popup {
         query.forceActiveFocus()
     }
 
-    property var results: Registry.palette(query.text)
-
-    function escaped(text) {
-        return text.replace(/&/g, "&amp;").replace(/</g, "&lt;")
-    }
-
-    function highlighted(title, ranges) {
-        let html = ""
-        let last = 0
-        for (const range of ranges) {
-            html += escaped(title.slice(last, range[0])) + "<b>" + escaped(title.slice(range[0], range[1])) + "</b>"
-            last = range[1]
-        }
-        return html + escaped(title.slice(last))
-    }
+    // Text after ">" runs as Lua in the console, and the palette shows its value.
+    readonly property bool luaMode: query.text.startsWith(">")
+    property var luaReply: null
+    property var results: luaMode ? [] : Registry.palette(query.text)
 
     function activate(index) {
+        if (luaMode) {
+            luaReply = Registry.runAction("console.eval", {code: query.text.slice(1)})
+            return
+        }
         if (index < 0 || index >= results.length || !results[index].enabled) {
             return
         }
@@ -51,7 +44,7 @@ Popup {
             id: query
             objectName: "palette.query"
             width: parent.width
-            placeholderText: "Search actions and settings"
+            placeholderText: "Search actions and settings, or type > to run Lua"
             placeholderTextColor: Theme.inkDim
             color: Theme.ink
             font.pixelSize: Theme.textTitle
@@ -59,7 +52,10 @@ Popup {
                 color: Theme.lift
                 radius: Theme.radiusClip
             }
-            onTextChanged: list.currentIndex = 0
+            onTextChanged: {
+                list.currentIndex = 0
+                commandPalette.luaReply = null
+            }
             Keys.onDownPressed: list.incrementCurrentIndex()
             Keys.onUpPressed: list.decrementCurrentIndex()
             Keys.onReturnPressed: commandPalette.activate(list.currentIndex)
@@ -92,7 +88,7 @@ Popup {
                     Text {
                         anchors.left: parent.left
                         anchors.verticalCenter: parent.verticalCenter
-                        text: commandPalette.highlighted(row.modelData.title, row.modelData.ranges)
+                        text: Theme.highlighted(row.modelData.title, row.modelData.ranges)
                         textFormat: Text.StyledText
                         color: row.enabled ? Theme.ink : Theme.inkDim
                         font.pixelSize: Theme.textBody
@@ -109,7 +105,22 @@ Popup {
         }
 
         Label {
-            visible: commandPalette.results.length === 0
+            objectName: "palette.luaResult"
+            visible: commandPalette.luaMode
+            width: parent.width
+            leftPadding: Theme.space2
+            wrapMode: Text.Wrap
+            maximumLineCount: Theme.pickerRows
+            elide: Text.ElideRight
+            readonly property var reply: commandPalette.luaReply
+            text: !reply ? "Press Enter to run as Lua" : reply.text !== "" ? reply.text : "nil"
+            color: !reply ? Theme.inkDim : reply.ok ? Theme.ink : Theme.rec
+            font.family: Theme.monoFamily
+            font.pixelSize: Theme.textLabel
+        }
+
+        Label {
+            visible: !commandPalette.luaMode && commandPalette.results.length === 0
             text: "No match, try another word"
             color: Theme.inkDim
             font.pixelSize: Theme.textLabel

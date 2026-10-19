@@ -20,7 +20,7 @@ public:
     // Sets a setting by id, or the property of the UI item with that objectName.
     [[nodiscard]] Json set(const std::string& id, const Json& value, const std::optional<std::string>& property) const;
     // Runs an action by id, or clicks the UI item with that objectName.
-    [[nodiscard]] Json invoke(const std::string& id) const;
+    [[nodiscard]] Json invoke(const std::string& id, ActionSource source = ActionSource::Mcp) const;
     [[nodiscard]] static Json screenshot(const std::string& path);
 
 private:

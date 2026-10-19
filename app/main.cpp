@@ -2,12 +2,14 @@
 #include <QFileOpenEvent>
 #include <QGuiApplication>
 #include <QQmlApplicationEngine>
+#include <QStandardPaths>
 #include <QtLogging>
 #include <exception>
-#include <optional>
+#include <filesystem>
 #include <utility>
 
 #include "emerick/app/backends.hpp"
+#include "emerick/app/console.hpp"
 #include "emerick/app/core_actions.hpp"
 #include "emerick/app/lua_host.hpp"
 #include "emerick/app/mcp_server.hpp"
@@ -18,6 +20,7 @@
 #include "emerick/app/project_controller.hpp"
 #include "emerick/app/qml_exposure.hpp"
 #include "emerick/app/registry.hpp"
+#include "emerick/app/script_library.hpp"
 #include "emerick/app/track_list_model.hpp"
 #include "emerick/app/ui_api.hpp"
 #include "emerick/yamaha/plugin.hpp"
@@ -59,10 +62,11 @@ int run(int argc, char** argv) {
     const QCommandLineOption mcpPort("mcp-port",
                                      "Serve MCP on this port, 0 to disable (default: the mcp.port setting).", "port");
     const QCommandLineOption mcpBindAny("mcp-bind-any", "Accept MCP connections on every interface (for Docker).");
-    const QCommandLineOption noLuaMcp("no-lua-mcp", "Leave the lua.eval tool out of MCP.");
+    const QCommandLineOption noLuaMcp("no-lua-mcp", "Leave Lua out of MCP: lua.eval and the actions that run Lua.");
     const QCommandLineOption audio("audio", "Audio backend: null or default.", "backend", "default");
     const QCommandLineOption midi("midi", "MIDI backend: virtual or default.", "backend", "default");
-    const QCommandLineOption profile("profile", "Keep settings and new projects in this folder (for test runs).",
+    const QCommandLineOption profile(
+        "profile", "Keep settings, scripts and new projects in this folder (for test runs).",
                                      "folder");
     parser.addOptions({mcpPort, mcpBindAny, noLuaMcp, audio, midi, profile});
     parser.process(application);
@@ -98,11 +102,20 @@ int run(int argc, char** argv) {
     }
 
     const UiApi ui(registry);
-    std::optional<LuaHost> lua;
-    if (!parser.isSet(noLuaMcp)) {
-        lua.emplace(registry, ui);
-    }
-    McpServer mcp(registry, mcpTools(registry, ui, lua ? &*lua : nullptr));
+    LuaHost lua(registry, ui);
+    Console console(registry, lua);
+    registerConsoleActions(registry, nav, console);
+    const std::filesystem::path userScripts =
+        (profileFolder.isEmpty() ? QStandardPaths::writableLocation(QStandardPaths::AppDataLocation) : profileFolder)
+            .toStdString() +
+        "/scripts";
+    copyExampleScripts(userScripts);
+    ScriptLibrary scripts(registry, console, userScripts);
+    registerScriptActions(registry, scripts);
+    const auto followProject = [&] { scripts.setProjectFolder(controller.folder() / "scripts"); };
+    followProject();
+    QObject::connect(&controller, &ProjectController::fileChanged, &scripts, followProject);
+    McpServer mcp(registry, mcpTools(registry, ui, parser.isSet(noLuaMcp) ? nullptr : &lua, &console));
     if (port != 0) {
         const quint16 bound = mcp.listen(port, parser.isSet(mcpBindAny));
         qInfo("MCP on http://%s:%u/mcp", parser.isSet(mcpBindAny) ? "0.0.0.0" : "127.0.0.1", bound);
@@ -110,7 +123,7 @@ int run(int argc, char** argv) {
 
     PeakCache peaks;
     QQmlApplicationEngine engine;
-    exposeToQml(engine, registry, nav, controller, tracks, peaks);
+    exposeToQml(engine, registry, nav, controller, tracks, peaks, &console);
     QObject::connect(
         &engine, &QQmlApplicationEngine::objectCreationFailed, &application, [] { QCoreApplication::exit(1); },
         Qt::QueuedConnection);

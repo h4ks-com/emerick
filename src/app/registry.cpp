@@ -72,6 +72,20 @@ QVariantList utf16Ranges(const std::string& title, const std::vector<core::Match
 
 bool isEnabled(const Action& entry) { return !entry.enabled || entry.enabled(); }
 
+class NestedRun {
+public:
+    NestedRun(int& depth, int step) : depth_(depth), step_(step) { depth_ += step_; }
+    ~NestedRun() { depth_ -= step_; }
+    NestedRun(const NestedRun&) = delete;
+    NestedRun& operator=(const NestedRun&) = delete;
+    NestedRun(NestedRun&&) = delete;
+    NestedRun& operator=(NestedRun&&) = delete;
+
+private:
+    int& depth_;
+    int step_;
+};
+
 Json actionToJson(const Action& entry) {
     Json result{{"id", entry.id},
                 {"title", entry.title},
@@ -79,6 +93,9 @@ Json actionToJson(const Action& entry) {
                 {"keywords", entry.keywords},
                 {"category", entry.category},
                 {"enabled", isEnabled(entry)}};
+    if (!entry.description.empty()) {
+        result["description"] = entry.description;
+    }
     if (!entry.shortcut.empty()) {
         result["shortcut"] = entry.shortcut;
     }
@@ -143,6 +160,15 @@ void Registry::addAction(Action entry) {
         entry.shortcut = stored.toString().toStdString();
     }
     actions_.push_back(std::move(entry));
+    emit shortcutsChanged();
+    emit settingsChanged();
+}
+
+void Registry::removeAction(const std::string& id) {
+    if (std::erase_if(actions_, [&](const Action& entry) { return entry.id == id; }) > 0) {
+        emit shortcutsChanged();
+        emit settingsChanged();
+    }
 }
 
 Json Registry::setShortcut(const std::string& id, const std::string& sequence) {
@@ -246,7 +272,7 @@ const MidiDeviceProfile* Registry::midiDeviceProfile(const std::string& deviceNa
     return found == midiDeviceProfiles_.end() ? nullptr : &*found;
 }
 
-Json Registry::run(const std::string& id, const Json& params) const {
+Json Registry::run(const std::string& id, const Json& params, ActionSource source) const {
     const Action* found = action(id);
     if (found == nullptr) {
         throw AppError("no action " + id);
@@ -254,7 +280,18 @@ Json Registry::run(const std::string& id, const Json& params) const {
     if (!isEnabled(*found)) {
         throw AppError("action " + id + " is disabled");
     }
-    Json result = found->run(params.is_null() ? Json::object() : params);
+    const Json given = params.is_null() ? Json::object() : params;
+    const bool logged = runDepth_ == 0 && !found->quiet;
+    // We copy the handler, because a script action can add or remove actions while it runs.
+    const auto handler = found->run;
+    Json result;
+    {
+        const NestedRun nested{runDepth_, found->quiet ? 0 : 1};
+        result = handler(given);
+    }
+    if (logged) {
+        emit actionRan(id, given, source);
+    }
     return result.is_null() ? Json::object() : result;
 }
 
@@ -542,7 +579,7 @@ void Registry::activate(const QString& id) {
     }
     try {
         if (found != nullptr) {
-            run(id.toStdString());
+            run(id.toStdString(), Json::object(), ActionSource::Ui);
         } else {
             reveal(id.toStdString());
         }
@@ -553,7 +590,7 @@ void Registry::activate(const QString& id) {
 
 QVariant Registry::runAction(const QString& id, const QVariantMap& params) const {
     try {
-        return toVariant(run(id.toStdString(), toJson(QVariant{params})));
+        return toVariant(run(id.toStdString(), toJson(QVariant{params}), ActionSource::Ui));
     } catch (const AppError& error) {
         qWarning() << error.what();
     } catch (const Json::exception& error) {

@@ -29,6 +29,7 @@ class Nav : public QObject {
     Q_PROPERTY(bool aboutOpen READ aboutOpen WRITE setAboutOpen NOTIFY changed)
     Q_PROPERTY(bool inspectorOpen READ inspectorOpen WRITE setInspectorOpen NOTIFY changed)
     Q_PROPERTY(bool projectMenuOpen READ projectMenuOpen WRITE setProjectMenuOpen NOTIFY changed)
+    Q_PROPERTY(bool consoleOpen READ consoleOpen WRITE setConsoleOpen NOTIFY changed)
     Q_PROPERTY(bool metronomeMenuOpen READ metronomeMenuOpen WRITE setMetronomeMenuOpen NOTIFY changed)
     Q_PROPERTY(QStringList selectedClips READ selectedClips WRITE setSelectedClips NOTIFY selectionChanged)
     Q_PROPERTY(double pixelsPerTick READ pixelsPerTick WRITE setPixelsPerTick NOTIFY viewChanged)
@@ -50,6 +51,7 @@ public:
     [[nodiscard]] bool aboutOpen() const { return aboutOpen_; }
     [[nodiscard]] bool inspectorOpen() const { return inspectorOpen_; }
     [[nodiscard]] bool projectMenuOpen() const { return projectMenuOpen_; }
+    [[nodiscard]] bool consoleOpen() const { return consoleOpen_; }
     [[nodiscard]] bool metronomeMenuOpen() const { return metronomeMenuOpen_; }
     [[nodiscard]] QStringList selectedClips() const { return selectedClips_; }
     [[nodiscard]] double pixelsPerTick() const { return pixelsPerTick_; }
@@ -67,6 +69,7 @@ public:
     void setAboutOpen(bool value) { assign(aboutOpen_, value, &Nav::changed); }
     void setInspectorOpen(bool value) { assign(inspectorOpen_, value, &Nav::changed); }
     void setProjectMenuOpen(bool value) { assign(projectMenuOpen_, value, &Nav::changed); }
+    void setConsoleOpen(bool value) { assign(consoleOpen_, value, &Nav::changed); }
     void setMetronomeMenuOpen(bool value) { assign(metronomeMenuOpen_, value, &Nav::changed); }
     void setSelectedClips(const QStringList& value) { assign(selectedClips_, value, &Nav::selectionChanged); }
     void setPixelsPerTick(double value) {
@@ -94,6 +97,7 @@ public:
                 {"aboutOpen", aboutOpen_},
                 {"inspectorOpen", inspectorOpen_},
                 {"projectMenuOpen", projectMenuOpen_},
+                {"consoleOpen", consoleOpen_},
                 {"metronomeMenuOpen", metronomeMenuOpen_}};
     }
 
@@ -121,6 +125,7 @@ private:
     bool aboutOpen_ = false;
     bool inspectorOpen_ = true;
     bool projectMenuOpen_ = false;
+    bool consoleOpen_ = false;
     bool metronomeMenuOpen_ = false;
     QStringList selectedClips_;
     double pixelsPerTick_ = kDefaultPixelsPerTick;

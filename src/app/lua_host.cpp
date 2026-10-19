@@ -5,7 +5,11 @@
 #include <cstdlib>
 #include <exception>
 #include <optional>
+#include <ranges>
 #include <sol/sol.hpp>
+#include <string_view>
+
+#include "emerick/app/lua_text.hpp"
 
 namespace emerick::app {
 
@@ -152,13 +156,77 @@ Json fromLuaArgument(const sol::optional<sol::object>& value) {
 
 }  // namespace
 
+namespace {
+
+// An error thrown by a C++ function names the script line that called it, as a Lua error does.
+int errorWithLocation(lua_State* state, sol::optional<const std::exception&> /*error*/, sol::string_view description) {
+    luaL_where(state, 1);
+    lua_pushlstring(state, description.data(), description.size());
+    lua_concat(state, 2);
+    return 1;
+}
+
+sol::object memberFunction(sol::table table, std::string_view name) {
+    for (const auto part : name | std::views::split('.')) {
+        const sol::object item = table.raw_get<sol::object>(std::string_view{part});
+        if (item.get_type() != sol::type::table) {
+            return item;
+        }
+        table = item.as<sol::table>();
+    }
+    return table;
+}
+
+bool sameValue(const sol::object& a, const sol::object& b) {
+    a.push();
+    b.push();
+    const bool same = lua_rawequal(a.lua_state(), -1, -2) != 0;
+    lua_pop(a.lua_state(), 2);
+    return same;
+}
+
+constexpr std::array kLuaMembers{
+    LuaMember{"run", "run(id, params?)", "Run an action by id with a params table and return its result."},
+    LuaMember{"actions", "actions(query?)", "List actions with their params, ranked by an optional fuzzy query."},
+    LuaMember{"setting", "setting(id, value?)", "Read a setting, or set it when value is given."},
+    LuaMember{"state", "state(name)", "Read a state provider: project, transport, devices, nav or app."},
+    LuaMember{"project", "project()", "Read the project: tracks with their ids, names and clips, and the tempo."},
+    LuaMember{"ui.find", "ui.find(query)", "Find actions, settings and live UI items by name."},
+    LuaMember{"ui.reveal", "ui.reveal(id)", "Open the UI path to an action, setting or location."},
+    LuaMember{"ui.set", "ui.set(id, value, property?)", "Set a setting, or a property of the UI item with that id."},
+    LuaMember{"ui.invoke", "ui.invoke(id)", "Run an action, or click the UI item with that id."},
+};
+
+}  // namespace
+
+std::span<const LuaMember> luaMembers() { return kLuaMembers; }
+
 struct LuaHost::State {
     MemoryBudget memory;
     sol::state lua{sol::default_at_panic, limitedAlloc, &memory};
     std::string output;
+    std::function<void(const std::string&)> printSink;
+    int depth = 0;
 
-    Json run(const std::string& code) {
-        const sol::load_result chunk = lua.load(code, "eval", sol::load_mode::text);
+    void print(const std::string& line) {
+        output += line + '\n';
+        if (printSink) {
+            printSink(line);
+        }
+    }
+
+    sol::load_result load(const LuaChunk& chunk) {
+        if (chunk.expression) {
+            sol::load_result expression = lua.load("return " + chunk.code, chunk.name, sol::load_mode::text);
+            if (expression.valid()) {
+                return expression;
+            }
+        }
+        return lua.load(chunk.code, chunk.name, sol::load_mode::text);
+    }
+
+    Json run(const LuaChunk& code) {
+        const sol::load_result chunk = load(code);
         if (!chunk.valid()) {
             return {{"error", chunk.get<sol::error>().what()}};
         }
@@ -177,6 +245,7 @@ LuaHost::LuaHost(Registry& registry, const UiApi& ui) : state_(std::make_unique<
         lua[name] = sol::lua_nil;
     }
     lua.script(kPlainStringSearch);
+    lua.set_exception_handler(errorWithLocation);
 
     lua["print"] = [this](sol::variadic_args args, sol::this_state current) {
         const sol::protected_function toString = sol::state_view{current}.get<sol::protected_function>("tostring");
@@ -191,13 +260,13 @@ LuaHost::LuaHost(Registry& registry, const UiApi& ui) : state_(std::make_unique<
             }
             line += text.get<std::string>();
         }
-        state_->output += line + '\n';
+        state_->print(line);
     };
 
     sol::table emerick = lua.create_named_table("emerick");
     emerick["run"] = [&registry](const std::string& id, const sol::optional<sol::object>& params,
                                  sol::this_state current) {
-        return toLua(current, registry.run(id, fromLuaArgument(params)));
+        return toLua(current, registry.run(id, fromLuaArgument(params), ActionSource::Lua));
     };
     emerick["actions"] = [&registry](const sol::optional<std::string>& query, sol::this_state current) {
         return toLua(current, registry.describeActions(query.value_or("")));
@@ -223,23 +292,53 @@ LuaHost::LuaHost(Registry& registry, const UiApi& ui) : state_(std::make_unique<
                            sol::this_state current) {
         return toLua(current, ui.set(id, fromLua(value), property ? std::optional{*property} : std::nullopt));
     };
-    uiTable["invoke"] = [&ui](const std::string& id, sol::this_state current) { return toLua(current, ui.invoke(id)); };
+    uiTable["invoke"] = [&ui](const std::string& id, sol::this_state current) {
+        return toLua(current, ui.invoke(id, ActionSource::Lua));
+    };
+
+    lua["help"] = [this, &registry](const sol::optional<sol::object>& subject, sol::this_state current) {
+        std::string name;
+        if (subject && subject->is<std::string>()) {
+            name = subject->as<std::string>();
+        } else if (subject && subject->get_type() == sol::type::function) {
+            const sol::table emerickTable = sol::state_view{current}["emerick"];
+            const auto* const found = std::ranges::find_if(kLuaMembers, [&](const LuaMember& entry) {
+                return sameValue(memberFunction(emerickTable, entry.name), *subject);
+            });
+            if (found == kLuaMembers.end()) {
+                throw AppError("help takes an action id, a setting id or an emerick function");
+            }
+            name = found->name;
+        }
+        state_->print(helpText(registry, name));
+    };
 }
 
 LuaHost::~LuaHost() = default;
 
-Json LuaHost::eval(const std::string& code) {
-    state_->output.clear();
+void LuaHost::setPrintSink(std::function<void(const std::string&)> sink) { state_->printSink = std::move(sink); }
+
+Json LuaHost::eval(const LuaChunk& chunk) {
+    State& state = *state_;
+    if (state.depth == 0) {
+        state.output.clear();
+    }
+    const std::size_t mark = state.output.size();
     Json result{{"ok", false}};
     {
-        const InstructionLimit limit{state_->lua.lua_state()};
+        std::optional<InstructionLimit> limit;
+        if (state.depth == 0) {
+            limit.emplace(state.lua.lua_state());
+        }
+        ++state.depth;
         try {
-            result.update(state_->run(code));
+            result.update(state.run(chunk));
         } catch (const std::exception& error) {
             result["error"] = error.what();
         }
+        --state.depth;
     }
-    result["output"] = state_->output;
+    result["output"] = state.output.substr(mark);
     return result;
 }
 

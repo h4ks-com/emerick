@@ -50,9 +50,9 @@ Json UiApi::set(const std::string& id, const Json& value, const std::optional<st
     return {{"item", setItemProperty(qs(id), qs(*property), value)}};
 }
 
-Json UiApi::invoke(const std::string& id) const {
+Json UiApi::invoke(const std::string& id, ActionSource source) const {
     if (registry_->action(id) != nullptr) {
-        return {{"result", registry_->run(id)}};
+        return {{"result", registry_->run(id, Json::object(), source)}};
     }
     return {{"item", invokeItem(qs(id))}};
 }

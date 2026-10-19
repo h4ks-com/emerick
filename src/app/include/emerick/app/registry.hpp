@@ -37,10 +37,11 @@ inline constexpr const char* kTrackMenu = "Track";
 inline constexpr const char* kTransportMenu = "Transport";
 inline constexpr const char* kViewMenu = "View";
 inline constexpr const char* kSettingsMenu = "Settings";
+inline constexpr const char* kScriptsMenu = "Scripts";
 inline constexpr const char* kPluginsMenu = "Plugins";
 inline constexpr const char* kHelpMenu = "Help";
-inline constexpr std::array kMenuBar{kFileMenu, kEditMenu,     kTrackMenu,   kTransportMenu,
-                                     kViewMenu, kSettingsMenu, kPluginsMenu, kHelpMenu};
+inline constexpr std::array kMenuBar{kFileMenu,     kEditMenu,    kTrackMenu,   kTransportMenu, kViewMenu,
+                                     kSettingsMenu, kScriptsMenu, kPluginsMenu, kHelpMenu};
 // The menu behind the document button in the header.
 inline constexpr const char* kProjectMenu = "Project";
 // Context menus, which run their actions with the clicked track or the selected clips.
@@ -71,6 +72,7 @@ struct MenuChoice {
 struct Action {
     std::string id = {};
     std::string title = {};
+    std::string description = {};
     std::vector<std::string> aliases = {};
     std::vector<std::string> keywords = {};
     std::string category = {};
@@ -86,6 +88,10 @@ struct Action {
     // A UI activation asks this question first and runs the action with confirm: true.
     std::string confirm = {};
     std::function<std::vector<MenuChoice>()> submenu = {};
+    // The action log skips a quiet action and logs the actions it runs instead, as for the console's own actions.
+    bool quiet = false;
+    // An action that runs Lua, which MCP refuses when it serves without lua.eval.
+    bool runsLua = false;
 };
 
 struct Marker {
@@ -186,6 +192,7 @@ public:
     explicit Registry(const QString& settingsPath = {}, QObject* parent = nullptr);
 
     void addAction(Action entry);
+    void removeAction(const std::string& id);
     void addSetting(Setting entry);
     void addTrackType(TrackType type);
     void addMidiDeviceProfile(MidiDeviceProfile profile);
@@ -202,7 +209,9 @@ public:
     [[nodiscard]] const TrackType* trackType(const std::string& kind) const;
     [[nodiscard]] const MidiDeviceProfile* midiDeviceProfile(const std::string& deviceName) const;
 
-    Json run(const std::string& id, const Json& params = Json::object()) const;
+    // Emits actionRan after an action that no other action ran, so the log shows what a person or agent asked for.
+    Json run(const std::string& id, const Json& params = Json::object(),
+             ActionSource source = ActionSource::Code) const;
     [[nodiscard]] Json settingValue(const std::string& id) const;
     Json setSetting(const std::string& id, const Json& value);
     // Saves the shortcut in the settings store and takes it from any action that had it; an empty sequence clears it.
@@ -249,6 +258,7 @@ signals:
     void shortcutsChanged();
     void fileDialogRequested(const QVariantMap& request);
     void confirmRequested(const QVariantMap& request);
+    void actionRan(const std::string& id, const nlohmann::json& params, emerick::app::ActionSource source) const;
 
 private:
     std::unique_ptr<QSettings> store_;
@@ -259,6 +269,7 @@ private:
     std::vector<Location> locations_;
     std::map<std::string, std::function<Json()>> stateProviders_;
     std::function<void(const std::string&, const std::function<void()>&)> undoGroup_;
+    mutable int runDepth_ = 0;
 };
 
 QString qs(const std::string& text);

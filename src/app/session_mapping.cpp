@@ -1,7 +1,9 @@
 #include "emerick/app/session_mapping.hpp"
 
+#include <algorithm>
 #include <cmath>
 #include <ranges>
+#include <string>
 #include <variant>
 #include <vector>
 
@@ -96,6 +98,40 @@ engine::Session toSession(const model::Document& document, const Registry& regis
         }
     }
     return session;
+}
+
+std::vector<engine::SessionError> dropMissingDevices(engine::Session& session,
+                                                     std::span<const engine::AudioDeviceInfo> devices) {
+    std::vector<engine::SessionError> errors;
+    const auto drop = [&](const engine::Track& track, engine::AudioRoute& route, const char* side) {
+        if (!route.deviceId.empty() && !std::ranges::contains(devices, route.deviceId, &engine::AudioDeviceInfo::id)) {
+            errors.push_back({track.id, std::string{"the audio "} + side + " device " + route.deviceId +
+                                            " is missing, pick a device in the inspector"});
+            route = {};
+        }
+    };
+    for (engine::Track& track : session.tracks) {
+        drop(track, track.audioIn, "input");
+        drop(track, track.audioOut, "output");
+    }
+    return errors;
+}
+
+void repairDeviceIds(model::Document& document, std::span<const engine::AudioDeviceInfo> devices) {
+    const auto repair = [&](model::AudioRoute& route) {
+        if (route.deviceId.empty() || std::ranges::contains(devices, route.deviceId, &engine::AudioDeviceInfo::id)) {
+            return;
+        }
+        const auto known = std::ranges::find_if(
+            devices, [&](const engine::AudioDeviceInfo& device) { return route.deviceId.starts_with(device.id); });
+        if (known != devices.end()) {
+            route.deviceId = known->id;
+        }
+    };
+    for (model::Track& track : document.tracks) {
+        repair(track.audioIn);
+        repair(track.audioOut);
+    }
 }
 
 }  // namespace emerick::app

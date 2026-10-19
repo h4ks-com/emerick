@@ -16,7 +16,7 @@ Q_ENUM_NS(SettingType)
 enum class FileDialogMode : std::uint8_t { Open, Save, Folder };
 Q_ENUM_NS(FileDialogMode)
 
-enum class MenuRow : std::uint8_t { Command, Submenu };
+enum class MenuRow : std::uint8_t { Command, Submenu, Menu };
 Q_ENUM_NS(MenuRow)
 
 enum class EntryKind : std::uint8_t { Action, Setting };

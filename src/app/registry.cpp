@@ -2,9 +2,11 @@
 
 #include <QJsonArray>
 #include <QJsonDocument>
+#include <QKeySequence>
 #include <QRegularExpression>
 #include <QtLogging>
 #include <algorithm>
+#include <array>
 #include <limits>
 #include <ranges>
 
@@ -91,6 +93,29 @@ Json actionToJson(const Action& entry) {
 
 Json optionalNumber(const std::optional<double>& value) { return value ? Json(*value) : Json(nullptr); }
 
+bool inMenuBar(const std::string& menu) {
+    const std::string top = menu.substr(0, menu.find('/'));
+    return std::ranges::contains(kMenuBar, top, [](const char* name) { return std::string_view{name}; });
+}
+
+// Text fields need these keys, so the window binds them and turns them off while a text field has focus.
+constexpr std::array kTextEditingKeys{"Ctrl+A",       "Ctrl+C",    "Ctrl+V",     "Ctrl+X",  "Ctrl+Z",
+                                      "Ctrl+Shift+Z", "Ctrl+Left", "Ctrl+Right", "Ctrl+Up", "Ctrl+Down"};
+
+bool menuBindsShortcut(const Action& entry) {
+    const bool modified = entry.shortcut.starts_with("Ctrl+") || entry.shortcut.starts_with("Alt+");
+    return modified && !std::ranges::contains(kTextEditingKeys, std::string_view{entry.shortcut}) &&
+           std::ranges::any_of(entry.menus, inMenuBar);
+}
+
+QString shortcutKey(const std::string& id) { return "shortcuts/" + qs(id); }
+
+std::string portableShortcut(const std::string& sequence) {
+    return QKeySequence::fromString(qs(sequence), QKeySequence::PortableText)
+        .toString(QKeySequence::PortableText)
+        .toStdString();
+}
+
 }  // namespace
 
 QString qs(const std::string& text) { return QString::fromStdString(text); }
@@ -114,7 +139,62 @@ void Registry::addAction(Action entry) {
     if (action(entry.id) != nullptr || setting(entry.id) != nullptr) {
         throw std::logic_error("duplicate registry id " + entry.id);
     }
+    if (const QVariant stored = store_->value(shortcutKey(entry.id)); stored.isValid()) {
+        entry.shortcut = stored.toString().toStdString();
+    }
     actions_.push_back(std::move(entry));
+}
+
+Json Registry::setShortcut(const std::string& id, const std::string& sequence) {
+    const auto found = std::ranges::find(actions_, id, &Action::id);
+    if (found == actions_.end()) {
+        throw AppError("no action " + id + ", run actions.search for action ids");
+    }
+    const std::string shortcut = portableShortcut(sequence);
+    if (shortcut.empty() && !sequence.empty()) {
+        throw AppError(sequence + " is not a key sequence; write one like Ctrl+Shift+S");
+    }
+    Json replaced = nullptr;
+    for (Action& other : actions_) {
+        if (shortcut.empty() || other.id == id) {
+            continue;
+        }
+        if (std::erase_if(other.extraShortcuts,
+                          [&](const std::string& extra) { return portableShortcut(extra) == shortcut; }) > 0) {
+            replaced = other.id;
+        }
+        if (portableShortcut(other.shortcut) == shortcut) {
+            other.shortcut.clear();
+            store_->setValue(shortcutKey(other.id), QString{});
+            replaced = other.id;
+        }
+    }
+    found->shortcut = shortcut;
+    store_->setValue(shortcutKey(id), qs(shortcut));
+    emit shortcutsChanged();
+    emit settingsChanged();
+    return {{"id", id}, {"shortcut", shortcut}, {"replaced", replaced}};
+}
+
+QVariantList Registry::keyCommands() const {
+    return actions_ | std::views::transform([](const Action& entry) {
+               return QVariant{QVariantMap{{"id", qs(entry.id)},
+                                           {"title", qs(entry.title)},
+                                           {"category", qs(entry.category)},
+                                           {"shortcut", qs(entry.shortcut)},
+                                           {"extraShortcuts", entry.extraShortcuts | std::views::transform(qs) |
+                                                                  std::ranges::to<QStringList>()}}};
+           }) |
+           std::ranges::to<QVariantList>();
+}
+
+QString Registry::keySequence(int key, int modifiers) {
+    constexpr std::array kModifierKeys{Qt::Key_Shift, Qt::Key_Control, Qt::Key_Meta, Qt::Key_Alt, Qt::Key_unknown};
+    if (std::ranges::contains(kModifierKeys, static_cast<Qt::Key>(key))) {
+        return {};
+    }
+    const auto held = Qt::KeyboardModifiers::fromInt(static_cast<unsigned int>(modifiers)) & ~Qt::KeypadModifier;
+    return QKeySequence{QKeyCombination{held, static_cast<Qt::Key>(key)}}.toString(QKeySequence::PortableText);
 }
 
 void Registry::addSetting(Setting entry) {
@@ -333,16 +413,31 @@ QVariantMap Registry::settingsMap() const {
 
 QVariantList Registry::shortcuts() const {
     QVariantList result;
-    for (const Action& entry : actions_ | std::views::filter([](const Action& a) {
-                                   return !a.shortcut.empty() && !std::ranges::contains(a.menus, kFileMenu);
-                               })) {
-        result.append(QVariantMap{{"id", qs(entry.id)}, {"shortcut", qs(entry.shortcut)}});
+    for (const Action& entry : actions_) {
+        if (!entry.shortcut.empty() && !menuBindsShortcut(entry)) {
+            result.append(QVariantMap{{"id", qs(entry.id)}, {"shortcut", qs(entry.shortcut)}});
+        }
+        for (const std::string& extra : entry.extraShortcuts) {
+            result.append(QVariantMap{{"id", qs(entry.id)}, {"shortcut", qs(extra)}});
+        }
     }
     return result;
 }
 
+QStringList Registry::menuBar() const {
+    const QVariantMap all = menus();
+    return kMenuBar | std::views::filter([&](const char* menu) { return all.contains(menu); }) |
+           std::views::transform([](const char* menu) { return QString::fromUtf8(menu); }) |
+           std::ranges::to<QStringList>();
+}
+
 QVariantMap Registry::menus() const {
     QVariantMap result;
+    const auto append = [&result](const QString& menu, const QVariantMap& item) {
+        QVariantList items = result.value(menu).toList();
+        items.append(item);
+        result.insert(menu, items);
+    };
     for (const Action& entry : actions_) {
         QVariantMap item{{"id", qs(entry.id)},
                          {"title", qs(entry.title)},
@@ -358,10 +453,14 @@ QVariantMap Registry::menus() const {
             item.insert("choices", choices);
         }
         for (const std::string& menu : entry.menus) {
-            item.insert("bindsShortcut", menu == kFileMenu);
-            QVariantList items = result.value(qs(menu)).toList();
-            items.append(item);
-            result.insert(qs(menu), items);
+            item.insert("bindsShortcut", inMenuBar(menu) && menuBindsShortcut(entry));
+            const auto slash = menu.rfind('/');
+            if (slash != std::string::npos && !result.contains(qs(menu))) {
+                append(qs(menu.substr(0, slash)), {{"id", qs(menu)},
+                                                   {"title", qs(menu.substr(slash + 1))},
+                                                   {"row", static_cast<int>(MenuRow::Menu)}});
+            }
+            append(qs(menu), item);
         }
     }
     return result;
@@ -395,12 +494,16 @@ QVariantMap Registry::actionInfo(const QString& id) const {
 }
 
 QVariantList Registry::sections(const QString& parent) const {
+    auto children =
+        locations_ | std::views::filter([&](const Location& entry) { return entry.parent == parent.toStdString(); }) |
+        std::views::transform([](const Location& entry) { return &entry; }) | std::ranges::to<std::vector>();
+    std::ranges::stable_sort(children, {}, [](const Location* entry) { return !entry->group.empty(); });
     QVariantList result;
-    for (const Location& location :
-         locations_ | std::views::filter([&](const Location& entry) { return entry.parent == parent.toStdString(); })) {
-        result.append(QVariantMap{{"id", qs(location.id)},
-                                  {"key", qs(location.id.substr(location.parent.size() + 1))},
-                                  {"title", qs(location.title)}});
+    for (const Location* location : children) {
+        result.append(QVariantMap{{"id", qs(location->id)},
+                                  {"key", qs(location->id.substr(location->parent.size() + 1))},
+                                  {"title", qs(location->title)},
+                                  {"group", qs(location->group)}});
     }
     return result;
 }
@@ -417,7 +520,8 @@ QVariantList Registry::settingsAt(const QString& location) const {
                                   {"minimum", entry.minimum.value_or(std::numeric_limits<int>::min())},
                                   {"maximum", entry.maximum.value_or(std::numeric_limits<int>::max())},
                                   {"readOnly", entry.readOnly},
-                                  {"hint", qs(entry.hint)}});
+                                  {"hint", qs(entry.hint)},
+                                  {"suggestions", toVariant(entry.suggestions ? entry.suggestions() : Json::array())}});
     }
     return result;
 }
@@ -456,6 +560,24 @@ QVariant Registry::runAction(const QString& id, const QVariantMap& params) const
         qWarning() << error.what();
     }
     return {};
+}
+
+void Registry::setUndoGroup(std::function<void(const std::string&, const std::function<void()>&)> group) {
+    undoGroup_ = std::move(group);
+}
+
+void Registry::runActions(const QString& name, const QVariantList& calls) const {
+    const auto runAll = [&] {
+        for (const QVariant& call : calls) {
+            const QVariantMap entry = call.toMap();
+            runAction(entry.value("id").toString(), entry.value("params").toMap());
+        }
+    };
+    if (undoGroup_) {
+        undoGroup_(name.toStdString(), runAll);
+    } else {
+        runAll();
+    }
 }
 
 QVariant Registry::runWithFile(const QString& id, const QUrl& file) const {

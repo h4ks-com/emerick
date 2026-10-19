@@ -175,6 +175,7 @@ void ProjectController::open(const std::filesystem::path& path) {
     } catch (const nlohmann::json::exception& error) {
         throw AppError("cannot read " + (bundle / "project.json").string() + ": " + error.what());
     }
+    repairDeviceIds(document, engine_.audioDevices());
     leave();
     moveTo(bundle, std::move(document));
 }
@@ -334,6 +335,7 @@ void ProjectController::setLiveGain(const model::TrackId& id, double db) {
 
 void ProjectController::publish() {
     engine::Session session = toSession(project_.document(), registry_, folder_);
+    routeErrors_ = dropMissingDevices(session, engine_.audioDevices());
     std::set<std::string> ids;
     std::set<std::string> audioIds;
     for (const engine::Track& track : session.tracks) {
@@ -441,8 +443,30 @@ qint64 ProjectController::snapped(qint64 ticks) const {
     return std::max<core::Ticks>(result, 0);
 }
 
-QVariantMap ProjectController::routeChoices() const {
-    return toVariant(app::routeChoices(devicesState(*this))).toMap();
+QString ProjectController::ticksText(qint64 ticks, bool duration) const {
+    const core::TempoMap& tempo = project_.document().tempo;
+    return qs(duration ? durationText(ticks, tempo) : tempo.toBarBeatTick(ticks).format());
+}
+
+qint64 ProjectController::parseTicks(const QString& text, bool duration) const {
+    bool number = false;
+    const qint64 ticks = text.trimmed().toLongLong(&number);
+    if (number) {
+        return ticks;
+    }
+    try {
+        core::BarBeatTick position = core::BarBeatTick::parse(text.trimmed().toStdString());
+        if (duration) {
+            position = {position.bar + 1, position.beat + 1, position.tick};
+        }
+        return project_.document().tempo.fromBarBeatTick(position);
+    } catch (const std::invalid_argument&) {
+        return -1;
+    }
+}
+
+QVariantMap ProjectController::routeDevices() const {
+    return toVariant(app::routeDevices(devicesState(*this))).toMap();
 }
 
 }  // namespace emerick::app

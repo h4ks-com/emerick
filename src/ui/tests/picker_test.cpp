@@ -41,13 +41,11 @@ TEST_CASE("a picker with more choices than fit below it opens without a polish l
             width: 1280
             height: 800
             visible: true
-            ThemeComboBox {
+            SearchCombo {
                 objectName: "picker"
                 y: 155
                 width: 236
-                textRole: "label"
-                currentIndex: -1
-                model: Array.from({length: 60}, (_, index) => ({label: "Device " + index}))
+                model: Array.from({length: 60}, (_, index) => ({id: String(index), name: "Device " + index}))
             }
         })",
                       QUrl{});

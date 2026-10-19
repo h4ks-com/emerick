@@ -14,9 +14,9 @@ std::filesystem::path defaultProjectsFolder();
 std::filesystem::path normalizedPath(const std::filesystem::path& path);
 // Takes a bundle or the project.json inside it.
 std::filesystem::path bundleOf(const std::filesystem::path& path);
-// Adds the .emerick suffix when the path lacks it.
+// Adds the .erk suffix when the path lacks it.
 std::filesystem::path namedBundle(const std::filesystem::path& path);
-// The first "Untitled N.emerick" in folder that does not exist yet.
+// The first "Untitled N.erk" in folder that does not exist yet.
 std::filesystem::path nextUntitledBundle(const std::filesystem::path& folder);
 bool holdsNothing(const model::Document& document, const std::filesystem::path& bundle);
 // Throws std::filesystem::filesystem_error.

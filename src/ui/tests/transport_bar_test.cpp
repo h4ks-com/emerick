@@ -75,17 +75,17 @@ TEST_CASE("the play button toggles play and pause, and the display shows the loc
     CHECK(main.shown("transport.position.tick") == "11");
 }
 
-TEST_CASE("double clicking the tempo edits it in place, and Return there keeps the playhead") {
+TEST_CASE("clicking the tempo edits it in place, and Return there keeps the playhead") {
     MainWindow& main = MainWindow::instance();
     main.rig.run("transport.locate", {{"position", "3.1.0"}});
 
     QTest::mouseDClick(main.window, Qt::LeftButton, Qt::NoModifier, main.center("project.setTempo"));
-    REQUIRE(processUntil([&] { return main.item("project.setTempo.bpm")->hasActiveFocus(); }));
+    REQUIRE(processUntil([&] { return main.item("project.setTempo.bpm:text")->hasActiveFocus(); }));
     QTest::keyClick(main.window, '9');
     QTest::keyClick(main.window, '6');
     QTest::keyClick(main.window, Qt::Key_Return);
 
     CHECK(processUntil([&] { return main.rig.controller->project().document().tempo.bpm == 96.0; }));
-    CHECK(main.shown("project.setTempo") == "96");
+    CHECK(main.item("project.setTempo.bpm")->property("displayText").toString() == "96");
     CHECK(main.rig.controller->positionTicks() > 0);
 }

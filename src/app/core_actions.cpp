@@ -7,6 +7,8 @@
 #include <numbers>
 #include <string>
 
+#include "emerick/app/action_params.hpp"
+
 namespace emerick::app {
 
 namespace {
@@ -21,6 +23,7 @@ struct ViewStep {
     const char* title;
     const char* alias;
     const char* shortcut;
+    const char* extraShortcut;
     double zoom;
     int height;
 };
@@ -29,52 +32,62 @@ constexpr double kZoomStep = std::numbers::sqrt2;
 constexpr int kTrackHeightStep = 12;
 
 constexpr std::array kViewSteps{
-    ViewStep{"view.zoomIn", "Zoom in", "wider timeline", "Ctrl+=", kZoomStep, 0},
-    ViewStep{"view.zoomOut", "Zoom out", "narrower timeline", "Ctrl+-", 1 / kZoomStep, 0},
-    ViewStep{"view.trackTaller", "Make tracks taller", "vertical zoom in", "Ctrl+Down", 1, kTrackHeightStep},
-    ViewStep{"view.trackShorter", "Make tracks shorter", "vertical zoom out", "Ctrl+Up", 1, -kTrackHeightStep},
+    ViewStep{"view.zoomIn", "Zoom in", "wider timeline", "Ctrl+Right", "Ctrl+=", kZoomStep, 0},
+    ViewStep{"view.zoomOut", "Zoom out", "narrower timeline", "Ctrl+Left", "Ctrl+-", 1 / kZoomStep, 0},
+    ViewStep{"view.trackTaller", "Make tracks taller", "vertical zoom in", "Ctrl+Down", nullptr, 1, kTrackHeightStep},
+    ViewStep{"view.trackShorter", "Make tracks shorter", "vertical zoom out", "Ctrl+Up", nullptr, 1, -kTrackHeightStep},
 };
 
 void registerViewActions(Registry& registry, Nav& nav) {
     for (const ViewStep& step : kViewSteps) {
-        registry.addAction({.id = step.id,
-                            .title = step.title,
-                            .aliases = {step.alias},
-                            .category = "View",
-                            .shortcut = step.shortcut,
-                            .run = [&nav, step](const Json&) {
-                                nav.setPixelsPerTick(nav.pixelsPerTick() * step.zoom);
-                                nav.setTrackHeight(nav.trackHeight() + step.height);
-                                return Json{{"pixelsPerTick", nav.pixelsPerTick()}, {"trackHeight", nav.trackHeight()}};
-                            }});
+        registry.addAction(
+            {.id = step.id,
+             .title = step.title,
+             .aliases = {step.alias},
+             .category = "View",
+             .shortcut = step.shortcut,
+             .extraShortcuts = step.extraShortcut != nullptr ? std::vector<std::string>{step.extraShortcut}
+                                                             : std::vector<std::string>{},
+             .run =
+                 [&nav, step](const Json&) {
+                     nav.setPixelsPerTick(nav.pixelsPerTick() * step.zoom);
+                     nav.setTrackHeight(nav.trackHeight() + step.height);
+                     return Json{{"pixelsPerTick", nav.pixelsPerTick()}, {"trackHeight", nav.trackHeight()}};
+                 },
+             .menus = {kViewMenu}});
     }
     registry.addAction({.id = "view.toggleInspector",
                         .title = "Show or hide inspector",
                         .aliases = {"track inspector", "side panel"},
                         .category = "View",
                         .shortcut = "I",
-                        .run = [&nav](const Json&) {
-                            nav.setInspectorOpen(!nav.inspectorOpen());
-                            return Json{{"inspectorOpen", nav.inspectorOpen()}};
-                        }});
+                        .run =
+                            [&nav](const Json&) {
+                                nav.setInspectorOpen(!nav.inspectorOpen());
+                                return Json{{"inspectorOpen", nav.inspectorOpen()}};
+                            },
+                        .menus = {kViewMenu}});
 }
 
 }  // namespace
 
 const char* appVersion() { return EMERICK_VERSION; }
 
-void addSettingsSection(Registry& registry, Nav& nav, const std::string& key, const std::string& title) {
+void addSettingsSection(Registry& registry, Nav& nav, const SettingsSection& section) {
     // Copies of the handlers share the key, so copying a handler never allocates.
-    auto section = std::make_shared<const std::string>(key);
-    registry.addLocation({.id = "settings." + key, .parent = "settings", .title = title, .reveal = [&nav, section] {
-                              nav.setSettingsTab(qs(*section));
-                          }});
-    registry.addAction(
-        {.id = "settings.show." + key,
-         .title = "Show " + key + " settings",
-         .aliases = {key + " preferences"},
-         .category = "Settings",
-         .run = [&registry, section](const Json&) { return revealChain(registry, "settings." + *section); }});
+    auto key = std::make_shared<const std::string>(section.key);
+    registry.addLocation({.id = "settings." + section.key,
+                          .parent = "settings",
+                          .title = section.title,
+                          .group = section.group,
+                          .reveal = [&nav, key] { nav.setSettingsTab(qs(*key)); }});
+    registry.addAction({.id = "settings.show." + section.key,
+                        .title = section.menus.empty() ? "Show " + section.title + " settings" : section.title,
+                        .aliases = {section.key + " preferences", section.title + " settings"},
+                        .category = "Settings",
+                        .shortcut = section.shortcut,
+                        .run = [&registry, key](const Json&) { return revealChain(registry, "settings." + *key); },
+                        .menus = section.menus});
 }
 
 void registerCoreActions(Registry& registry, Nav& nav, const Backends& backends) {
@@ -90,21 +103,35 @@ void registerCoreActions(Registry& registry, Nav& nav, const Backends& backends)
                               nav.setPaletteOpen(false);
                               nav.setPage(Page::Settings);
                           }});
-    addSettingsSection(registry, nav, "general", "General");
-    addSettingsSection(registry, nav, "audio", "Audio");
+    addSettingsSection(registry, nav, {.key = "general", .title = "General"});
+    addSettingsSection(registry, nav, {.key = "audio", .title = "Audio"});
+    addSettingsSection(registry, nav,
+                       {.key = "keys", .title = "Key Commands", .shortcut = "Alt+K", .menus = {kSettingsMenu}});
+    registry.addAction({.id = "keys.setShortcut",
+                        .title = "Set action shortcut",
+                        .aliases = {"rebind key", "key binding", "assign shortcut"},
+                        .category = "Settings",
+                        .schema = {{"required", {"id", "shortcut"}},
+                                   {"properties", {{"id", {{"type", "string"}}}, {"shortcut", {{"type", "string"}}}}}},
+                        .run = [&registry](const Json& params) {
+                            return registry.setShortcut(param<std::string>(params, "id"),
+                                                        param<std::string>(params, "shortcut"));
+                        }});
 
     registry.addAction({.id = "palette.open",
                         .title = "Search",
                         .aliases = {"command palette", "search actions", "open command palette"},
                         .category = "General",
                         .shortcut = "Ctrl+K",
-                        .run = [&registry](const Json&) { return revealChain(registry, "palette"); }});
+                        .run = [&registry](const Json&) { return revealChain(registry, "palette"); },
+                        .menus = {kHelpMenu}});
     registry.addAction({.id = "settings.open",
                         .title = "Open settings",
                         .aliases = {"preferences", "options"},
                         .category = "General",
                         .shortcut = "Ctrl+,",
-                        .run = [&registry](const Json&) { return revealChain(registry, "settings"); }});
+                        .run = [&registry](const Json&) { return revealChain(registry, "settings"); },
+                        .menus = {kSettingsMenu}});
     registry.addAction({.id = "settings.close",
                         .title = "Close settings",
                         .aliases = {"back"},
@@ -120,19 +147,23 @@ void registerCoreActions(Registry& registry, Nav& nav, const Backends& backends)
                         .title = "About Emerick",
                         .aliases = {"version"},
                         .category = "General",
-                        .run = [&registry](const Json&) {
-                            registry.reveal("about");
-                            return Json{{"name", "Emerick"}, {"version", appVersion()}};
-                        }});
+                        .run =
+                            [&registry](const Json&) {
+                                registry.reveal("about");
+                                return Json{{"name", "Emerick"}, {"version", appVersion()}};
+                            },
+                        .menus = {kHelpMenu}});
     registry.addAction({.id = "app.quit",
                         .title = "Quit Emerick",
                         .aliases = {"exit", "close app"},
                         .category = "General",
                         .shortcut = "Ctrl+Q",
-                        .run = [](const Json&) {
-                            QTimer::singleShot(0, QCoreApplication::instance(), &QCoreApplication::quit);
-                            return Json{{"quitting", true}};
-                        }});
+                        .run =
+                            [](const Json&) {
+                                QTimer::singleShot(0, QCoreApplication::instance(), &QCoreApplication::quit);
+                                return Json{{"quitting", true}};
+                            },
+                        .menus = {kFileMenu}});
 
     registry.addSetting({.id = "appearance.accent",
                          .title = "Accent color",

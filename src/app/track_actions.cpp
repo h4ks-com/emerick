@@ -20,22 +20,16 @@ namespace {
 
 enum class Direction : std::uint8_t { input, output };
 
-Json trackResult(const ProjectController& controller, const model::TrackId& id) {
-    const model::Track* track = controller.project().track(id);
-    return track != nullptr ? trackState(*track, controller.project().document().tempo) : Json::object();
-}
+std::vector<int> defaultChannels(int count) { return count >= 2 ? std::vector{1, 2} : std::vector{1}; }
 
-Json editTrack(ProjectController& controller, const model::TrackId& id, std::string name,
-               const std::function<void(model::Track&)>& edit) {
-    controller.project().editTrack(id, std::move(name), edit);
-    return trackResult(controller, id);
-}
-
-// A field missing from params keeps its value in route.
+// A field missing from params keeps its value in route, except that a new device without channels gets 1-2, or 1.
 model::AudioRoute mergeAudioRoute(ProjectController& controller, model::AudioRoute route, const Json& params,
                                   Direction direction) {
-    route.deviceId = optionalParam<std::string>(params, "device").value_or(route.deviceId);
-    route.channels = optionalParam<std::vector<int>>(params, "channels").value_or(route.channels);
+    const auto deviceId = optionalParam<std::string>(params, "device");
+    const auto channels = optionalParam<std::vector<int>>(params, "channels");
+    const bool newDevice = deviceId && *deviceId != route.deviceId && !channels;
+    route.deviceId = deviceId.value_or(route.deviceId);
+    route.channels = channels.value_or(route.channels);
     if (route.deviceId.empty()) {
         return {};
     }
@@ -48,8 +42,11 @@ model::AudioRoute mergeAudioRoute(ProjectController& controller, model::AudioRou
         throw AppError(*problem);
     }
     const int count = direction == Direction::input ? device->inputChannels : device->outputChannels;
+    if (newDevice && count > 0) {
+        route.channels = defaultChannels(count);
+    }
     if (route.channels.empty() || std::ranges::any_of(route.channels, [&](int c) { return c < 1 || c > count; })) {
-        throw AppError("channels for " + route.deviceId + " must be 1 to " + std::to_string(count));
+        throw AppError("channels for " + device->name + " must be 1 to " + std::to_string(count));
     }
     return route;
 }
@@ -89,7 +86,7 @@ model::AudioRoute defaultAudioRoute(ProjectController& controller, Direction dir
     if (device == devices.end()) {
         return {};
     }
-    return {device->id, channels(*device) >= 2 ? std::vector{1, 2} : std::vector{1}};
+    return {device->id, defaultChannels(channels(*device))};
 }
 
 model::MidiRoute defaultMidiInput(ProjectController& controller) {
@@ -135,16 +132,19 @@ Json addTrack(ProjectController& controller, Nav& nav, const TrackType& type, mo
 }
 
 // The caller sets run, which looks its track type up when it runs, because the registry moves types as it grows.
-Action addTrackAction(const std::string& actionId, const std::string& label, const std::string& routeProperty) {
+Action addTrackAction(const std::string& actionId, const std::string& label, const std::string& routeProperty,
+                      const std::string& shortcut) {
     return {.id = actionId,
             .title = "Add " + label + " track",
             .aliases = {"new " + label + " track", "create " + label + " track"},
             .category = "Tracks",
+            .shortcut = shortcut,
             .schema = {{"type", "object"},
                        {"properties",
                         {{"name", {{"type", "string"}}},
                          {routeProperty + "In", {{"type", "object"}}},
-                         {routeProperty + "Out", {{"type", "object"}}}}}}};
+                         {routeProperty + "Out", {{"type", "object"}}}}}},
+            .menus = {kTrackMenu, kLaneContextMenu}};
 }
 
 void registerAudioKind(Registry& registry, ProjectController& controller, Nav& nav) {
@@ -160,7 +160,7 @@ void registerAudioKind(Registry& registry, ProjectController& controller, Nav& n
                  track.clips.emplace_back(
                      clipFromFile(take.audioFile, context.folder, take.startTick, context.tempo, context.sampleRate));
              }});
-    Action add = addTrackAction("track.addAudio", "audio", "audio");
+    Action add = addTrackAction("track.addAudio", "audio", "audio", "Ctrl+Alt+N");
     add.run = [&registry, &controller, &nav](const Json& params) {
         model::Track track;
         track.audioIn = mergeAudioRoute(controller, defaultAudioRoute(controller, Direction::input),
@@ -195,7 +195,7 @@ void registerMidiKind(Registry& registry, ProjectController& controller, Nav& na
              [](model::Track& track, const engine::RecordedTake& take, const TakeContext& context) {
                  track.clips.emplace_back(midiClipFromTake(take, context.stopTicks));
              }});
-    Action add = addTrackAction("track.addMidi", "MIDI", "midi");
+    Action add = addTrackAction("track.addMidi", "MIDI", "midi", "Ctrl+Alt+S");
     add.run = [&registry, &controller, &nav](const Json& params) {
         model::Track track;
         track.midiIn =
@@ -206,21 +206,6 @@ void registerMidiKind(Registry& registry, ProjectController& controller, Nav& na
     };
     registry.addAction(std::move(add));
 }
-
-struct TrackFlag {
-    std::string_view id;
-    std::string_view title;
-    std::string_view alias;
-    bool model::Track::* field;
-    void (ProjectController::*live)(const model::TrackId&, bool);
-};
-
-constexpr std::array kTrackFlags{
-    TrackFlag{"track.setMute", "Mute track", "silence track", &model::Track::mute, &ProjectController::setLiveMute},
-    TrackFlag{"track.setSolo", "Solo track", "listen alone", &model::Track::solo, &ProjectController::setLiveSolo},
-    TrackFlag{"track.setArm", "Arm track for recording", "record enable", &model::Track::armed,
-              &ProjectController::setLiveArmed},
-    TrackFlag{"track.setMonitor", "Monitor track input", "input monitoring", &model::Track::monitor, nullptr}};
 
 void registerRouteActions(Registry& registry, ProjectController& controller) {
     const auto addAudioRoute = [&](const char* actionId, const char* title, Direction direction,
@@ -272,105 +257,24 @@ void registerRouteActions(Registry& registry, ProjectController& controller) {
 
 }  // namespace
 
+Json trackResult(const ProjectController& controller, const model::TrackId& id) {
+    const model::Track* track = controller.project().track(id);
+    return track != nullptr
+               ? trackState(*track, controller.project().document().tempo, controller.engine().audioDevices())
+               : Json::object();
+}
+
+Json editTrack(ProjectController& controller, const model::TrackId& id, std::string name,
+               const std::function<void(model::Track&)>& edit) {
+    controller.project().editTrack(id, std::move(name), edit);
+    return trackResult(controller, id);
+}
+
 void registerTrackActions(Registry& registry, ProjectController& controller, Nav& nav) {
     registerAudioKind(registry, controller, nav);
     registerMidiKind(registry, controller, nav);
-    registry.addAction({.id = "track.remove",
-                        .title = "Remove track",
-                        .aliases = {"delete track"},
-                        .category = "Tracks",
-                        .schema = {{"required", {"track"}}},
-                        .run = [&controller](const Json& params) {
-                            controller.project().removeTrack(trackParam(controller.project(), params));
-                            return projectState(controller);
-                        }});
-    registry.addAction({.id = "track.rename",
-                        .title = "Rename track",
-                        .category = "Tracks",
-                        .schema = {{"required", {"track", "name"}}},
-                        .run = [&controller](const Json& params) {
-                            const auto id = trackParam(controller.project(), params);
-                            const auto name = param<std::string>(params, "name");
-                            return editTrack(controller, id, "rename track to " + name,
-                                             [&](model::Track& track) { track.name = name; });
-                        }});
-    registry.addAction({.id = "track.move",
-                        .title = "Move track",
-                        .aliases = {"reorder track"},
-                        .category = "Tracks",
-                        .schema = {{"required", {"track", "index"}}},
-                        .run = [&controller](const Json& params) {
-                            const auto id = trackParam(controller.project(), params);
-                            if (!controller.project().moveTrack(id, param<std::size_t>(params, "index"))) {
-                                throw AppError("index must be below the track count");
-                            }
-                            return projectState(controller);
-                        }});
-    registry.addAction({.id = "track.select",
-                        .title = "Select track",
-                        .aliases = {"show track in inspector"},
-                        .category = "Tracks",
-                        .schema = {{"required", {"track"}}},
-                        .run = [&controller, &nav](const Json& params) {
-                            const auto id = trackParam(controller.project(), params);
-                            nav.setSelectedTrack(qs(id.value));
-                            return trackResult(controller, id);
-                        }});
-
-    for (const TrackFlag& flag : kTrackFlags) {
-        registry.addAction({.id = std::string{flag.id},
-                            .title = std::string{flag.title},
-                            .aliases = {std::string{flag.alias}},
-                            .category = "Tracks",
-                            .schema = {{"required", {"track", "value"}}},
-                            .run = [&controller, flag](const Json& params) {
-                                const auto id = trackParam(controller.project(), params);
-                                const bool value = param<bool>(params, "value");
-                                Json result = editTrack(controller, id, std::string{flag.title},
-                                                        [&](model::Track& track) { track.*flag.field = value; });
-                                if (flag.live != nullptr) {
-                                    (controller.*flag.live)(id, value);
-                                }
-                                return result;
-                            }});
-    }
-    registry.addAction({.id = "track.setGain",
-                        .title = "Set track gain",
-                        .aliases = {"track volume", "fader"},
-                        .category = "Tracks",
-                        .schema = {{"required", {"track", "db"}}},
-                        .run = [&controller](const Json& params) {
-                            const auto id = trackParam(controller.project(), params);
-                            const auto db = param<double>(params, "db");
-                            Json result = editTrack(controller, id, "set track gain",
-                                                    [&](model::Track& track) { track.gainDb = db; });
-                            controller.setLiveGain(id, db);
-                            return result;
-                        }});
+    registerTrackEditActions(registry, controller, nav);
     registerRouteActions(registry, controller);
-    registry.addAction({.id = "track.setIcon",
-                        .title = "Set track icon",
-                        .category = "Tracks",
-                        .schema = {{"required", {"track", "icon"}}},
-                        .run = [&controller](const Json& params) {
-                            const auto id = trackParam(controller.project(), params);
-                            const auto icon = param<std::string>(params, "icon");
-                            return editTrack(controller, id, "set track icon",
-                                             [&](model::Track& track) { track.icon = icon; });
-                        }});
-    registry.addAction({.id = "track.setColor",
-                        .title = "Set track color",
-                        .category = "Tracks",
-                        .schema = {{"required", {"track", "color"}}},
-                        .run = [&controller](const Json& params) {
-                            const auto id = trackParam(controller.project(), params);
-                            const auto color = param<int>(params, "color");
-                            if (color < 0 || color >= kTrackColors) {
-                                throw AppError("color must be 0 to " + std::to_string(kTrackColors - 1));
-                            }
-                            return editTrack(controller, id, "set track color",
-                                             [&](model::Track& track) { track.color = color; });
-                        }});
 }
 
 }  // namespace emerick::app

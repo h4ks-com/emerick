@@ -1,8 +1,11 @@
 #pragma once
 
 #include <filesystem>
+#include <span>
+#include <vector>
 
 #include "emerick/app/registry.hpp"
+#include "emerick/engine/audio_backend.hpp"
 #include "emerick/engine/session.hpp"
 #include "emerick/model/document.hpp"
 
@@ -18,5 +21,12 @@ engine::Track midiEngineTrack(const model::Track& track);
 // project folder, and takes go to <folder>/audio.
 engine::Session toSession(const model::Document& document, const Registry& registry,
                           const std::filesystem::path& folder);
+
+// One track routed to a device that is gone must not stop the others, so we clear its route for the engine and
+// report it.
+std::vector<engine::SessionError> dropMissingDevices(engine::Session& session,
+                                                     std::span<const engine::AudioDeviceInfo> devices);
+// Older builds could store a device id with text after it; a known id that starts the stored one replaces it.
+void repairDeviceIds(model::Document& document, std::span<const engine::AudioDeviceInfo> devices);
 
 }  // namespace emerick::app

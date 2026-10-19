@@ -27,7 +27,8 @@ void registerProjectEditActions(Registry& registry, ProjectController& controlle
                             [&controller](const Json&) {
                                 controller.project().undo();
                                 return projectState(controller);
-                            }});
+                            },
+                        .menus = {kEditMenu}});
     registry.addAction({.id = "project.redo",
                         .title = "Redo",
                         .category = "Project",
@@ -37,7 +38,8 @@ void registerProjectEditActions(Registry& registry, ProjectController& controlle
                             [&controller](const Json&) {
                                 controller.project().redo();
                                 return projectState(controller);
-                            }});
+                            },
+                        .menus = {kEditMenu}});
     registry.addAction({.id = "project.setTempo",
                         .title = "Set tempo and meter",
                         .aliases = {"bpm", "time signature"},
@@ -67,60 +69,120 @@ void registerProjectEditActions(Registry& registry, ProjectController& controlle
                         }});
 }
 
+struct BarStep {
+    const char* id;
+    const char* title;
+    const char* alias;
+    const char* shortcut;
+    int bars;
+};
+
+constexpr std::array kBarSteps{
+    BarStep{"transport.barBack", "Go back one bar", "rewind one bar", ",", -1},
+    BarStep{"transport.barForward", "Go forward one bar", "forward one bar", ".", 1},
+    BarStep{"transport.eightBarsBack", "Go back eight bars", "rewind eight bars", "Shift+,", -8},
+    BarStep{"transport.eightBarsForward", "Go forward eight bars", "forward eight bars", "Shift+.", 8},
+};
+
+// Steps land on bar lines, so going back from inside a bar first returns to that bar's start, as in Logic.
+core::Ticks barStep(core::Ticks position, core::Ticks ticksPerBar, int bars) {
+    const core::Ticks bar = position / ticksPerBar;
+    const bool onLine = position % ticksPerBar == 0;
+    const core::Ticks target = bars < 0 && !onLine ? bar + bars + 1 : bar + bars;
+    return std::max<core::Ticks>(0, target * ticksPerBar);
+}
+
 void registerTransportActions(Registry& registry, ProjectController& controller) {
     registry.addAction({.id = "transport.play",
                         .title = "Play",
                         .aliases = {"start playback"},
                         .category = "Transport",
-                        .run = [&controller](const Json&) {
-                            controller.play();
-                            return transportState(controller);
-                        }});
+                        .run =
+                            [&controller](const Json&) {
+                                controller.play();
+                                return transportState(controller);
+                            },
+                        .menus = {kTransportMenu}});
     registry.addAction({.id = "transport.togglePlay",
                         .title = "Play or pause",
                         .aliases = {"pause", "resume"},
                         .category = "Transport",
                         .shortcut = "Space",
-                        .run = [&controller](const Json&) {
-                            if (controller.playing()) {
-                                controller.stop();
-                            } else {
-                                controller.play();
-                            }
-                            return transportState(controller);
-                        }});
+                        .run =
+                            [&controller](const Json&) {
+                                if (controller.playing()) {
+                                    controller.stop();
+                                } else {
+                                    controller.play();
+                                }
+                                return transportState(controller);
+                            },
+                        .menus = {kTransportMenu}});
     // We return to the start on a stop while stopped, as Logic's stop button does.
     registry.addAction({.id = "transport.stop",
                         .title = "Stop",
                         .aliases = {"stop recording"},
                         .category = "Transport",
-                        .run = [&controller](const Json&) {
-                            if (controller.playing()) {
-                                controller.stop();
-                            } else {
-                                controller.locate(0);
-                            }
-                            return transportState(controller);
-                        }});
+                        .run =
+                            [&controller](const Json&) {
+                                if (controller.playing()) {
+                                    controller.stop();
+                                } else {
+                                    controller.locate(0);
+                                }
+                                return transportState(controller);
+                            },
+                        .menus = {kTransportMenu}});
     registry.addAction({.id = "transport.gotoStart",
                         .title = "Go to beginning",
                         .aliases = {"rewind", "return to zero"},
                         .category = "Transport",
                         .shortcut = "Return",
-                        .run = [&controller](const Json&) {
-                            controller.locate(0);
-                            return transportState(controller);
-                        }});
+                        .extraShortcuts = {"Home"},
+                        .run =
+                            [&controller](const Json&) {
+                                controller.locate(0);
+                                return transportState(controller);
+                            },
+                        .menus = {kTransportMenu}});
     registry.addAction({.id = "transport.record",
                         .title = "Record",
                         .aliases = {"start recording"},
                         .keywords = {"take"},
                         .category = "Transport",
                         .shortcut = "R",
-                        .run = [&controller](const Json&) {
-                            controller.record();
-                            return transportState(controller);
-                        }});
+                        .run =
+                            [&controller](const Json&) {
+                                controller.record();
+                                return transportState(controller);
+                            },
+                        .menus = {kTransportMenu}});
+    registry.addAction({.id = "transport.gotoEnd",
+                        .title = "Go to end",
+                        .aliases = {"project end", "fast forward to end"},
+                        .category = "Transport",
+                        .shortcut = "End",
+                        .run =
+                            [&controller](const Json&) {
+                                controller.locate(controller.endTicks());
+                                return transportState(controller);
+                            },
+                        .menus = {kTransportMenu}});
+    for (const BarStep& step : kBarSteps) {
+        registry.addAction({.id = step.id,
+                            .title = step.title,
+                            .aliases = {step.alias},
+                            .category = "Transport",
+                            .shortcut = step.shortcut,
+                            .run =
+                                [&controller, step](const Json&) {
+                                    controller.locate(barStep(controller.positionTicks(),
+                                                              controller.project().document().tempo.ticksPerBar(),
+                                                              step.bars));
+                                    return transportState(controller);
+                                },
+                            .menus = {kTransportMenu}});
+    }
     registry.addAction({.id = "transport.locate",
                         .title = "Go to position",
                         .aliases = {"locate", "move playhead"},
@@ -160,6 +222,9 @@ void registerProjectActions(Registry& registry, ProjectController& controller, N
     registry.addStateProvider("project", [&controller] { return projectState(controller); });
     registry.addStateProvider("transport", [&controller] { return transportState(controller); });
     registry.addStateProvider("devices", [&controller] { return devicesState(controller); });
+    registry.setUndoGroup([&controller](const std::string& name, const std::function<void()>& edits) {
+        controller.project().group(name, edits);
+    });
     registry.addSetting({.id = "audio.latency",
                          .title = "Resulting latency",
                          .aliases = {"round trip", "delay"},

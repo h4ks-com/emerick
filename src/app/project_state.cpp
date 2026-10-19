@@ -1,7 +1,9 @@
 #include "emerick/app/project_state.hpp"
 
+#include <algorithm>
 #include <format>
 #include <ranges>
+#include <span>
 #include <string>
 #include <variant>
 
@@ -27,13 +29,34 @@ Json channelChoices(const engine::AudioDeviceInfo& device, int count) {
     return choices;
 }
 
-Json audioChoices(const Json& routes) {
-    Json choices = Json::array({{{"label", kNoRoute}, {"params", {{"device", ""}}}}});
-    for (const Json& route : routes) {
-        choices.push_back({{"label", route.at("label")},
-                           {"params", {{"device", route.at("device")}, {"channels", route.at("channels")}}}});
+// Mono channels first, then stereo pairs, each with the params that select it.
+Json channelOptions(int count) {
+    Json options = Json::array();
+    for (int channel = 1; channel <= count; ++channel) {
+        options.push_back({{"id", std::to_string(channel)},
+                           {"name", std::to_string(channel)},
+                           {"params", {{"channels", {channel}}}}});
     }
-    return choices;
+    for (int channel = 1; channel < count; channel += 2) {
+        const std::string pair = std::to_string(channel) + "-" + std::to_string(channel + 1);
+        options.push_back({{"id", pair}, {"name", pair}, {"params", {{"channels", {channel, channel + 1}}}}});
+    }
+    return options;
+}
+
+Json audioDevices(const Json& devices, const char* channelsKey) {
+    Json result =
+        Json::array({{{"id", ""}, {"name", kNoRoute}, {"params", {{"device", ""}}}, {"channels", Json::array()}}});
+    for (const Json& device : devices) {
+        const int count = device.at(channelsKey);
+        if (count > 0) {
+            result.push_back({{"id", device.at("id")},
+                              {"name", device.at("name")},
+                              {"params", {{"device", device.at("id")}}},
+                              {"channels", channelOptions(count)}});
+        }
+    }
+    return result;
 }
 
 Json trackErrors(const std::vector<engine::SessionError>& errors) {
@@ -43,12 +66,21 @@ Json trackErrors(const std::vector<engine::SessionError>& errors) {
            std::ranges::to<Json::array_t>();
 }
 
-Json midiChoices(const Json& ports) {
-    Json choices = Json::array({{{"label", kNoRoute}, {"params", {{"port", ""}}}}});
+Json midiPorts(const Json& ports) {
+    Json result = Json::array({{{"id", ""}, {"name", kNoRoute}, {"params", {{"port", ""}}}}});
     for (const Json& port : ports) {
-        choices.push_back({{"label", port.at("name")}, {"params", {{"port", port.at("port")}}}});
+        result.push_back({{"id", port.at("port")}, {"name", port.at("name")}, {"params", {{"port", port.at("port")}}}});
     }
-    return choices;
+    return result;
+}
+
+Json midiChannels() {
+    Json result = Json::array({{{"id", "0"}, {"name", "All"}, {"params", {{"channel", 0}}}}});
+    for (int channel = 1; channel <= kMidiChannels; ++channel) {
+        result.push_back(
+            {{"id", std::to_string(channel)}, {"name", std::to_string(channel)}, {"params", {{"channel", channel}}}});
+    }
+    return result;
 }
 
 Json timing(core::Ticks start, core::Ticks length, const core::TempoMap& tempo) {
@@ -59,13 +91,28 @@ Json timing(core::Ticks start, core::Ticks length, const core::TempoMap& tempo) 
             {"endBbt", tempo.toBarBeatTick(start + length).format()}};
 }
 
-Json audioRoute(const model::AudioRoute& route) { return {{"device", route.deviceId}, {"channels", route.channels}}; }
+// The text names the device the way the pickers do, such as "MOTU M2 1-2"; the device id stays for actions.
+Json audioRoute(const model::AudioRoute& route, std::span<const engine::AudioDeviceInfo> devices) {
+    return {{"device", route.deviceId}, {"channels", route.channels}, {"text", audioRouteText(route, devices)}};
+}
 
 Json midiRoute(const model::MidiRoute& route) {
     return {{"port", route.portId}, {"channel", route.channel}, {"thru", route.thru}, {"sysex", route.sysex}};
 }
 
 }  // namespace
+
+std::string audioRouteText(const model::AudioRoute& route, std::span<const engine::AudioDeviceInfo> devices) {
+    if (route.deviceId.empty()) {
+        return kNoRoute;
+    }
+    const auto device = std::ranges::find(devices, route.deviceId, &engine::AudioDeviceInfo::id);
+    std::string text = device != devices.end() ? device->name : route.deviceId;
+    for (std::size_t index = 0; index < route.channels.size(); ++index) {
+        text += (index == 0 ? " " : "-") + std::to_string(route.channels[index]);
+    }
+    return text;
+}
 
 std::string durationText(core::Ticks ticks, const core::TempoMap& tempo) {
     const core::BarBeatTick position = tempo.toBarBeatTick(ticks);
@@ -103,7 +150,8 @@ Json clipState(const model::Clip& clip, const core::TempoMap& tempo, bool includ
         clip);
 }
 
-Json trackState(const model::Track& track, const core::TempoMap& tempo) {
+Json trackState(const model::Track& track, const core::TempoMap& tempo,
+                std::span<const engine::AudioDeviceInfo> devices) {
     Json clips = Json::array();
     for (const model::Clip& clip : track.clips) {
         clips.push_back(clipState(clip, tempo));
@@ -118,8 +166,8 @@ Json trackState(const model::Track& track, const core::TempoMap& tempo) {
             {"armed", track.armed},
             {"monitor", track.monitor},
             {"gainDb", track.gainDb},
-            {"audioIn", audioRoute(track.audioIn)},
-            {"audioOut", audioRoute(track.audioOut)},
+            {"audioIn", audioRoute(track.audioIn, devices)},
+            {"audioOut", audioRoute(track.audioOut, devices)},
             {"midiIn", midiRoute(track.midiIn)},
             {"midiOut", midiRoute(track.midiOut)},
             {"clips", std::move(clips)},
@@ -141,7 +189,7 @@ Json projectState(ProjectController& controller) {
                 {"undo", project.undoName() ? Json(*project.undoName()) : Json(nullptr)},
                 {"redo", project.redoName() ? Json(*project.redoName()) : Json(nullptr)},
                 {"tracks", document.tracks | std::views::transform([&](const model::Track& track) {
-                               return trackState(track, document.tempo);
+                               return trackState(track, document.tempo, controller.engine().audioDevices());
                            }) | std::ranges::to<Json::array_t>()}};
     if (!controller.sessionError().empty()) {
         result["sessionError"] = controller.sessionError();
@@ -151,6 +199,9 @@ Json projectState(ProjectController& controller) {
     }
     if (!controller.takeErrors().empty()) {
         result["takeErrors"] = trackErrors(controller.takeErrors());
+    }
+    if (!controller.routeErrors().empty()) {
+        result["routeErrors"] = trackErrors(controller.routeErrors());
     }
     return result;
 }
@@ -198,24 +249,12 @@ std::string latencyText(const engine::StreamLayout& layout) {
                        ms(layout.outputLatency));
 }
 
-std::string routeText(const model::AudioRoute& route) {
-    if (route.deviceId.empty()) {
-        return kNoRoute;
-    }
-    std::string text = route.deviceId;
-    for (std::size_t index = 0; index < route.channels.size(); ++index) {
-        text += (index == 0 ? " " : "-") + std::to_string(route.channels[index]);
-    }
-    return text;
-}
-
-std::string routeText(const model::MidiRoute& route) { return route.portId.empty() ? kNoRoute : route.portId; }
-
-Json routeChoices(const Json& devices) {
-    return {{"audioIn", audioChoices(devices.at("audioInputs"))},
-            {"audioOut", audioChoices(devices.at("audioOutputs"))},
-            {"midiIn", midiChoices(devices.at("midiInputs"))},
-            {"midiOut", midiChoices(devices.at("midiOutputs"))}};
+Json routeDevices(const Json& devices) {
+    return {{"audioIn", audioDevices(devices.at("audio"), "inputs")},
+            {"audioOut", audioDevices(devices.at("audio"), "outputs")},
+            {"midiIn", midiPorts(devices.at("midiInputs"))},
+            {"midiOut", midiPorts(devices.at("midiOutputs"))},
+            {"midiChannels", midiChannels()}};
 }
 
 }  // namespace emerick::app

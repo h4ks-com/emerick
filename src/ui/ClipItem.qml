@@ -6,6 +6,9 @@ Item {
     id: root
 
     property var clip
+    // The tracks area, which opens the clip menu and tracks a drag across rows, and this clip's row there.
+    property Item timeline
+    property int rowIndex
     property string trackName
     property color trackColor
     property bool muted

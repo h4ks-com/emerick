@@ -182,34 +182,70 @@ Item {
         anchors.fill: parent
         anchors.leftMargin: Theme.clipGrip
         anchors.rightMargin: Theme.clipGrip
-        property real pressX
+        acceptedButtons: Qt.LeftButton | Qt.RightButton
+        property point pressAt
         property bool dragging: false
+        property int rows: 0
         cursorShape: pressed ? Qt.ClosedHandCursor : Qt.ArrowCursor
-        onPressed: mouse => {
-            pressX = content.clipItem.sceneX(move, mouse)
+
+        function endDrag() {
             dragging = false
-            content.clipItem.selectOnPress(mouse.modifiers)
+            rows = 0
+            content.clipItem.timeline.dragRows = 0
         }
-        onCanceled: content.clipItem.clearPreview()
+
+        onPressed: mouse => {
+            const item = content.clipItem
+            if (Theme.isContextClick(mouse)) {
+                if (!item.selected) {
+                    Registry.runAction("selection.set", {clips: [item.clipId]})
+                }
+                item.timeline.openClipMenu()
+                mouse.accepted = false
+                return
+            }
+            pressAt = move.mapToItem(null, mouse.x, mouse.y)
+            dragging = false
+            item.selectOnPress(mouse.modifiers)
+        }
+        onCanceled: {
+            content.clipItem.clearPreview()
+            endDrag()
+        }
         onPositionChanged: mouse => {
             const item = content.clipItem
-            const dx = item.sceneX(move, mouse) - pressX
-            dragging = dragging || Math.abs(dx) >= Theme.dragThreshold
-            if (dragging) {
-                const target = item.place(item.clip.start + dx / item.pixelsPerTick, mouse.modifiers)
-                item.shift = target - item.clip.start
-                item.previewStart = target
-                item.previewEnd = target + item.clip.length
+            const at = move.mapToItem(null, mouse.x, mouse.y)
+            const dx = at.x - pressAt.x
+            const dy = at.y - pressAt.y
+            dragging = dragging || Math.abs(dx) >= Theme.dragThreshold || Math.abs(dy) >= Theme.dragThreshold
+            if (!dragging) {
+                return
             }
+            const target = item.place(item.clip.start + dx / item.pixelsPerTick, mouse.modifiers)
+            item.shift = target - item.clip.start
+            item.previewStart = target
+            item.previewEnd = target + item.clip.length
+            const wanted = Math.round(dy / Nav.trackHeight)
+            rows = item.timeline.trackIdAt(item.rowIndex + wanted) !== "" ? wanted : rows
+            item.timeline.dragFrom = item.rowIndex
+            item.timeline.dragType = item.clip.type
+            item.timeline.dragRows = rows
         }
         onReleased: {
             const item = content.clipItem
-            if (dragging && item.previewStart !== item.clip.start) {
-                item.commit("clip.move", {start: item.previewStart})
+            const target = item.rowIndex + rows
+            const moved = dragging && (item.previewStart !== item.clip.start || rows !== 0)
+            const accepted = rows === 0 || item.timeline.rowAccepts(target, item.clip.type)
+            const params = {start: item.previewStart, selection: true}
+            if (rows !== 0) {
+                params.track = item.timeline.trackIdAt(target)
+            }
+            endDrag()
+            if (moved && accepted) {
+                item.commit("clip.move", params)
             } else {
                 item.clearPreview()
             }
-            dragging = false
         }
     }
 

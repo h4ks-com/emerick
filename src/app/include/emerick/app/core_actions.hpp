@@ -1,6 +1,7 @@
 #pragma once
 
 #include <string>
+#include <vector>
 
 #include "emerick/app/nav.hpp"
 #include "emerick/app/registry.hpp"
@@ -17,8 +18,23 @@ const char* appVersion();
 // The app's own actions, settings, UI locations and the "nav" and "app" state providers.
 void registerCoreActions(Registry& registry, Nav& nav, const Backends& backends);
 
-// A settings page section at location settings.<key>, with its settings.show.<key> action; sections show in the
-// order they are added.
-void addSettingsSection(Registry& registry, Nav& nav, const std::string& key, const std::string& title);
+// Callers' designated initializers skip the defaulted fields, which this check calls redundant.
+// NOLINTBEGIN(readability-redundant-member-init)
+struct SettingsSection {
+    std::string key;
+    std::string title;
+    // The sidebar heading the section lists under, such as kPluginsGroup; empty lists it with the built-in sections.
+    std::string group = {};
+    std::string shortcut = {};
+    // Menus that list the section's show action, which then takes the section title as its title.
+    std::vector<std::string> menus = {};
+};
+// NOLINTEND(readability-redundant-member-init)
+
+inline constexpr const char* kPluginsGroup = "Plugins";
+
+// A settings page section at location settings.<key>, with its settings.show.<key> action. Sections show in the order
+// they are added, the ungrouped ones first and then each group under its heading.
+void addSettingsSection(Registry& registry, Nav& nav, const SettingsSection& section);
 
 }  // namespace emerick::app

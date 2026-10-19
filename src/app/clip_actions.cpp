@@ -69,19 +69,12 @@ model::AudioClip audioOnly(const model::Clip& clip) {
         clip);
 }
 
-std::vector<model::ClipId> selection(const ProjectController& controller, const Nav& nav) {
-    return nav.selectedClips() |
-           std::views::transform([](const QString& id) { return model::ClipId{id.toStdString()}; }) |
-           std::views::filter([&](const model::ClipId& id) { return controller.project().findClip(id).has_value(); }) |
-           std::ranges::to<std::vector>();
-}
-
 // The clip named by params, or the selected clips when params names none.
 std::vector<model::ClipId> targetClips(const ProjectController& controller, const Nav& nav, const Json& params) {
     if (params.contains("clip")) {
         return {clipParam(controller.project(), params)};
     }
-    auto selected = selection(controller, nav);
+    auto selected = selectedClips(controller, nav);
     if (selected.empty()) {
         throw AppError("select a clip first, or pass clip");
     }
@@ -155,6 +148,86 @@ Json duplicateClips(ProjectController& controller, Nav& nav, const Json& params)
     return clipResults(controller, copies);
 }
 
+struct ClipMove {
+    model::ClipId id;
+    model::TrackId from;
+    model::TrackId to;
+    core::Ticks start;
+};
+
+// Moves the clip to start on track; with selection, the other selected clips keep their offsets in time and rows.
+Json moveClips(const Registry& registry, ProjectController& controller, const Nav& nav, const Json& params) {
+    const auto id = clipParam(controller.project(), params);
+    const model::ClipRef dragged = clipRef(controller, id);
+    const auto& tracks = controller.project().document().tracks;
+    const auto rowOf = [&](const model::TrackId& track) {
+        return std::ranges::find(tracks, track, &model::Track::id) - tracks.begin();
+    };
+    const core::Ticks shift = optionalPosition(params, "start", controller.project().document().tempo)
+                                  .value_or(model::clipStart(*dragged.clip)) -
+                              model::clipStart(*dragged.clip);
+    const auto rows =
+        params.contains("track") ? rowOf(trackParam(controller.project(), params)) - rowOf(dragged.track->id) : 0;
+    auto ids = selectedClips(controller, nav);
+    if (!optionalParam<bool>(params, "selection").value_or(false) || !std::ranges::contains(ids, id)) {
+        ids = {id};
+    }
+    const auto plan = ids | std::views::transform([&](const model::ClipId& clip) {
+                          const model::ClipRef ref = clipRef(controller, clip);
+                          const auto row = rowOf(ref.track->id) + rows;
+                          if (row < 0 || row >= std::ssize(tracks)) {
+                              throw AppError("the move goes past the first or last track");
+                          }
+                          const model::Track& to = tracks[static_cast<std::size_t>(row)];
+                          if (!trackTakesClip(registry, to, *ref.clip)) {
+                              throw AppError("track " + to.name + " takes no clips of this kind");
+                          }
+                          const core::Ticks start = model::clipStart(*ref.clip) + shift;
+                          if (start < 0) {
+                              throw AppError("start must be at or after bar 1");
+                          }
+                          return ClipMove{clip, ref.track->id, to.id, start};
+                      }) |
+                      std::ranges::to<std::vector>();
+    controller.project().group("move clip", [&] {
+        for (const ClipMove& move : plan) {
+            model::Clip moved = model::moveClip(clipOf(controller, move.id), move.start);
+            if (move.from == move.to) {
+                replaceClip(controller, move.id, "move clip", std::move(moved));
+                continue;
+            }
+            controller.project().editTrack(move.from, "move clip", [&](model::Track& edit) {
+                std::erase_if(edit.clips, [&](const model::Clip& c) { return model::clipId(c) == move.id; });
+            });
+            controller.project().editTrack(move.to, "move clip",
+                                           [&](model::Track& edit) { edit.clips.push_back(std::move(moved)); });
+        }
+    });
+    return ids.size() == 1 ? clipResult(controller, id) : clipResults(controller, ids);
+}
+
+}  // namespace
+
+void deleteClips(ProjectController& controller, const std::vector<model::ClipId>& ids) {
+    controller.project().group("delete clip", [&] {
+        for (const model::ClipId& id : ids) {
+            const model::TrackId track = clipRef(controller, id).track->id;
+            controller.project().editTrack(track, "delete clip", [&](model::Track& edited) {
+                std::erase_if(edited.clips, [&](const model::Clip& c) { return model::clipId(c) == id; });
+            });
+        }
+    });
+}
+
+std::vector<model::ClipId> selectedClips(const ProjectController& controller, const Nav& nav) {
+    return nav.selectedClips() |
+           std::views::transform([](const QString& id) { return model::ClipId{id.toStdString()}; }) |
+           std::views::filter([&](const model::ClipId& id) { return controller.project().findClip(id).has_value(); }) |
+           std::ranges::to<std::vector>();
+}
+
+namespace {
+
 void registerSelectionActions(Registry& registry, ProjectController& controller, Nav& nav) {
     registry.addAction({.id = "selection.set",
                         .title = "Select clips",
@@ -174,10 +247,13 @@ void registerSelectionActions(Registry& registry, ProjectController& controller,
                         .title = "Deselect all clips",
                         .aliases = {"clear selection", "select none"},
                         .category = "Clips",
-                        .run = [&nav](const Json&) {
-                            nav.setSelectedClips({});
-                            return nav.toJson();
-                        }});
+                        .shortcut = "Ctrl+Shift+A",
+                        .run =
+                            [&nav](const Json&) {
+                                nav.setSelectedClips({});
+                                return nav.toJson();
+                            },
+                        .menus = {kEditMenu}});
     registry.addSetting({.id = "edit.snap",
                          .title = "Snap to beat grid",
                          .aliases = {"snap", "grid"},
@@ -186,18 +262,37 @@ void registerSelectionActions(Registry& registry, ProjectController& controller,
                          .defaultValue = true,
                          .hint = "Hold Alt while dragging to place freely",
                          .location = "settings.general"});
+    registry.addSetting({.id = "edit.linkFades",
+                         .title = "Link fade in and fade out",
+                         .aliases = {"same fades", "linked fades"},
+                         .category = "Settings / Editing",
+                         .type = SettingType::Boolean,
+                         .defaultValue = false,
+                         .location = "settings.general"});
+    registry.addAction(
+        {.id = "edit.toggleLinkFades",
+         .title = "Link fades",
+         .aliases = {"link fade in and out", "unlink fades"},
+         .category = "Clips",
+         .run = [&registry](const Json&) {
+             return Json{{"linkFades",
+                          registry.setSetting("edit.linkFades", !registry.settingValue("edit.linkFades").get<bool>())}};
+         }});
     registry.addAction(
         {.id = "edit.toggleSnap",
          .title = "Toggle snap to grid",
          .aliases = {"snap on", "snap off", "grid snap"},
          .category = "Clips",
          .shortcut = "N",
-         .run = [&registry](const Json&) {
-             return Json{{"snap", registry.setSetting("edit.snap", !registry.settingValue("edit.snap").get<bool>())}};
-         }});
+         .run =
+             [&registry](const Json&) {
+                 return Json{
+                     {"snap", registry.setSetting("edit.snap", !registry.settingValue("edit.snap").get<bool>())}};
+             },
+         .menus = {kViewMenu}});
     // Undo, delete and track removal can take selected clips away, so we drop their ids from the selection.
     controller.project().addListener([&controller, &nav](const model::Change&) {
-        const auto kept = selection(controller, nav);
+        const auto kept = selectedClips(controller, nav);
         if (std::cmp_not_equal(kept.size(), nav.selectedClips().size())) {
             nav.setSelectedClips(kept | std::views::transform([](const model::ClipId& id) { return qs(id.value); }) |
                                  std::ranges::to<QStringList>());
@@ -207,21 +302,37 @@ void registerSelectionActions(Registry& registry, ProjectController& controller,
 
 }  // namespace
 
+ClipType clipTypeOf(const TrackType* type) {
+    if (type == nullptr || !type->laneComponent.empty()) {
+        return ClipType::none;
+    }
+    if (type->routes.audio) {
+        return ClipType::audio;
+    }
+    return type->routes.midi ? ClipType::midi : ClipType::none;
+}
+
+bool trackTakesClip(const Registry& registry, const model::Track& track, const model::Clip& clip) {
+    const ClipType type = std::visit(core::Overloaded{[](const model::AudioClip&) { return ClipType::audio; },
+                                                      [](const model::MidiClip&) { return ClipType::midi; }},
+                                     clip);
+    return clipTypeOf(registry.trackType(track.kind)) == type;
+}
+
 void registerClipActions(Registry& registry, ProjectController& controller, Nav& nav) {
     const auto tempo = [&controller]() -> const core::TempoMap& { return controller.project().document().tempo; };
 
     registry.addAction({.id = "clip.move",
                         .title = "Move clip",
+                        .aliases = {"move clip to track", "drag clip"},
                         .category = "Clips",
-                        .schema = {{"required", {"clip", "start"}}},
-                        .run = [&controller, tempo](const Json& params) {
-                            const auto id = clipParam(controller.project(), params);
-                            const core::Ticks start = positionParam(params, "start", tempo());
-                            if (start < 0) {
-                                throw AppError("start must be at or after bar 1");
-                            }
-                            replaceClip(controller, id, "move clip", model::moveClip(clipOf(controller, id), start));
-                            return clipResult(controller, id);
+                        .schema = {{"required", {"clip"}},
+                                   {"properties",
+                                    {{"start", Json::object()},
+                                     {"track", {{"type", "string"}}},
+                                     {"selection", {{"type", "boolean"}}}}}},
+                        .run = [&registry, &controller, &nav](const Json& params) {
+                            return moveClips(registry, controller, nav, params);
                         }});
     registry.addAction(
         {.id = "clip.resize",
@@ -252,14 +363,14 @@ void registerClipActions(Registry& registry, ProjectController& controller, Nav&
              replaceClip(controller, id, "resize clip", std::move(clip));
              return clipResult(controller, id);
          }});
-    registry.addAction(
-        {.id = "clip.split",
-         .title = "Split clip at playhead",
-         .aliases = {"cut clip", "split region"},
-         .category = "Clips",
-         .shortcut = "Ctrl+T",
-         .schema = {{"properties", {{"clip", {{"type", "string"}}}, {"at", Json::object()}}}},
-         .run = [&controller, &nav](const Json& params) { return splitClips(controller, nav, params); }});
+    registry.addAction({.id = "clip.split",
+                        .title = "Split clip at playhead",
+                        .aliases = {"cut clip", "split region"},
+                        .category = "Clips",
+                        .shortcut = "Ctrl+T",
+                        .schema = {{"properties", {{"clip", {{"type", "string"}}}, {"at", Json::object()}}}},
+                        .run = [&controller, &nav](const Json& params) { return splitClips(controller, nav, params); },
+                        .menus = {kEditMenu, kClipContextMenu}});
     registry.addAction({.id = "clip.setFade",
                         .title = "Set clip fades",
                         .aliases = {"fade in", "fade out"},
@@ -291,18 +402,35 @@ void registerClipActions(Registry& registry, ProjectController& controller, Nav&
                         .title = "Delete clip",
                         .aliases = {"remove clip", "delete selected clips"},
                         .category = "Clips",
-                        .shortcut = "Backspace",
                         .schema = {{"properties", {{"clip", {{"type", "string"}}}}}},
-                        .run = [&controller, &nav](const Json& params) {
-                            for (const model::ClipId& id : targetClips(controller, nav, params)) {
-                                const model::TrackId track = clipRef(controller, id).track->id;
-                                controller.project().editTrack(track, "delete clip", [&](model::Track& edited) {
-                                    std::erase_if(edited.clips,
-                                                  [&](const model::Clip& c) { return model::clipId(c) == id; });
+                        .run =
+                            [&controller, &nav](const Json& params) {
+                                deleteClips(controller, targetClips(controller, nav, params));
+                                return projectState(controller);
+                            },
+                        .menus = {kClipContextMenu}});
+    registry.addAction({.id = "clip.resetFades",
+                        .title = "Reset clip fades",
+                        .aliases = {"remove fades", "clear fade in", "clear fade out"},
+                        .category = "Clips",
+                        .schema = {{"properties", {{"clip", {{"type", "string"}}}}}},
+                        .run =
+                            [&controller, &nav](const Json& params) {
+                                const auto ids = targetClips(controller, nav, params);
+                                controller.project().group("reset clip fades", [&] {
+                                    for (const model::ClipId& id : ids) {
+                                        if (const auto* audio =
+                                                std::get_if<model::AudioClip>(clipRef(controller, id).clip)) {
+                                            model::AudioClip reset = *audio;
+                                            reset.fadeIn = 0;
+                                            reset.fadeOut = 0;
+                                            replaceClip(controller, id, "reset clip fades", std::move(reset));
+                                        }
+                                    }
                                 });
-                            }
-                            return projectState(controller);
-                        }});
+                                return clipResults(controller, ids);
+                            },
+                        .menus = {kClipContextMenu}});
     registry.addAction(
         {.id = "clip.duplicate",
          .title = "Duplicate clip",
@@ -310,7 +438,8 @@ void registerClipActions(Registry& registry, ProjectController& controller, Nav&
          .category = "Clips",
          .shortcut = "Ctrl+D",
          .schema = {{"properties", {{"clip", {{"type", "string"}}}, {"at", Json::object()}}}},
-         .run = [&controller, &nav](const Json& params) { return duplicateClips(controller, nav, params); }});
+         .run = [&controller, &nav](const Json& params) { return duplicateClips(controller, nav, params); },
+         .menus = {kEditMenu, kClipContextMenu}});
     registry.addAction(
         {.id = "clip.import",
          .title = "Import audio file",
@@ -328,6 +457,7 @@ void registerClipActions(Registry& registry, ProjectController& controller, Nav&
                                              optionalParam<bool>(params, "includeEvents").value_or(true));
                         }});
     registerSelectionActions(registry, controller, nav);
+    registerClipEditActions(registry, controller, nav);
 }
 
 }  // namespace emerick::app

@@ -31,15 +31,12 @@ public:
         audioOut,
         midiIn,
         midiOut,
-        audioInText,
-        audioOutText,
-        midiInText,
-        midiOutText,
         audioRoutes,
         midiRoutes,
         clips,
         trackData,
         laneComponent,
+        clipType,
     };
 
     TrackListModel(ProjectController& controller, const Registry& registry, QObject* parent = nullptr);

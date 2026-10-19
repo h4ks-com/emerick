@@ -69,6 +69,14 @@ void addSetting(app::Registry& registry, app::Setting setting) {
     registry.addSetting(std::move(setting));
 }
 
+app::Json midiOutputs(const app::ProjectController& controller) {
+    return controller.engine().midiPorts() |
+           std::views::filter([](const engine::MidiPortInfo& port) { return !port.isInput; }) |
+           std::views::transform(
+               [](const engine::MidiPortInfo& port) { return app::Json{{"id", port.id}, {"name", port.name}}; }) |
+           std::ranges::to<app::Json::array_t>();
+}
+
 void registerDeviceProfile(app::Registry& registry) {
     app::MidiDeviceProfile profile{.nameMatch = "Digital Keyboard"};
     for (const Part& part : genos2Parts()) {
@@ -86,8 +94,8 @@ ChartOptions chartOptions(const app::Registry& registry, int shiftBars) {
             .anticipation = registry.settingValue(kAnticipationSetting).get<bool>()};
 }
 
-void registerSettings(app::Registry& registry, app::Nav& nav) {
-    app::addSettingsSection(registry, nav, "yamaha", "Yamaha");
+void registerSettings(app::Registry& registry, app::ProjectController& controller, app::Nav& nav) {
+    app::addSettingsSection(registry, nav, {.key = "yamaha", .title = "Yamaha Arranger", .group = app::kPluginsGroup});
     addSetting(registry, {.id = kChordChannelSetting,
                           .title = "Chord detect channel",
                           .aliases = {"chord channel"},
@@ -101,7 +109,8 @@ void registerSettings(app::Registry& registry, app::Nav& nav) {
                           .aliases = {"section port"},
                           .type = app::SettingType::String,
                           .defaultValue = "Digital Keyboard Port 2",
-                          .hint = "Match the keyboard's external controller port"});
+                          .hint = "Match the keyboard's external controller port",
+                          .suggestions = [&controller] { return midiOutputs(controller); }});
     addSetting(registry, {.id = kControllerChannelSetting,
                           .title = "External controller channel",
                           .aliases = {"section channel"},
@@ -175,7 +184,7 @@ void registerTrackKinds(app::Registry& registry) {
 }
 
 void registerWith(app::Registry& registry, app::ProjectController& controller, app::Nav& nav) {
-    registerSettings(registry, nav);
+    registerSettings(registry, controller, nav);
     registerTrackKinds(registry);
     registerDeviceProfile(registry);
     registerChartActions(registry, controller);

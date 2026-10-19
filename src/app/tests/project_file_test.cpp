@@ -31,7 +31,7 @@ std::vector<std::string> recent(const ProjectRig& rig) {
 
 TEST_CASE("a new project starts as an Untitled bundle in the projects folder") {
     ProjectRig rig;
-    const auto first = rig.path("Projects") / "Untitled 1.emerick";
+    const auto first = rig.path("Projects") / "Untitled 1.erk";
     CHECK(rig.controller->folder() == first);
     CHECK(rig.controller->name() == "Untitled 1");
     CHECK(std::filesystem::exists(first / "project.json"));
@@ -47,7 +47,7 @@ TEST_CASE("a new project starts as an Untitled bundle in the projects folder") {
 
     rig.run("track.addAudio", {{"name", "Vox"}});
     const Json state = rig.run("project.new");
-    CHECK(state.at("path") == (rig.path("Projects") / "Untitled 2.emerick").string());
+    CHECK(state.at("path") == (rig.path("Projects") / "Untitled 2.erk").string());
     CHECK(state.at("untitled") == true);
     CHECK(savedProject(first).at("tracks").at(0).at("name") == "Vox");
 }
@@ -60,7 +60,7 @@ TEST_CASE("save as moves an untitled bundle, copies a named one, and the bundle 
     const auto untitled = rig.controller->folder();
 
     const Json saved = rig.run("project.saveAs", {{"path", rig.path("Songs/Take").string()}});
-    const auto song = rig.path("Songs/Take.emerick");
+    const auto song = rig.path("Songs/Take.erk");
     CHECK(saved.at("path") == song.string());
     CHECK(saved.at("untitled") == false);
     CHECK(rig.controller->name() == "Take");
@@ -68,9 +68,9 @@ TEST_CASE("save as moves an untitled bundle, copies a named one, and the bundle 
     CHECK(std::filesystem::exists(song / "audio" / "ones.wav"));
     const Json before = model::toJson(rig.controller->project().document());
 
-    rig.run("project.saveAs", {{"path", rig.path("Songs/Copy.emerick").string()}});
+    rig.run("project.saveAs", {{"path", rig.path("Songs/Copy.erk").string()}});
     CHECK(std::filesystem::exists(song / "project.json"));
-    CHECK(std::filesystem::exists(rig.path("Songs/Copy.emerick") / "audio" / "ones.wav"));
+    CHECK(std::filesystem::exists(rig.path("Songs/Copy.erk") / "audio" / "ones.wav"));
     CHECK_THROWS_AS(rig.run("project.saveAs", {{"path", song.string()}}), AppError);
 
     rig.run("project.new");
@@ -109,20 +109,20 @@ TEST_CASE("the recent list keeps the last ten projects that still exist, newest 
     }
     const auto list = recent(rig);
     REQUIRE(list.size() == 10);
-    CHECK(list.front() == rig.path("song10.emerick").string());
-    CHECK(list.back() == rig.path("song1.emerick").string());
+    CHECK(list.front() == rig.path("song10.erk").string());
+    CHECK(list.back() == rig.path("song1.erk").string());
 
-    std::filesystem::remove_all(rig.path("song9.emerick"));
+    std::filesystem::remove_all(rig.path("song9.erk"));
     const QVariantList choices = rig.registry.menus().value("File").toList().at(2).toMap().value("choices").toList();
     REQUIRE(choices.size() == 9);
     CHECK(choices.at(0).toMap().value("title") == "song10");
-    CHECK(choices.at(1).toMap().value("params").toMap().value("path") == qs(rig.path("song8.emerick").string()));
+    CHECK(choices.at(1).toMap().value("params").toMap().value("path") == qs(rig.path("song8.erk").string()));
 
     CHECK(std::ranges::none_of(rig.registry.palette("recent"),
                                [](const QVariant& hit) { return hit.toMap().value("id") == "project.openRecent"; }));
 
-    rig.run("project.openRecent", {{"path", rig.path("song3.emerick").string()}});
-    CHECK(recent(rig).front() == rig.path("song3.emerick").string());
+    rig.run("project.openRecent", {{"path", rig.path("song3.erk").string()}});
+    CHECK(recent(rig).front() == rig.path("song3.erk").string());
 }
 
 TEST_CASE("an agent gets an error naming the missing path, and the UI gets a dialog") {
@@ -138,7 +138,7 @@ TEST_CASE("an agent gets an error naming the missing path, and the UI gets a dia
     CHECK(rig.controller->untitled());
 
     rig.registry.runWithFile("project.saveAs", QUrl::fromLocalFile(qs(rig.path("picked").string())));
-    CHECK(rig.controller->folder() == rig.path("picked.emerick"));
+    CHECK(rig.controller->folder() == rig.path("picked.erk"));
 }
 
 TEST_CASE("export for Logic writes numbered WAVs of one length and a MIDI file with tempo and named tracks") {

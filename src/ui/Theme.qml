@@ -43,6 +43,8 @@ QtObject {
     readonly property int labelWidth: 160
     readonly property int paletteWidth: 560
     readonly property int menuWidth: 240
+    readonly property int channelPickerWidth: 76
+    readonly property int pickerRows: 10
     readonly property int paletteTop: 72
     readonly property int paletteListHeight: 360
     readonly property int windowWidth: 1280
@@ -70,11 +72,23 @@ QtObject {
     readonly property int beatSpacing: 12
     readonly property int maxTextureWidth: 4096
     readonly property int dragThreshold: 4
+    readonly property int dragPixelsPerStep: 4
+    readonly property real dragFineFactor: 0.1
+    readonly property int dragCoarseSteps: 10
+    readonly property int sweepSampleSpacing: 4
     readonly property real gainMinDb: -60
     readonly property real meterFloorDb: -60
     readonly property real gainMaxDb: 6
+    readonly property real gainStepDb: 0.5
+    readonly property real clipGainMaxDb: 24
+    readonly property real minBpm: 20
+    readonly property real maxBpm: 400
+    readonly property real numberSettingStep: 0.1
+    readonly property int numberSettingDecimals: 2
+    readonly property int gainReadoutWidth: 64
     readonly property real wheelStep: 0.5
     readonly property real wheelZoom: 0.002
+    readonly property real wheelTrackHeight: 0.1
     readonly property real followLead: 0.1
     readonly property real followEdge: 0.95
     readonly property int timelineTailBars: 16
@@ -87,9 +101,15 @@ QtObject {
     readonly property color beatLine: Qt.rgba(1, 1, 1, 0.03)
 
     // Track icons are Phosphor names; an icon we do not bundle shows as a note.
-    readonly property var icons: ["circle", "file", "gear-six", "guitar", "magnifying-glass", "music-note", "music-notes", "pause", "piano-keys", "play", "sidebar-simple", "skip-back", "squares-four", "stop", "waveform"]
+    readonly property var icons: ["circle", "dots-three", "file", "gear-six", "guitar", "magnifying-glass", "music-note", "music-notes", "pause", "piano-keys", "play", "sidebar-simple", "skip-back", "squares-four", "stop", "waveform", "x"]
     function iconSource(name) {
         return "icons/" + (icons.indexOf(name) >= 0 ? name : "music-note") + ".svg"
+    }
+
+    // A right click, or a Control click on macOS, where Qt reports the Control key as Meta.
+    function isContextClick(mouse) {
+        return mouse.button === Qt.RightButton
+            || (Qt.platform.os === "osx" && mouse.button === Qt.LeftButton && (mouse.modifiers & Qt.MetaModifier))
     }
 
     // Registry shortcuts use Qt's portable "Ctrl+" spelling, which macOS maps to Command and writes as ⇧⌘S.

@@ -3,6 +3,7 @@ qt_add_library(emerick_app STATIC
     audio_file.cpp
     backends.cpp
     clip_actions.cpp
+    clip_edit_actions.cpp
     clip_notes.cpp
     core_actions.cpp
     export_actions.cpp
@@ -49,6 +50,7 @@ qt_add_library(emerick_app STATIC
     session_mapping.cpp
     stem_export.cpp
     track_actions.cpp
+    track_edit_actions.cpp
     track_list_model.cpp
     transport_clock.cpp
     ui_api.cpp

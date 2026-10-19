@@ -1,16 +1,13 @@
 import QtQuick
-import QtQuick.Layouts
 import Emerick.App
 
-ThemeComboBox {
+// One part of a track route: the device, or with part "channel" its channels. Picking runs the route action with
+// only the params that entry sets, and the action keeps the rest of the route.
+SearchCombo {
     required property string actionId
     required property string trackId
-    required property var choices
-    objectName: actionId + ":" + trackId
-    Layout.fillWidth: true
-    model: choices
-    textRole: "label"
-    // The inspector shows the route as displayText, so no choice starts highlighted.
-    currentIndex: -1
-    onActivated: index => Registry.runAction(actionId, Object.assign({track: trackId}, choices[index].params))
+    property string part
+    objectName: actionId + ":" + trackId + (part ? ":" + part : "")
+    missingText: part ? currentId : "Missing device"
+    onPicked: entry => Registry.runAction(actionId, Object.assign({track: trackId}, entry.params))
 }

@@ -26,8 +26,8 @@ The engine never sees the model. `emerick_app` turns the document into an engine
 
 ## Projects
 
-- A project is a bundle: a folder named `<Name>.emerick` holding `project.json` and `audio/`. On macOS the app's Info.plist declares it a document package, so Finder shows it as one file and opens it in Emerick.
-- A new project starts as `Untitled N.emerick` in the `Emerick` folder of the platform music folder, so every take lands in a real folder. Autosave writes `project.json` about 2 s after the last edit or take. Leaving an untitled project that holds nothing deletes it.
+- A project is a bundle: a folder named `<Name>.erk` holding `project.json` and `audio/`. On macOS the app's Info.plist declares it a document package, so Finder shows it as one file and opens it in Emerick.
+- A new project starts as `Untitled N.erk` in the `Emerick` folder of the platform music folder, so every take lands in a real folder. Autosave writes `project.json` about 2 s after the last edit or take. Leaving an untitled project that holds nothing deletes it.
 - An action that takes a path, such as `project.open` or `export.logic`, opens a file dialog when the UI runs it without one. An agent passes the path, and a missing one is an error naming the param. An action that deletes files asks first in the UI; an agent passes `confirm: true`.
 - `export.logic` writes `<Name> for Logic/`: one numbered WAV per audio track from bar 1 to the project end, and `MIDI.mid` with the tempo, the meter, one named track per MIDI track and markers from the track types that name the timeline, such as chords and Style sections.
 
@@ -48,7 +48,7 @@ Listing devices asks CoreAudio and CoreMIDI about every device, so the engine li
 
 ## Plugins
 
-A plugin calls `registerWith(Registry&, ProjectController&, Nav&)` and can add track types (data schema, QML header and lane, engine MIDI processor), actions, settings and their settings section, MIDI device profiles (channel names, icons), project-level data in `Document::pluginData` and a QML module. A lane component gets `trackId`, `trackData` and `pixelsPerTick` from the tracks area. The first plugin, `plugins/yamaha`, adds the Chords and Style tracks, the arranger setup and the voice table for the Genos2. Plugins are compiled in; dynamic loading waits for a third-party plugin.
+A plugin calls `registerWith(Registry&, ProjectController&, Nav&)` and can add track types (data schema, QML header and lane, engine MIDI processor), actions (listed in the menu bar under `Plugins/<plugin name>`), settings and their settings section (listed under the Plugins heading), MIDI device profiles (channel names, icons), project-level data in `Document::pluginData` and a QML module. A lane component gets `trackId`, `trackData` and `pixelsPerTick` from the tracks area. The first plugin, `plugins/yamaha`, adds the Chords and Style tracks, the arranger setup and the voice table for the Genos2. Plugins are compiled in; dynamic loading waits for a third-party plugin.
 
 ## Agent interface
 

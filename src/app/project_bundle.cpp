@@ -14,7 +14,7 @@ namespace emerick::app {
 
 namespace {
 
-constexpr const char* kBundleSuffix = ".emerick";
+constexpr const char* kBundleSuffix = ".erk";
 
 }  // namespace
 

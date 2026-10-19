@@ -13,6 +13,7 @@
 #include <utility>
 #include <variant>
 
+#include "emerick/app/project_actions.hpp"
 #include "emerick/app/project_state.hpp"
 #include "emerick/core/overloaded.hpp"
 #include "emerick/model/clip_edit.hpp"
@@ -29,6 +30,12 @@ QVariantMap audioRoute(const model::AudioRoute& route) {
 
 QVariantMap midiRoute(const model::MidiRoute& route) {
     return {{"port", qs(route.portId)}, {"channel", route.channel}, {"thru", route.thru}, {"sysex", route.sysex}};
+}
+
+// QML compares this with a clip's type.
+const char* clipTypeName(ClipType type) {
+    constexpr std::array kNames{"", "audio", "midi"};
+    return kNames.at(static_cast<std::size_t>(type));
 }
 
 QVariantList noteList(const model::MidiClip& clip) {
@@ -134,14 +141,6 @@ QVariant TrackListModel::data(const QModelIndex& index, int role) const {
             return midiRoute(track.midiIn);
         case Role::midiOut:
             return midiRoute(track.midiOut);
-        case Role::audioInText:
-            return qs(routeText(track.audioIn));
-        case Role::audioOutText:
-            return qs(routeText(track.audioOut));
-        case Role::midiInText:
-            return qs(routeText(track.midiIn));
-        case Role::midiOutText:
-            return qs(routeText(track.midiOut));
         case Role::audioRoutes:
             return routes.audio;
         case Role::midiRoutes:
@@ -152,12 +151,14 @@ QVariant TrackListModel::data(const QModelIndex& index, int role) const {
             return toVariant(track.data);
         case Role::laneComponent:
             return qs(type != nullptr ? type->laneComponent : std::string{});
+        case Role::clipType:
+            return qs(clipTypeName(clipTypeOf(type)));
     }
     return {};
 }
 
 QHash<int, QByteArray> TrackListModel::roleNames() const {
-    static constexpr std::array<std::pair<Role, const char*>, 23> kNames{{{Role::id, "trackId"},
+    static constexpr std::array<std::pair<Role, const char*>, 20> kNames{{{Role::id, "trackId"},
                                                                           {Role::name, "name"},
                                                                           {Role::kind, "kind"},
                                                                           {Role::icon, "icon"},
@@ -171,15 +172,12 @@ QHash<int, QByteArray> TrackListModel::roleNames() const {
                                                                           {Role::audioOut, "audioOut"},
                                                                           {Role::midiIn, "midiIn"},
                                                                           {Role::midiOut, "midiOut"},
-                                                                          {Role::audioInText, "audioInText"},
-                                                                          {Role::audioOutText, "audioOutText"},
-                                                                          {Role::midiInText, "midiInText"},
-                                                                          {Role::midiOutText, "midiOutText"},
                                                                           {Role::audioRoutes, "audioRoutes"},
                                                                           {Role::midiRoutes, "midiRoutes"},
                                                                           {Role::clips, "clips"},
                                                                           {Role::trackData, "trackData"},
-                                                                          {Role::laneComponent, "laneComponent"}}};
+                                                                          {Role::laneComponent, "laneComponent"},
+                                                                          {Role::clipType, "clipType"}}};
     QHash<int, QByteArray> names;
     for (const auto& [role, name] : kNames) {
         names.insert(static_cast<int>(role), name);

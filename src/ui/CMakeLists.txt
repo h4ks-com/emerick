@@ -38,6 +38,7 @@ qt_add_qml_module(emerick_ui
         icons/gear-six.svg
         icons/guitar.svg
         icons/magnifying-glass.svg
+        icons/metronome.svg
         icons/music-note.svg
         icons/music-notes.svg
         icons/pause.svg

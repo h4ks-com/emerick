@@ -88,8 +88,11 @@ engine::Track midiEngineTrack(const model::Track& track) {
 
 engine::Session toSession(const model::Document& document, const Registry& registry,
                           const std::filesystem::path& folder) {
-    engine::Session session{
-        .tempo = document.tempo, .tracks = {}, .clockPorts = document.clockPorts, .takeFolder = folder / "audio"};
+    engine::Session session{.tempo = document.tempo,
+                            .tracks = {},
+                            .clockPorts = document.clockPorts,
+                            .takeFolder = folder / "audio",
+                            .metronome = {}};
     const PlaybackContext context{.tempo = document.tempo, .folder = folder};
     for (const model::Track& track : document.tracks) {
         const TrackType* type = registry.trackType(track.kind);
@@ -113,6 +116,13 @@ std::vector<engine::SessionError> dropMissingDevices(engine::Session& session,
     for (engine::Track& track : session.tracks) {
         drop(track, track.audioIn, "input");
         drop(track, track.audioOut, "output");
+    }
+    engine::AudioRoute& metronome = session.metronome.audioOut;
+    if (!metronome.deviceId.empty() &&
+        !std::ranges::contains(devices, metronome.deviceId, &engine::AudioDeviceInfo::id)) {
+        errors.push_back({engine::kMetronomeId, "the metronome output device " + metronome.deviceId +
+                                                    " is missing, so it plays on the main output"});
+        metronome = {};
     }
     return errors;
 }

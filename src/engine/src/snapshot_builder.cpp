@@ -1,6 +1,7 @@
 #include "snapshot_builder.hpp"
 
 #include <algorithm>
+#include <ranges>
 #include <stdexcept>
 #include <utility>
 
@@ -18,14 +19,15 @@ std::shared_ptr<T> cached(std::map<std::string, std::weak_ptr<T>>& cache, const 
     return made;
 }
 
-std::vector<int> channelIndices(const Track& track, const AudioRoute& route, const StreamLayout& layout, bool input) {
+std::vector<int> channelIndices(const std::string& owner, const AudioRoute& route, const StreamLayout& layout,
+                                bool input) {
     std::vector<int> indices;
     for (const int channel : route.channels) {
         const auto index =
             input ? layout.inputIndex(route.deviceId, channel) : layout.outputIndex(route.deviceId, channel);
         if (!index) {
-            throw std::invalid_argument("track " + track.id + ": " + route.deviceId + " has no " +
-                                        (input ? "input" : "output") + " channel " + std::to_string(channel));
+            throw std::invalid_argument(owner + ": " + route.deviceId + " has no " + (input ? "input" : "output") +
+                                        " channel " + std::to_string(channel));
         }
         indices.push_back(*index);
     }
@@ -55,8 +57,8 @@ BuiltSnapshot SnapshotBuilder::build(const Session& session, const StreamLayout&
         state.solo = track.solo;
         state.monitor = track.monitor;
         state.gain = track.gain;
-        state.inputs = channelIndices(track, track.audioIn, layout, true);
-        state.outputs = channelIndices(track, track.audioOut, layout, false);
+        state.inputs = channelIndices("track " + track.id, track.audioIn, layout, true);
+        state.outputs = channelIndices("track " + track.id, track.audioOut, layout, false);
         state.inputPointers.resize(state.inputs.size());
         state.inChannel = track.midiIn.channel;
         state.outChannel = track.midiOut.channel;
@@ -76,7 +78,61 @@ BuiltSnapshot SnapshotBuilder::build(const Session& session, const StreamLayout&
         addRecorder(state, track, session, layout, captureOffset);
         snapshot.tracks.push_back(std::move(state));
     }
+    addMetronome(snapshot, session, layout, built.errors);
+    snapshot.tailOutputs.resize(static_cast<std::size_t>(layout.outputChannels));
     return built;
+}
+
+void SnapshotBuilder::addMetronome(Snapshot& snapshot, const Session& session, const StreamLayout& layout,
+                                   std::vector<SessionError>& errors) {
+    const Metronome& settings = session.metronome;
+    MetronomeState& metronome = snapshot.metronome;
+    metronome.settings = settings;
+    metronome.countInFrames = session.tempo.ticksToFrames(
+        std::clamp(settings.countInBars, 0, kMaxCountInBars) * session.tempo.ticksPerBar(), layout.sampleRate);
+    metronome.outputs = std::views::iota(0, std::min(layout.outputChannels, 2)) | std::ranges::to<std::vector>();
+    if (!settings.audioOut.deviceId.empty()) {
+        try {
+            metronome.outputs = channelIndices(kMetronomeId, settings.audioOut, layout, false);
+        } catch (const std::invalid_argument& error) {
+            errors.push_back({kMetronomeId, std::string{error.what()} + ", so it plays on the main output"});
+        }
+    }
+    const bool midi = settings.mode == MetronomeMode::midiClick || settings.mode == MetronomeMode::midiGroove;
+    if (midi && !settings.midiOut.portId.empty()) {
+        metronome.midiOut = outputPort(settings.midiOut.portId);
+    }
+    metronome.sounds = drumSounds(settings, layout.sampleRate, errors);
+}
+
+std::shared_ptr<const DrumSounds> SnapshotBuilder::drumSounds(const Metronome& metronome, double sampleRate,
+                                                              std::vector<SessionError>& errors) {
+    const bool samples = metronome.mode == MetronomeMode::sample;
+    const std::string key = std::to_string(sampleRate) + "/" +
+                            (samples ? metronome.accentSample.string() + "/" + metronome.beatSample.string() : "");
+    if (!sounds_ || key != soundsKey_) {
+        DrumSounds sounds = synthesizeDrums(sampleRate);
+        soundErrors_.clear();
+        if (samples) {
+            const auto load = [&](const std::filesystem::path& path, DrumVoice voice) {
+                if (path.empty()) {
+                    return;
+                }
+                auto loaded = loadOneShot(path, sampleRate);
+                if (loaded) {
+                    sounds.voices[static_cast<std::size_t>(voice)] = std::move(*loaded);
+                } else {
+                    soundErrors_.push_back({kMetronomeId, loaded.error() + ", so the click plays instead"});
+                }
+            };
+            load(metronome.accentSample, DrumVoice::accent);
+            load(metronome.beatSample, DrumVoice::beat);
+        }
+        sounds_ = std::make_shared<const DrumSounds>(std::move(sounds));
+        soundsKey_ = key;
+    }
+    errors.insert(errors.end(), soundErrors_.begin(), soundErrors_.end());
+    return sounds_;
 }
 
 void SnapshotBuilder::addClips(TrackState& state, const Track& track, const core::TempoMap& tempo,

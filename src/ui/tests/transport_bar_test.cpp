@@ -89,3 +89,18 @@ TEST_CASE("clicking the tempo edits it in place, and Return there keeps the play
     CHECK(main.item("project.setTempo.bpm")->property("displayText").toString() == "96");
     CHECK(main.rig.controller->positionTicks() > 0);
 }
+
+TEST_CASE("the metronome button toggles the click, lights up and opens its menu on a right click") {
+    MainWindow& main = MainWindow::instance();
+    const bool before = main.rig.registry.settingValue("metronome.enabled").get<bool>();
+
+    main.click("metronome.toggle");
+    CHECK(processUntil([&] { return main.rig.registry.settingValue("metronome.enabled").get<bool>() != before; }));
+    CHECK(main.item("metronome.toggle")->property("active").toBool() != before);
+
+    QTest::mouseClick(main.window, Qt::RightButton, Qt::NoModifier, main.center("metronome.toggle"));
+    auto* menu = main.window->findChild<QObject*>("menu.metronome");
+    REQUIRE(menu != nullptr);
+    CHECK(processUntil([&] { return menu->property("visible").toBool(); }));
+    QTest::keyClick(main.window, Qt::Key_Escape);
+}

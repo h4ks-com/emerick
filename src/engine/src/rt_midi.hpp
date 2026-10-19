@@ -8,7 +8,8 @@
 
 namespace emerick::engine {
 
-void receiveMidi(Snapshot& snapshot, const RealtimeState& state, const AudioBlock& block);
+// The block's first frame sits at blockStartFrame on the timeline.
+void receiveMidi(Snapshot& snapshot, const RealtimeState& state, const AudioBlock& block, Frames blockStartFrame);
 void sendClock(const Snapshot& snapshot, Frames frame, const AudioBlock& block);
 void playMidiClips(Snapshot& snapshot, Frames frame, const AudioBlock& block);
 void sendToClockPorts(const Snapshot& snapshot, std::uint8_t status, std::int64_t timestampNs);

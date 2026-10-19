@@ -4,7 +4,9 @@ add_library(emerick_engine
     src/engine.cpp
     src/interleaved_io.cpp
     src/libremidi_backend.cpp
+    src/metronome_sounds.cpp
     src/midi_ports.cpp
+    src/rt_metronome.cpp
     src/rt_midi.cpp
     src/rt_process.cpp
     src/snapshot_builder.cpp
@@ -25,7 +27,8 @@ target_link_libraries(emerick_engine
 emerick_target(emerick_engine)
 
 if(EMERICK_BUILD_TESTS)
-    emerick_test(emerick_engine_tests tests/engine_test.cpp tests/interleaved_io_test.cpp tests/recording_test.cpp)
+    emerick_test(emerick_engine_tests tests/engine_test.cpp tests/interleaved_io_test.cpp tests/metronome_test.cpp
+        tests/recording_test.cpp)
     target_include_directories(emerick_engine_tests PRIVATE src)
     target_link_libraries(emerick_engine_tests PRIVATE emerick_engine PkgConfig::SNDFILE)
 endif()

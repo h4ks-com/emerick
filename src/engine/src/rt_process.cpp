@@ -6,8 +6,10 @@
 #include <cmath>
 #include <span>
 
+#include "clock.hpp"
 #include "emerick/core/midi.hpp"
 #include "emerick/engine/engine.hpp"
+#include "rt_metronome.hpp"
 #include "rt_midi.hpp"
 
 namespace emerick::engine {
@@ -74,17 +76,27 @@ void locate(RealtimeState& state, Snapshot& snapshot, Ticks ticks, std::int64_t 
     state.locatesApplied.fetch_add(1, std::memory_order_release);
 }
 
+void startTransport(RealtimeState& state, Snapshot& snapshot, std::int64_t timestampNs) {
+    state.transportPlaying = true;
+    sendToClockPorts(snapshot, core::midi::kStart, timestampNs);
+    updateTake(state, snapshot);
+}
+
 void apply(RealtimeState& state, Snapshot& snapshot, const Command& command, const AudioBlock& block) {
     TrackState* track = findTrack(snapshot, command.track());
     switch (command.type) {
         case Command::Type::play:
-            if (!state.transportPlaying) {
-                state.transportPlaying = true;
-                sendToClockPorts(snapshot, core::midi::kStart, block.hostTimeNs);
-                updateTake(state, snapshot);
+            if (state.transportPlaying || state.countInLeft > 0) {
+                break;
+            }
+            if (state.recordEnabled && snapshot.metronome.countInFrames > 0) {
+                state.countInLeft = snapshot.metronome.countInFrames;
+            } else {
+                startTransport(state, snapshot, block.hostTimeNs);
             }
             break;
         case Command::Type::stop:
+            state.countInLeft = 0;
             if (state.transportPlaying) {
                 state.transportPlaying = false;
                 sendToClockPorts(snapshot, core::midi::kStop, block.hostTimeNs);
@@ -170,7 +182,8 @@ void meterInput(InputMeter& meter, std::span<const float* const> channels, Frame
     }
 }
 
-void monitorAndRecordAudio(Snapshot& snapshot, const AudioBlock& block) {
+// A take that began after a count-in inside this block records from recordFrom on.
+void monitorAndRecordAudio(Snapshot& snapshot, const AudioBlock& block, Frames recordFrom) {
     const bool soloActive = anySolo(snapshot);
     for (TrackState& track : snapshot.tracks) {
         if (track.kind != TrackKind::audio || track.inputs.empty()) {
@@ -182,20 +195,48 @@ void monitorAndRecordAudio(Snapshot& snapshot, const AudioBlock& block) {
         if (track.meter) {
             meterInput(*track.meter, track.inputPointers, block.frames);
         }
-        if (track.recorder && track.recorder->recording()) {
-            track.recorder->writeAudio(track.inputPointers, block.frames);
-        }
-        if (!track.monitor || !audible(track, soloActive)) {
-            continue;
-        }
-        for (std::size_t out = 0; out < track.outputs.size(); ++out) {
-            const float* source = track.inputPointers[std::min(out, track.inputPointers.size() - 1)];
-            float* destination = block.outputs[static_cast<std::size_t>(track.outputs[out])];
-            for (Frames index = 0; index < block.frames; ++index) {
-                destination[index] += source[index] * track.gain;
+        if (track.monitor && audible(track, soloActive)) {
+            for (std::size_t out = 0; out < track.outputs.size(); ++out) {
+                const float* source = track.inputPointers[std::min(out, track.inputPointers.size() - 1)];
+                float* destination = block.outputs[static_cast<std::size_t>(track.outputs[out])];
+                for (Frames index = 0; index < block.frames; ++index) {
+                    destination[index] += source[index] * track.gain;
+                }
             }
         }
+        if (track.recorder && track.recorder->recording()) {
+            for (const float*& pointer : track.inputPointers) {
+                pointer += recordFrom;
+            }
+            track.recorder->writeAudio(track.inputPointers, block.frames - recordFrom);
+        }
     }
+}
+
+// Clicks the count-in through the block and starts the transport where it ends; returns that offset, or 0 when the
+// transport was not counting in.
+Frames countIn(RealtimeState& state, Snapshot& snapshot, const AudioBlock& block) {
+    if (state.countInLeft == 0) {
+        return 0;
+    }
+    const Frames frames = std::min(state.countInLeft, block.frames);
+    playCountIn(state, snapshot, block, snapshot.metronome.countInFrames - state.countInLeft, frames);
+    state.countInLeft -= frames;
+    if (state.countInLeft > 0) {
+        return block.frames;
+    }
+    startTransport(state, snapshot, block.hostTimeNs + framesToNs(frames, snapshot.sampleRate));
+    return frames;
+}
+
+AudioBlock tailOf(Snapshot& snapshot, const AudioBlock& block, Frames offset) {
+    for (std::size_t index = 0; index < block.outputs.size(); ++index) {
+        snapshot.tailOutputs[index] = block.outputs[index] + offset;
+    }
+    return {.frames = block.frames - offset,
+            .hostTimeNs = block.hostTimeNs + framesToNs(offset, snapshot.sampleRate),
+            .inputs = {},
+            .outputs = std::span(snapshot.tailOutputs).first(block.outputs.size())};
 }
 
 }  // namespace
@@ -220,22 +261,30 @@ void processBlock(RealtimeState& state, const AudioBlock& block) {
         return;
     }
     Snapshot& snapshot = *state.current;
+    if (snapshot.metronome.sounds.get() != state.voiceSounds) {
+        state.voiceSounds = snapshot.metronome.sounds.get();
+        state.metronomeVoices = {};
+    }
     Command command;
     while (state.commands.try_dequeue(command)) {
         apply(state, snapshot, command, block);
     }
-    receiveMidi(snapshot, state, block);
+    const Frames rollFrom = countIn(state, snapshot, block);
+    receiveMidi(snapshot, state, block, state.frame - rollFrom);
     if (state.transportPlaying) {
-        sendClock(snapshot, state.frame, block);
-        playMidiClips(snapshot, state.frame, block);
-        playAudioClips(snapshot, state.frame, block);
+        const AudioBlock rolling = rollFrom == 0 ? block : tailOf(snapshot, block, rollFrom);
+        sendClock(snapshot, state.frame, rolling);
+        playMidiClips(snapshot, state.frame, rolling);
+        playAudioClips(snapshot, state.frame, rolling);
+        playMetronome(state, snapshot, block, rollFrom, state.frame);
     }
-    monitorAndRecordAudio(snapshot, block);
+    renderMetronome(state, snapshot, block);
+    monitorAndRecordAudio(snapshot, block, rollFrom);
     if (state.transportPlaying) {
-        state.frame += block.frames;
+        state.frame += block.frames - rollFrom;
     }
     state.publishedFrame.store(state.frame, std::memory_order_relaxed);
-    state.publishedPlaying.store(state.transportPlaying, std::memory_order_relaxed);
+    state.publishedPlaying.store(state.transportPlaying || state.countInLeft > 0, std::memory_order_relaxed);
 }
 
 }  // namespace emerick::engine

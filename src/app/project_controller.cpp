@@ -333,8 +333,16 @@ void ProjectController::setLiveGain(const model::TrackId& id, double db) {
     }
 }
 
+void ProjectController::setMetronome(const engine::Metronome& metronome) {
+    if (metronome != metronome_) {
+        metronome_ = metronome;
+        scheduleFlush();
+    }
+}
+
 void ProjectController::publish() {
     engine::Session session = toSession(project_.document(), registry_, folder_);
+    session.metronome = metronome_;
     routeErrors_ = dropMissingDevices(session, engine_.audioDevices());
     std::set<std::string> ids;
     std::set<std::string> audioIds;

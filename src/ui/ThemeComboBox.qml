@@ -51,7 +51,11 @@ ComboBox {
     popup: Popup {
         y: control.height + Theme.space1
         width: control.width
-        height: Math.min(contentItem.implicitHeight + topPadding + bottomPadding, control.Window.height - y)
+        // Positioning moves a popup that does not fit, so a height bound to y would resize and move it forever.
+        height: Math.min(contentItem.implicitHeight + topPadding + bottomPadding,
+                         control.Window.height - topMargin - bottomMargin)
+        topMargin: Theme.space1
+        bottomMargin: Theme.space1
         padding: Theme.space1
         contentItem: ListView {
             clip: true

@@ -193,3 +193,49 @@ TEST_CASE("Key Commands records a new shortcut that then runs the action") {
     CHECK(main.rig.controller->positionTicks() == main.rig.controller->endTicks());
     MainWindow::settle();
 }
+
+TEST_CASE("Space plays and pauses after clicking any control, and Space and X type into a focused text field") {
+    MainWindow& main = MainWindow::instance();
+    const std::string vox = main.rig.run("track.addAudio").at("id");
+    main.rig.run("track.setGain", {{"track", vox}, {"db", 0.0}});
+    processUntil([] { return false; }, 50);
+    const auto spaceToggles = [&](const QString& clicked) {
+        INFO(clicked.toStdString());
+        if (main.rig.controller->playing()) {
+            main.rig.run("transport.stop");
+        }
+        QTest::keyClick(main.window, Qt::Key_Space);
+        CHECK(processUntil([&] { return main.rig.controller->playing(); }));
+        main.rig.run("transport.stop");
+    };
+    for (const QString& name :
+         {QString{"view.toggleInspector"}, "track.setMute:" + qid(vox), "track.move:" + qid(vox),
+          "track.setGain:" + qid(vox), QString{"metronome.toggle"}, QString{"transport.togglePlay"}}) {
+        main.click(main.item(name));
+        processUntil([] { return false; }, 50);
+        spaceToggles(name);
+    }
+    main.drag(main.item("track.setGain:" + qid(vox) + ":db:drag"), {30, 0});
+    spaceToggles("gain field");
+
+    main.click(main.item("track.setGain:" + qid(vox) + ":db"));
+    REQUIRE(processUntil([&] { return main.item("track.setGain:" + qid(vox) + ":db")->property("editing").toBool(); }));
+    main.click(main.item("track.move:" + qid(vox)));
+    CHECK_FALSE(main.item("track.setGain:" + qid(vox) + ":db")->property("editing").toBool());
+    spaceToggles("track header after typing into the gain field");
+
+    main.rig.run("track.beginRename", {{"track", vox}});
+    QQuickItem* rename = main.item("track.rename:" + qid(vox));
+    REQUIRE(processUntil([&] { return rename->hasActiveFocus(); }));
+    QTest::keyClick(main.window, Qt::Key_End);
+    QTest::keyClick(main.window, Qt::Key_Space);
+    processUntil([] { return false; }, 50);
+    CHECK_FALSE(main.rig.controller->playing());
+    CHECK(rename->property("text").toString().endsWith(" "));
+    QTest::keyClick(main.window, Qt::Key_X);
+    processUntil([] { return false; }, 50);
+    CHECK_FALSE(main.rig.nav.mixerOpen());
+    CHECK(rename->property("text").toString().endsWith(" x"));
+    QTest::keyClick(main.window, Qt::Key_Escape);
+    MainWindow::settle();
+}

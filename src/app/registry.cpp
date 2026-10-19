@@ -559,6 +559,24 @@ QVariant Registry::runAction(const QString& id, const QVariantMap& params) const
     return {};
 }
 
+void Registry::setUndoGroup(std::function<void(const std::string&, const std::function<void()>&)> group) {
+    undoGroup_ = std::move(group);
+}
+
+void Registry::runActions(const QString& name, const QVariantList& calls) const {
+    const auto runAll = [&] {
+        for (const QVariant& call : calls) {
+            const QVariantMap entry = call.toMap();
+            runAction(entry.value("id").toString(), entry.value("params").toMap());
+        }
+    };
+    if (undoGroup_) {
+        undoGroup_(name.toStdString(), runAll);
+    } else {
+        runAll();
+    }
+}
+
 QVariant Registry::runWithFile(const QString& id, const QUrl& file) const {
     const Action* found = action(id.toStdString());
     if (found == nullptr || !found->dialog) {

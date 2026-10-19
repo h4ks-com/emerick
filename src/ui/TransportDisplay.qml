@@ -90,39 +90,22 @@ Rectangle {
         Field {
             id: tempo
             objectName: "project.setTempo"
-            value: Clock.bpm
             label: "tempo"
             widest: "000"
-            TapHandler {
-                onDoubleTapped: {
-                    tempoEditor.text = Clock.bpm
-                    tempoEditor.visible = true
-                    tempoEditor.selectAll()
-                    tempoEditor.forceActiveFocus()
-                }
-            }
-            TextField {
-                id: tempoEditor
+            DragNumber {
                 objectName: "project.setTempo.bpm"
                 anchors.fill: parent
-                visible: false
-                padding: 0
-                horizontalAlignment: TextInput.AlignHCenter
-                color: Theme.tape
+                actionId: "project.setTempo"
+                framed: false
+                value: Number(Clock.bpm)
+                from: Theme.minBpm
+                to: Theme.maxBpm
+                decimals: 1
+                textFromValue: bpm => String(Math.round(bpm * 10) / 10)
+                textColor: Theme.tape
                 font.pixelSize: Theme.textCounter
                 font.weight: Font.Light
-                font.features: {"tnum": 1}
-                validator: DoubleValidator {}
-                background: Rectangle {
-                    color: Theme.slate
-                    radius: Theme.radiusClip / 2
-                }
-                onAccepted: {
-                    visible = false
-                    Registry.runAction("project.setTempo", {bpm: Number(text)})
-                }
-                onActiveFocusChanged: if (!activeFocus) visible = false
-                Keys.onEscapePressed: visible = false
+                onCommitted: bpm => Registry.runAction("project.setTempo", {bpm: bpm})
             }
         }
         Field {

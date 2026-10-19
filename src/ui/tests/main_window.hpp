@@ -1,5 +1,6 @@
 #pragma once
 
+#include <QMouseEvent>
 #include <QQmlApplicationEngine>
 #include <QQuickItem>
 #include <QQuickWindow>
@@ -78,9 +79,35 @@ struct MainWindow {
         QCoreApplication::processEvents();
     }
 
+    void send(QEvent::Type type, QPointF at, Qt::MouseButtons buttons, Qt::KeyboardModifiers modifiers) const {
+        const Qt::MouseButton button = type == QEvent::MouseMove ? Qt::NoButton : Qt::LeftButton;
+        QMouseEvent event{type, at, window->mapToGlobal(at), button, buttons, modifiers};
+        QCoreApplication::sendEvent(window, &event);
+    }
+
+    // Presses at the center of target, moves by offset in steps and releases, holding modifiers throughout.
+    void drag(QQuickItem* target, QPointF offset, Qt::KeyboardModifiers modifiers = Qt::NoModifier) const {
+        const QPointF from = target->mapToScene({target->width() / 2, target->height() / 2});
+        constexpr int kSteps = 5;
+        send(QEvent::MouseButtonPress, from, Qt::LeftButton, modifiers);
+        for (int step = 1; step <= kSteps; ++step) {
+            send(QEvent::MouseMove, from + offset * step / kSteps, Qt::LeftButton, modifiers);
+        }
+        send(QEvent::MouseButtonRelease, from + offset, Qt::NoButton, modifiers);
+        settle();
+    }
+
     void click(QQuickItem* target, Qt::MouseButton button = Qt::LeftButton) const {
-        QTest::mouseClick(window, button, Qt::NoModifier,
-                          target->mapToScene({target->width() / 2, target->height() / 2}).toPoint());
+        const QPointF at = target->mapToScene({target->width() / 2, target->height() / 2});
+        for (const QEvent::Type type : {QEvent::MouseButtonPress, QEvent::MouseButtonRelease}) {
+            QMouseEvent event{type,
+                              at,
+                              window->mapToGlobal(at),
+                              button,
+                              type == QEvent::MouseButtonPress ? Qt::MouseButtons{button} : Qt::NoButton,
+                              Qt::NoModifier};
+            QCoreApplication::sendEvent(window, &event);
+        }
     }
 };
 

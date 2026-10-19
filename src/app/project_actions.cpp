@@ -222,6 +222,9 @@ void registerProjectActions(Registry& registry, ProjectController& controller, N
     registry.addStateProvider("project", [&controller] { return projectState(controller); });
     registry.addStateProvider("transport", [&controller] { return transportState(controller); });
     registry.addStateProvider("devices", [&controller] { return devicesState(controller); });
+    registry.setUndoGroup([&controller](const std::string& name, const std::function<void()>& edits) {
+        controller.project().group(name, edits);
+    });
 
     registerProjectFileActions(registry, controller);
     registerProjectEditActions(registry, controller);

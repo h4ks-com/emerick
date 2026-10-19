@@ -408,6 +408,28 @@ qint64 ProjectController::snapped(qint64 ticks) const {
     return std::max<core::Ticks>(result, 0);
 }
 
+QString ProjectController::ticksText(qint64 ticks, bool duration) const {
+    const core::TempoMap& tempo = project_.document().tempo;
+    return qs(duration ? durationText(ticks, tempo) : tempo.toBarBeatTick(ticks).format());
+}
+
+qint64 ProjectController::parseTicks(const QString& text, bool duration) const {
+    bool number = false;
+    const qint64 ticks = text.trimmed().toLongLong(&number);
+    if (number) {
+        return ticks;
+    }
+    try {
+        core::BarBeatTick position = core::BarBeatTick::parse(text.trimmed().toStdString());
+        if (duration) {
+            position = {position.bar + 1, position.beat + 1, position.tick};
+        }
+        return project_.document().tempo.fromBarBeatTick(position);
+    } catch (const std::invalid_argument&) {
+        return -1;
+    }
+}
+
 QVariantMap ProjectController::routeDevices() const {
     return toVariant(app::routeDevices(devicesState(*this))).toMap();
 }

@@ -104,6 +104,10 @@ public:
     // The nearest beat when the edit.snap setting is on, else ticks unchanged; never before bar 1.
     Q_INVOKABLE qint64 snapped(qint64 ticks) const;
     [[nodiscard]] QVariantMap routeDevices() const;
+    // A position as bar.beat.tick, or with duration a length counted from zero, as the number fields show them.
+    Q_INVOKABLE QString ticksText(qint64 ticks, bool duration) const;
+    // Reads text in the same form, or plain ticks; returns -1 for text it cannot read.
+    Q_INVOKABLE qint64 parseTicks(const QString& text, bool duration) const;
     [[nodiscard]] static int midiChannelCount() { return kMidiChannels; }
     [[nodiscard]] static int trackColorCount() { return kTrackColors; }
 

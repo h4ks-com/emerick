@@ -29,10 +29,14 @@ Rectangle {
     component FlagButton: ChromeButton {
         required property string flag
         required property bool value
+        readonly property string sweepGroup: flag
+        readonly property string sweepActionId: flag
+        readonly property var sweepParams: ({track: header.trackId})
+        property int sweepState: -1
         objectName: flag + ":" + header.trackId
         actionId: flag
         params: ({track: header.trackId, value: !value})
-        active: value
+        active: sweepState >= 0 ? sweepState === 1 : value
         implicitWidth: Theme.headerButton
         implicitHeight: Theme.headerButton
         padding: 0
@@ -195,45 +199,68 @@ Rectangle {
             }
         }
 
-        Slider {
-            id: gain
-            objectName: "track.setGain:" + header.trackId
+        RowLayout {
             visible: header.roomy
-            from: Theme.gainMinDb
-            to: Theme.gainMaxDb
-            value: header.gainDb
-            padding: 0
+            spacing: Theme.space2
             Layout.fillWidth: true
             Layout.leftMargin: Theme.iconSize + Theme.space2
-            Layout.preferredHeight: Theme.fadeHandle + Theme.space1
-            ToolTip.visible: pressed || hovered
-            ToolTip.text: "Set track gain   " + value.toFixed(1) + " dB"
-            onPressedChanged: {
-                if (!pressed && value !== header.gainDb) {
-                    Registry.runAction("track.setGain", {track: header.trackId, db: value})
+
+            Slider {
+                id: gain
+                objectName: "track.setGain:" + header.trackId
+                from: Theme.gainMinDb
+                to: Theme.gainMaxDb
+                value: gainReadout.shown
+                padding: 0
+                Layout.fillWidth: true
+                Layout.preferredHeight: Theme.fadeHandle + Theme.space1
+                ToolTip.visible: pressed || hovered
+                ToolTip.text: "Set track gain   " + value.toFixed(1) + " dB"
+                onPressedChanged: {
+                    if (!pressed && value !== header.gainDb) {
+                        Registry.runAction("track.setGain", {track: header.trackId, db: value})
+                    }
+                }
+                background: Rectangle {
+                    x: gain.leftPadding
+                    y: gain.topPadding + (gain.availableHeight - height) / 2
+                    width: gain.availableWidth
+                    height: Theme.hairline * 3
+                    radius: height / 2
+                    color: Theme.graphite
+                    Rectangle {
+                        width: gain.visualPosition * parent.width
+                        height: parent.height
+                        radius: parent.radius
+                        color: Theme.inkDim
+                    }
+                }
+                handle: Rectangle {
+                    x: gain.leftPadding + gain.visualPosition * (gain.availableWidth - width)
+                    y: gain.topPadding + (gain.availableHeight - height) / 2
+                    width: Theme.fadeHandle + Theme.space1
+                    height: width
+                    radius: width / 2
+                    color: gain.pressed ? Theme.ink : Theme.inkDim
                 }
             }
-            background: Rectangle {
-                x: gain.leftPadding
-                y: gain.topPadding + (gain.availableHeight - height) / 2
-                width: gain.availableWidth
-                height: Theme.hairline * 3
-                radius: height / 2
-                color: Theme.graphite
-                Rectangle {
-                    width: gain.visualPosition * parent.width
-                    height: parent.height
-                    radius: parent.radius
-                    color: Theme.inkDim
-                }
-            }
-            handle: Rectangle {
-                x: gain.leftPadding + gain.visualPosition * (gain.availableWidth - width)
-                y: gain.topPadding + (gain.availableHeight - height) / 2
-                width: Theme.fadeHandle + Theme.space1
-                height: width
-                radius: width / 2
-                color: gain.pressed ? Theme.ink : Theme.inkDim
+
+            DragNumber {
+                id: gainReadout
+                objectName: "track.setGain:" + header.trackId + ":db"
+                actionId: "track.setGain"
+                value: header.gainDb
+                from: Theme.gainMinDb
+                to: Theme.gainMaxDb
+                step: Theme.gainStepDb
+                decimals: 1
+                unit: "dB"
+                framed: false
+                textColor: Theme.inkDim
+                font.pixelSize: Theme.textSmall
+                implicitWidth: Theme.gainReadoutWidth
+                implicitHeight: Theme.headerButton
+                onCommitted: number => Registry.runAction("track.setGain", {track: header.trackId, db: number})
             }
         }
     }

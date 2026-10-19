@@ -187,6 +187,8 @@ public:
     void addMidiDeviceProfile(MidiDeviceProfile profile);
     void addLocation(Location location);
     void addStateProvider(const std::string& name, std::function<Json()> provider);
+    // Runs edits as one undo step named name; the project installs it, so runActions can group any actions.
+    void setUndoGroup(std::function<void(const std::string& name, const std::function<void()>& edits)> group);
 
     [[nodiscard]] const Action* action(const std::string& id) const;
     [[nodiscard]] const Setting* setting(const std::string& id) const;
@@ -231,6 +233,9 @@ public:
     Q_INVOKABLE void activate(const QString& id);
     // QML gets an empty value for a failed action; we log the failure.
     Q_INVOKABLE QVariant runAction(const QString& id, const QVariantMap& params) const;
+    // Runs each {id, params} call as one undo step named name, such as a drag across toggles or an edit of every
+    // selected clip. A call that fails is logged and the others still run.
+    Q_INVOKABLE void runActions(const QString& name, const QVariantList& calls) const;
     // Runs the action with the file a dialog picked as its dialog param.
     Q_INVOKABLE QVariant runWithFile(const QString& id, const QUrl& file) const;
     Q_INVOKABLE bool setSettingValue(const QString& id, const QVariant& value);
@@ -249,6 +254,7 @@ private:
     std::vector<MidiDeviceProfile> midiDeviceProfiles_;
     std::vector<Location> locations_;
     std::map<std::string, std::function<Json()>> stateProviders_;
+    std::function<void(const std::string&, const std::function<void()>&)> undoGroup_;
 };
 
 QString qs(const std::string& text);

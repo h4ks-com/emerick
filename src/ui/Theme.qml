@@ -72,8 +72,19 @@ QtObject {
     readonly property int beatSpacing: 12
     readonly property int maxTextureWidth: 4096
     readonly property int dragThreshold: 4
+    readonly property int dragPixelsPerStep: 4
+    readonly property real dragFineFactor: 0.1
+    readonly property int dragCoarseSteps: 10
+    readonly property int sweepSampleSpacing: 4
     readonly property real gainMinDb: -60
     readonly property real gainMaxDb: 6
+    readonly property real gainStepDb: 0.5
+    readonly property real clipGainMaxDb: 24
+    readonly property real minBpm: 20
+    readonly property real maxBpm: 400
+    readonly property real numberSettingStep: 0.1
+    readonly property int numberSettingDecimals: 2
+    readonly property int gainReadoutWidth: 64
     readonly property real wheelStep: 0.5
     readonly property real wheelZoom: 0.002
     readonly property real wheelTrackHeight: 0.1

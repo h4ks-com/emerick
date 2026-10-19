@@ -311,6 +311,12 @@ Rectangle {
         }
     }
 
+    ToggleSweep {
+        objectName: "tracks.toggleSweep"
+        anchors.fill: list
+        target: list
+    }
+
     Rectangle {
         objectName: "tracks.dropIndicator"
         visible: area.dropIndex >= 0

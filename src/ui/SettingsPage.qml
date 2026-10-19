@@ -54,14 +54,13 @@ Rectangle {
             roleValue: App.Integer
             SettingRow {
                 id: integerRow
-                ThemeSpinBox {
+                DragNumber {
                     objectName: integerRow.modelData.id
                     enabled: !integerRow.modelData.readOnly
                     from: integerRow.modelData.minimum
                     to: integerRow.modelData.maximum
-                    editable: true
                     value: Registry.settings[objectName]
-                    onValueModified: Registry.setSettingValue(objectName, value)
+                    onCommitted: number => Registry.setSettingValue(objectName, number)
                 }
             }
         }
@@ -69,12 +68,15 @@ Rectangle {
             roleValue: App.Number
             SettingRow {
                 id: numberRow
-                TextField {
+                DragNumber {
                     objectName: numberRow.modelData.id
                     enabled: !numberRow.modelData.readOnly
-                    text: Registry.settings[objectName]
-                    validator: DoubleValidator {}
-                    onEditingFinished: Registry.setSettingValue(objectName, Number(text))
+                    from: numberRow.modelData.minimum
+                    to: numberRow.modelData.maximum
+                    step: Theme.numberSettingStep
+                    decimals: Theme.numberSettingDecimals
+                    value: Registry.settings[objectName]
+                    onCommitted: number => Registry.setSettingValue(objectName, number)
                 }
             }
         }

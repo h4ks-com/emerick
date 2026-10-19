@@ -83,6 +83,10 @@ Rectangle {
                 choices: Project.routeChoices.audioIn
                 displayText: panel.audioInText
             }
+            InputMeter {
+                trackId: panel.trackId
+                Layout.fillWidth: true
+            }
             RouteLabel { text: "Audio output"; visible: panel.audioRoutes }
             RouteCombo {
                 visible: panel.audioRoutes

@@ -127,6 +127,9 @@ void SnapshotBuilder::addRecorder(TrackState& state, const Track& track, const S
     if (!canRecord) {
         return;
     }
+    if (track.kind == TrackKind::audio) {
+        state.meter = cached(meters_, track.id, [] { return std::make_shared<InputMeter>(); });
+    }
     const int channels = static_cast<int>(state.inputs.size());
     const std::string key = track.id + "/" + std::to_string(static_cast<int>(track.kind)) + "/" +
                             std::to_string(channels) + "/" + std::to_string(captureOffset) + "/" +
@@ -155,6 +158,7 @@ void SnapshotBuilder::prune() {
     const auto expired = [](const auto& entry) { return entry.second.expired(); };
     std::erase_if(clips_, expired);
     std::erase_if(recorders_, expired);
+    std::erase_if(meters_, expired);
     std::erase_if(inputs_, expired);
     std::erase_if(outputs_, expired);
 }
@@ -164,6 +168,16 @@ bool SnapshotBuilder::clipsBuffered() const {
         const auto stream = entry.second.lock();
         return !stream || stream->buffered();
     });
+}
+
+std::vector<std::pair<std::string, std::shared_ptr<InputMeter>>> SnapshotBuilder::meters() const {
+    std::vector<std::pair<std::string, std::shared_ptr<InputMeter>>> alive;
+    for (const auto& [trackId, meter] : meters_) {
+        if (auto locked = meter.lock()) {
+            alive.emplace_back(trackId, std::move(locked));
+        }
+    }
+    return alive;
 }
 
 bool SnapshotBuilder::midiFlushed() const {

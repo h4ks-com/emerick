@@ -163,6 +163,12 @@ Rectangle {
             }
         }
 
+        InputMeter {
+            trackId: header.trackId
+            Layout.fillWidth: true
+            Layout.leftMargin: Theme.iconSize + Theme.space2
+        }
+
         Slider {
             id: gain
             objectName: "track.setGain:" + header.trackId

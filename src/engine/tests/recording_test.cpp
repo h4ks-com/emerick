@@ -126,6 +126,31 @@ TEST_CASE("an audio take skips the recording delay so it lines up with what the 
     CHECK(recorded[899] == 999.0F);
 }
 
+TEST_CASE("an input meter reports the peak and full scale samples, and a take counts them") {
+    Rig rig;
+    const TempFolder folder;
+    rig.engine.setSession({.tempo = kTempo, .tracks = {recordingTrack()}, .takeFolder = folder.path});
+    rig.audio.setInput("interface", 2, {0.25F, -0.5F, 0.1F});
+    rig.audio.process(kBlock);
+
+    std::vector<InputLevel> levels = rig.engine.takeInputLevels();
+    REQUIRE(levels.size() == 1);
+    CHECK(levels[0].trackId == "vox");
+    CHECK(levels[0].peak == 0.5F);
+    CHECK_FALSE(levels[0].clipped);
+    CHECK(rig.engine.takeInputLevels()[0].peak == 0.0F);
+
+    rig.audio.setInput("interface", 2, {0.5F, 1.0F, -1.0F, 0.2F});
+    const std::vector<RecordedTake> takes = recordFor(rig, kBlock);
+
+    levels = rig.engine.takeInputLevels();
+    CHECK(levels[0].peak == 1.0F);
+    CHECK(levels[0].clipped);
+    REQUIRE(takes.size() == 1);
+    CHECK(takes[0].samples == static_cast<std::uint64_t>(kBlock));
+    CHECK(takes[0].clippedSamples == 2);
+}
+
 TEST_CASE("an armed audio track records its input to WAV, and the take plays back") {
     Rig rig;
     const TempFolder folder;

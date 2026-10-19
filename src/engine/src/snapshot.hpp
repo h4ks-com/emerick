@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <bitset>
 #include <cstddef>
 #include <cstdint>
@@ -35,6 +36,12 @@ struct ScheduledMidi {
     std::size_t size = 0;
 };
 
+// The audio thread raises these and the UI thread reads and resets them.
+struct InputMeter {
+    std::atomic<float> peak{0.0F};
+    std::atomic<bool> clipped{false};
+};
+
 struct TrackState {
     std::string id;
     TrackKind kind = TrackKind::audio;
@@ -57,6 +64,7 @@ struct TrackState {
     std::vector<std::uint8_t> midiBytes;
     std::array<std::bitset<kMidiNotes>, kMidiChannels> soundingNotes{};
     std::shared_ptr<TakeRecorder> recorder;
+    std::shared_ptr<InputMeter> meter;
 };
 
 // The UI thread builds a snapshot and hands it over whole; from then on only the audio thread touches it.

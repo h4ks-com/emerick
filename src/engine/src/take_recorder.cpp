@@ -126,7 +126,13 @@ void TakeRecorder::poll() {
 }
 
 void TakeRecorder::start(Ticks startTick) {
-    take_ = RecordedTake{.trackId = trackId_, .startTick = startTick, .audioFile = {}, .midiEvents = {}, .error = {}};
+    take_ = RecordedTake{.trackId = trackId_,
+                         .startTick = startTick,
+                         .audioFile = {},
+                         .midiEvents = {},
+                         .error = {},
+                         .samples = 0,
+                         .clippedSamples = 0};
     if (trackKind_ != TrackKind::audio) {
         return;
     }
@@ -146,7 +152,13 @@ void TakeRecorder::start(Ticks startTick) {
 void TakeRecorder::writeSamples(std::uint32_t frames) {
     samples_.resize(static_cast<std::size_t>(frames) * static_cast<std::size_t>(channels_));
     readInto(ring_, std::span(samples_));
-    if (take_ && file_ && sf_writef_float(file_.get(), samples_.data(), frames) != frames) {
+    if (!take_) {
+        return;
+    }
+    take_->samples += samples_.size();
+    take_->clippedSamples += static_cast<std::uint64_t>(
+        std::ranges::count_if(samples_, [](float sample) { return std::abs(sample) >= kFullScale; }));
+    if (file_ && sf_writef_float(file_.get(), samples_.data(), frames) != frames) {
         markDamaged("cannot write all audio to " + take_->audioFile.string());
     }
 }

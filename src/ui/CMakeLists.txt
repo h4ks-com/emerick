@@ -15,6 +15,7 @@ qt_add_qml_module(emerick_ui
         GlassMenu.qml
         GlassMenuItem.qml
         GlassPanel.qml
+        InputMeter.qml
         Inspector.qml
         Main.qml
         RouteCombo.qml

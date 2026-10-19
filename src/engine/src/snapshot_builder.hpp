@@ -36,6 +36,8 @@ public:
 
     [[nodiscard]] bool clipsBuffered() const;
     [[nodiscard]] bool midiFlushed() const;
+    // The input meter of every audio track with an input, by track id.
+    [[nodiscard]] std::vector<std::pair<std::string, std::shared_ptr<InputMeter>>> meters() const;
 
 private:
     std::shared_ptr<MidiInputPort> inputPort(const std::string& id);
@@ -53,6 +55,7 @@ private:
     PollingSet<MidiOutputPort>& sender_;
     std::map<std::string, std::weak_ptr<ClipStream>> clips_;
     std::map<std::string, std::weak_ptr<TakeRecorder>> recorders_;
+    std::map<std::string, std::weak_ptr<InputMeter>> meters_;
     std::map<std::string, std::weak_ptr<MidiInputPort>> inputs_;
     std::map<std::string, std::weak_ptr<MidiOutputPort>> outputs_;
 };

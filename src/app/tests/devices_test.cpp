@@ -1,5 +1,4 @@
 #include <catch2/catch_test_macros.hpp>
-#include <chrono>
 #include <string>
 #include <vector>
 
@@ -11,8 +10,6 @@ using namespace emerick::app;
 using namespace emerick::app::test;
 
 namespace {
-
-constexpr std::chrono::milliseconds kSlowListing{50};
 
 std::vector<std::string> rowIds(const TrackListModel& model) {
     std::vector<std::string> ids;
@@ -34,24 +31,22 @@ std::vector<std::string> documentIds(const ProjectRig& rig) {
 }  // namespace
 
 TEST_CASE("changing a track's route lists no devices") {
-    ProjectRig rig({kMidiPort}, kSlowListing);
+    ProjectRig rig;
     const InspectorBindings inspector(*rig.controller);
     REQUIRE(inspector.object);
     const std::string vox = rig.runAsAgent("track.addAudio").at("result").at("id");
     const std::string keys = rig.runAsAgent("track.addMidi").at("result").at("id");
+    int pickerUpdates = 0;
+    QObject::connect(rig.controller.get(), &ProjectController::devicesChanged, [&] { ++pickerUpdates; });
     const int audioListings = rig.audioLister->listings;
     const int midiListings = rig.midiLister->listings;
 
-    const auto start = std::chrono::steady_clock::now();
     rig.runAsAgent("track.setAudioIn", {{"track", vox}, {"channels", {2}}});
-    const auto elapsed =
-        std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - start);
     rig.runAsAgent("track.setMidiOut", {{"track", keys}, {"port", kMidiPort}});
 
     CHECK(rig.audioLister->listings == audioListings);
     CHECK(rig.midiLister->listings == midiListings);
-    CAPTURE(elapsed.count());
-    CHECK(elapsed < kSlowListing);
+    CHECK(pickerUpdates == 0);
 }
 
 TEST_CASE("devices.refresh lists the devices again and tells the route pickers") {

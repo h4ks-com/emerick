@@ -30,15 +30,13 @@ inline const std::string kMidiPort = "Keyboard";
 // CoreAudio names devices by UID, so the views must show the name instead.
 inline const std::string kMotuId = "40-72-18-3D-42-0C:output";
 
-// Lists the offline backend's devices as slowly as listDelay, the way CoreAudio does, and counts each listing.
+// Counts each listing of the offline backend's devices, because in the app a listing asks CoreAudio about every device.
 class CountingAudioBackend final : public engine::AudioBackend {
 public:
-    CountingAudioBackend(std::unique_ptr<engine::OfflineBackend> offline, std::chrono::milliseconds listDelay)
-        : offline_(std::move(offline)), listDelay_(listDelay) {}
+    explicit CountingAudioBackend(std::unique_ptr<engine::OfflineBackend> offline) : offline_(std::move(offline)) {}
 
     std::vector<engine::AudioDeviceInfo> devices() override {
         ++listings;
-        std::this_thread::sleep_for(listDelay_);
         return offline_->devices();
     }
     engine::StreamLayout open(const engine::StreamRequest& request, engine::AudioCallback callback) override {
@@ -57,18 +55,16 @@ public:
 
 private:
     std::unique_ptr<engine::OfflineBackend> offline_;
-    std::chrono::milliseconds listDelay_;
 };
 
-// Lists the virtual backend's ports as slowly as listDelay, the way CoreMIDI does, and counts each listing.
+// Counts each listing of the virtual backend's ports, because in the app a listing asks CoreMIDI about every port.
 class CountingMidiBackend final : public engine::MidiBackend {
 public:
-    CountingMidiBackend(std::unique_ptr<engine::VirtualMidiBackend> virtualMidi, std::chrono::milliseconds listDelay)
-        : virtual_(std::move(virtualMidi)), listDelay_(listDelay) {}
+    explicit CountingMidiBackend(std::unique_ptr<engine::VirtualMidiBackend> virtualMidi)
+        : virtual_(std::move(virtualMidi)) {}
 
     std::vector<engine::MidiPortInfo> ports() override {
         ++listings;
-        std::this_thread::sleep_for(listDelay_);
         return virtual_->ports();
     }
     std::unique_ptr<engine::MidiInput> openInput(const std::string& portId, engine::MidiReceive receive) override {
@@ -82,7 +78,6 @@ public:
 
 private:
     std::unique_ptr<engine::VirtualMidiBackend> virtual_;
-    std::chrono::milliseconds listDelay_;
 };
 
 // A controller on the offline audio backend and a virtual MIDI port, with every project action registered.
@@ -99,8 +94,7 @@ struct ProjectRig {
     QTimer clock;
 
     // Each MIDI port name is both an input and an output.
-    explicit ProjectRig(const std::vector<std::string>& midiPorts = {kMidiPort},
-                        std::chrono::milliseconds listDelay = {}) {
+    explicit ProjectRig(const std::vector<std::string>& midiPorts = {kMidiPort}) {
         ensureApplication();
         auto offline = std::make_unique<engine::OfflineBackend>(
             std::vector<engine::AudioDeviceInfo>{{"interface", "Interface", 2, 2},
@@ -109,8 +103,8 @@ struct ProjectRig {
         auto virtualMidi = std::make_unique<engine::VirtualMidiBackend>(midiPorts, midiPorts);
         audio = offline.get();
         midi = virtualMidi.get();
-        auto audioOwner = std::make_unique<CountingAudioBackend>(std::move(offline), listDelay);
-        auto midiOwner = std::make_unique<CountingMidiBackend>(std::move(virtualMidi), listDelay);
+        auto audioOwner = std::make_unique<CountingAudioBackend>(std::move(offline));
+        auto midiOwner = std::make_unique<CountingMidiBackend>(std::move(virtualMidi));
         audioLister = audioOwner.get();
         midiLister = midiOwner.get();
         controller = std::make_unique<ProjectController>(registry, std::move(audioOwner), std::move(midiOwner),

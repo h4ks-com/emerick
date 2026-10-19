@@ -51,6 +51,24 @@ QtObject {
     readonly property int windowHeight: 800
     readonly property real mutedOpacity: 0.4
 
+    readonly property string monoFamily: Qt.platform.os === "osx" ? "Menlo" : "monospace"
+    // Lua syntax colors, muted like the track colors so code reads calmly next to the timeline.
+    readonly property var codeColors: ({
+        keyword: "#B48EAD",
+        string: "#A3BE8C",
+        number: "#D08770",
+        comment: "#6B707A",
+        call: "#88C0D0",
+        api: "#81A1C1",
+        actionId: "#C8B48A"
+    })
+    readonly property int consoleHeight: 240
+    readonly property int consoleMinHeight: 96
+    readonly property int consoleInputLines: 8
+    readonly property int completionWidth: 520
+    readonly property int completionRows: 8
+    readonly property int splitterGrip: 6
+
     readonly property int transportButton: 36
     readonly property int displayHeight: 44
     readonly property int tooltipDelay: 500
@@ -110,6 +128,21 @@ QtObject {
     function isContextClick(mouse) {
         return mouse.button === Qt.RightButton
             || (Qt.platform.os === "osx" && mouse.button === Qt.LeftButton && (mouse.modifiers & Qt.MetaModifier))
+    }
+
+    function escaped(text) {
+        return text.replace(/&/g, "&amp;").replace(/</g, "&lt;")
+    }
+
+    // Styled text that bolds the matched [begin, end) ranges of text, as the fuzzy matcher reports them.
+    function highlighted(text, ranges) {
+        let html = ""
+        let last = 0
+        for (const range of ranges) {
+            html += escaped(text.slice(last, range[0])) + "<b>" + escaped(text.slice(range[0], range[1])) + "</b>"
+            last = range[1]
+        }
+        return html + escaped(text.slice(last))
     }
 
     // Registry shortcuts use Qt's portable "Ctrl+" spelling, which macOS maps to Command and writes as ⇧⌘S.

@@ -5,17 +5,25 @@ qt_add_library(emerick_app STATIC
     clip_actions.cpp
     clip_edit_actions.cpp
     clip_notes.cpp
+    code_highlighter.cpp
+    console.cpp
+    console_actions.cpp
+    console_completion.cpp
     core_actions.cpp
     export_actions.cpp
     include/emerick/app/action_params.hpp
     include/emerick/app/audio_file.hpp
     include/emerick/app/backends.hpp
     include/emerick/app/clip_notes.hpp
+    include/emerick/app/code_highlighter.hpp
+    include/emerick/app/console.hpp
+    include/emerick/app/console_completion.hpp
     include/emerick/app/core_actions.hpp
     include/emerick/app/enums.hpp
     include/emerick/app/event_wait.hpp
     include/emerick/app/introspector.hpp
     include/emerick/app/lua_host.hpp
+    include/emerick/app/lua_text.hpp
     include/emerick/app/mcp_server.hpp
     include/emerick/app/mcp_tools.hpp
     include/emerick/app/midi_export.hpp
@@ -28,6 +36,7 @@ qt_add_library(emerick_app STATIC
     include/emerick/app/project_state.hpp
     include/emerick/app/qml_exposure.hpp
     include/emerick/app/registry.hpp
+    include/emerick/app/script_library.hpp
     include/emerick/app/session_mapping.hpp
     include/emerick/app/stem_export.hpp
     include/emerick/app/track_list_model.hpp
@@ -36,6 +45,7 @@ qt_add_library(emerick_app STATIC
     include/emerick/app/waveform.hpp
     introspector.cpp
     lua_host.cpp
+    lua_text.cpp
     mcp_server.cpp
     mcp_tools.cpp
     midi_export.cpp
@@ -47,6 +57,7 @@ qt_add_library(emerick_app STATIC
     project_state.cpp
     qml_exposure.cpp
     registry.cpp
+    script_library.cpp
     session_mapping.cpp
     stem_export.cpp
     track_actions.cpp
@@ -56,15 +67,24 @@ qt_add_library(emerick_app STATIC
     ui_api.cpp
     waveform.cpp)
 target_include_directories(emerick_app PUBLIC include)
+qt_add_resources(emerick_app example_scripts
+    PREFIX /
+    BASE ${PROJECT_SOURCE_DIR}
+    FILES
+        ${PROJECT_SOURCE_DIR}/scripts/examples/arm-midi.lua
+        ${PROJECT_SOURCE_DIR}/scripts/examples/mute-all.lua
+        ${PROJECT_SOURCE_DIR}/scripts/examples/rename-from-list.lua)
 target_compile_definitions(emerick_app PRIVATE EMERICK_VERSION="${PROJECT_VERSION}" SOL_PRINT_ERRORS=0)
 target_link_libraries(emerick_app
-    PRIVATE lua54 sol2::sol2 PkgConfig::SNDFILE libremidi
+    PRIVATE lua54 sol2::sol2 tree_sitter_lua PkgConfig::SNDFILE libremidi
     PUBLIC Qt6::Core Qt6::Gui Qt6::Quick Qt6::HttpServer emerick_core emerick_model emerick_engine
         nlohmann_json::nlohmann_json)
 emerick_target(emerick_app)
 
 if(EMERICK_BUILD_TESTS)
     emerick_test(emerick_app_tests
+        tests/code_highlighter_test.cpp
+        tests/console_test.cpp
         tests/devices_test.cpp
         tests/introspector_test.cpp
         tests/lua_host_test.cpp
@@ -74,6 +94,7 @@ if(EMERICK_BUILD_TESTS)
         tests/project_test.cpp
         tests/recording_test.cpp
         tests/registry_test.cpp
+        tests/script_library_test.cpp
         tests/transport_test.cpp)
     target_link_libraries(emerick_app_tests
         PRIVATE emerick_app Qt6::Network Qt6::Qml Qt6::QuickControls2 PkgConfig::SNDFILE libremidi)

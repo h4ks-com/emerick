@@ -1,5 +1,6 @@
 #include "emerick/app/mcp_tools.hpp"
 
+#include <algorithm>
 #include <initializer_list>
 #include <string_view>
 #include <utility>
@@ -27,9 +28,18 @@ std::string text(const Json& arguments, const char* key) {
     return optionalParam<std::string>(arguments, key).value_or("");
 }
 
+constexpr int kConsoleLogLines = 100;
+
 }  // namespace
 
-std::vector<McpTool> mcpTools(Registry& registry, const UiApi& ui, LuaHost* lua) {
+std::vector<McpTool> mcpTools(Registry& registry, const UiApi& ui, LuaHost* lua, const Console* console) {
+    const auto allowed = [&registry, lua](const std::string& id) {
+        const Action* entry = registry.action(id);
+        if (lua == nullptr && entry != nullptr && entry->runsLua) {
+            throw AppError(id + " runs Lua, which this server leaves out");
+        }
+        return id;
+    };
     std::vector<McpTool> tools{
         {"ui.tree", "Read the live UI tree of every window, plus registry entries whose UI is not revealed yet.",
          objectSchema({{"namedOnly", "boolean"}, {"root", "string"}}),
@@ -44,7 +54,7 @@ std::vector<McpTool> mcpTools(Registry& registry, const UiApi& ui, LuaHost* lua)
          [&ui](const Json& arguments) { return ui.reveal(param<std::string>(arguments, "id")); }},
         {"ui.invoke", "Run an action by id, or click the UI item with that objectName.",
          objectSchema({{"id", "string"}}, {"id"}),
-         [&ui](const Json& arguments) { return ui.invoke(param<std::string>(arguments, "id")); }},
+         [&ui, allowed](const Json& arguments) { return ui.invoke(allowed(param<std::string>(arguments, "id"))); }},
         {"ui.set", "Set a setting by id, or a property of the UI item with that objectName.",
          objectSchema({{"id", "string"}, {"property", "string"}, {"value", ""}}, {"id", "value"}),
          [&ui](const Json& arguments) {
@@ -57,9 +67,10 @@ std::vector<McpTool> mcpTools(Registry& registry, const UiApi& ui, LuaHost* lua)
          }},
         {"actions.run", "Run an action by id with optional JSON params.",
          objectSchema({{"id", "string"}, {"params", "object"}}, {"id"}),
-         [&registry](const Json& arguments) {
-             return Json{{"result", registry.run(param<std::string>(arguments, "id"),
-                                                 optionalParam<Json>(arguments, "params").value_or(Json::object()))}};
+         [&registry, allowed](const Json& arguments) {
+             return Json{{"result", registry.run(allowed(param<std::string>(arguments, "id")),
+                                                 optionalParam<Json>(arguments, "params").value_or(Json::object()),
+                                                 ActionSource::Mcp)}};
          }},
         {"settings.get", "Read one setting by id, or every setting.", objectSchema({{"id", "string"}}),
          [&registry](const Json& arguments) {
@@ -89,6 +100,16 @@ std::vector<McpTool> mcpTools(Registry& registry, const UiApi& ui, LuaHost* lua)
                       "Run Lua 5.4 with the emerick table: run, actions, setting, state and ui.find/reveal/set/invoke.",
                       objectSchema({{"code", "string"}}, {"code"}),
                       [lua](const Json& arguments) { return lua->eval(param<std::string>(arguments, "code")); }});
+    }
+    if (console != nullptr) {
+        tools.insert(tools.end() - 1,
+                     {"console.log",
+                      "Read the console's recent lines: the action log as Lua calls, and console input, output and "
+                      "errors.",
+                      objectSchema({{"lines", "integer"}}), [console](const Json& arguments) {
+                          const int lines = optionalParam<int>(arguments, "lines").value_or(kConsoleLogLines);
+                          return Json{{"lines", console->recent(static_cast<std::size_t>(std::max(lines, 0)))}};
+                      }});
     }
     return tools;
 }

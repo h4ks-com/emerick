@@ -184,7 +184,10 @@ ApplicationWindow {
     }
 
     RowLayout {
-        anchors.fill: parent
+        anchors.top: parent.top
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.bottom: consoleDock.top
         visible: Nav.page === App.Main
         spacing: 0
         Inspector {
@@ -201,6 +204,20 @@ ApplicationWindow {
         TrackList {
             Layout.fillWidth: true
             Layout.fillHeight: true
+        }
+    }
+
+    // The panel loads only while open, so its height lives here and survives closing it.
+    Loader {
+        id: consoleDock
+        property real panelHeight: Theme.consoleHeight
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.bottom: parent.bottom
+        height: active ? Math.max(Theme.consoleMinHeight, Math.min(panelHeight, parent.height - Theme.consoleHeight)) : 0
+        active: Nav.consoleOpen && Nav.page === App.Main
+        sourceComponent: ConsolePanel {
+            onResizeBy: delta => consoleDock.panelHeight = Math.max(Theme.consoleMinHeight, consoleDock.panelHeight + delta)
         }
     }
 

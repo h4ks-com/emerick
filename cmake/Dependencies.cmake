@@ -76,3 +76,25 @@ target_include_directories(lua54 SYSTEM PUBLIC ${CMAKE_BINARY_DIR}/lua54/include
 if(UNIX)
     target_compile_definitions(lua54 PRIVATE LUA_USE_POSIX)
 endif()
+
+# We compile tree-sitter and its Lua grammar from their C sources, so SOURCE_SUBDIR names a folder without a
+# CMakeLists.txt and their own builds stay out.
+FetchContent_Declare(tree_sitter
+    GIT_REPOSITORY https://github.com/tree-sitter/tree-sitter.git
+    GIT_TAG v0.26.8
+    GIT_SHALLOW TRUE
+    SOURCE_SUBDIR no-cmake)
+FetchContent_Declare(tree_sitter_lua
+    GIT_REPOSITORY https://github.com/tree-sitter-grammars/tree-sitter-lua.git
+    GIT_TAG v0.5.0
+    GIT_SHALLOW TRUE
+    SOURCE_SUBDIR no-cmake)
+FetchContent_MakeAvailable(tree_sitter tree_sitter_lua)
+add_library(tree_sitter STATIC ${tree_sitter_SOURCE_DIR}/lib/src/lib.c)
+target_include_directories(tree_sitter SYSTEM PUBLIC ${tree_sitter_SOURCE_DIR}/lib/include)
+target_include_directories(tree_sitter PRIVATE ${tree_sitter_SOURCE_DIR}/lib/src)
+target_compile_definitions(tree_sitter PRIVATE _POSIX_C_SOURCE=200112L _DEFAULT_SOURCE _DARWIN_C_SOURCE)
+add_library(tree_sitter_lua STATIC ${tree_sitter_lua_SOURCE_DIR}/src/parser.c ${tree_sitter_lua_SOURCE_DIR}/src/scanner.c)
+target_include_directories(tree_sitter_lua PRIVATE ${tree_sitter_lua_SOURCE_DIR}/src)
+target_link_libraries(tree_sitter_lua PUBLIC tree_sitter)
+set_target_properties(tree_sitter tree_sitter_lua PROPERTIES C_STANDARD 11)

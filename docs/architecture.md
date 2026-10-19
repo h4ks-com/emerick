@@ -52,7 +52,11 @@ A plugin calls `registerWith(Registry&, ProjectController&, Nav&)` and can add t
 
 ## Agent interface
 
-The app serves MCP over streamable HTTP on loopback (`--mcp-port`). Tools: `ui.tree`, `ui.find`, `ui.reveal`, `ui.invoke`, `ui.set`, `actions.list`, `actions.run`, `settings.get`, `settings.set`, `state.get`, `lua.eval`, `screenshot`. Every tool returns the state after the change. Lua (5.4 through sol2) sees the same document and registry, and its `ui` functions and the `ui.*` tools both go through `UiApi`, so a script and an agent can do anything a click can.
+The app serves MCP over streamable HTTP on loopback (`--mcp-port`). Tools: `ui.tree`, `ui.find`, `ui.reveal`, `ui.invoke`, `ui.set`, `actions.list`, `actions.run`, `settings.get`, `settings.set`, `state.get`, `lua.eval`, `console.log`, `screenshot`. Every tool returns the state after the change. Lua (5.4 through sol2) sees the same document and registry, and its `ui` functions and the `ui.*` tools both go through `UiApi`, so a script and an agent can do anything a click can.
+
+## Console and scripts
+
+The console (Cmd+\`) runs Lua in the same sandboxed host on the UI thread. `Registry::run` emits `actionRan` for every action a person, the palette, MCP or Lua asked for, and the console writes each one to its action log as the Lua call that runs it. Lua files in the user scripts folder and in `<bundle>/scripts` become actions in the Scripts menu; a header comment names their title, shortcut and description. tree-sitter parses the Lua the console shows, for its syntax colors.
 
 ## Testing
 
@@ -71,6 +75,7 @@ The app serves MCP over streamable HTTP on loopback (`--mcp-port`). Tools: `ui.t
 | Queues | moodycamel readerwriterqueue |
 | JSON | nlohmann_json |
 | Lua | Lua 5.4 and sol2 |
+| Syntax highlighting | tree-sitter and tree-sitter-lua |
 | Tests | Catch2 v3 |
 
 License: GPL-3.0-or-later.

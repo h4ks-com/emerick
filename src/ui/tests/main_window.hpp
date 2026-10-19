@@ -8,6 +8,7 @@
 #include <catch2/catch_test_macros.hpp>
 #include <vector>
 
+#include "emerick/app/console.hpp"
 #include "emerick/app/core_actions.hpp"
 #include "emerick/app/qml_exposure.hpp"
 #include "project_rig.hpp"
@@ -19,12 +20,16 @@ struct MainWindow {
     ProjectRig rig;
     TrackListModel tracks{*rig.controller, rig.registry};
     PeakCache peaks;
+    UiApi ui{rig.registry};
+    LuaHost lua{rig.registry, ui};
+    Console console{rig.registry, lua};
     QQmlApplicationEngine engine;
     QQuickWindow* window = nullptr;
 
     MainWindow() {
         registerCoreActions(rig.registry, rig.nav, {});
-        exposeToQml(engine, rig.registry, rig.nav, *rig.controller, tracks, peaks);
+        registerConsoleActions(rig.registry, rig.nav, console);
+        exposeToQml(engine, rig.registry, rig.nav, *rig.controller, tracks, peaks, &console);
         engine.loadFromModule("Emerick.Ui", "Main");
         REQUIRE(engine.rootObjects().size() == 1);
         window = qobject_cast<QQuickWindow*>(engine.rootObjects().front());

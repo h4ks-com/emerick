@@ -3,6 +3,8 @@
 #include "rt_process.hpp"
 
 #include <algorithm>
+#include <cmath>
+#include <span>
 
 #include "emerick/core/midi.hpp"
 #include "emerick/engine/engine.hpp"
@@ -153,6 +155,21 @@ void playAudioClips(const Snapshot& snapshot, Frames frame, const AudioBlock& bl
     }
 }
 
+void meterInput(InputMeter& meter, std::span<const float* const> channels, Frames frames) {
+    float peak = 0.0F;
+    for (const float* channel : channels) {
+        for (Frames frame = 0; frame < frames; ++frame) {
+            peak = std::max(peak, std::abs(channel[frame]));
+        }
+    }
+    if (peak > meter.peak.load(std::memory_order_relaxed)) {
+        meter.peak.store(peak, std::memory_order_relaxed);
+    }
+    if (peak >= kFullScale) {
+        meter.clipped.store(true, std::memory_order_relaxed);
+    }
+}
+
 void monitorAndRecordAudio(Snapshot& snapshot, const AudioBlock& block) {
     const bool soloActive = anySolo(snapshot);
     for (TrackState& track : snapshot.tracks) {
@@ -161,6 +178,9 @@ void monitorAndRecordAudio(Snapshot& snapshot, const AudioBlock& block) {
         }
         for (std::size_t index = 0; index < track.inputs.size(); ++index) {
             track.inputPointers[index] = block.inputs[static_cast<std::size_t>(track.inputs[index])];
+        }
+        if (track.meter) {
+            meterInput(*track.meter, track.inputPointers, block.frames);
         }
         if (track.recorder && track.recorder->recording()) {
             track.recorder->writeAudio(track.inputPointers, block.frames);

@@ -72,15 +72,15 @@ void waitUntilListed(AudioObjectID device) {
 
 }  // namespace
 
-PrivateAggregate::PrivateAggregate(const std::vector<std::string>& subDeviceUids, double sampleRate)
-    : uid_(uniqueUid()) {
+PrivateAggregate::PrivateAggregate(const std::vector<std::string>& subDeviceUids, double sampleRate) {
+    const std::string uid = uniqueUid();
     auto subDevices = CfRef<CFMutableArrayRef>(CFArrayCreateMutable(nullptr, 0, &kCFTypeArrayCallBacks));
     for (std::size_t index = 0; index < subDeviceUids.size(); ++index) {
         CFArrayAppendValue(subDevices.get(), subDevice(subDeviceUids[index], index > 0).get());
     }
     auto description = cfDictionary();
     CFDictionarySetValue(description.get(), CFSTR(kAudioAggregateDeviceNameKey), cfString("Emerick").get());
-    CFDictionarySetValue(description.get(), CFSTR(kAudioAggregateDeviceUIDKey), cfString(uid_).get());
+    CFDictionarySetValue(description.get(), CFSTR(kAudioAggregateDeviceUIDKey), cfString(uid).get());
     CFDictionarySetValue(description.get(), CFSTR(kAudioAggregateDeviceIsPrivateKey), cfNumber(1).get());
     CFDictionarySetValue(description.get(), CFSTR(kAudioAggregateDeviceSubDeviceListKey), subDevices.get());
     CFDictionarySetValue(description.get(), CFSTR(kAudioAggregateDeviceMainSubDeviceKey),

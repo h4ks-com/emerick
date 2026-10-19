@@ -88,6 +88,8 @@ struct Setting {
     bool readOnly = false;
     std::string hint = {};
     std::string location = {};
+    // Reports the current value of a read-only setting the app measures, such as the audio latency.
+    std::function<Json()> value = {};
 };
 
 struct RouteSections {

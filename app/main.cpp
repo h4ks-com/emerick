@@ -66,8 +66,7 @@ int run(int argc, char** argv) {
     const QCommandLineOption audio("audio", "Audio backend: null or default.", "backend", "default");
     const QCommandLineOption midi("midi", "MIDI backend: virtual or default.", "backend", "default");
     const QCommandLineOption profile(
-        "profile", "Keep settings, scripts and new projects in this folder (for test runs).",
-                                     "folder");
+        "profile", "Keep settings, scripts and new projects in this folder (for test runs).", "folder");
     parser.addOptions({mcpPort, mcpBindAny, noLuaMcp, audio, midi, profile});
     parser.process(application);
 

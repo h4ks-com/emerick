@@ -11,6 +11,7 @@
 #include "emerick/app/backends.hpp"
 #include "emerick/app/console.hpp"
 #include "emerick/app/core_actions.hpp"
+#include "emerick/app/key_focus.hpp"
 #include "emerick/app/lua_host.hpp"
 #include "emerick/app/mcp_server.hpp"
 #include "emerick/app/mcp_tools.hpp"
@@ -91,6 +92,8 @@ int run(int argc, char** argv) {
     TrackListModel tracks(controller, registry);
     FileOpenFilter fileOpen(registry);
     QGuiApplication::instance()->installEventFilter(&fileOpen);
+    KeyFocusFilter keyFocus;
+    QGuiApplication::instance()->installEventFilter(&keyFocus);
 
     bool validPort = true;
     const auto port = parser.isSet(mcpPort) ? parser.value(mcpPort).toUShort(&validPort)

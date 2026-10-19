@@ -37,6 +37,7 @@ Item {
 
     readonly property bool dragging: drag.dragging
     readonly property bool editing: editor.visible
+    readonly property bool editScope: true
     readonly property real margin: framed ? Theme.space4 : 0
     readonly property real shown: held ? dragValue : value
     readonly property string displayText: textFromValue(shown) + (badge ? "   " + badge : "")

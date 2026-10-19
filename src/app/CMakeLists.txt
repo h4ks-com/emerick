@@ -22,6 +22,7 @@ qt_add_library(emerick_app STATIC
     include/emerick/app/enums.hpp
     include/emerick/app/event_wait.hpp
     include/emerick/app/introspector.hpp
+    include/emerick/app/key_focus.hpp
     include/emerick/app/lua_host.hpp
     include/emerick/app/lua_text.hpp
     include/emerick/app/mcp_server.hpp
@@ -44,6 +45,7 @@ qt_add_library(emerick_app STATIC
     include/emerick/app/ui_api.hpp
     include/emerick/app/waveform.hpp
     introspector.cpp
+    key_focus.cpp
     lua_host.cpp
     lua_text.cpp
     mcp_server.cpp

@@ -68,6 +68,12 @@ QtObject {
     readonly property int completionWidth: 520
     readonly property int completionRows: 8
     readonly property int splitterGrip: 6
+    readonly property int mixerHeight: 320
+    readonly property int mixerMinHeight: 200
+    readonly property int stripWidth: 84
+    readonly property int faderGroove: 3
+    readonly property int faderCapWidth: 28
+    readonly property int faderCapHeight: 14
 
     readonly property int transportButton: 36
     readonly property int displayHeight: 44
@@ -119,7 +125,7 @@ QtObject {
     readonly property color beatLine: Qt.rgba(1, 1, 1, 0.03)
 
     // Track icons are Phosphor names; an icon we do not bundle shows as a note.
-    readonly property var icons: ["circle", "dots-three", "file", "gear-six", "guitar", "magnifying-glass", "metronome", "music-note", "music-notes", "pause", "piano-keys", "play", "sidebar-simple", "skip-back", "squares-four", "stop", "waveform", "x"]
+    readonly property var icons: ["circle", "dots-three", "file", "gear-six", "guitar", "magnifying-glass", "metronome", "music-note", "music-notes", "pause", "piano-keys", "play", "sidebar-simple", "skip-back", "sliders", "squares-four", "stop", "waveform", "x"]
     function iconSource(name) {
         return "icons/" + (icons.indexOf(name) >= 0 ? name : "music-note") + ".svg"
     }

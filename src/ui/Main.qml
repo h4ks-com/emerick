@@ -125,6 +125,12 @@ ApplicationWindow {
                 activeColor: Theme.ink
             }
             ChromeButton {
+                objectName: "view.toggleMixer"
+                iconName: "sliders"
+                active: Nav.mixerOpen
+                activeColor: Theme.ink
+            }
+            ChromeButton {
                 id: projectButton
                 objectName: "project.showMenu"
                 iconName: "file"
@@ -187,7 +193,7 @@ ApplicationWindow {
         anchors.top: parent.top
         anchors.left: parent.left
         anchors.right: parent.right
-        anchors.bottom: consoleDock.top
+        anchors.bottom: mixerDock.top
         visible: Nav.page === App.Main
         spacing: 0
         Inspector {
@@ -207,7 +213,20 @@ ApplicationWindow {
         }
     }
 
-    // The panel loads only while open, so its height lives here and survives closing it.
+    // The panels load only while open, so their heights live here and survive closing them.
+    Loader {
+        id: mixerDock
+        property real panelHeight: Theme.mixerHeight
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.bottom: consoleDock.top
+        height: active ? Math.max(Theme.mixerMinHeight, Math.min(panelHeight, parent.height - consoleDock.height - Theme.consoleHeight)) : 0
+        active: Nav.mixerOpen && Nav.page === App.Main
+        sourceComponent: Mixer {
+            onResizeBy: delta => mixerDock.panelHeight = Math.max(Theme.mixerMinHeight, mixerDock.panelHeight + delta)
+        }
+    }
+
     Loader {
         id: consoleDock
         property real panelHeight: Theme.consoleHeight

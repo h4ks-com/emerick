@@ -10,6 +10,7 @@
 
 #include "emerick/app/console.hpp"
 #include "emerick/app/core_actions.hpp"
+#include "emerick/app/key_focus.hpp"
 #include "emerick/app/qml_exposure.hpp"
 #include "project_rig.hpp"
 
@@ -24,9 +25,11 @@ struct MainWindow {
     LuaHost lua{rig.registry, ui};
     Console console{rig.registry, lua};
     QQmlApplicationEngine engine;
+    KeyFocusFilter keyFocus;
     QQuickWindow* window = nullptr;
 
     MainWindow() {
+        QCoreApplication::instance()->installEventFilter(&keyFocus);
         registerCoreActions(rig.registry, rig.nav, {});
         registerConsoleActions(rig.registry, rig.nav, console);
         exposeToQml(engine, rig.registry, rig.nav, *rig.controller, tracks, peaks, &console);

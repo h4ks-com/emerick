@@ -4,6 +4,7 @@
 #include <QTest>
 #include <QWheelEvent>
 #include <catch2/catch_test_macros.hpp>
+#include <cmath>
 #include <string>
 #include <variant>
 
@@ -100,8 +101,7 @@ struct Timeline {
         }
     }
 
-    void wheel(QPoint angle, Qt::KeyboardModifiers modifiers) {
-        const QPointF at{kViewWidth / 2.0, kViewHeight / 2.0};
+    void wheel(QPoint angle, Qt::KeyboardModifiers modifiers, QPointF at = {kViewWidth / 2.0, kViewHeight / 2.0}) {
         QWheelEvent event{at, view.mapToGlobal(at), {}, angle, Qt::NoButton, modifiers, Qt::NoScrollPhase, false};
         QCoreApplication::sendEvent(&view, &event);
     }
@@ -268,4 +268,28 @@ TEST_CASE("the wheel scrolls sideways with Shift or a horizontal swipe, zooms wi
     timeline.wheel({0, -240}, Qt::ControlModifier | Qt::AltModifier);
     CHECK(nav.trackHeight() < height);
     CHECK(nav.pixelsPerTick() > zoom);
+}
+
+TEST_CASE("a horizontal wheel over a clip scrolls sideways, and with Alt zooms around the pointer") {
+    Timeline& timeline = Timeline::instance();
+    Nav& nav = timeline.rig.nav;
+    const std::string id = timeline.addClip(48000 * 8);
+    nav.setScrollTicks(0);
+    nav.setPixelsPerTick(kDefaultPixelsPerTick);
+    QQuickItem* clip = timeline.item(QString::fromStdString("clip:" + id));
+    const QPointF over = clip->mapToScene({clip->width() / 2, clip->height() / 2});
+
+    timeline.wheel({-120, 0}, Qt::NoModifier, over);
+    CHECK(nav.scrollTicks() > 0);
+
+    const std::string track = timeline.rig.controller->project().findClip(model::ClipId{id})->track->id.value;
+    const double laneLeft = timeline.item(QString::fromStdString("lane:" + track))->mapToScene({0, 0}).x();
+    const auto tickUnderPointer = [&] { return nav.scrollTicks() + (over.x() - laneLeft) / nav.pixelsPerTick(); };
+    const double zoom = nav.pixelsPerTick();
+    const int height = nav.trackHeight();
+    const double anchor = tickUnderPointer();
+    timeline.wheel({120, 0}, Qt::AltModifier, over);
+    CHECK(nav.pixelsPerTick() > zoom);
+    CHECK(nav.trackHeight() == height);
+    CHECK(std::abs(tickUnderPointer() - anchor) < 1.0);
 }

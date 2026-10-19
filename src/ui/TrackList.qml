@@ -139,13 +139,16 @@ Rectangle {
         }
     }
 
-    WheelHandler {
-        target: null
+    // We use a MouseArea because a WheelHandler accepts one orientation and drops a tilt wheel's horizontal events.
+    MouseArea {
+        anchors.fill: parent
+        acceptedButtons: Qt.NoButton
         onWheel: event => {
             const dx = event.pixelDelta.x !== 0 ? event.pixelDelta.x : event.angleDelta.x * Theme.wheelStep
             const dy = event.pixelDelta.y !== 0 ? event.pixelDelta.y : event.angleDelta.y * Theme.wheelStep
             if (event.modifiers & Qt.AltModifier) {
-                Nav.trackHeight = Nav.trackHeight + Math.round((dy + dx) * Theme.wheelTrackHeight)
+                Nav.trackHeight = Nav.trackHeight + Math.round(dy * Theme.wheelTrackHeight)
+                area.zoomAround(Math.exp(event.angleDelta.x * Theme.wheelZoom), event.x)
             } else if (event.modifiers & Qt.ControlModifier) {
                 area.zoomAround(Math.exp(event.angleDelta.y * Theme.wheelZoom), event.x)
             } else if (event.modifiers & Qt.ShiftModifier) {

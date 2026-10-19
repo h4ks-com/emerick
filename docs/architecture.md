@@ -48,7 +48,7 @@ Listing devices asks CoreAudio and CoreMIDI about every device, so the engine li
 
 ## Plugins
 
-A plugin calls `registerWith(Registry&, ProjectController&, Nav&)` and can add track types (data schema, QML header and lane, engine MIDI processor), actions, settings and their settings section, MIDI device profiles (channel names, icons), project-level data in `Document::pluginData` and a QML module. A lane component gets `trackId`, `trackData` and `pixelsPerTick` from the tracks area. The first plugin, `plugins/yamaha`, adds the Chords and Style tracks, the arranger setup and the voice table for the Genos2. Plugins are compiled in; dynamic loading waits for a third-party plugin.
+A plugin calls `registerWith(Registry&, ProjectController&, Nav&)` and can add track types (data schema, QML header and lane, engine MIDI processor), actions (listed in the menu bar under `Plugins/<plugin name>`), settings and their settings section (listed under the Plugins heading), MIDI device profiles (channel names, icons), project-level data in `Document::pluginData` and a QML module. A lane component gets `trackId`, `trackData` and `pixelsPerTick` from the tracks area. The first plugin, `plugins/yamaha`, adds the Chords and Style tracks, the arranger setup and the voice table for the Genos2. Plugins are compiled in; dynamic loading waits for a third-party plugin.
 
 ## Agent interface
 

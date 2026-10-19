@@ -1,5 +1,6 @@
 #pragma once
 
+#include <span>
 #include <string>
 
 #include "emerick/app/project_controller.hpp"
@@ -14,16 +15,18 @@ namespace emerick::app {
 std::string durationText(core::Ticks ticks, const core::TempoMap& tempo);
 Json positionState(core::Ticks ticks, const core::TempoMap& tempo);
 Json clipState(const model::Clip& clip, const core::TempoMap& tempo, bool includeEvents = false);
-Json trackState(const model::Track& track, const core::TempoMap& tempo);
+Json trackState(const model::Track& track, const core::TempoMap& tempo,
+                std::span<const engine::AudioDeviceInfo> devices = {});
+// The device name and channels, such as "MOTU M2 1-2", or the id of a device that is gone.
+std::string audioRouteText(const model::AudioRoute& route, std::span<const engine::AudioDeviceInfo> devices);
 Json tempoState(const core::TempoMap& tempo);
 // Sends a pending edit to the engine first, so sessionError and skippedClips describe the current project.
 Json projectState(ProjectController& controller);
 Json transportState(const ProjectController& controller);
 Json devicesState(const ProjectController& controller);
 
-// What the route pickers show: the current route as text, and each choice with the params that select it.
-std::string routeText(const model::AudioRoute& route);
-std::string routeText(const model::MidiRoute& route);
-Json routeChoices(const Json& devices);
+// What the route pickers list: None and each device by name, with the params that select it. An audio device also
+// lists its channel options, and midiChannels lists All and 1 to 16.
+Json routeDevices(const Json& devices);
 
 }  // namespace emerick::app

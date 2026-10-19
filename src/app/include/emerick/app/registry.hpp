@@ -5,6 +5,7 @@
 #include <QString>
 #include <QUrl>
 #include <QVariant>
+#include <array>
 #include <filesystem>
 #include <functional>
 #include <map>
@@ -29,10 +30,23 @@ struct AppError : std::runtime_error {
     using std::runtime_error::runtime_error;
 };
 
-// The menu bar's File menu binds the shortcuts of its actions, so the window skips them.
+// The menu bar lists these menus in this order. A menu path such as "Plugins/Yamaha Arranger" shows as a submenu.
 inline constexpr const char* kFileMenu = "File";
+inline constexpr const char* kEditMenu = "Edit";
+inline constexpr const char* kTrackMenu = "Track";
+inline constexpr const char* kTransportMenu = "Transport";
+inline constexpr const char* kViewMenu = "View";
+inline constexpr const char* kSettingsMenu = "Settings";
+inline constexpr const char* kPluginsMenu = "Plugins";
+inline constexpr const char* kHelpMenu = "Help";
+inline constexpr std::array kMenuBar{kFileMenu, kEditMenu,     kTrackMenu,   kTransportMenu,
+                                     kViewMenu, kSettingsMenu, kPluginsMenu, kHelpMenu};
 // The menu behind the document button in the header.
 inline constexpr const char* kProjectMenu = "Project";
+// Context menus, which run their actions with the clicked track or the selected clips.
+inline constexpr const char* kTrackContextMenu = "Track context";
+inline constexpr const char* kClipContextMenu = "Clip context";
+inline constexpr const char* kLaneContextMenu = "Tracks area context";
 
 // We give every field a default so callers' designated initializers can skip it; this check calls those defaults
 // redundant. NOLINTBEGIN(readability-redundant-member-init)
@@ -59,6 +73,8 @@ struct Action {
     std::vector<std::string> keywords = {};
     std::string category = {};
     std::string shortcut = {};
+    // More keys for the same action, such as Delete beside Backspace.
+    std::vector<std::string> extraShortcuts = {};
     std::function<bool()> enabled = {};
     Json schema = {};
     std::function<Json(const Json& params)> run = {};
@@ -87,6 +103,8 @@ struct Setting {
     std::optional<double> maximum = {};
     bool readOnly = false;
     std::string hint = {};
+    // Values the settings page offers for a String setting as {id, name} entries; typing any other text still works.
+    std::function<Json()> suggestions = {};
     std::string location = {};
 };
 
@@ -130,6 +148,8 @@ struct Location {
     std::string id = {};
     std::string parent = {};
     std::string title = {};
+    // The heading a settings section lists under, such as Plugins; empty lists it with the built-in sections.
+    std::string group = {};
     std::function<void()> reveal = {};
 };
 // NOLINTEND(readability-redundant-member-init)
@@ -152,8 +172,10 @@ struct Revealed {
 class Registry : public QObject {
     Q_OBJECT
     Q_PROPERTY(QVariantMap settings READ settingsMap NOTIFY settingsChanged)
-    Q_PROPERTY(QVariantList shortcuts READ shortcuts CONSTANT)
+    Q_PROPERTY(QVariantList shortcuts READ shortcuts NOTIFY shortcutsChanged)
+    Q_PROPERTY(QVariantList keyCommands READ keyCommands NOTIFY shortcutsChanged)
     Q_PROPERTY(QVariantMap menus READ menus NOTIFY settingsChanged)
+    Q_PROPERTY(QStringList menuBar READ menuBar NOTIFY settingsChanged)
 
 public:
     // An empty path uses the platform's default QSettings store.
@@ -177,6 +199,8 @@ public:
     Json run(const std::string& id, const Json& params = Json::object()) const;
     [[nodiscard]] Json settingValue(const std::string& id) const;
     Json setSetting(const std::string& id, const Json& value);
+    // Saves the shortcut in the settings store and takes it from any action that had it; an empty sequence clears it.
+    Json setShortcut(const std::string& id, const std::string& sequence);
     [[nodiscard]] Json state(const std::string& name) const;
     [[nodiscard]] Json allState() const;
 
@@ -189,8 +213,15 @@ public:
 
     [[nodiscard]] QVariantMap settingsMap() const;
     [[nodiscard]] QVariantList shortcuts() const;
-    // Each menu's items in registration order. Only File menu items bind their shortcut.
+    // Each menu's items in registration order. A menu bar item binds its shortcut when the key has Ctrl or Alt and
+    // is not a text editing key, so the native menu shows it; the window binds every other shortcut.
     [[nodiscard]] QVariantMap menus() const;
+    // The menu bar menus that hold any action, in kMenuBar order.
+    [[nodiscard]] QStringList menuBar() const;
+    // Every action with its title, category and shortcut, for the key commands list.
+    [[nodiscard]] QVariantList keyCommands() const;
+    // The portable text of a key press, such as Ctrl+Shift+S, or empty for a modifier alone.
+    Q_INVOKABLE static QString keySequence(int key, int modifiers);
     Q_INVOKABLE QVariantList palette(const QString& query) const;
     Q_INVOKABLE QVariantMap actionInfo(const QString& id) const;
     Q_INVOKABLE QVariantList sections(const QString& parent) const;
@@ -206,6 +237,7 @@ public:
 
 signals:
     void settingsChanged();
+    void shortcutsChanged();
     void fileDialogRequested(const QVariantMap& request);
     void confirmRequested(const QVariantMap& request);
 

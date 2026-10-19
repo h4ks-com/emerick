@@ -1,5 +1,10 @@
 #pragma once
 
+#include <cstdint>
+#include <functional>
+#include <string>
+#include <vector>
+
 #include "emerick/app/nav.hpp"
 #include "emerick/app/project_controller.hpp"
 #include "emerick/app/registry.hpp"
@@ -12,8 +17,26 @@ void registerProjectActions(Registry& registry, ProjectController& controller, N
 
 // The audio and MIDI track kinds with their add actions, and every track action.
 void registerTrackActions(Registry& registry, ProjectController& controller, Nav& nav);
+// Rename, duplicate, delete, select, flags, gain, color and icon. They act on the selected track without a track param.
+void registerTrackEditActions(Registry& registry, ProjectController& controller, Nav& nav);
+// The track named by params, or the selected track when params names none.
+model::TrackId targetTrack(const ProjectController& controller, const Nav& nav, const Json& params);
+Json trackResult(const ProjectController& controller, const model::TrackId& id);
+Json editTrack(ProjectController& controller, const model::TrackId& id, std::string name,
+               const std::function<void(model::Track&)>& edit);
 // Clip actions without a clip param act on the selected clips, so their shortcuts work on what the user selected.
 void registerClipActions(Registry& registry, ProjectController& controller, Nav& nav);
+// Copy, cut, paste, select all and clip neighbors, and the Delete key's action.
+void registerClipEditActions(Registry& registry, ProjectController& controller, Nav& nav);
+
+// The kind of clip a track type holds; a plugin lane holds none.
+enum class ClipType : std::uint8_t { none, audio, midi };
+ClipType clipTypeOf(const TrackType* type);
+bool trackTakesClip(const Registry& registry, const model::Track& track, const model::Clip& clip);
+// Deletes the clips as one undo step.
+void deleteClips(ProjectController& controller, const std::vector<model::ClipId>& ids);
+// The selected clip ids that still exist.
+std::vector<model::ClipId> selectedClips(const ProjectController& controller, const Nav& nav);
 
 void registerProjectFileActions(Registry& registry, ProjectController& controller);
 void registerProjectFolderActions(Registry& registry, ProjectController& controller, Nav& nav);

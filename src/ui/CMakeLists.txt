@@ -16,12 +16,13 @@ qt_add_qml_module(emerick_ui
         GlassMenuItem.qml
         GlassPanel.qml
         Inspector.qml
+        KeyCommands.qml
         Main.qml
         RouteCombo.qml
         Ruler.qml
+        SearchCombo.qml
         SettingsPage.qml
         Theme.qml
-        ThemeComboBox.qml
         ThemeSpinBox.qml
         TrackHeader.qml
         TrackList.qml
@@ -29,6 +30,7 @@ qt_add_qml_module(emerick_ui
         TransportDisplay.qml
     RESOURCES
         icons/circle.svg
+        icons/dots-three.svg
         icons/file.svg
         icons/gear-six.svg
         icons/guitar.svg
@@ -42,13 +44,14 @@ qt_add_qml_module(emerick_ui
         icons/skip-back.svg
         icons/squares-four.svg
         icons/stop.svg
-        icons/waveform.svg)
+        icons/waveform.svg
+        icons/x.svg)
 
 target_link_libraries(emerick_ui PRIVATE Qt6::Quick Qt6::QuickControls2)
 
 if(EMERICK_BUILD_TESTS)
     # QML singletons register once per process, so each test that loads a view gets its own binary.
-    foreach(name file_menu timeline transport_bar)
+    foreach(name editing file_menu timeline transport_bar)
         emerick_test(emerick_ui_${name}_tests tests/${name}_test.cpp)
         target_include_directories(emerick_ui_${name}_tests PRIVATE ${PROJECT_SOURCE_DIR}/src/app/tests)
         target_link_libraries(emerick_ui_${name}_tests PRIVATE emerick_app emerick_uiplugin Qt6::Quick Qt6::Test)

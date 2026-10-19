@@ -9,8 +9,14 @@ Rectangle {
     clip: true
 
     // The view scrolls in ticks, so zooming keeps the left edge on the same beat.
-    property real scrollTicks: 0
+    readonly property real scrollTicks: Nav.scrollTicks
     property int dropIndex: -1
+    // A clip drag across tracks: the row it started on, how many rows it moved and the clip's type.
+    property int dragFrom: -1
+    property int dragRows: 0
+    property string dragType
+    // A right click opens the track menu at the pointer; the header button and agents open it at the header.
+    property bool menuAtCursor: false
     readonly property real pixelsPerTick: Nav.pixelsPerTick
     readonly property real laneWidth: Math.max(0, width - Theme.trackHeaderWidth)
     readonly property real visibleTicks: laneWidth / pixelsPerTick
@@ -30,7 +36,84 @@ Rectangle {
     }
 
     function scrollTo(ticks) {
-        scrollTicks = Math.max(0, ticks)
+        Nav.scrollTicks = Math.max(0, ticks)
+    }
+
+    function trackIdAt(row) {
+        const item = list.itemAtIndex(row)
+        return item ? item.trackId : ""
+    }
+
+    function rowAccepts(row, type) {
+        const item = list.itemAtIndex(row)
+        return item !== null && item.clipType === type
+    }
+
+    function openClipMenu() {
+        clipMenu.popup()
+    }
+
+    function openLaneMenu() {
+        laneMenu.popup()
+    }
+
+    Binding {
+        target: Nav
+        property: "laneWidth"
+        value: area.laneWidth
+    }
+
+    ActionMenu {
+        id: trackMenu
+        objectName: "menu.trackContext"
+        menuName: "Track context"
+        params: ({track: Nav.trackMenu})
+        onClosed: Nav.trackMenu = ""
+    }
+    Connections {
+        target: Nav
+        function onChanged() {
+            if (Nav.page !== App.Main) {
+                trackMenu.close()
+            }
+            if (Nav.trackMenu === "" || trackMenu.visible) {
+                return
+            }
+            if (area.menuAtCursor) {
+                area.menuAtCursor = false
+                trackMenu.popup()
+                return
+            }
+            const rows = [...Array(list.count).keys()]
+            const row = rows.find(index => area.trackIdAt(index) === Nav.trackMenu)
+            const top = Theme.rulerHeight + (row === undefined ? 0 : row) * Nav.trackHeight - list.contentY
+            trackMenu.popup(area, Theme.trackHeaderWidth - Theme.space5, top + Theme.space5)
+        }
+    }
+    ActionMenu {
+        id: clipMenu
+        objectName: "menu.clipContext"
+        menuName: "Clip context"
+        params: ({})
+    }
+    ActionMenu {
+        id: laneMenu
+        objectName: "menu.laneContext"
+        menuName: "Tracks area context"
+    }
+
+    MouseArea {
+        objectName: "tracks.empty"
+        anchors.fill: parent
+        anchors.topMargin: Theme.rulerHeight
+        acceptedButtons: Qt.LeftButton | Qt.RightButton
+        onPressed: mouse => {
+            if (Theme.isContextClick(mouse)) {
+                area.openLaneMenu()
+            } else {
+                mouse.accepted = false
+            }
+        }
     }
 
     function zoomAround(factor, sceneX) {
@@ -58,7 +141,9 @@ Rectangle {
         onWheel: event => {
             const dx = event.pixelDelta.x !== 0 ? event.pixelDelta.x : event.angleDelta.x * Theme.wheelStep
             const dy = event.pixelDelta.y !== 0 ? event.pixelDelta.y : event.angleDelta.y * Theme.wheelStep
-            if (event.modifiers & Qt.ControlModifier) {
+            if (event.modifiers & Qt.AltModifier) {
+                Nav.trackHeight = Nav.trackHeight + Math.round((dy + dx) * Theme.wheelTrackHeight)
+            } else if (event.modifiers & Qt.ControlModifier) {
                 area.zoomAround(Math.exp(event.angleDelta.y * Theme.wheelZoom), event.x)
             } else if (event.modifiers & Qt.ShiftModifier) {
                 area.scrollTo(area.scrollTicks - (dy + dx) / area.pixelsPerTick)
@@ -130,6 +215,8 @@ Rectangle {
             required property var clips
             required property var trackData
             required property string laneComponent
+            required property string clipType
+            readonly property bool dropTarget: area.dragRows !== 0 && index === area.dragFrom + area.dragRows
             readonly property color trackColor: Theme.trackColors[colorIndex % Project.trackColorCount]
             width: ListView.view.width
             height: Nav.trackHeight
@@ -144,10 +231,25 @@ Rectangle {
                 MouseArea {
                     objectName: "selection.clear:" + row.trackId
                     anchors.fill: parent
-                    onClicked: {
+                    acceptedButtons: Qt.LeftButton | Qt.RightButton
+                    onPressed: mouse => {
                         Registry.runAction("selection.clear", {})
                         Registry.runAction("track.select", {track: row.trackId})
+                        if (Theme.isContextClick(mouse)) {
+                            area.openLaneMenu()
+                        }
                     }
+                }
+
+                Rectangle {
+                    objectName: "lane.drop:" + row.trackId
+                    anchors.fill: parent
+                    visible: row.dropTarget
+                    readonly property bool accepts: row.clipType === area.dragType
+                    color: Theme.glow(accepts ? Theme.tape : Theme.rec)
+                    border.width: Theme.selectionWidth
+                    border.color: accepts ? Theme.tape : Theme.rec
+                    z: 1
                 }
 
                 Item {
@@ -169,6 +271,8 @@ Rectangle {
                         delegate: ClipItem {
                             required property var modelData
                             clip: modelData
+                            timeline: area
+                            rowIndex: row.index
                             trackName: row.name
                             trackColor: row.trackColor
                             muted: row.mute
@@ -195,6 +299,7 @@ Rectangle {
                 monitor: row.monitor
                 gainDb: row.gainDb
                 onDropIndexChanged: area.dropIndex = dropIndex
+                onContextRequested: area.menuAtCursor = true
             }
 
             Rectangle {

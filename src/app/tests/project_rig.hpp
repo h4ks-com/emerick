@@ -27,6 +27,8 @@ namespace emerick::app::test {
 inline constexpr double kRate = 48000.0;
 inline constexpr core::Frames kBlock = 64;
 inline const std::string kMidiPort = "Keyboard";
+// CoreAudio names devices by UID, so the views must show the name instead.
+inline const std::string kMotuId = "40-72-18-3D-42-0C:output";
 
 // Lists the offline backend's devices as slowly as listDelay, the way CoreAudio does, and counts each listing.
 class CountingAudioBackend final : public engine::AudioBackend {
@@ -100,8 +102,10 @@ struct ProjectRig {
     explicit ProjectRig(const std::vector<std::string>& midiPorts = {kMidiPort},
                         std::chrono::milliseconds listDelay = {}) {
         ensureApplication();
-        auto offline = std::make_unique<engine::OfflineBackend>(std::vector<engine::AudioDeviceInfo>{
-            {"interface", "Interface", 2, 2}, {"keyboard", "Digital Keyboard", 2, 2, {44100.0}}});
+        auto offline = std::make_unique<engine::OfflineBackend>(
+            std::vector<engine::AudioDeviceInfo>{{"interface", "Interface", 2, 2},
+                                                 {"keyboard", "Digital Keyboard", 2, 2, {44100.0}},
+                                                 {kMotuId, "MOTU M2", 2, 4}});
         auto virtualMidi = std::make_unique<engine::VirtualMidiBackend>(midiPorts, midiPorts);
         audio = offline.get();
         midi = virtualMidi.get();
@@ -142,7 +146,7 @@ struct ProjectRig {
     }
 };
 
-// Binds the route choices four times, as the inspector does, so a test pays for what the views read.
+// Binds the route devices four times, as the inspector does, so a test pays for what the views read.
 struct InspectorBindings {
     explicit InspectorBindings(ProjectController& controller) {
         qml.rootContext()->setContextProperty("Project", &controller);
@@ -150,10 +154,10 @@ struct InspectorBindings {
         component.setData(
             "import QtQml\n"
             "QtObject {\n"
-            "    property var audioIn: Project.routeChoices.audioIn\n"
-            "    property var audioOut: Project.routeChoices.audioOut\n"
-            "    property var midiIn: Project.routeChoices.midiIn\n"
-            "    property var midiOut: Project.routeChoices.midiOut\n"
+            "    property var audioIn: Project.routeDevices.audioIn\n"
+            "    property var audioOut: Project.routeDevices.audioOut\n"
+            "    property var midiIn: Project.routeDevices.midiIn\n"
+            "    property var midiOut: Project.routeDevices.midiOut\n"
             "}",
             QUrl());
         object.reset(component.create());

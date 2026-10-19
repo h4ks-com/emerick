@@ -87,17 +87,17 @@ void registerProjectFileActions(Registry& registry, ProjectController& controlle
                         .shortcut = "Ctrl+N",
                         .run = startNew,
                         .menus = {kFileMenu, kProjectMenu}});
-    registry.addAction({.id = "project.open",
-                        .title = "Open project",
-                        .aliases = {"load project"},
-                        .category = "Project",
-                        .shortcut = "Ctrl+O",
-                        .schema = {{"required", {"path"}}},
-                        .run = openPath,
-                        .menus = {kFileMenu, kProjectMenu},
-                        .dialog = FileDialog{.param = "path",
-                                             .mode = FileDialogMode::Open,
-                                             .nameFilter = "Emerick projects (*.erk project.json)"}});
+    registry.addAction(
+        {.id = "project.open",
+         .title = "Open project",
+         .aliases = {"load project"},
+         .category = "Project",
+         .shortcut = "Ctrl+O",
+         .schema = {{"required", {"path"}}},
+         .run = openPath,
+         .menus = {kFileMenu, kProjectMenu},
+         .dialog = FileDialog{
+             .param = "path", .mode = FileDialogMode::Open, .nameFilter = "Emerick projects (*.erk project.json)"}});
     registry.addAction({.id = "project.openRecent",
                         .title = "Open recent project",
                         .aliases = {"recent projects"},

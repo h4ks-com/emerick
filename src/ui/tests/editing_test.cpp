@@ -1,0 +1,195 @@
+#include <QStringList>
+#include <QtLogging>
+#include <catch2/catch_test_macros.hpp>
+#include <string>
+#include <vector>
+
+#include "main_window.hpp"
+
+using namespace emerick;
+using namespace emerick::app;
+using namespace emerick::app::test;
+
+namespace {
+
+QStringList& warnings() {
+    static QStringList messages;
+    return messages;
+}
+
+// Collects every Qt warning, so a test can fail on one such as a polish loop.
+void collect(QtMsgType /*type*/, const QMessageLogContext& /*context*/, const QString& message) {
+    warnings().append(message);
+}
+
+QString qid(const std::string& id) { return QString::fromStdString(id); }
+
+void typeText(const MainWindow& main, const QString& text) {
+    for (const QChar letter : text) {
+        QTest::keyClick(main.window, letter.toLatin1());
+    }
+}
+
+const model::Track& trackOf(const MainWindow& main, const std::string& id) {
+    return *main.rig.controller->project().track(model::TrackId{id});
+}
+
+// Clicks a picker, types the filter and presses Enter.
+void pick(MainWindow& main, const QString& picker, const QString& filter) {
+    main.click(main.item(picker));
+    REQUIRE(processUntil(
+        [&] { return main.item(picker)->property("popup").value<QObject*>()->property("opened").toBool(); }));
+    typeText(main, filter);
+    QTest::keyClick(main.window, Qt::Key_Return);
+    processUntil([] { return false; }, 50);
+}
+
+QObject* menuItem(QObject* menu, const QString& title) {
+    const int count = menu->property("count").toInt();
+    for (int index = 0; index < count; ++index) {
+        QQuickItem* item = nullptr;
+        QMetaObject::invokeMethod(menu, "itemAt", Q_RETURN_ARG(QQuickItem*, item), Q_ARG(int, index));
+        if (item != nullptr && item->property("text").toString() == title) {
+            return item;
+        }
+    }
+    FAIL("no menu item " << title.toStdString());
+    return nullptr;
+}
+
+}  // namespace
+
+TEST_CASE("the device picker filters as you type, picks with Enter and shows the device name") {
+    MainWindow& main = MainWindow::instance();
+    const std::string vox = main.rig.run("track.addAudio").at("id");
+    warnings().clear();
+    const QtMessageHandler previous = qInstallMessageHandler(collect);
+
+    const QString picker = "track.setAudioIn:" + qid(vox);
+    main.click(main.item(picker));
+    QObject* popup = main.item(picker)->property("popup").value<QObject*>();
+    REQUIRE(processUntil([&] { return popup->property("opened").toBool(); }));
+    typeText(main, "motu");
+    CHECK(main.item(picker)->property("matches").toList().size() == 1);
+    processUntil([] { return false; }, 100);
+    QTest::keyClick(main.window, Qt::Key_Return);
+    CHECK(processUntil([&] { return !popup->property("opened").toBool(); }));
+    qInstallMessageHandler(previous);
+
+    CHECK(trackOf(main, vox).audioIn.deviceId == kMotuId);
+    CHECK(trackOf(main, vox).audioIn.channels == std::vector{1, 2});
+    CHECK(main.item(picker + ":search")->property("text").toString() == "MOTU M2");
+    CHECK(warnings().filter("polish() loop").isEmpty());
+}
+
+TEST_CASE("the channel pickers set only the channels of the route") {
+    MainWindow& main = MainWindow::instance();
+    const std::string vox = main.rig.run("track.addAudio").at("id");
+    pick(main, "track.setAudioOut:" + qid(vox) + ":channel", "2");
+    CHECK(trackOf(main, vox).audioOut.channels == std::vector{2});
+    CHECK(trackOf(main, vox).audioOut.deviceId == "interface");
+
+    const std::string keys = main.rig.run("track.addMidi").at("id");
+    pick(main, "track.setMidiIn:" + qid(keys) + ":channel", "9");
+    CHECK(trackOf(main, keys).midiIn.channel == 9);
+    CHECK(trackOf(main, keys).midiIn.portId == kMidiPort);
+    pick(main, "track.setMidiOut:" + qid(keys), "key");
+    CHECK(trackOf(main, keys).midiOut.portId == kMidiPort);
+    CHECK(trackOf(main, keys).midiOut.channel == 0);
+}
+
+TEST_CASE("the track context menu lists registry actions and its Delete track removes the track with undo") {
+    MainWindow& main = MainWindow::instance();
+    const std::string vox = main.rig.run("track.addAudio").at("id");
+    processUntil([] { return false; }, 50);
+    main.click(main.item("track.move:" + qid(vox)), Qt::RightButton);
+    QObject* menu = main.menu("menu.trackContext");
+    REQUIRE(processUntil([&] { return menu->property("opened").toBool(); }));
+    CHECK(itemTitles(menu) == registryTitles(main.rig.registry, kTrackContextMenu));
+    CHECK(main.rig.nav.trackMenu() == qid(vox));
+
+    QMetaObject::invokeMethod(menuItem(menu, "Delete track")->property("action").value<QObject*>(), "trigger");
+    CHECK(main.rig.controller->project().track(model::TrackId{vox}) == nullptr);
+    main.rig.run("project.undo");
+    CHECK(main.rig.controller->project().track(model::TrackId{vox}) != nullptr);
+    MainWindow::settle();
+}
+
+TEST_CASE("Backspace and Delete remove the selected clips, or the selected track when no clip is selected") {
+    MainWindow& main = MainWindow::instance();
+    const std::string vox = main.rig.run("track.addAudio").at("id");
+    writeConstant(main.rig.path("ones.wav"), 48000, 1.0F);
+    const std::string clip =
+        main.rig.run("clip.import", {{"track", vox}, {"path", main.rig.path("ones.wav").string()}}).at("id");
+    main.rig.run("selection.set", {{"clips", {clip}}});
+    processUntil([] { return false; }, 50);
+
+    QTest::keyClick(main.window, Qt::Key_Delete);
+    CHECK_FALSE(main.rig.controller->project().findClip(model::ClipId{clip}).has_value());
+    CHECK(main.rig.controller->project().track(model::TrackId{vox}) != nullptr);
+
+    main.rig.run("track.select", {{"track", vox}});
+    QTest::keyClick(main.window, Qt::Key_Backspace);
+    CHECK(main.rig.controller->project().track(model::TrackId{vox}) == nullptr);
+    main.rig.run("project.undo");
+    main.rig.run("track.select", {{"track", vox}});
+    QTest::keyClick(main.window, Qt::Key_Delete);
+    CHECK(main.rig.controller->project().track(model::TrackId{vox}) == nullptr);
+    MainWindow::settle();
+}
+
+TEST_CASE("the settings close button and Escape close settings") {
+    MainWindow& main = MainWindow::instance();
+    main.rig.run("settings.open");
+    REQUIRE(main.rig.nav.page() == Page::Settings);
+    CHECK(main.item("settings.title")->property("text").toString() == "General");
+    main.click(main.item("settings.close"));
+    CHECK(processUntil([&] { return main.rig.nav.page() == Page::Main; }));
+
+    main.rig.run("settings.open");
+    processUntil([] { return false; }, 50);
+    QTest::keyClick(main.window, Qt::Key_Escape);
+    CHECK(processUntil([&] { return main.rig.nav.page() == Page::Main; }));
+    MainWindow::settle();
+}
+
+TEST_CASE("Logic keys move the playhead by bars, select tracks and mute the selected track") {
+    MainWindow& main = MainWindow::instance();
+    const core::Ticks bar = main.rig.controller->ticksPerBar();
+    main.rig.run("transport.locate", {{"position", 0}});
+    const std::string first = main.rig.run("track.addMidi").at("id");
+    const std::string second = main.rig.run("track.addMidi").at("id");
+
+    QTest::keyClick(main.window, Qt::Key_Period);
+    CHECK(main.rig.controller->positionTicks() == bar);
+    QTest::keyClick(main.window, Qt::Key_Period, Qt::ShiftModifier);
+    CHECK(main.rig.controller->positionTicks() == 9 * bar);
+    QTest::keyClick(main.window, Qt::Key_Comma);
+    CHECK(main.rig.controller->positionTicks() == 8 * bar);
+    QTest::keyClick(main.window, Qt::Key_Home);
+    CHECK(main.rig.controller->positionTicks() == 0);
+
+    CHECK(main.rig.nav.selectedTrack() == qid(second));
+    QTest::keyClick(main.window, Qt::Key_Up);
+    CHECK(main.rig.nav.selectedTrack() == qid(first));
+    QTest::keyClick(main.window, Qt::Key_M);
+    CHECK(trackOf(main, first).mute);
+    QTest::keyClick(main.window, Qt::Key_M);
+    CHECK_FALSE(trackOf(main, first).mute);
+}
+
+TEST_CASE("Key Commands records a new shortcut that then runs the action") {
+    MainWindow& main = MainWindow::instance();
+    main.rig.run("settings.show.keys");
+    main.click(main.item("keys.setShortcut:transport.gotoEnd"));
+    QTest::keyClick(main.window, Qt::Key_E, Qt::ControlModifier | Qt::ShiftModifier);
+    CHECK(main.rig.registry.action("transport.gotoEnd")->shortcut == "Ctrl+Shift+E");
+    main.rig.run("settings.close");
+
+    main.rig.run("transport.locate", {{"position", "3.1.0"}});
+    REQUIRE(main.rig.controller->endTicks() != main.rig.controller->positionTicks());
+    processUntil([] { return false; }, 50);
+    QTest::keyClick(main.window, Qt::Key_E, Qt::ControlModifier | Qt::ShiftModifier);
+    CHECK(main.rig.controller->positionTicks() == main.rig.controller->endTicks());
+    MainWindow::settle();
+}

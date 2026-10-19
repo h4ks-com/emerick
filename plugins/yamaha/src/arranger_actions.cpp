@@ -22,6 +22,8 @@ namespace emerick::yamaha {
 
 namespace {
 
+constexpr const char* kYamahaMenu = "Plugins/Yamaha Arranger";
+
 using app::AppError;
 using app::Json;
 
@@ -162,41 +164,46 @@ void registerVoiceActions(app::Registry& registry, app::ProjectController& contr
                         .aliases = {"style voices"},
                         .category = "Yamaha",
                         .schema = {{"required", {"path"}}, {"properties", {{"path", {{"type", "string"}}}}}},
-                        .run = [&controller](const Json& params) {
-                            std::vector<Voice> voices;
-                            try {
-                                voices = loadVoices(app::param<std::string>(params, "path"));
-                            } catch (const std::invalid_argument& error) {
-                                throw AppError(error.what());
-                            } catch (const std::runtime_error& error) {
-                                throw AppError(error.what());
-                            }
-                            Json data = controller.project().document().pluginData.value(kPluginId, Json::object());
-                            data["voices"] = voices;
-                            controller.project().setPluginData(kPluginId, data, "load voice table");
-                            return Json{{"voices", voices}};
-                        }});
+                        .run =
+                            [&controller](const Json& params) {
+                                std::vector<Voice> voices;
+                                try {
+                                    voices = loadVoices(app::param<std::string>(params, "path"));
+                                } catch (const std::invalid_argument& error) {
+                                    throw AppError(error.what());
+                                } catch (const std::runtime_error& error) {
+                                    throw AppError(error.what());
+                                }
+                                Json data = controller.project().document().pluginData.value(kPluginId, Json::object());
+                                data["voices"] = voices;
+                                controller.project().setPluginData(kPluginId, data, "load voice table");
+                                return Json{{"voices", voices}};
+                            },
+                        .menus = {kYamahaMenu},
+                        .dialog = app::FileDialog{.param = "path", .nameFilter = "Voice tables (*.txt)"}});
     registry.addAction({.id = "yamaha.voices.send",
                         .title = "Send voice table",
                         .aliases = {"send voices"},
                         .category = "Yamaha",
                         .schema = {{"properties", {{"port", {{"type", "string"}}}}}},
-                        .run = [&controller](const Json& params) {
-                            const model::Document& document = controller.project().document();
-                            const auto port = app::optionalParam<std::string>(params, "port").or_else([&] {
-                                return voicePort(document);
-                            });
-                            if (!port) {
-                                throw AppError(
-                                    "no Chords track names the keyboard, pass port or run "
-                                    "yamaha.setupArranger");
-                            }
-                            const std::vector<Voice> voices = voicesOf(document);
-                            if (voices.empty()) {
-                                throw AppError("the project has no voice table, run yamaha.voices.load first");
-                            }
-                            return Json{{"port", *port}, {"messages", sendVoices(controller, *port, voices)}};
-                        }});
+                        .run =
+                            [&controller](const Json& params) {
+                                const model::Document& document = controller.project().document();
+                                const auto port = app::optionalParam<std::string>(params, "port").or_else([&] {
+                                    return voicePort(document);
+                                });
+                                if (!port) {
+                                    throw AppError(
+                                        "no Chords track names the keyboard, pass port or run "
+                                        "yamaha.setupArranger");
+                                }
+                                const std::vector<Voice> voices = voicesOf(document);
+                                if (voices.empty()) {
+                                    throw AppError("the project has no voice table, run yamaha.voices.load first");
+                                }
+                                return Json{{"port", *port}, {"messages", sendVoices(controller, *port, voices)}};
+                            },
+                        .menus = {kYamahaMenu}});
     QObject::connect(&controller, &app::ProjectController::aboutToPlay, &controller, [&registry, &controller] {
         if (!registry.settingValue(kSendVoicesSetting).get<bool>()) {
             return;
@@ -223,29 +230,31 @@ void registerArrangerActions(app::Registry& registry, app::ProjectController& co
          .keywords = {"genos", "yamaha", "style"},
          .category = "Yamaha",
          .schema = {{"properties", {{"port", {{"type", "string"}}}}}},
-         .run = [&registry, &controller](const Json& params) {
-             const auto keyboard = keyboardPort(controller, params);
-             if (!keyboard) {
-                 throw AppError("no MIDI port with both an input and an output, connect the keyboard or pass port");
-             }
-             controller.project().group("set up arranger", [&] {
-                 addChartTracks(controller, registry, *keyboard, {});
-                 for (const Part& part : genos2Parts()) {
-                     model::Track track;
-                     track.kind = "midi";
-                     track.name = part.name;
-                     track.icon = part.icon;
-                     track.midiIn = {.portId = *keyboard, .channel = part.channel, .thru = false, .sysex = false};
-                     addTrack(controller, std::move(track));
+         .run =
+             [&registry, &controller](const Json& params) {
+                 const auto keyboard = keyboardPort(controller, params);
+                 if (!keyboard) {
+                     throw AppError("no MIDI port with both an input and an output, connect the keyboard or pass port");
                  }
-                 std::vector<std::string> clockPorts = controller.project().document().clockPorts;
-                 if (!std::ranges::contains(clockPorts, *keyboard)) {
-                     clockPorts.push_back(*keyboard);
-                     controller.project().setClockPorts(std::move(clockPorts));
-                 }
-             });
-             return app::projectState(controller);
-         }});
+                 controller.project().group("set up arranger", [&] {
+                     addChartTracks(controller, registry, *keyboard, {});
+                     for (const Part& part : genos2Parts()) {
+                         model::Track track;
+                         track.kind = "midi";
+                         track.name = part.name;
+                         track.icon = part.icon;
+                         track.midiIn = {.portId = *keyboard, .channel = part.channel, .thru = false, .sysex = false};
+                         addTrack(controller, std::move(track));
+                     }
+                     std::vector<std::string> clockPorts = controller.project().document().clockPorts;
+                     if (!std::ranges::contains(clockPorts, *keyboard)) {
+                         clockPorts.push_back(*keyboard);
+                         controller.project().setClockPorts(std::move(clockPorts));
+                     }
+                 });
+                 return app::projectState(controller);
+             },
+         .menus = {kYamahaMenu}});
     registry.addAction(
         {.id = "yamaha.chart.import",
          .title = "Import chord chart from MIDI file",
@@ -253,16 +262,19 @@ void registerArrangerActions(app::Registry& registry, app::ProjectController& co
          .category = "Yamaha",
          .schema = {{"required", {"path"}},
                     {"properties", {{"path", {{"type", "string"}}}, {"shiftBars", {{"type", "integer"}}}}}},
-         .run = [&registry, &controller](const Json& params) {
-             const std::filesystem::path path{app::param<std::string>(params, "path")};
-             const int shiftBars = app::optionalParam<int>(params, "shiftBars").value_or(0);
-             const Chart chart = chartFromTake(sysexOfMidiFile(path), controller.project().document().tempo,
-                                               chartOptions(registry, shiftBars));
-             const std::string keyboard = keyboardPort(controller, Json::object()).value_or("");
-             controller.project().group("import chart " + path.filename().string(),
-                                        [&] { addChartTracks(controller, registry, keyboard, chart); });
-             return app::projectState(controller);
-         }});
+         .run =
+             [&registry, &controller](const Json& params) {
+                 const std::filesystem::path path{app::param<std::string>(params, "path")};
+                 const int shiftBars = app::optionalParam<int>(params, "shiftBars").value_or(0);
+                 const Chart chart = chartFromTake(sysexOfMidiFile(path), controller.project().document().tempo,
+                                                   chartOptions(registry, shiftBars));
+                 const std::string keyboard = keyboardPort(controller, Json::object()).value_or("");
+                 controller.project().group("import chart " + path.filename().string(),
+                                            [&] { addChartTracks(controller, registry, keyboard, chart); });
+                 return app::projectState(controller);
+             },
+         .menus = {kYamahaMenu},
+         .dialog = app::FileDialog{.param = "path", .nameFilter = "MIDI files (*.mid *.midi)"}});
     registerVoiceActions(registry, controller);
 }
 

@@ -14,14 +14,55 @@ Rectangle {
         Layout.topMargin: Theme.space2
     }
 
-    component ChannelBox: ThemeSpinBox {
+    // A device picker and, once a device is set, the picker of its channels.
+    component AudioRoute: RowLayout {
+        id: audioRoute
         required property string actionId
         required property string trackId
-        objectName: actionId + ":" + trackId + ":channel"
-        from: 0
-        to: Project.midiChannelCount
-        textFromValue: value => value === 0 ? "All" : value
-        onValueModified: Registry.runAction(actionId, {track: trackId, channel: value})
+        required property var devices
+        required property var route
+        readonly property var device: devices.find(entry => entry.id === route.device)
+        Layout.fillWidth: true
+        RouteCombo {
+            actionId: audioRoute.actionId
+            trackId: audioRoute.trackId
+            model: audioRoute.devices
+            currentId: audioRoute.route.device
+            Layout.fillWidth: true
+        }
+        RouteCombo {
+            visible: audioRoute.route.device !== ""
+            actionId: audioRoute.actionId
+            trackId: audioRoute.trackId
+            part: "channel"
+            model: audioRoute.device !== undefined ? audioRoute.device.channels : []
+            currentId: audioRoute.route.channels.join("-")
+            Layout.preferredWidth: Theme.channelPickerWidth
+        }
+    }
+
+    component MidiRoute: RowLayout {
+        id: midiRoute
+        required property string actionId
+        required property string trackId
+        required property var ports
+        required property var route
+        Layout.fillWidth: true
+        RouteCombo {
+            actionId: midiRoute.actionId
+            trackId: midiRoute.trackId
+            model: midiRoute.ports
+            currentId: midiRoute.route.port
+            Layout.fillWidth: true
+        }
+        RouteCombo {
+            actionId: midiRoute.actionId
+            trackId: midiRoute.trackId
+            part: "channel"
+            model: Project.routeDevices.midiChannels
+            currentId: String(midiRoute.route.channel)
+            Layout.preferredWidth: Theme.channelPickerWidth
+        }
     }
 
     component ClipField: TextField {
@@ -54,10 +95,8 @@ Rectangle {
             required property var clips
             required property bool audioRoutes
             required property bool midiRoutes
-            required property string audioInText
-            required property string audioOutText
-            required property string midiInText
-            required property string midiOutText
+            required property var audioIn
+            required property var audioOut
             required property var midiIn
             required property var midiOut
             readonly property var clip: visible && Nav.selectedClips.length > 0
@@ -76,51 +115,37 @@ Rectangle {
             }
 
             RouteLabel { text: "Audio input"; visible: panel.audioRoutes }
-            RouteCombo {
+            AudioRoute {
                 visible: panel.audioRoutes
                 actionId: "track.setAudioIn"
                 trackId: panel.trackId
-                choices: Project.routeChoices.audioIn
-                displayText: panel.audioInText
+                devices: Project.routeDevices.audioIn
+                route: panel.audioIn
             }
             RouteLabel { text: "Audio output"; visible: panel.audioRoutes }
-            RouteCombo {
+            AudioRoute {
                 visible: panel.audioRoutes
                 actionId: "track.setAudioOut"
                 trackId: panel.trackId
-                choices: Project.routeChoices.audioOut
-                displayText: panel.audioOutText
+                devices: Project.routeDevices.audioOut
+                route: panel.audioOut
             }
 
             RouteLabel { text: "MIDI input"; visible: panel.midiRoutes }
-            RowLayout {
+            MidiRoute {
                 visible: panel.midiRoutes
-                RouteCombo {
-                    actionId: "track.setMidiIn"
-                    trackId: panel.trackId
-                    choices: Project.routeChoices.midiIn
-                    displayText: panel.midiInText
-                }
-                ChannelBox {
-                    actionId: "track.setMidiIn"
-                    trackId: panel.trackId
-                    value: panel.midiIn.channel
-                }
+                actionId: "track.setMidiIn"
+                trackId: panel.trackId
+                ports: Project.routeDevices.midiIn
+                route: panel.midiIn
             }
             RouteLabel { text: "MIDI output"; visible: panel.midiRoutes }
-            RowLayout {
+            MidiRoute {
                 visible: panel.midiRoutes
-                RouteCombo {
-                    actionId: "track.setMidiOut"
-                    trackId: panel.trackId
-                    choices: Project.routeChoices.midiOut
-                    displayText: panel.midiOutText
-                }
-                ChannelBox {
-                    actionId: "track.setMidiOut"
-                    trackId: panel.trackId
-                    value: panel.midiOut.channel
-                }
+                actionId: "track.setMidiOut"
+                trackId: panel.trackId
+                ports: Project.routeDevices.midiOut
+                route: panel.midiOut
             }
 
             Loader {

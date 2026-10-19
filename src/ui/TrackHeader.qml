@@ -19,6 +19,8 @@ Rectangle {
     // The row a drag would move this track to, or -1 while no drag runs.
     property int dropIndex: -1
 
+    signal contextRequested()
+
     readonly property bool selected: Nav.selectedTrack === trackId
     readonly property bool roomy: height >= Theme.headerButton * 2 + Theme.space3
 
@@ -37,13 +39,30 @@ Rectangle {
         Layout.preferredWidth: Theme.headerButton
     }
 
+    HoverHandler {
+        id: hover
+    }
+
     MouseArea {
         id: grab
         objectName: "track.move:" + header.trackId
         anchors.fill: parent
+        acceptedButtons: Qt.LeftButton | Qt.RightButton
         property real pressY
-        onPressed: mouse => pressY = mapToItem(null, 0, mouse.y).y
+        property bool menuPress: false
+        onPressed: mouse => {
+            menuPress = Theme.isContextClick(mouse)
+            if (menuPress) {
+                header.contextRequested()
+                Registry.runAction("track.showMenu", {track: header.trackId})
+                return
+            }
+            pressY = mapToItem(null, 0, mouse.y).y
+        }
         onPositionChanged: mouse => {
+            if (menuPress) {
+                return
+            }
             const dy = mapToItem(null, 0, mouse.y).y - pressY
             if (Math.abs(dy) < Theme.dragThreshold) {
                 return
@@ -60,13 +79,8 @@ Rectangle {
                 }
             }
         }
-        onClicked: Registry.runAction("track.select", {track: header.trackId})
-        onDoubleClicked: {
-            rename.text = header.name
-            rename.visible = true
-            rename.forceActiveFocus()
-            rename.selectAll()
-        }
+        onClicked: if (!menuPress) Registry.runAction("track.select", {track: header.trackId})
+        onDoubleClicked: if (!menuPress) Registry.runAction("track.beginRename", {track: header.trackId})
     }
 
     Rectangle {
@@ -119,7 +133,7 @@ Rectangle {
                     id: rename
                     objectName: "track.rename:" + header.trackId
                     anchors.fill: parent
-                    visible: false
+                    visible: Nav.renamingTrack === header.trackId
                     padding: 0
                     leftPadding: Theme.space1
                     color: Theme.ink
@@ -129,17 +143,35 @@ Rectangle {
                         radius: Theme.radiusClip / 2
                         border.color: Theme.rule
                     }
+                    onVisibleChanged: {
+                        if (visible) {
+                            text = header.name
+                            forceActiveFocus()
+                            selectAll()
+                        }
+                    }
                     onAccepted: {
-                        visible = false
                         if (text.length > 0 && text !== header.name) {
                             Registry.runAction("track.rename", {track: header.trackId, name: text})
                         }
+                        Nav.renamingTrack = ""
                     }
-                    onActiveFocusChanged: if (!activeFocus) visible = false
-                    Keys.onEscapePressed: visible = false
+                    onActiveFocusChanged: if (!activeFocus && visible) Nav.renamingTrack = ""
+                    Keys.onEscapePressed: Nav.renamingTrack = ""
                 }
             }
 
+            ChromeButton {
+                objectName: "track.showMenu:" + header.trackId
+                actionId: "track.showMenu"
+                params: ({track: header.trackId})
+                iconName: "dots-three"
+                iconColor: Theme.inkDim
+                opacity: hover.hovered || Nav.trackMenu === header.trackId ? 1 : 0
+                implicitWidth: Theme.headerButton
+                implicitHeight: Theme.headerButton
+                Layout.preferredWidth: Theme.headerButton
+            }
             FlagButton {
                 flag: "track.setMute"
                 value: header.mute

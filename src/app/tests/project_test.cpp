@@ -3,9 +3,11 @@
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 #include <filesystem>
+#include <map>
 #include <string>
 #include <vector>
 
+#include "emerick/app/core_actions.hpp"
 #include "emerick/app/lua_host.hpp"
 #include "emerick/app/session_mapping.hpp"
 #include "emerick/app/track_list_model.hpp"
@@ -215,6 +217,78 @@ TEST_CASE("save then open restores everything") {
     CHECK_THROWS_AS(rig.run("project.open", {{"path", rig.path("missing").string()}}), AppError);
 }
 
+TEST_CASE("opening a project repairs a device id with text glued on and skips only a track whose device is gone") {
+    ProjectRig rig;
+    model::Document document;
+    model::Track glued;
+    glued.kind = "audio";
+    glued.audioIn = {"interface:1,2", {1, 2}};
+    model::Track gone;
+    gone.kind = "audio";
+    gone.audioOut = {"unplugged-device", {1, 2}};
+    document.tracks = {glued, gone};
+    const auto folder = rig.path("old.erk");
+    model::saveProject(document, folder);
+
+    const Json opened = rig.run("project.open", {{"path", folder.string()}});
+    CHECK(opened.at("tracks").at(0).at("audioIn").at("device") == "interface");
+    CHECK(opened.at("tracks").at(1).at("audioOut").at("device") == "unplugged-device");
+    CHECK_FALSE(opened.contains("sessionError"));
+    REQUIRE(opened.at("routeErrors").size() == 1);
+    CHECK(opened.at("routeErrors").at(0).at("track") == gone.id.value);
+}
+
+TEST_CASE("every shortcut has one owner and the menu bar follows the Logic order") {
+    ProjectRig rig;
+    registerCoreActions(rig.registry, rig.nav, {});
+    std::map<std::string, std::string> owners;
+    for (const Action& action : rig.registry.actions()) {
+        std::vector<std::string> keys = action.extraShortcuts;
+        if (!action.shortcut.empty()) {
+            keys.push_back(action.shortcut);
+        }
+        for (const std::string& key : keys) {
+            CAPTURE(key, action.id);
+            CHECK(owners.emplace(key, action.id).second);
+        }
+    }
+    CHECK(rig.registry.menuBar() == QStringList{"File", "Edit", "Track", "Transport", "View", "Settings", "Help"});
+}
+
+TEST_CASE("track actions without a track param act on the selected track") {
+    ProjectRig rig;
+    const std::string vox = rig.run("track.addAudio").at("id");
+    CHECK(rig.run("track.setMute").at("mute") == true);
+    CHECK(rig.run("track.setMute").at("mute") == false);
+    const Json copy = rig.run("track.duplicate");
+    CHECK(copy.at("name") == "Audio 1 copy");
+    CHECK(rig.controller->project().document().tracks.size() == 2);
+    CHECK(rig.controller->project().undoName().has_value());
+    rig.run("track.select", {{"track", vox}});
+    rig.run("track.remove");
+    CHECK(rig.controller->project().track(model::TrackId{vox}) == nullptr);
+    rig.run("project.undo");
+    CHECK(rig.controller->project().track(model::TrackId{vox}) != nullptr);
+}
+
+TEST_CASE("copy and paste put clips at the playhead on the selected track, and bar keys step on bar lines") {
+    ProjectRig rig;
+    const std::string vox = rig.run("track.addAudio").at("id");
+    writeConstant(rig.path("ones.wav"), 4800, 1.0F);
+    const std::string clip = rig.run("clip.import", {{"track", vox}, {"path", rig.path("ones.wav").string()}}).at("id");
+    rig.run("selection.set", {{"clips", {clip}}});
+    rig.run("clip.copy");
+    const core::Ticks bar = rig.controller->ticksPerBar();
+    rig.run("transport.locate", {{"position", bar + bar / 2}});
+    rig.run("transport.barBack");
+    CHECK(rig.controller->positionTicks() == bar);
+    const Json pasted = rig.run("clip.paste");
+    CHECK(pasted.at("clips").at(0).at("start") == bar);
+    CHECK(rig.controller->project().track(model::TrackId{vox})->clips.size() == 2);
+    const std::string keys = rig.run("track.addMidi").at("id");
+    CHECK_THROWS_AS(rig.run("clip.paste", {{"track", keys}}), AppError);
+}
+
 TEST_CASE("export stems renders each audio track from bar 1 to the project end") {
     ProjectRig rig;
     const std::string pad = rig.run("track.addAudio", {{"name", "Pad"}}).at("id");
@@ -324,8 +398,6 @@ TEST_CASE("the track list model follows the document") {
     REQUIRE(clips.size() == 1);
     CHECK(clips.front().toMap().value("length").toLongLong() == 192);
     CHECK(model.roleNames().value(static_cast<int>(TrackListModel::Role::clips)) == "clips");
-    CHECK(model.data(row, static_cast<int>(TrackListModel::Role::audioInText)).toString() == "interface 1-2");
-    CHECK(model.data(row, static_cast<int>(TrackListModel::Role::midiInText)).toString() == "None");
     CHECK(model.data(row, static_cast<int>(TrackListModel::Role::audioRoutes)).toBool());
     CHECK_FALSE(model.data(row, static_cast<int>(TrackListModel::Role::midiRoutes)).toBool());
 }
@@ -344,17 +416,46 @@ TEST_CASE("route actions merge the given fields into the current route") {
 
     const std::string vox = rig.run("track.addAudio").at("id");
     route = rig.run("track.setAudioIn", {{"track", vox}, {"channels", {2}}}).at("audioIn");
-    CHECK(route == Json{{"device", "interface"}, {"channels", {2}}});
+    CHECK(route == Json{{"device", "interface"}, {"channels", {2}}, {"text", "Interface 2"}});
+    CHECK(rig.run("track.setAudioIn", {{"track", vox}, {"device", "interface"}}).at("audioIn").at("channels") ==
+          Json::array({2}));
     CHECK(rig.run("track.setAudioOut", {{"track", vox}, {"device", ""}}).at("audioOut").at("channels").empty());
+    CHECK(rig.run("track.setAudioOut", {{"track", vox}, {"device", "interface"}}).at("audioOut").at("channels") ==
+          Json{1, 2});
 }
 
-TEST_CASE("the inspector's route choices start with None and carry only the params they set") {
+TEST_CASE("project state names a device by its name and channels, never by its UID") {
     ProjectRig rig;
-    const QVariantMap choices = rig.controller->routeChoices();
-    const QVariantMap none = choices.value("midiIn").toList().front().toMap();
-    CHECK(none.value("label").toString() == "None");
+    const std::string vox = rig.run("track.addAudio").at("id");
+    const Json route =
+        rig.run("track.setAudioOut", {{"track", vox}, {"device", kMotuId}, {"channels", {3, 4}}}).at("audioOut");
+    CHECK(route.at("device") == kMotuId);
+    CHECK(route.at("text") == "MOTU M2 3-4");
+    CHECK(projectState(*rig.controller).at("tracks").at(0).at("audioOut").at("text") == "MOTU M2 3-4");
+    try {
+        rig.run("track.setAudioOut", {{"track", vox}, {"channels", {9}}});
+        FAIL("channel 9 is past the device");
+    } catch (const AppError& error) {
+        CHECK(std::string{error.what()}.starts_with("channels for MOTU M2"));
+    }
+}
+
+TEST_CASE("the route pickers list devices by name and channels apart from them") {
+    ProjectRig rig;
+    const QVariantMap devices = rig.controller->routeDevices();
+    const QVariantMap none = devices.value("midiIn").toList().front().toMap();
+    CHECK(none.value("name").toString() == "None");
     CHECK(none.value("params").toMap() == QVariantMap{{"port", ""}});
-    const QVariantMap stereo = choices.value("audioIn").toList().at(3).toMap();
-    CHECK(stereo.value("label").toString() == "Interface 1-2");
-    CHECK(stereo.value("params").toMap().value("device").toString() == "interface");
+    const QVariantList audioIn = devices.value("audioIn").toList();
+    REQUIRE(audioIn.size() == 4);
+    CHECK(audioIn.back().toMap().value("name").toString() == "MOTU M2");
+    const QVariantMap interface = audioIn.at(1).toMap();
+    CHECK(interface.value("name").toString() == "Interface");
+    CHECK(interface.value("params").toMap() == QVariantMap{{"device", "interface"}});
+    QStringList channels;
+    for (const QVariant& option : interface.value("channels").toList()) {
+        channels.append(option.toMap().value("name").toString());
+    }
+    CHECK(channels == QStringList{"1", "2", "1-2"});
+    CHECK(devices.value("midiChannels").toList().size() == kMidiChannels + 1);
 }

@@ -47,6 +47,26 @@ RawEvent chordSysex(core::Ticks at, std::uint8_t root, std::uint8_t type) {
 
 }  // namespace
 
+TEST_CASE("the plugin lists its settings under the Plugins group and its actions under the Plugins menu") {
+    YamahaRig rig;
+    const QVariantList sections = rig.registry.sections("settings");
+    REQUIRE_FALSE(sections.empty());
+    const QVariantMap yamaha = sections.back().toMap();
+    CHECK(yamaha.value("group").toString() == "Plugins");
+    CHECK(yamaha.value("title").toString() == "Yamaha Arranger");
+
+    const QVariantMap menus = rig.registry.menus();
+    CHECK(rig.registry.menuBar().contains("Plugins"));
+    const QVariantMap submenu = menus.value("Plugins").toList().front().toMap();
+    CHECK(submenu.value("title").toString() == "Yamaha Arranger");
+    CHECK(submenu.value("row").toInt() == static_cast<int>(app::MenuRow::Menu));
+    CHECK(menus.value("Plugins/Yamaha Arranger").toList().size() == 4);
+
+    const QVariantList port = rig.registry.settingsAt("settings.yamaha").at(1).toMap().value("suggestions").toList();
+    REQUIRE(port.size() == 1);
+    CHECK(port.front().toMap().value("name").toString() == QString::fromStdString(app::test::kMidiPort));
+}
+
 TEST_CASE("a recorded take becomes the chord list and the section list") {
     YamahaRig rig;
     const std::string chords = rig.addTrack("yamaha.chord");

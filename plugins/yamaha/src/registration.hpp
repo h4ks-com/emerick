@@ -42,7 +42,7 @@ std::vector<Event> eventsOf(const nlohmann::json& data) {
 
 ChartOptions chartOptions(const app::Registry& registry, int shiftBars = 0);
 
-void registerSettings(app::Registry& registry, app::Nav& nav);
+void registerSettings(app::Registry& registry, app::ProjectController& controller, app::Nav& nav);
 void registerTrackKinds(app::Registry& registry);
 void registerChartActions(app::Registry& registry, app::ProjectController& controller);
 void registerArrangerActions(app::Registry& registry, app::ProjectController& controller);

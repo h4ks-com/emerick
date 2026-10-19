@@ -177,15 +177,42 @@ TEST_CASE("the settings page reads its sections and rows from the registry") {
     Nav nav;
     registerCoreActions(registry, nav, {});
 
+    addSettingsSection(registry, nav, {.key = "tape", .title = "Tape Machine", .group = kPluginsGroup});
+    addSettingsSection(registry, nav, {.key = "late", .title = "Late"});
+
     const QVariantList sections = registry.sections("settings");
-    REQUIRE(sections.size() == 2);
+    REQUIRE(sections.size() == 5);
     CHECK(sections.at(0).toMap().value("id").toString() == "settings.general");
     CHECK(sections.at(1).toMap().value("title").toString() == "Audio");
+    CHECK(sections.at(3).toMap().value("title").toString() == "Late");
+    CHECK(sections.at(4).toMap().value("group").toString() == "Plugins");
+    CHECK(sections.at(4).toMap().value("title").toString() == "Tape Machine");
     const QVariantList audio = registry.settingsAt("settings.audio");
     REQUIRE(audio.size() == 2);
     CHECK(audio.front().toMap().value("type").toInt() == static_cast<int>(SettingType::Choice));
     CHECK(audio.back().toMap().value("id").toString() == "audio.sampleRate");
     CHECK(registry.actionInfo("palette.open").value("shortcut").toString() == "Ctrl+K");
+}
+
+TEST_CASE("a rebound shortcut takes the key from its old owner and survives a restart") {
+    QTemporaryDir dir;
+    {
+        Registry registry{dir.filePath("settings.ini")};
+        Nav nav;
+        registerCoreActions(registry, nav, {});
+        const Json result = registry.run("keys.setShortcut", {{"id", "settings.open"}, {"shortcut", "Ctrl+K"}});
+        CHECK(result.at("replaced") == "palette.open");
+        CHECK(registry.actionInfo("palette.open").value("shortcut").toString().isEmpty());
+        CHECK_THROWS_AS(registry.run("keys.setShortcut", {{"id", "settings.open"}, {"shortcut", "Ctrl+Nope+"}}),
+                        AppError);
+    }
+    Registry registry{dir.filePath("settings.ini")};
+    Nav nav;
+    registerCoreActions(registry, nav, {});
+    CHECK(registry.actionInfo("settings.open").value("shortcut").toString() == "Ctrl+K");
+    CHECK(registry.actionInfo("palette.open").value("shortcut").toString().isEmpty());
+    CHECK(Registry::keySequence(Qt::Key_S, Qt::ControlModifier | Qt::ShiftModifier) == "Ctrl+Shift+S");
+    CHECK(Registry::keySequence(Qt::Key_Shift, Qt::ShiftModifier).isEmpty());
 }
 
 TEST_CASE("JSON and QVariant convert both ways") {

@@ -30,7 +30,7 @@ class ProjectController : public QObject {
     Q_PROPERTY(qint64 ticksPerBeat READ ticksPerBeat NOTIFY projectChanged)
     Q_PROPERTY(qint64 ticksPerBar READ ticksPerBar NOTIFY projectChanged)
     Q_PROPERTY(qint64 endTicks READ endTicks NOTIFY projectChanged)
-    Q_PROPERTY(QVariantMap routeChoices READ routeChoices NOTIFY devicesChanged)
+    Q_PROPERTY(QVariantMap routeDevices READ routeDevices NOTIFY devicesChanged)
     Q_PROPERTY(int midiChannelCount READ midiChannelCount CONSTANT)
     Q_PROPERTY(int trackColorCount READ trackColorCount CONSTANT)
     Q_PROPERTY(QString name READ name NOTIFY fileChanged)
@@ -59,6 +59,8 @@ public:
     [[nodiscard]] const std::string& sessionError() const { return sessionError_; }
     // A damaged take still becomes a clip when the engine kept any of it, and its error stays listed here.
     [[nodiscard]] const std::vector<engine::SessionError>& takeErrors() const { return takeErrors_; }
+    // Tracks whose audio device is gone; they play without that route.
+    [[nodiscard]] const std::vector<engine::SessionError>& routeErrors() const { return routeErrors_; }
 
     // Each of these first stops the transport and keeps every pending take in the current project. Leaving a
     // project saves it, and an untitled project with nothing in it is deleted.
@@ -101,7 +103,7 @@ public:
     [[nodiscard]] qint64 endTicks() const;
     // The nearest beat when the edit.snap setting is on, else ticks unchanged; never before bar 1.
     Q_INVOKABLE qint64 snapped(qint64 ticks) const;
-    [[nodiscard]] QVariantMap routeChoices() const;
+    [[nodiscard]] QVariantMap routeDevices() const;
     [[nodiscard]] static int midiChannelCount() { return kMidiChannels; }
     [[nodiscard]] static int trackColorCount() { return kTrackColors; }
 
@@ -143,6 +145,7 @@ private:
     std::set<std::string> pendingAudioTakes_;
     std::string sessionError_;
     std::vector<engine::SessionError> takeErrors_;
+    std::vector<engine::SessionError> routeErrors_;
     bool recording_ = false;
     bool flushPending_ = false;
     core::Ticks stopTicks_ = 0;

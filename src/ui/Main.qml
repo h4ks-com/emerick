@@ -33,14 +33,22 @@ ApplicationWindow {
     palette.toolTipBase: Theme.slate
     palette.toolTipText: Theme.ink
 
+    // macOS shows these menus in its global menu bar; elsewhere they sit at the top of the window.
     menuBar: MenuBar {
+        id: menus
         background: Rectangle {
             color: Theme.slate
         }
-        ActionMenu {
-            objectName: "menu.file"
-            title: menuName
-            menuName: "File"
+        Instantiator {
+            model: Registry.menuBar
+            delegate: ActionMenu {
+                required property string modelData
+                objectName: "menu." + modelData.toLowerCase()
+                title: modelData
+                menuName: modelData
+            }
+            onObjectAdded: (index, object) => menus.insertMenu(index, object)
+            onObjectRemoved: (index, object) => menus.removeMenu(object)
         }
     }
 

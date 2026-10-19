@@ -23,6 +23,8 @@ class Nav : public QObject {
     Q_PROPERTY(emerick::app::Page page READ page WRITE setPage NOTIFY changed)
     Q_PROPERTY(QString settingsTab READ settingsTab WRITE setSettingsTab NOTIFY changed)
     Q_PROPERTY(QString selectedTrack READ selectedTrack WRITE setSelectedTrack NOTIFY changed)
+    Q_PROPERTY(QString renamingTrack READ renamingTrack WRITE setRenamingTrack NOTIFY changed)
+    Q_PROPERTY(QString trackMenu READ trackMenu WRITE setTrackMenu NOTIFY changed)
     Q_PROPERTY(bool paletteOpen READ paletteOpen WRITE setPaletteOpen NOTIFY changed)
     Q_PROPERTY(bool aboutOpen READ aboutOpen WRITE setAboutOpen NOTIFY changed)
     Q_PROPERTY(bool inspectorOpen READ inspectorOpen WRITE setInspectorOpen NOTIFY changed)
@@ -30,6 +32,8 @@ class Nav : public QObject {
     Q_PROPERTY(QStringList selectedClips READ selectedClips WRITE setSelectedClips NOTIFY selectionChanged)
     Q_PROPERTY(double pixelsPerTick READ pixelsPerTick WRITE setPixelsPerTick NOTIFY viewChanged)
     Q_PROPERTY(int trackHeight READ trackHeight WRITE setTrackHeight NOTIFY viewChanged)
+    Q_PROPERTY(double scrollTicks READ scrollTicks WRITE setScrollTicks NOTIFY scrollChanged)
+    Q_PROPERTY(double laneWidth READ laneWidth WRITE setLaneWidth NOTIFY scrollChanged)
 
 public:
     using QObject::QObject;
@@ -37,6 +41,10 @@ public:
     [[nodiscard]] Page page() const { return page_; }
     [[nodiscard]] QString settingsTab() const { return settingsTab_; }
     [[nodiscard]] QString selectedTrack() const { return selectedTrack_; }
+    // The track whose header shows its name field.
+    [[nodiscard]] QString renamingTrack() const { return renamingTrack_; }
+    // The track whose context menu is open.
+    [[nodiscard]] QString trackMenu() const { return trackMenu_; }
     [[nodiscard]] bool paletteOpen() const { return paletteOpen_; }
     [[nodiscard]] bool aboutOpen() const { return aboutOpen_; }
     [[nodiscard]] bool inspectorOpen() const { return inspectorOpen_; }
@@ -44,10 +52,15 @@ public:
     [[nodiscard]] QStringList selectedClips() const { return selectedClips_; }
     [[nodiscard]] double pixelsPerTick() const { return pixelsPerTick_; }
     [[nodiscard]] int trackHeight() const { return trackHeight_; }
+    // The tick at the timeline's left edge, and the lanes' width in pixels, which the timeline view reports.
+    [[nodiscard]] double scrollTicks() const { return scrollTicks_; }
+    [[nodiscard]] double laneWidth() const { return laneWidth_; }
 
     void setPage(Page value) { assign(page_, value, &Nav::changed); }
     void setSettingsTab(const QString& value) { assign(settingsTab_, value, &Nav::changed); }
     void setSelectedTrack(const QString& value) { assign(selectedTrack_, value, &Nav::changed); }
+    void setRenamingTrack(const QString& value) { assign(renamingTrack_, value, &Nav::changed); }
+    void setTrackMenu(const QString& value) { assign(trackMenu_, value, &Nav::changed); }
     void setPaletteOpen(bool value) { assign(paletteOpen_, value, &Nav::changed); }
     void setAboutOpen(bool value) { assign(aboutOpen_, value, &Nav::changed); }
     void setInspectorOpen(bool value) { assign(inspectorOpen_, value, &Nav::changed); }
@@ -59,6 +72,8 @@ public:
     void setTrackHeight(int value) {
         assign(trackHeight_, std::clamp(value, kMinTrackHeight, kMaxTrackHeight), &Nav::viewChanged);
     }
+    void setScrollTicks(double value) { assign(scrollTicks_, std::max(0.0, value), &Nav::scrollChanged); }
+    void setLaneWidth(double value) { assign(laneWidth_, value, &Nav::scrollChanged); }
 
     [[nodiscard]] nlohmann::json toJson() const {
         nlohmann::json clips = nlohmann::json::array();
@@ -71,6 +86,7 @@ public:
                 {"selectedClips", clips},
                 {"pixelsPerTick", pixelsPerTick_},
                 {"trackHeight", trackHeight_},
+                {"scrollTicks", scrollTicks_},
                 {"paletteOpen", paletteOpen_},
                 {"aboutOpen", aboutOpen_},
                 {"inspectorOpen", inspectorOpen_},
@@ -81,6 +97,7 @@ signals:
     void changed();
     void selectionChanged();
     void viewChanged();
+    void scrollChanged();
 
 private:
     template <class T>
@@ -94,6 +111,8 @@ private:
     Page page_ = Page::Main;
     QString settingsTab_ = QStringLiteral("general");
     QString selectedTrack_;
+    QString renamingTrack_;
+    QString trackMenu_;
     bool paletteOpen_ = false;
     bool aboutOpen_ = false;
     bool inspectorOpen_ = true;
@@ -101,6 +120,8 @@ private:
     QStringList selectedClips_;
     double pixelsPerTick_ = kDefaultPixelsPerTick;
     int trackHeight_ = kDefaultTrackHeight;
+    double scrollTicks_ = 0;
+    double laneWidth_ = 0;
 };
 
 }  // namespace emerick::app

@@ -263,6 +263,9 @@ Json Registry::settingValue(const std::string& id) const {
     if (found == nullptr) {
         throw AppError("no setting " + id);
     }
+    if (found->value) {
+        return found->value();
+    }
     const QVariant stored = store_->value(qs(id));
     if (!stored.isValid()) {
         return found->defaultValue;

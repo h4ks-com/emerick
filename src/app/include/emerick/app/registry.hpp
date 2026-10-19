@@ -106,6 +106,8 @@ struct Setting {
     // Values the settings page offers for a String setting as {id, name} entries; typing any other text still works.
     std::function<Json()> suggestions = {};
     std::string location = {};
+    // Reports the current value of a read-only setting the app measures, such as the audio latency.
+    std::function<Json()> value = {};
 };
 
 struct RouteSections {

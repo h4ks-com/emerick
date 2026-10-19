@@ -31,6 +31,7 @@ class ProjectController : public QObject {
     Q_PROPERTY(qint64 ticksPerBar READ ticksPerBar NOTIFY projectChanged)
     Q_PROPERTY(qint64 endTicks READ endTicks NOTIFY projectChanged)
     Q_PROPERTY(QVariantMap routeDevices READ routeDevices NOTIFY devicesChanged)
+    Q_PROPERTY(QVariantMap inputLevels READ inputLevels NOTIFY inputLevelsChanged)
     Q_PROPERTY(int midiChannelCount READ midiChannelCount CONSTANT)
     Q_PROPERTY(int trackColorCount READ trackColorCount CONSTANT)
     Q_PROPERTY(QString name READ name NOTIFY fileChanged)
@@ -108,6 +109,9 @@ public:
     Q_INVOKABLE QString ticksText(qint64 ticks, bool duration) const;
     // Reads text in the same form, or plain ticks; returns -1 for text it cannot read.
     Q_INVOKABLE qint64 parseTicks(const QString& text, bool duration) const;
+    // Per audio track id: peak, the loudest input sample of the last poll, and clipped, which stays set from the
+    // first full scale sample until the next recording starts.
+    [[nodiscard]] QVariantMap inputLevels() const { return inputLevels_; }
     [[nodiscard]] static int midiChannelCount() { return kMidiChannels; }
     [[nodiscard]] static int trackColorCount() { return kTrackColors; }
 
@@ -117,6 +121,7 @@ signals:
     void transportChanged();
     void projectChanged();
     void devicesChanged();
+    void inputLevelsChanged();
     // The folder, the name or the edited flag changed.
     void fileChanged();
 
@@ -132,6 +137,7 @@ private:
     void waitForEngine(const std::function<bool()>& reached);
     void publish();
     void poll();
+    void readInputLevels();
     void addTake(const engine::RecordedTake& take);
     void moveTo(const std::filesystem::path& folder, model::Document document);
 
@@ -155,6 +161,7 @@ private:
     core::Ticks stopTicks_ = 0;
     core::Ticks lastTicks_ = -1;
     bool lastPlaying_ = false;
+    QVariantMap inputLevels_;
     QTimer timer_;
 };
 

@@ -105,6 +105,52 @@ TEST_CASE("audio clips play with track gain, clip gain and fades on the output c
     CHECK(rig.audio.output("keyboard", 1)[static_cast<std::size_t>(again + 12000)] == Approx(0.5F));
 }
 
+TEST_CASE("an audio take skips the recording delay so it lines up with what the player heard") {
+    constexpr Frames kDelay = 100;
+    Rig rig(kBlock, 0, kDelay);
+    const TempFolder folder;
+    rig.engine.setSession({.tempo = kTempo, .tracks = {recordingTrack()}, .takeFolder = folder.path});
+    std::vector<float> ramp(1000);
+    for (std::size_t frame = 0; frame < ramp.size(); ++frame) {
+        ramp[frame] = static_cast<float>(frame);
+    }
+    rig.audio.setInput("interface", 2, ramp);
+
+    const std::vector<RecordedTake> takes = recordFor(rig, 1000);
+
+    REQUIRE(takes.size() == 1);
+    CHECK(takes[0].startTick == 0);
+    const std::vector<float> recorded = readWav(takes[0].audioFile);
+    REQUIRE(recorded.size() >= 900);
+    CHECK(recorded[0] == static_cast<float>(kDelay));
+    CHECK(recorded[899] == 999.0F);
+}
+
+TEST_CASE("an input meter reports the peak and full scale samples, and a take counts them") {
+    Rig rig;
+    const TempFolder folder;
+    rig.engine.setSession({.tempo = kTempo, .tracks = {recordingTrack()}, .takeFolder = folder.path});
+    rig.audio.setInput("interface", 2, {0.25F, -0.5F, 0.1F});
+    rig.audio.process(kBlock);
+
+    std::vector<InputLevel> levels = rig.engine.takeInputLevels();
+    REQUIRE(levels.size() == 1);
+    CHECK(levels[0].trackId == "vox");
+    CHECK(levels[0].peak == 0.5F);
+    CHECK_FALSE(levels[0].clipped);
+    CHECK(rig.engine.takeInputLevels()[0].peak == 0.0F);
+
+    rig.audio.setInput("interface", 2, {0.5F, 1.0F, -1.0F, 0.2F});
+    const std::vector<RecordedTake> takes = recordFor(rig, kBlock);
+
+    levels = rig.engine.takeInputLevels();
+    CHECK(levels[0].peak == 1.0F);
+    CHECK(levels[0].clipped);
+    REQUIRE(takes.size() == 1);
+    CHECK(takes[0].samples == static_cast<std::uint64_t>(kBlock));
+    CHECK(takes[0].clippedSamples == 2);
+}
+
 TEST_CASE("an armed audio track records its input to WAV, and the take plays back") {
     Rig rig;
     const TempFolder folder;

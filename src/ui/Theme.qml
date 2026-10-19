@@ -77,6 +77,7 @@ QtObject {
     readonly property int dragCoarseSteps: 10
     readonly property int sweepSampleSpacing: 4
     readonly property real gainMinDb: -60
+    readonly property real meterFloorDb: -60
     readonly property real gainMaxDb: 6
     readonly property real gainStepDb: 0.5
     readonly property real clipGainMaxDb: 24

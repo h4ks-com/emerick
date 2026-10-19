@@ -188,9 +188,10 @@ TEST_CASE("the settings page reads its sections and rows from the registry") {
     CHECK(sections.at(4).toMap().value("group").toString() == "Plugins");
     CHECK(sections.at(4).toMap().value("title").toString() == "Tape Machine");
     const QVariantList audio = registry.settingsAt("settings.audio");
-    REQUIRE(audio.size() == 2);
+    REQUIRE(audio.size() == 3);
     CHECK(audio.front().toMap().value("type").toInt() == static_cast<int>(SettingType::Choice));
-    CHECK(audio.back().toMap().value("id").toString() == "audio.sampleRate");
+    CHECK(audio.at(1).toMap().value("id").toString() == "audio.sampleRate");
+    CHECK(audio.back().toMap().value("id").toString() == "audio.recordingDelay");
     CHECK(registry.actionInfo("palette.open").value("shortcut").toString() == "Ctrl+K");
 }
 

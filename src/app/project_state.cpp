@@ -1,6 +1,7 @@
 #include "emerick/app/project_state.hpp"
 
 #include <algorithm>
+#include <format>
 #include <ranges>
 #include <span>
 #include <string>
@@ -208,7 +209,8 @@ Json projectState(ProjectController& controller) {
 Json transportState(const ProjectController& controller) {
     return {{"playing", controller.playing()},
             {"recording", controller.recording()},
-            {"position", positionState(controller.positionTicks(), controller.project().document().tempo)}};
+            {"position", positionState(controller.positionTicks(), controller.project().document().tempo)},
+            {"inputLevels", toJson(controller.inputLevels())}};
 }
 
 Json devicesState(const ProjectController& controller) {
@@ -238,6 +240,13 @@ Json devicesState(const ProjectController& controller) {
             {"audioOutputs", outputs},
             {"midiInputs", midiInputs},
             {"midiOutputs", midiOutputs}};
+}
+
+std::string latencyText(const engine::StreamLayout& layout) {
+    constexpr double kMsPerSecond = 1000.0;
+    const auto ms = [&](core::Frames frames) { return static_cast<double>(frames) * kMsPerSecond / layout.sampleRate; };
+    return std::format("{:.1f} ms round trip, {:.1f} ms output", ms(layout.inputLatency + layout.outputLatency),
+                       ms(layout.outputLatency));
 }
 
 Json routeDevices(const Json& devices) {

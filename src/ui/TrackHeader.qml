@@ -199,6 +199,12 @@ Rectangle {
             }
         }
 
+        InputMeter {
+            trackId: header.trackId
+            Layout.fillWidth: true
+            Layout.leftMargin: Theme.iconSize + Theme.space2
+        }
+
         RowLayout {
             visible: header.roomy
             spacing: Theme.space2

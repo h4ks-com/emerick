@@ -4,6 +4,8 @@
 #include <QtLogging>
 #include <algorithm>
 #include <chrono>
+#include <cstdint>
+#include <format>
 #include <stdexcept>
 #include <string>
 #include <system_error>
@@ -27,6 +29,16 @@ constexpr auto kTakeTimeout = std::chrono::seconds{3};
 constexpr auto kTakeSettle = std::chrono::milliseconds{50};
 constexpr double kLocateWindowSeconds = 0.25;
 constexpr auto kAutosaveDelay = std::chrono::seconds{2};
+constexpr double kPercent = 100.0;
+
+std::string clippedText(const engine::RecordedTake& take) {
+    const double share = kPercent * static_cast<double>(take.clippedSamples) /
+                         static_cast<double>(std::max<std::uint64_t>(take.samples, 1));
+    return std::format(
+        "the input reached full scale on {} samples ({:.2f}%), so it clipped before Emerick; turn "
+        "down the source's output level and record again",
+        take.clippedSamples, share);
+}
 
 }  // namespace
 
@@ -271,6 +283,12 @@ void ProjectController::record() {
             pendingAudioTakes_.insert(track.id.value);
         }
     }
+    for (QVariant& level : inputLevels_) {
+        QVariantMap cleared = level.toMap();
+        cleared.insert("clipped", false);
+        level = cleared;
+    }
+    emit inputLevelsChanged();
     engine_.setRecording(true);
     emit aboutToPlay();
     engine_.play();
@@ -343,12 +361,26 @@ void ProjectController::poll() {
         refreshDevices();
     }
     collectTakes();
+    readInputLevels();
     const core::Ticks ticks = engine_.position().ticks;
     const bool isPlaying = engine_.playing();
     if (ticks != lastTicks_ || isPlaying != lastPlaying_) {
         lastTicks_ = ticks;
         lastPlaying_ = isPlaying;
         emit transportChanged();
+    }
+}
+
+void ProjectController::readInputLevels() {
+    QVariantMap next;
+    for (const engine::InputLevel& level : engine_.takeInputLevels()) {
+        const QString id = qs(level.trackId);
+        const bool clipped = level.clipped || inputLevels_.value(id).toMap().value("clipped").toBool();
+        next.insert(id, QVariantMap{{"peak", level.peak}, {"clipped", clipped}});
+    }
+    if (next != inputLevels_) {
+        inputLevels_ = std::move(next);
+        emit inputLevelsChanged();
     }
 }
 
@@ -359,6 +391,9 @@ int ProjectController::collectTakes() {
         pendingAudioTakes_.erase(take.trackId);
         if (!take.error.empty()) {
             takeErrors_.push_back({take.trackId, take.error});
+        }
+        if (take.clippedSamples > 0) {
+            takeErrors_.push_back({take.trackId, clippedText(take)});
         }
         try {
             addTake(take);

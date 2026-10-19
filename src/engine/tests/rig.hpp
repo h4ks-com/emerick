@@ -23,12 +23,12 @@ inline std::vector<AudioDeviceInfo> rigDevices() {
 
 // An engine on the offline audio backend and virtual MIDI ports, so every test runs without hardware.
 struct Rig {
-    explicit Rig(Frames blockFrames = kBlock, std::int64_t startTimeNs = 0)
+    explicit Rig(Frames blockFrames = kBlock, std::int64_t startTimeNs = 0, Frames recordingDelay = 0)
         : audioOwner(std::make_unique<OfflineBackend>(rigDevices(), startTimeNs)),
           midiOwner(std::make_unique<VirtualMidiBackend>(std::vector{kPort1, kPort2}, std::vector{kPort1, kPort2})),
           audio(*audioOwner),
           midi(*midiOwner),
-          engine(std::move(audioOwner), std::move(midiOwner), {kRate, blockFrames}) {}
+          engine(std::move(audioOwner), std::move(midiOwner), {kRate, blockFrames, recordingDelay}) {}
 
     std::unique_ptr<OfflineBackend> audioOwner;
     std::unique_ptr<VirtualMidiBackend> midiOwner;

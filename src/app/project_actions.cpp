@@ -225,6 +225,16 @@ void registerProjectActions(Registry& registry, ProjectController& controller, N
     registry.setUndoGroup([&controller](const std::string& name, const std::function<void()>& edits) {
         controller.project().group(name, edits);
     });
+    registry.addSetting({.id = "audio.latency",
+                         .title = "Resulting latency",
+                         .aliases = {"round trip", "delay"},
+                         .category = "Settings / Audio",
+                         .type = SettingType::String,
+                         .defaultValue = "",
+                         .readOnly = true,
+                         .hint = "Input plus output latency the open devices report, buffer included",
+                         .location = "settings.audio",
+                         .value = [&controller] { return latencyText(controller.engine().layout()); }});
 
     registerProjectFileActions(registry, controller);
     registerProjectEditActions(registry, controller);

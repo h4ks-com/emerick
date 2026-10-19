@@ -20,11 +20,10 @@ public:
     PrivateAggregate(PrivateAggregate&&) = delete;
     PrivateAggregate& operator=(PrivateAggregate&&) = delete;
 
-    [[nodiscard]] const std::string& uid() const { return uid_; }
+    [[nodiscard]] std::uint32_t deviceId() const { return deviceId_; }
 
 private:
     std::uint32_t deviceId_ = 0;
-    std::string uid_;
 };
 
 }  // namespace emerick::engine

@@ -76,12 +76,17 @@ struct SessionError {
     std::string message;
 };
 
+// A float sample at this magnitude or above was clipped before or at the converter.
+inline constexpr float kFullScale = 1.0F;
+
 struct RecordedTake {
     std::string trackId;
     Ticks startTick = 0;
     std::filesystem::path audioFile;    // set for audio tracks whose file we could write
     std::vector<MidiEvent> midiEvents;  // set for MIDI tracks, ticks relative to startTick
     std::string error;                  // set when part or all of the take was lost
+    std::uint64_t samples = 0;          // audio samples written, every channel counted
+    std::uint64_t clippedSamples = 0;   // of those, the ones at full scale
 };
 
 }  // namespace emerick::engine

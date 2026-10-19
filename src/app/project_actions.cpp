@@ -242,6 +242,7 @@ void registerProjectActions(Registry& registry, ProjectController& controller, N
     registerTrackActions(registry, controller, nav);
     registerClipActions(registry, controller, nav);
     registerExportActions(registry, controller);
+    registerMetronome(registry, controller, nav);
     registerProjectFolderActions(registry, controller, nav);
     registry.addAction({.id = "devices.list",
                         .title = "List audio and MIDI devices",

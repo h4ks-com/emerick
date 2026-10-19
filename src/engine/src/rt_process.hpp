@@ -16,6 +16,7 @@ namespace emerick::engine {
 inline constexpr std::size_t kCommandCapacity = 1024;
 inline constexpr std::size_t kRetiredCapacity = 64;
 inline constexpr std::size_t kMaxTrackIdLength = 64;
+inline constexpr std::size_t kMetronomeVoices = 16;
 
 struct Command {
     enum class Type : std::uint8_t { play, stop, locate, record, mute, solo, arm, gain };
@@ -27,6 +28,14 @@ struct Command {
     bool on = false;
 
     [[nodiscard]] std::string_view track() const { return {trackId.data(), trackIdLength}; }
+};
+
+// A metronome sound that is playing; position counts frames from its start and is negative before it.
+struct MetronomeVoice {
+    DrumVoice voice = DrumVoice::beat;
+    Frames position = 0;
+    float gain = 0.0F;
+    bool active = false;
 };
 
 struct RealtimeState {
@@ -44,6 +53,9 @@ struct RealtimeState {
     bool recordEnabled = false;
     bool taking = false;
     Frames takeStartFrame = 0;
+    Frames countInLeft = 0;
+    std::array<MetronomeVoice, kMetronomeVoices> metronomeVoices{};
+    const DrumSounds* voiceSounds = nullptr;
 };
 
 void processBlock(RealtimeState& state, const AudioBlock& block);

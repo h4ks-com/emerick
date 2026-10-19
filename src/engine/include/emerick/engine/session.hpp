@@ -1,5 +1,7 @@
 #pragma once
 
+#include <array>
+#include <cstddef>
 #include <cstdint>
 #include <filesystem>
 #include <string>
@@ -17,11 +19,13 @@ enum class TrackKind : std::uint8_t { audio, midi };
 struct AudioRoute {
     std::string deviceId;
     std::vector<int> channels;  // 1-based device channels
+    bool operator==(const AudioRoute&) const = default;
 };
 
 struct MidiRoute {
     std::string portId;
     int channel = 0;  // 1 to 16, 0 means all
+    bool operator==(const MidiRoute&) const = default;
 };
 
 struct AudioClip {
@@ -63,11 +67,40 @@ struct Track {
     std::vector<MidiClip> midiClips;
 };
 
+// Click and sample play one sound per beat, a groove plays a drum pattern, and the MIDI modes send either as notes.
+enum class MetronomeMode : std::uint8_t { click, sample, groove, midiClick, midiGroove };
+enum class GroovePattern : std::uint8_t { rock, fourOnTheFloor, halfTime, shuffle, bossa };
+enum class DrumVoice : std::uint8_t { accent, beat, kick, snare, hat };
+inline constexpr std::size_t kDrumVoices = 5;
+inline constexpr int kMaxCountInBars = 4;
+// The id a SessionError about the metronome names in place of a track id.
+inline constexpr const char* kMetronomeId = "metronome";
+
+struct Metronome {
+    bool enabled = false;
+    bool duringPlayback = false;
+    bool duringRecording = true;
+    // Bars of click before a recording started from stop; the take starts after them.
+    int countInBars = 0;
+    MetronomeMode mode = MetronomeMode::click;
+    GroovePattern pattern = GroovePattern::rock;
+    float gain = 0.5F;
+    float accentGain = 2.0F;
+    std::vector<int> accentBeats = {1};  // 1-based beats of the bar
+    AudioRoute audioOut;                 // an empty device plays on the stream's first two outputs
+    std::filesystem::path accentSample;
+    std::filesystem::path beatSample;
+    MidiRoute midiOut = {.portId = {}, .channel = 10};
+    std::array<std::uint8_t, kDrumVoices> notes = {76, 77, 36, 38, 42};  // GM wood blocks, kick, snare, closed hat
+    bool operator==(const Metronome&) const = default;
+};
+
 struct Session {
     core::TempoMap tempo;
     std::vector<Track> tracks;
     std::vector<std::string> clockPorts;  // MIDI outputs that get clock, Start and Stop
     std::filesystem::path takeFolder;     // recorded audio takes are written here
+    Metronome metronome;
 };
 
 // A clip we skipped because its file is missing or at another sample rate.

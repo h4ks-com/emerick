@@ -133,7 +133,8 @@ std::vector<std::filesystem::path> exportStems(const engine::Session& session, c
         }
         track.mute = false;
         track.solo = false;
-        engine::Session single{.tempo = session.tempo, .tracks = {track}, .clockPorts = {}, .takeFolder = {}};
+        engine::Session single{
+            .tempo = session.tempo, .tracks = {track}, .clockPorts = {}, .takeFolder = {}, .metronome = {}};
         files.push_back(folder / (stem + ".wav"));
         writeWav(files.back(), render(std::move(single), frames, sampleRate), sampleRate);
     }
@@ -143,7 +144,8 @@ std::vector<std::filesystem::path> exportStems(const engine::Session& session, c
 void exportMix(const engine::Session& session, const model::Document& document, const std::filesystem::path& file,
                double sampleRate) {
     const engine::Frames frames = renderFrames(document, sampleRate);
-    engine::Session mix{.tempo = session.tempo, .tracks = audioTracks(session), .clockPorts = {}, .takeFolder = {}};
+    engine::Session mix{
+        .tempo = session.tempo, .tracks = audioTracks(session), .clockPorts = {}, .takeFolder = {}, .metronome = {}};
     if (!file.parent_path().empty()) {
         std::filesystem::create_directories(file.parent_path());
     }

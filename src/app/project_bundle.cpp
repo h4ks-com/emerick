@@ -6,6 +6,7 @@
 #include <system_error>
 #include <variant>
 
+#include "emerick/app/peak_cache.hpp"
 #include "emerick/core/overloaded.hpp"
 #include "emerick/model/json.hpp"
 
@@ -81,6 +82,7 @@ std::vector<std::string> removeUnusedAudio(const model::Document& document, cons
     for (const auto& entry : std::filesystem::directory_iterator(bundle / "audio")) {
         if (entry.is_regular_file() && !used.contains(entry.path().lexically_normal())) {
             std::filesystem::remove(entry.path());
+            std::filesystem::remove(peakFile(entry.path()));
             removed.push_back(entry.path().filename().string());
         }
     }

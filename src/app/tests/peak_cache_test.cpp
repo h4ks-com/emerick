@@ -1,9 +1,11 @@
 #include "emerick/app/peak_cache.hpp"
 
 #include <QTemporaryDir>
+#include <algorithm>
 #include <catch2/catch_test_macros.hpp>
+#include <cmath>
 #include <filesystem>
-#include <thread>
+#include <span>
 #include <vector>
 
 #include "emerick/app/audio_file.hpp"
@@ -15,78 +17,102 @@ using namespace emerick::app;
 namespace {
 
 constexpr double kRate = 48000.0;
-constexpr core::Frames kHalf = 4 * kFramesPerPeak;
+// Three coarsest blocks and a partial one, so every level ends on a short block.
+constexpr core::Frames kFrames = 3 * kFramesPerPeak.back() + 700;
 
-// The first half swings between -0.5 and 0.75 on the left channel, the second half is silent.
-std::filesystem::path writeTestFile(const QTemporaryDir& dir) {
-    std::vector<float> left(2 * kHalf, 0.0F);
-    std::vector<float> right(2 * kHalf, 0.0F);
-    for (core::Frames frame = 0; frame < kHalf; ++frame) {
-        left[static_cast<std::size_t>(frame)] = frame % 2 == 0 ? 0.75F : -0.5F;
+struct TestFile {
+    std::filesystem::path path;
+    std::vector<float> left;
+    std::vector<float> right;
+};
+
+TestFile writeTestFile(const QTemporaryDir& dir) {
+    TestFile file{dir.filePath("swing.wav").toStdString(), {}, {}};
+    for (core::Frames frame = 0; frame < kFrames; ++frame) {
+        const auto at = static_cast<double>(frame);
+        file.left.push_back(static_cast<float>(std::sin(at * 0.001) * std::cos(at * 0.00007)));
+        file.right.push_back(static_cast<float>(0.3 * std::sin(at * 0.013)));
     }
-    const std::filesystem::path path = dir.filePath("swing.wav").toStdString();
-    writeWav(path, {left, right}, kRate);
-    return path;
+    writeWav(file.path, {file.left, file.right}, kRate);
+    return file;
 }
 
-bool columnHasInk(const QImage& image, int x, int y) { return qAlpha(image.pixel(x, y)) > 0; }
+PeakRange bruteForce(const TestFile& file, core::Frames from, core::Frames to) {
+    const auto first = static_cast<std::size_t>(from);
+    const auto count = static_cast<std::size_t>(std::min(to, kFrames) - from);
+    const auto left = std::span{file.left}.subspan(first, count);
+    const auto right = std::span{file.right}.subspan(first, count);
+    return {std::min(std::ranges::min(left), std::ranges::min(right)),
+            std::max(std::ranges::max(left), std::ranges::max(right))};
+}
 
 }  // namespace
 
-TEST_CASE("peaks hold the lowest and highest sample of every block over all channels") {
+TEST_CASE("every peak level holds the lowest and highest sample of its blocks over all channels") {
     const QTemporaryDir dir;
-    PeakCache cache;
-    const Peaks& peaks = cache.peaks(writeTestFile(dir));
-    REQUIRE(peaks.maximum.size() == 8);
-    CHECK(peaks.maximum.front() == 0.75F);
-    CHECK(peaks.minimum.front() == -0.5F);
-    CHECK(peaks.maximum.back() == 0.0F);
-    CHECK(peaks.minimum.back() == 0.0F);
-}
-
-TEST_CASE("the cache reads a file once and shares it across threads") {
-    const QTemporaryDir dir;
-    const auto path = writeTestFile(dir);
-    PeakCache cache;
-    const Peaks* first = &cache.peaks(path);
-    std::vector<const Peaks*> seen(4, nullptr);
-    std::vector<std::jthread> threads;
-    for (auto& slot : seen) {
-        threads.emplace_back([&cache, &path, &slot] { slot = &cache.peaks(path); });
+    const TestFile file = writeTestFile(dir);
+    const PeakLevels peaks = loadPeaks(file.path);
+    for (std::size_t level = 0; level < kFramesPerPeak.size(); ++level) {
+        const core::Frames size = kFramesPerPeak.at(level);
+        const Peaks& values = peaks.levels.at(level);
+        REQUIRE(values.minimum.size() == static_cast<std::size_t>((kFrames + size - 1) / size));
+        for (std::size_t block = 0; block < values.minimum.size(); ++block) {
+            const auto from = static_cast<core::Frames>(block) * size;
+            const PeakRange expected = bruteForce(file, from, from + size);
+            CHECK(values.minimum.at(block) == expected.low);
+            CHECK(values.maximum.at(block) == expected.high);
+        }
     }
-    threads.clear();
-    for (const Peaks* peaks : seen) {
-        CHECK(peaks == first);
-    }
-    CHECK(cache.peaks(dir.filePath("missing.wav").toStdString()).maximum.empty());
 }
 
-TEST_CASE("drawing peaks inks the loud half tall and the silent half as a center line") {
+TEST_CASE("a peak range reads the coarsest level that covers it and matches the samples of its blocks") {
     const QTemporaryDir dir;
-    PeakCache cache;
-    const QImage image = drawPeaks(cache.peaks(writeTestFile(dir)), 0, 2 * kHalf, QSize{100, 40});
-    CHECK(image.size() == QSize{100, 40});
-    CHECK(columnHasInk(image, 10, 8));
-    CHECK(columnHasInk(image, 10, 28));
-    CHECK_FALSE(columnHasInk(image, 10, 2));
-    CHECK(columnHasInk(image, 90, 20));
-    CHECK_FALSE(columnHasInk(image, 90, 8));
+    const TestFile file = writeTestFile(dir);
+    const PeakLevels peaks = loadPeaks(file.path);
+    const auto range = peakRange(peaks, 2 * kFramesPerPeak.at(2), 3 * kFramesPerPeak.at(2));
+    REQUIRE(range.has_value());
+    const PeakRange expected = bruteForce(file, 2 * kFramesPerPeak.at(2), 3 * kFramesPerPeak.at(2));
+    CHECK(range->low == expected.low);
+    CHECK(range->high == expected.high);
+    CHECK_FALSE(peakRange(peaks, kFrames + kFramesPerPeak.back(), kFrames + 2 * kFramesPerPeak.back()).has_value());
 }
 
-TEST_CASE("the image provider serves the stretch named in its source") {
+TEST_CASE("the peak file is reused until the audio changes") {
+    const QTemporaryDir dir;
+    const TestFile file = writeTestFile(dir);
+    const std::filesystem::path stored = peakFile(file.path);
+    CHECK(stored == file.path.parent_path() / ".peaks" / "swing.wav.peaks");
+
+    const PeakLevels first = loadPeaks(file.path);
+    REQUIRE(std::filesystem::exists(stored));
+    const auto written = std::filesystem::last_write_time(stored);
+    const PeakLevels again = loadPeaks(file.path);
+    const bool untouched = std::filesystem::last_write_time(stored) == written;
+    CHECK(untouched);
+    CHECK(again.levels.front().maximum == first.levels.front().maximum);
+
+    writeWav(file.path, {std::vector<float>(static_cast<std::size_t>(kFramesPerPeak.front()), 0.25F)}, kRate);
+    const PeakLevels changed = loadPeaks(file.path);
+    REQUIRE(changed.levels.front().maximum.size() == 1);
+    CHECK(changed.levels.front().maximum.front() == 0.25F);
+    CHECK(loadPeaks(file.path).levels.front().maximum == changed.levels.front().maximum);
+}
+
+TEST_CASE("the cache loads a file off the calling thread once and keeps it") {
     ensureApplication();
     const QTemporaryDir dir;
-    const auto path = writeTestFile(dir);
+    const TestFile file = writeTestFile(dir);
     PeakCache cache;
-    PeakImageProvider provider{cache};
-    const QString source = peakSource(path, kHalf, kHalf);
-    REQUIRE(source.startsWith("image://peaks/"));
-    QSize size;
-    const QImage silent = provider.requestImage(source.mid(14), &size, QSize{50, 20});
-    CHECK(size == QSize{50, 20});
-    CHECK_FALSE(columnHasInk(silent, 25, 2));
-    CHECK(columnHasInk(silent, 25, 10));
-    const QImage loud = provider.requestImage(peakSource(path, 0, kHalf).mid(14), &size, QSize{});
-    CHECK(size.width() > 0);
-    CHECK(columnHasInk(loud, 5, 8));
+    int loads = 0;
+    QObject::connect(&cache, &PeakCache::loaded, [&loads] { ++loads; });
+    CHECK(cache.levels(file.path) == nullptr);
+    REQUIRE(processUntil([&] { return loads == 1; }));
+    const PeakLevels* levels = cache.levels(file.path);
+    REQUIRE(levels != nullptr);
+    CHECK(cache.levels(file.path) == levels);
+    CHECK(levels->levels.front().maximum.size() == static_cast<std::size_t>(kFrames / kFramesPerPeak.front() + 1));
+
+    CHECK(cache.levels(dir.filePath("missing.wav").toStdString()) == nullptr);
+    REQUIRE(processUntil([&] { return loads == 2; }));
+    CHECK(cache.levels(dir.filePath("missing.wav").toStdString())->levels.front().maximum.empty());
 }

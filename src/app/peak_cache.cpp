@@ -2,105 +2,190 @@
 
 #include <sndfile.h>
 
-#include <QByteArray>
-#include <QPainter>
-#include <QStringList>
+#include <QDataStream>
+#include <QFile>
+#include <QList>
+#include <QSaveFile>
 #include <algorithm>
-#include <memory>
-#include <ranges>
 #include <span>
+#include <system_error>
+#include <utility>
 
 namespace emerick::app {
 
 namespace {
 
-constexpr QSize kDefaultSize{512, 64};
+constexpr quint32 kPeakFileMagic = 0x454d504b;
+constexpr quint32 kPeakFileVersion = 1;
+constexpr core::Frames kFold = 4;
+constexpr core::Frames kBlocksPerRead = 64;
 
 struct SndFileCloser {
     void operator()(SNDFILE* file) const { sf_close(file); }
 };
 using SndFile = std::unique_ptr<SNDFILE, SndFileCloser>;
 
-Peaks readPeaks(const std::filesystem::path& file) {
+// What identifies the audio a peak file was made from.
+struct AudioStamp {
+    quint64 size = 0;
+    qint64 modified = 0;
+    bool operator==(const AudioStamp&) const = default;
+};
+
+std::optional<AudioStamp> stampOf(const std::filesystem::path& audio) {
+    std::error_code error;
+    const auto size = std::filesystem::file_size(audio, error);
+    const auto modified = std::filesystem::last_write_time(audio, error);
+    if (error) {
+        return std::nullopt;
+    }
+    return AudioStamp{size, static_cast<qint64>(modified.time_since_epoch().count())};
+}
+
+Peaks readAudioPeaks(const std::filesystem::path& audio) {
     SF_INFO info{};
-    const SndFile sound{sf_open(file.c_str(), SFM_READ, &info)};
+    const SndFile sound{sf_open(audio.c_str(), SFM_READ, &info)};
     if (!sound || info.channels <= 0) {
         return {};
     }
     const auto channels = static_cast<std::size_t>(info.channels);
-    std::vector<float> block(static_cast<std::size_t>(kFramesPerPeak) * channels);
+    const core::Frames block = kFramesPerPeak.front();
+    std::vector<float> buffer(static_cast<std::size_t>(block * kBlocksPerRead) * channels);
     Peaks peaks;
     while (true) {
-        const sf_count_t read = sf_readf_float(sound.get(), block.data(), kFramesPerPeak);
+        const sf_count_t read = sf_readf_float(sound.get(), buffer.data(), block * kBlocksPerRead);
         if (read <= 0) {
             break;
         }
-        const auto samples = block | std::views::take(static_cast<std::size_t>(read) * channels);
-        const auto [low, high] = std::ranges::minmax(samples);
-        peaks.minimum.push_back(low);
-        peaks.maximum.push_back(high);
+        const auto samples = std::span{buffer}.first(static_cast<std::size_t>(read) * channels);
+        const auto blockSamples = static_cast<std::size_t>(block) * channels;
+        for (std::size_t at = 0; at < samples.size(); at += blockSamples) {
+            const auto [low, high] =
+                std::ranges::minmax(samples.subspan(at, std::min(blockSamples, samples.size() - at)));
+            peaks.minimum.push_back(low);
+            peaks.maximum.push_back(high);
+        }
     }
     return peaks;
 }
 
+// libc++ has no std::views::chunk yet, so we step through the groups by hand.
+template <typename Pick>
+std::vector<float> foldValues(const std::vector<float>& finer, Pick pick) {
+    const auto group = static_cast<std::size_t>(kFold);
+    std::vector<float> coarser;
+    coarser.reserve((finer.size() + group - 1) / group);
+    for (std::size_t at = 0; at < finer.size(); at += group) {
+        coarser.push_back(pick(std::span{finer}.subspan(at, std::min(group, finer.size() - at))));
+    }
+    return coarser;
+}
+
+Peaks fold(const Peaks& finer) {
+    return {foldValues(finer.minimum, std::ranges::min), foldValues(finer.maximum, std::ranges::max)};
+}
+
+std::optional<Peaks> readPeakFile(const std::filesystem::path& file, const AudioStamp& stamp) {
+    QFile input{QString::fromStdString(file.string())};
+    if (!input.open(QIODevice::ReadOnly)) {
+        return std::nullopt;
+    }
+    QDataStream stream{&input};
+    quint32 magic = 0;
+    quint32 version = 0;
+    AudioStamp stored;
+    QList<float> minimum;
+    QList<float> maximum;
+    stream >> magic >> version >> stored.size >> stored.modified;
+    if (magic != kPeakFileMagic || version != kPeakFileVersion || stored != stamp) {
+        return std::nullopt;
+    }
+    stream.setFloatingPointPrecision(QDataStream::SinglePrecision);
+    stream >> minimum >> maximum;
+    if (stream.status() != QDataStream::Ok || minimum.size() != maximum.size()) {
+        return std::nullopt;
+    }
+    return Peaks{{minimum.begin(), minimum.end()}, {maximum.begin(), maximum.end()}};
+}
+
+// We drop the peak file when the folder is read-only, because the peaks still work from memory.
+void writePeakFile(const std::filesystem::path& file, const AudioStamp& stamp, const Peaks& peaks) {
+    std::error_code error;
+    std::filesystem::create_directories(file.parent_path(), error);
+    QSaveFile output{QString::fromStdString(file.string())};
+    if (error || !output.open(QIODevice::WriteOnly)) {
+        return;
+    }
+    QDataStream stream{&output};
+    stream << kPeakFileMagic << kPeakFileVersion << stamp.size << stamp.modified;
+    stream.setFloatingPointPrecision(QDataStream::SinglePrecision);
+    stream << QList<float>{peaks.minimum.begin(), peaks.minimum.end()}
+           << QList<float>{peaks.maximum.begin(), peaks.maximum.end()};
+    output.commit();
+}
+
 }  // namespace
 
-const Peaks& PeakCache::peaks(const std::filesystem::path& file) {
+PeakLevels buildLevels(Peaks finest) {
+    PeakLevels peaks;
+    peaks.levels.front() = std::move(finest);
+    for (std::size_t level = 1; level < peaks.levels.size(); ++level) {
+        peaks.levels.at(level) = fold(peaks.levels.at(level - 1));
+    }
+    return peaks;
+}
+
+std::filesystem::path peakFile(const std::filesystem::path& audio) {
+    return audio.parent_path() / ".peaks" / (audio.filename().string() + ".peaks");
+}
+
+PeakLevels loadPeaks(const std::filesystem::path& audio) {
+    const auto stamp = stampOf(audio);
+    if (!stamp) {
+        return {};
+    }
+    if (auto stored = readPeakFile(peakFile(audio), *stamp)) {
+        return buildLevels(*std::move(stored));
+    }
+    Peaks finest = readAudioPeaks(audio);
+    writePeakFile(peakFile(audio), *stamp, finest);
+    return buildLevels(std::move(finest));
+}
+
+std::optional<PeakRange> peakRange(const PeakLevels& peaks, core::Frames from, core::Frames to) {
+    std::size_t level = 0;
+    while (level + 1 < kFramesPerPeak.size() && kFramesPerPeak.at(level + 1) <= to - from) {
+        ++level;
+    }
+    const Peaks& chosen = peaks.levels.at(level);
+    const core::Frames size = kFramesPerPeak.at(level);
+    const auto count = static_cast<core::Frames>(chosen.minimum.size());
+    const core::Frames first = std::max<core::Frames>(from / size, 0);
+    const core::Frames last = std::min(std::max(first + 1, (to + size - 1) / size), count);
+    if (first >= last) {
+        return std::nullopt;
+    }
+    const auto span = [&](const std::vector<float>& values) {
+        return std::span{values}.subspan(static_cast<std::size_t>(first), static_cast<std::size_t>(last - first));
+    };
+    return PeakRange{std::ranges::min(span(chosen.minimum)), std::ranges::max(span(chosen.maximum))};
+}
+
+const PeakLevels* PeakCache::levels(const std::filesystem::path& file) {
     const std::scoped_lock lock{mutex_};
     if (const auto found = files_.find(file); found != files_.end()) {
-        return found->second;
+        return found->second.get();
     }
-    return files_.emplace(file, readPeaks(file)).first->second;
-}
-
-QImage drawPeaks(const Peaks& peaks, core::Frames offset, core::Frames frames, QSize size) {
-    QImage image{size, QImage::Format_ARGB32_Premultiplied};
-    image.fill(Qt::transparent);
-    const auto count = static_cast<core::Frames>(peaks.minimum.size());
-    if (frames <= 0 || count == 0) {
-        return image;
-    }
-    QPainter painter{&image};
-    const double middle = size.height() / 2.0;
-    for (int x = 0; x < size.width(); ++x) {
-        const core::Frames from = offset + frames * x / size.width();
-        const core::Frames to = offset + frames * (x + 1) / size.width();
-        const core::Frames first = std::max<core::Frames>(from / kFramesPerPeak, 0);
-        const core::Frames last = std::min(std::max(first + 1, (to + kFramesPerPeak - 1) / kFramesPerPeak), count);
-        if (first >= last) {
-            continue;
+    const auto entry = files_.emplace(file, nullptr).first;
+    pool_.start([this, entry] {
+        auto loaded = std::make_unique<const PeakLevels>(loadPeaks(entry->first));
+        {
+            const std::scoped_lock done{mutex_};
+            entry->second = std::move(loaded);
         }
-        const auto span = [&](const std::vector<float>& values) {
-            return std::span{values}.subspan(static_cast<std::size_t>(first), static_cast<std::size_t>(last - first));
-        };
-        const float low = std::ranges::min(span(peaks.minimum));
-        const float high = std::ranges::max(span(peaks.maximum));
-        const double top = middle - std::clamp(high, -1.0F, 1.0F) * middle;
-        const double bottom = middle - std::clamp(low, -1.0F, 1.0F) * middle;
-        painter.fillRect(QRectF{static_cast<double>(x), top, 1.0, std::max(1.0, bottom - top)}, Qt::black);
-    }
-    return image;
-}
-
-QString peakSource(const std::filesystem::path& file, core::Frames offset, core::Frames frames) {
-    return QStringLiteral("image://peaks/%1/%2/%3")
-        .arg(offset)
-        .arg(frames)
-        .arg(QString::fromLatin1(QByteArray::fromStdString(file.string()).toHex()));
-}
-
-QImage PeakImageProvider::requestImage(const QString& id, QSize* size, const QSize& requestedSize) {
-    const QStringList parts = id.split('/');
-    const QSize target{requestedSize.width() > 0 ? requestedSize.width() : kDefaultSize.width(),
-                       requestedSize.height() > 0 ? requestedSize.height() : kDefaultSize.height()};
-    if (size != nullptr) {
-        *size = target;
-    }
-    if (parts.size() != 3) {
-        return drawPeaks({}, 0, 0, target);
-    }
-    const std::filesystem::path file{QByteArray::fromHex(parts[2].toLatin1()).toStdString()};
-    return drawPeaks(cache_.peaks(file), parts[0].toLongLong(), parts[1].toLongLong(), target);
+        QMetaObject::invokeMethod(this, &PeakCache::loaded, Qt::QueuedConnection);
+    });
+    return nullptr;
 }
 
 }  // namespace emerick::app

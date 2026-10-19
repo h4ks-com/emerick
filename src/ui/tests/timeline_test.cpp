@@ -41,11 +41,12 @@ struct Timeline {
         return *timeline;
     }
 
-    // Adds an audio track holding one two-beat clip at bar 1 and returns the clip id.
-    std::string addClip() {
+    // Adds an audio track holding one clip of that many frames at bar 1 and returns the clip id.
+    std::string addClip(core::Frames frames = 48000) {
         const std::string track = rig.run("track.addAudio").at("id");
-        writeConstant(rig.path("ones.wav"), 48000, 1.0F);
-        std::string clip = rig.run("clip.import", {{"track", track}, {"path", rig.path("ones.wav").string()}}).at("id");
+        const std::string name = "ones-" + std::to_string(frames) + ".wav";
+        writeConstant(rig.path(name), frames, 1.0F);
+        std::string clip = rig.run("clip.import", {{"track", track}, {"path", rig.path(name).string()}}).at("id");
         settle();
         return clip;
     }
@@ -132,6 +133,28 @@ TEST_CASE("dragging a fade handle inward sets the fade without snapping") {
     timeline.drag(QString::fromStdString("clip.setFade:" + id + ":out"), -300 * pixelsPerTick);
     CHECK(timeline.clip(id).fadeOut == 300);
     CHECK(timeline.clip(id).fadeIn == 400);
+}
+
+TEST_CASE("a ten minute clip draws only the pixel columns in view at any zoom and scroll") {
+    Timeline& timeline = Timeline::instance();
+    const std::string id = timeline.addClip(48000 * 600);
+    QQuickItem* tracks = timeline.item("tracks");
+    const QString name = QString::fromStdString("waveform:" + id);
+    const double laneWidth = tracks->property("laneWidth").toDouble();
+    const auto columns = [&] { return timeline.item(name)->property("drawnColumns").toInt(); };
+
+    CHECK(timeline.item(name)->width() > 20 * laneWidth);
+    CHECK(columns() > 0);
+    CHECK(columns() <= laneWidth + 1);
+    tracks->setProperty("scrollTicks", 500000);
+    CHECK(columns() > 0);
+    CHECK(columns() <= laneWidth + 1);
+    timeline.rig.nav.setPixelsPerTick(kMaxPixelsPerTick);
+    CHECK(columns() <= laneWidth + 1);
+    timeline.rig.nav.setPixelsPerTick(kMinPixelsPerTick);
+    tracks->setProperty("scrollTicks", 0);
+    CHECK(columns() <= laneWidth + 1);
+    timeline.rig.nav.setPixelsPerTick(kDefaultPixelsPerTick);
 }
 
 TEST_CASE("dragging a clip edge trims it on the beat grid") {

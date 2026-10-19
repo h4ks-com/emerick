@@ -89,6 +89,86 @@ model::AudioRoute defaultAudioRoute(ProjectController& controller, Direction dir
     return {device->id, defaultChannels(channels(*device))};
 }
 
+Json routeJson(const model::AudioRoute& route) { return {{"device", route.deviceId}, {"channels", route.channels}}; }
+
+model::AudioRoute routeFromJson(const Json& value) {
+    return {value.at("device").get<std::string>(), value.at("channels").get<std::vector<int>>()};
+}
+
+struct AudioDefault {
+    Direction direction;
+    const char* setting;
+    const char* settingTitle;
+    const char* actionId;
+    const char* actionTitle;
+    model::AudioRoute model::Track::* field;
+};
+
+constexpr std::array kAudioDefaults{
+    AudioDefault{Direction::input, "audio.defaultInput", "Default input", "track.setAllAudioIn",
+                 "Set input for all audio tracks", &model::Track::audioIn},
+    AudioDefault{Direction::output, "audio.defaultOutput", "Default output", "track.setAllAudioOut",
+                 "Set output for all audio tracks", &model::Track::audioOut},
+};
+
+// A default whose device is gone gives way to the first device that fits, so adding a track still works.
+model::AudioRoute newTrackRoute(const Registry& registry, ProjectController& controller, const AudioDefault& entry) {
+    try {
+        return mergeAudioRoute(controller, {}, registry.settingValue(entry.setting), entry.direction);
+    } catch (const AppError&) {
+        return defaultAudioRoute(controller, entry.direction);
+    }
+}
+
+void registerAudioDefault(Registry& registry, ProjectController& controller, const AudioDefault& entry) {
+    const Direction direction = entry.direction;
+    const char* devicesKey = direction == Direction::input ? "audioIn" : "audioOut";
+    registry.addSetting(
+        {.id = entry.setting,
+         .title = entry.settingTitle,
+         .aliases = {direction == Direction::input ? "default audio input" : "default audio output"},
+         .category = "Settings / Audio",
+         .type = SettingType::AudioRoute,
+         .hint =
+             direction == Direction::input ? "Input new audio tracks record from" : "Output new audio tracks play to",
+         .suggestions = [&controller, devicesKey] { return routeDevices(devicesState(controller)).at(devicesKey); },
+         .location = "settings.audio",
+         .fallback = [&controller, direction] { return routeJson(defaultAudioRoute(controller, direction)); },
+         .merge =
+             [&controller, direction](const Json& current, const Json& change) {
+                 return routeJson(mergeAudioRoute(controller, routeFromJson(current), change, direction));
+             },
+         .action = entry.actionId});
+    registry.addAction(
+        {.id = entry.actionId,
+         .title = entry.actionTitle,
+         .aliases = {direction == Direction::input ? "apply input to all audio tracks"
+                                                   : "apply output to all audio tracks"},
+         .category = "Tracks / Routing",
+         .schema = {{"properties", {{"device", {{"type", "string"}}}, {"channels", {{"type", "array"}}}}}},
+         .run =
+             [&registry, &controller, entry](const Json& params) {
+                 const auto route = mergeAudioRoute(controller, routeFromJson(registry.settingValue(entry.setting)),
+                                                    params, entry.direction);
+                 const auto ids = controller.project().document().tracks |
+                                  std::views::filter([&](const model::Track& track) {
+                                      const TrackType* type = registry.trackType(track.kind);
+                                      return type != nullptr && type->routes.audio;
+                                  }) |
+                                  std::views::transform(&model::Track::id) | std::ranges::to<std::vector>();
+                 controller.project().group(entry.actionTitle, [&] {
+                     for (const model::TrackId& id : ids) {
+                         controller.project().editTrack(id, entry.actionTitle,
+                                                        [&](model::Track& track) { track.*entry.field = route; });
+                     }
+                 });
+                 return Json{
+                     {"route", routeJson(route)},
+                     {"tracks", ids | std::views::transform(&model::TrackId::value) | std::ranges::to<std::vector>()}};
+             },
+         .menus = {kTrackContextMenu, kLaneContextMenu}});
+}
+
 model::MidiRoute defaultMidiInput(ProjectController& controller) {
     const auto& ports = controller.engine().midiPorts();
     const auto port = std::ranges::find_if(ports, &engine::MidiPortInfo::isInput);
@@ -163,10 +243,11 @@ void registerAudioKind(Registry& registry, ProjectController& controller, Nav& n
     Action add = addTrackAction("track.addAudio", "audio", "audio", "Ctrl+Alt+N");
     add.run = [&registry, &controller, &nav](const Json& params) {
         model::Track track;
-        track.audioIn = mergeAudioRoute(controller, defaultAudioRoute(controller, Direction::input),
-                                        routeParams(params, "audioIn"), Direction::input);
-        track.audioOut = mergeAudioRoute(controller, defaultAudioRoute(controller, Direction::output),
-                                         routeParams(params, "audioOut"), Direction::output);
+        for (const AudioDefault& entry : kAudioDefaults) {
+            track.*entry.field = mergeAudioRoute(
+                controller, newTrackRoute(registry, controller, entry),
+                routeParams(params, entry.direction == Direction::input ? "audioIn" : "audioOut"), entry.direction);
+        }
         return addTrack(controller, nav, *registry.trackType("audio"), std::move(track), params);
     };
     registry.addAction(std::move(add));
@@ -226,6 +307,9 @@ void registerRouteActions(Registry& registry, ProjectController& controller) {
     };
     addAudioRoute("track.setAudioIn", "Set track audio input", Direction::input, &model::Track::audioIn);
     addAudioRoute("track.setAudioOut", "Set track audio output", Direction::output, &model::Track::audioOut);
+    for (const AudioDefault& entry : kAudioDefaults) {
+        registerAudioDefault(registry, controller, entry);
+    }
 
     const auto addMidiRoute = [&](const char* actionId, const char* title, Direction direction,
                                   model::MidiRoute model::Track::* field) {

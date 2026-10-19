@@ -18,31 +18,12 @@ Rectangle {
         Layout.topMargin: Theme.space2
     }
 
-    // A device picker and, once a device is set, the picker of its channels.
-    component AudioRoute: RowLayout {
-        id: audioRoute
+    component AudioRoute: AudioRoutePicker {
         required property string actionId
         required property string trackId
-        required property var devices
-        required property var route
-        readonly property var device: devices.find(entry => entry.id === route.device)
+        name: actionId + ":" + trackId
+        onPicked: params => Registry.runAction(actionId, Object.assign({track: trackId}, params))
         Layout.fillWidth: true
-        RouteCombo {
-            actionId: audioRoute.actionId
-            trackId: audioRoute.trackId
-            model: audioRoute.devices
-            currentId: audioRoute.route.device
-            Layout.fillWidth: true
-        }
-        RouteCombo {
-            visible: audioRoute.route.device !== ""
-            actionId: audioRoute.actionId
-            trackId: audioRoute.trackId
-            part: "channel"
-            model: audioRoute.device !== undefined ? audioRoute.device.channels : []
-            currentId: audioRoute.route.channels.join("-")
-            Layout.preferredWidth: Theme.channelPickerWidth
-        }
     }
 
     component MidiRoute: RowLayout {

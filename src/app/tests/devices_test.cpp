@@ -1,5 +1,5 @@
+#include <QSettings>
 #include <catch2/catch_test_macros.hpp>
-#include <chrono>
 #include <string>
 #include <vector>
 
@@ -11,8 +11,6 @@ using namespace emerick::app;
 using namespace emerick::app::test;
 
 namespace {
-
-constexpr std::chrono::milliseconds kSlowListing{50};
 
 std::vector<std::string> rowIds(const TrackListModel& model) {
     std::vector<std::string> ids;
@@ -31,27 +29,30 @@ std::vector<std::string> documentIds(const ProjectRig& rig) {
     return ids;
 }
 
+Json route(const ProjectRig& rig, const std::string& trackId, model::AudioRoute model::Track::* field) {
+    const model::AudioRoute& route = rig.controller->project().track(model::TrackId{trackId})->*field;
+    return {{"device", route.deviceId}, {"channels", route.channels}};
+}
+
 }  // namespace
 
 TEST_CASE("changing a track's route lists no devices") {
-    ProjectRig rig({kMidiPort}, kSlowListing);
+    ProjectRig rig;
     const InspectorBindings inspector(*rig.controller);
     REQUIRE(inspector.object);
     const std::string vox = rig.runAsAgent("track.addAudio").at("result").at("id");
     const std::string keys = rig.runAsAgent("track.addMidi").at("result").at("id");
+    int pickerUpdates = 0;
+    QObject::connect(rig.controller.get(), &ProjectController::devicesChanged, [&] { ++pickerUpdates; });
     const int audioListings = rig.audioLister->listings;
     const int midiListings = rig.midiLister->listings;
 
-    const auto start = std::chrono::steady_clock::now();
     rig.runAsAgent("track.setAudioIn", {{"track", vox}, {"channels", {2}}});
-    const auto elapsed =
-        std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - start);
     rig.runAsAgent("track.setMidiOut", {{"track", keys}, {"port", kMidiPort}});
 
     CHECK(rig.audioLister->listings == audioListings);
     CHECK(rig.midiLister->listings == midiListings);
-    CAPTURE(elapsed.count());
-    CHECK(elapsed < kSlowListing);
+    CHECK(pickerUpdates == 0);
 }
 
 TEST_CASE("devices.refresh lists the devices again and tells the route pickers") {
@@ -139,4 +140,70 @@ TEST_CASE("the track list moves, removes and restores rows to follow the documen
     rig.run("track.rename", {{"track", "C"}, {"name", "Cello"}});
     CHECK(model.data(model.index(2), static_cast<int>(TrackListModel::Role::name)).toString() == "Cello");
     CHECK(resets == 0);
+}
+
+TEST_CASE("the default audio routes start on the first device that fits") {
+    const ProjectRig rig;
+    CHECK(rig.registry.settingValue("audio.defaultInput") == Json{{"device", "interface"}, {"channels", {1, 2}}});
+    CHECK(rig.registry.settingValue("audio.defaultOutput") == Json{{"device", "interface"}, {"channels", {1, 2}}});
+}
+
+TEST_CASE("new audio tracks take the default input and output") {
+    ProjectRig rig;
+    CHECK(rig.registry.setSetting("audio.defaultInput", {{"device", kMotuId}}) ==
+          Json{{"device", kMotuId}, {"channels", {1, 2}}});
+    rig.registry.setSetting("audio.defaultOutput", {{"device", kMotuId}, {"channels", {3, 4}}});
+    rig.registry.setSetting("audio.defaultOutput", {{"channels", {3}}});
+
+    const Json track = rig.run("track.addAudio");
+
+    CHECK(track.at("audioIn").at("device") == kMotuId);
+    CHECK(track.at("audioIn").at("channels") == Json{1, 2});
+    CHECK(track.at("audioOut").at("device") == kMotuId);
+    CHECK(track.at("audioOut").at("channels") == Json{3});
+}
+
+TEST_CASE("a default route the device cannot play is refused") {
+    ProjectRig rig;
+    CHECK_THROWS_AS(rig.registry.setSetting("audio.defaultOutput", {{"device", "interface"}, {"channels", {3}}}),
+                    AppError);
+    CHECK_THROWS_AS(rig.registry.setSetting("audio.defaultInput", {{"device", "keyboard"}}), AppError);
+    CHECK(rig.registry.settingValue("audio.defaultInput").at("device") == "interface");
+}
+
+TEST_CASE("a default input whose device is gone gives new tracks the first device that fits") {
+    ProjectRig rig;
+    QSettings(rig.dir.filePath("settings.ini"), QSettings::IniFormat)
+        .setValue("audio.defaultInput", R"({"device":"gone","channels":[1]})");
+    const Json track = rig.run("track.addAudio");
+    CHECK(track.at("audioIn").at("device") == "interface");
+}
+
+TEST_CASE("setting the input of all audio tracks is one undo step that skips other tracks") {
+    ProjectRig rig;
+    const std::string vox = rig.run("track.addAudio").at("id");
+    const std::string guitar = rig.run("track.addAudio").at("id");
+    const std::string keys = rig.run("track.addMidi").at("id");
+
+    const Json result = rig.run("track.setAllAudioIn", {{"device", kMotuId}, {"channels", {2}}});
+
+    CHECK(result.at("tracks") == Json{vox, guitar});
+    for (const std::string& id : {vox, guitar}) {
+        CHECK(route(rig, id, &model::Track::audioIn) == Json{{"device", kMotuId}, {"channels", {2}}});
+    }
+    CHECK(route(rig, keys, &model::Track::audioIn).at("device") == "");
+    rig.run("project.undo");
+    for (const std::string& id : {vox, guitar}) {
+        CHECK(route(rig, id, &model::Track::audioIn).at("device") == "interface");
+    }
+}
+
+TEST_CASE("setting the output of all audio tracks without params applies the default output") {
+    ProjectRig rig;
+    const std::string vox = rig.run("track.addAudio").at("id");
+    rig.registry.setSetting("audio.defaultOutput", {{"device", kMotuId}, {"channels", {3, 4}}});
+
+    rig.run("track.setAllAudioOut");
+
+    CHECK(route(rig, vox, &model::Track::audioOut) == Json{{"device", kMotuId}, {"channels", {3, 4}}});
 }

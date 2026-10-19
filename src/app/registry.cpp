@@ -32,6 +32,10 @@ bool matchesType(const Setting& setting, const Json& value) {
             return value.is_string();
         case SettingType::List:
             return value.is_array() && std::ranges::all_of(value, &Json::is_string);
+        case SettingType::AudioRoute:
+            return value.is_object() && value.contains("device") && value.at("device").is_string() &&
+                   value.contains("channels") && value.at("channels").is_array() &&
+                   std::ranges::all_of(value.at("channels"), &Json::is_number_integer);
     }
     return false;
 }
@@ -47,6 +51,8 @@ bool inRange(const Setting& setting, const Json& value) {
 bool isValid(const Setting& setting, const Json& value) {
     return matchesType(setting, value) && inRange(setting, value);
 }
+
+Json defaultOf(const Setting& setting) { return setting.fallback ? setting.fallback() : setting.defaultValue; }
 
 std::string expectation(const Setting& setting) {
     if (setting.type == SettingType::Choice) {
@@ -305,13 +311,13 @@ Json Registry::settingValue(const std::string& id) const {
     }
     const QVariant stored = store_->value(qs(id));
     if (!stored.isValid()) {
-        return found->defaultValue;
+        return defaultOf(*found);
     }
     Json value = Json::parse(stored.toString().toStdString(), nullptr, false);
-    return value.is_discarded() || !isValid(*found, value) ? found->defaultValue : value;
+    return value.is_discarded() || !isValid(*found, value) ? defaultOf(*found) : value;
 }
 
-Json Registry::setSetting(const std::string& id, const Json& value) {
+Json Registry::setSetting(const std::string& id, const Json& given) {
     const Setting* found = setting(id);
     if (found == nullptr) {
         throw AppError("no setting " + id);
@@ -319,6 +325,7 @@ Json Registry::setSetting(const std::string& id, const Json& value) {
     if (found->readOnly) {
         throw AppError("setting " + id + " is read only");
     }
+    const Json value = found->merge ? found->merge(settingValue(id), given) : given;
     if (!isValid(*found, value)) {
         throw AppError("setting " + id + " expects " + expectation(*found) + ", got " + value.dump());
     }
@@ -396,7 +403,7 @@ Json Registry::describeSetting(const std::string& id) const {
             {"title", found->title},
             {"type", enumKey(found->type)},
             {"value", settingValue(found->id)},
-            {"default", found->defaultValue},
+            {"default", defaultOf(*found)},
             {"choices", found->choices},
             {"minimum", optionalNumber(found->minimum)},
             {"maximum", optionalNumber(found->maximum)},
@@ -558,6 +565,7 @@ QVariantList Registry::settingsAt(const QString& location) const {
                                   {"maximum", entry.maximum.value_or(std::numeric_limits<int>::max())},
                                   {"readOnly", entry.readOnly},
                                   {"hint", qs(entry.hint)},
+                                  {"action", qs(entry.action)},
                                   {"suggestions", toVariant(entry.suggestions ? entry.suggestions() : Json::array())}});
     }
     return result;

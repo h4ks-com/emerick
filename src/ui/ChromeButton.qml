@@ -11,7 +11,8 @@ Button {
     property color activeColor: Theme.tape
     property string iconName
     property color iconColor: Theme.ink
-    readonly property var info: Registry.actionInfo(actionId)
+    // A delegate binds its objectName after this first evaluates, while actionId is still empty.
+    readonly property var info: actionId ? Registry.actionInfo(actionId) : ({})
     readonly property string shortcutText: info.shortcut ? Theme.shortcutText(info.shortcut) : ""
 
     text: info.title

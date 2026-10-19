@@ -136,6 +136,26 @@ Rectangle {
                 }
             }
         }
+        DelegateChoice {
+            roleValue: App.AudioRoute
+            SettingRow {
+                id: routeRow
+                RowLayout {
+                    spacing: Theme.space2
+                    AudioRoutePicker {
+                        name: routeRow.modelData.id
+                        devices: routeRow.modelData.suggestions
+                        route: Registry.settings[name]
+                        onPicked: params => Registry.setSettingValue(name, params)
+                        Layout.preferredWidth: Theme.menuWidth
+                    }
+                    ChromeButton {
+                        objectName: routeRow.modelData.action
+                        visible: objectName !== ""
+                    }
+                }
+            }
+        }
     }
 
     RowLayout {

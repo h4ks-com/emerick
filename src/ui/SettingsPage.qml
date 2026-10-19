@@ -24,7 +24,7 @@ Rectangle {
         }
         Item {
             id: holder
-            implicitWidth: childrenRect.width
+            implicitWidth: Math.max(childrenRect.width, Theme.menuWidth)
             implicitHeight: childrenRect.height
         }
         Label {
@@ -267,14 +267,22 @@ Rectangle {
 
     Component {
         id: settingsList
-        ColumnLayout {
-            id: list
-            spacing: Theme.space3
-            Repeater {
-                model: Registry.settingsAt(list.parent.objectName)
-                delegate: settingRow
+        Flickable {
+            id: scroller
+            objectName: parent.objectName + ".list"
+            contentHeight: list.implicitHeight
+            clip: true
+            boundsBehavior: Flickable.StopAtBounds
+            ScrollBar.vertical: ScrollBar {}
+            ColumnLayout {
+                id: list
+                width: scroller.width
+                spacing: Theme.space3
+                Repeater {
+                    model: Registry.settingsAt(scroller.parent.objectName)
+                    delegate: settingRow
+                }
             }
-            Item { Layout.fillHeight: true }
         }
     }
 

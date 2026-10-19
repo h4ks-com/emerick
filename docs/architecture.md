@@ -40,6 +40,10 @@ The engine never sees the model. `emerick_app` turns the document into an engine
 5. MIDI arrives with absolute timestamps on the MIDI thread, goes through an SPSC queue, and is placed on the timeline in the callback.
 6. The audio thread never allocates, locks or frees.
 
+## Metronome
+
+The engine plays the metronome on the tempo map's beat grid to the sample: a synthesized click, the user's samples, or a drum groove synthesized from kick, snare and hat voices, or it sends the same hits as MIDI notes. Its settings live in the registry's Metronome section, and the controller copies them into the session it publishes. A count-in holds the transport at the record position until its bars end, so the take starts there. Takes record only inputs, and exports build their sessions without the metronome.
+
 ## Devices
 
 Each track names its own audio input and output (device id plus channels) and MIDI input and output (port id plus channel). The engine opens every device a session needs. On macOS several devices become one hidden private aggregate device with drift compensation, so the user never builds one by hand. On Linux the devices are PipeWire or JACK ports. On Windows each WASAPI device runs its own stream and the engine resamples the others to the clock device.

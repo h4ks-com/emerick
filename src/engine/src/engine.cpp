@@ -26,6 +26,10 @@ std::vector<std::string> devicesUsedBy(const Session& session) {
             }
         }
     }
+    const std::string& metronome = session.metronome.audioOut.deviceId;
+    if (!metronome.empty() && std::ranges::find(ids, metronome) == ids.end()) {
+        ids.push_back(metronome);
+    }
     return ids;
 }
 

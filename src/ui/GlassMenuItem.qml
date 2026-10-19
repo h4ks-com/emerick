@@ -8,6 +8,7 @@ MenuItem {
     property string shortcut
 
     implicitHeight: Theme.buttonHeight
+    hoverEnabled: true
     contentItem: Item {
         implicitWidth: label.implicitWidth + keys.implicitWidth + Theme.space5
         implicitHeight: label.implicitHeight

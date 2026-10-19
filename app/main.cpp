@@ -65,10 +65,13 @@ int run(int argc, char** argv) {
     const QCommandLineOption noLuaMcp("no-lua-mcp", "Leave Lua out of MCP: lua.eval and the actions that run Lua.");
     const QCommandLineOption audio("audio", "Audio backend: null or default.", "backend", "default");
     const QCommandLineOption midi("midi", "MIDI backend: virtual or default.", "backend", "default");
-    parser.addOptions({mcpPort, mcpBindAny, noLuaMcp, audio, midi});
+    const QCommandLineOption profile(
+        "profile", "Keep settings, scripts and new projects in this folder (for test runs).", "folder");
+    parser.addOptions({mcpPort, mcpBindAny, noLuaMcp, audio, midi, profile});
     parser.process(application);
 
-    Registry registry;
+    const QString profileFolder = parser.value(profile);
+    Registry registry(profileFolder.isEmpty() ? QString{} : profileFolder + "/settings.ini");
     Nav nav;
     const Backends backends{parser.value(audio).toStdString(), parser.value(midi).toStdString()};
     registerCoreActions(registry, nav, backends);
@@ -80,7 +83,9 @@ int run(int argc, char** argv) {
         registry, makeAudioBackend(backends.audio), std::move(midiBackend),
         {.sampleRate = registry.settingValue("audio.sampleRate").get<double>(),
          .blockFrames = registry.settingValue("audio.bufferSize").get<emerick::core::Frames>(),
-         .recordingDelay = registry.settingValue("audio.recordingDelay").get<emerick::core::Frames>()});
+         .recordingDelay = registry.settingValue("audio.recordingDelay").get<emerick::core::Frames>()},
+        profileFolder.isEmpty() ? std::filesystem::path{}
+                                : std::filesystem::path{profileFolder.toStdString()} / "projects");
     registerProjectActions(registry, controller, nav);
     emerick::yamaha::registerWith(registry, controller, nav);
     TrackListModel tracks(controller, registry);
@@ -100,7 +105,9 @@ int run(int argc, char** argv) {
     Console console(registry, lua);
     registerConsoleActions(registry, nav, console);
     const std::filesystem::path userScripts =
-        QStandardPaths::writableLocation(QStandardPaths::AppDataLocation).toStdString() + "/scripts";
+        (profileFolder.isEmpty() ? QStandardPaths::writableLocation(QStandardPaths::AppDataLocation) : profileFolder)
+            .toStdString() +
+        "/scripts";
     copyExampleScripts(userScripts);
     ScriptLibrary scripts(registry, console, userScripts);
     registerScriptActions(registry, scripts);

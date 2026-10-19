@@ -48,6 +48,8 @@ inline constexpr const char* kProjectMenu = "Project";
 inline constexpr const char* kTrackContextMenu = "Track context";
 inline constexpr const char* kClipContextMenu = "Clip context";
 inline constexpr const char* kLaneContextMenu = "Tracks area context";
+// The menu the metronome button opens on a right click.
+inline constexpr const char* kMetronomeMenu = "Metronome";
 
 // We give every field a default so callers' designated initializers can skip it; this check calls those defaults
 // redundant. NOLINTBEGIN(readability-redundant-member-init)

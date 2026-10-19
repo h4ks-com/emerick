@@ -12,6 +12,7 @@
 
 #include "clip_stream.hpp"
 #include "emerick/engine/session.hpp"
+#include "metronome_sounds.hpp"
 #include "midi_ports.hpp"
 #include "take_recorder.hpp"
 
@@ -67,6 +68,14 @@ struct TrackState {
     std::shared_ptr<InputMeter> meter;
 };
 
+struct MetronomeState {
+    Metronome settings;
+    std::vector<int> outputs;
+    std::shared_ptr<const DrumSounds> sounds;
+    std::shared_ptr<MidiOutputPort> midiOut;
+    Frames countInFrames = 0;
+};
+
 // The UI thread builds a snapshot and hands it over whole; from then on only the audio thread touches it.
 struct Snapshot {
     core::TempoMap tempo;
@@ -75,6 +84,9 @@ struct Snapshot {
     std::vector<std::shared_ptr<MidiOutputPort>> clockPorts;
     std::vector<std::shared_ptr<MidiInputPort>> inputs;
     std::vector<std::uint8_t> incoming = std::vector<std::uint8_t>(kMaxIncomingMessage);
+    MetronomeState metronome;
+    // Output pointers for the part of a block after a count-in ends, one per stream output.
+    std::vector<float*> tailOutputs;
 };
 
 inline bool anySolo(const Snapshot& snapshot) { return std::ranges::any_of(snapshot.tracks, &TrackState::solo); }

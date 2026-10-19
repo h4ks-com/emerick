@@ -114,7 +114,7 @@ void route(Snapshot& snapshot, const RealtimeState& state, const MidiInputPort* 
 
 }  // namespace
 
-void receiveMidi(Snapshot& snapshot, const RealtimeState& state, const AudioBlock& block) {
+void receiveMidi(Snapshot& snapshot, const RealtimeState& state, const AudioBlock& block, Frames blockStartFrame) {
     for (const auto& port : snapshot.inputs) {
         MidiRecordHeader header;
         while (readValue(port->ring, header)) {
@@ -125,7 +125,7 @@ void receiveMidi(Snapshot& snapshot, const RealtimeState& state, const AudioBloc
             const auto bytes = std::span(snapshot.incoming).first(header.size);
             readInto(port->ring, bytes);
             const Frames offset = nsToFrames(header.timestampNs - block.hostTimeNs, snapshot.sampleRate);
-            const Frames eventFrame = state.frame + std::clamp<Frames>(offset, -block.frames, block.frames - 1);
+            const Frames eventFrame = blockStartFrame + std::clamp<Frames>(offset, -block.frames, block.frames - 1);
             route(snapshot, state, port.get(), bytes, header.timestampNs, eventFrame);
         }
     }

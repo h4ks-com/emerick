@@ -48,6 +48,7 @@ qt_add_library(emerick_app STATIC
     lua_text.cpp
     mcp_server.cpp
     mcp_tools.cpp
+    metronome_actions.cpp
     midi_export.cpp
     peak_cache.cpp
     project_actions.cpp
@@ -89,6 +90,7 @@ if(EMERICK_BUILD_TESTS)
         tests/introspector_test.cpp
         tests/lua_host_test.cpp
         tests/mcp_server_test.cpp
+        tests/metronome_test.cpp
         tests/peak_cache_test.cpp
         tests/project_file_test.cpp
         tests/project_test.cpp

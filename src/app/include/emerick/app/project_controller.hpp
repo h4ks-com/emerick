@@ -86,6 +86,9 @@ public:
     void setLiveArmed(const model::TrackId& id, bool value);
     void setLiveGain(const model::TrackId& id, double db);
 
+    // The metronome plays from these settings once the next flush publishes them.
+    void setMetronome(const engine::Metronome& metronome);
+
     // Returns how many finished takes it added, one undo step each.
     int collectTakes();
 
@@ -156,6 +159,7 @@ private:
     std::string sessionError_;
     std::vector<engine::SessionError> takeErrors_;
     std::vector<engine::SessionError> routeErrors_;
+    engine::Metronome metronome_;
     bool recording_ = false;
     bool flushPending_ = false;
     core::Ticks stopTicks_ = 0;

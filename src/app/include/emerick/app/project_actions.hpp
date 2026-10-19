@@ -41,5 +41,8 @@ std::vector<model::ClipId> selectedClips(const ProjectController& controller, co
 void registerProjectFileActions(Registry& registry, ProjectController& controller);
 void registerProjectFolderActions(Registry& registry, ProjectController& controller, Nav& nav);
 void registerExportActions(Registry& registry, ProjectController& controller);
+// The Metronome settings section, the metronome actions and the "metronome" state provider. Every change to a
+// metronome setting reaches the engine at the next flush.
+void registerMetronome(Registry& registry, ProjectController& controller, Nav& nav);
 
 }  // namespace emerick::app

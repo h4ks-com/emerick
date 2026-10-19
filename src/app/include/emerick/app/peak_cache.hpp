@@ -1,53 +1,69 @@
 #pragma once
 
-#include <QImage>
-#include <QQuickImageProvider>
-#include <QSize>
-#include <QString>
+#include <QObject>
+#include <QThreadPool>
+#include <array>
 #include <filesystem>
 #include <map>
+#include <memory>
 #include <mutex>
+#include <optional>
 #include <vector>
 
 #include "emerick/core/time.hpp"
 
 namespace emerick::app {
 
-inline constexpr core::Frames kFramesPerPeak = 256;
+// Frames per peak at each level, finest first. Each level folds four peaks of the one before.
+inline constexpr std::array<core::Frames, 4> kFramesPerPeak{256, 1024, 4096, 16384};
 
-// The lowest and highest sample of every kFramesPerPeak frames, over all channels.
+// The lowest and highest sample of every block of frames, over all channels.
 struct Peaks {
     std::vector<float> minimum;
     std::vector<float> maximum;
 };
 
-// Reads each file once, on whichever thread first asks, and keeps its peaks for the life of the cache.
-class PeakCache {
-public:
-    // A file that cannot be read gives empty peaks. The reference stays valid while the cache lives.
-    const Peaks& peaks(const std::filesystem::path& file);
-
-private:
-    // We hold one lock over reading, so two files load one after the other.
-    std::mutex mutex_;
-    std::map<std::filesystem::path, Peaks> files_;
+struct PeakLevels {
+    std::array<Peaks, kFramesPerPeak.size()> levels;
 };
 
-// Draws frames [offset, offset + frames) of the peaks as one opaque color on a transparent image.
-QImage drawPeaks(const Peaks& peaks, core::Frames offset, core::Frames frames, QSize size);
+struct PeakRange {
+    float low = 0;
+    float high = 0;
+};
 
-// The image source QML gives an Image to show that stretch of the file.
-QString peakSource(const std::filesystem::path& file, core::Frames offset, core::Frames frames);
+// Builds the coarser levels from the finest one.
+PeakLevels buildLevels(Peaks finest);
 
-// Serves "image://peaks/<offset>/<frames>/<hex path>". QML loads it on its image threads when asynchronous is set.
-class PeakImageProvider : public QQuickImageProvider {
+// Where we keep a file's peaks on disk: "<folder>/.peaks/<file name>.peaks" beside the audio.
+std::filesystem::path peakFile(const std::filesystem::path& audio);
+
+// Reads the peak file when its recorded size and modification time still match the audio, else reads the audio and
+// writes the peak file. A file that cannot be read gives empty peaks.
+PeakLevels loadPeaks(const std::filesystem::path& audio);
+
+// The lowest and highest sample of frames [from, to), read from the coarsest level that still resolves the span.
+std::optional<PeakRange> peakRange(const PeakLevels& peaks, core::Frames from, core::Frames to);
+
+// Loads each file's peaks once on its own thread pool and keeps them for the life of the cache.
+class PeakCache : public QObject {
+    Q_OBJECT
+
 public:
-    explicit PeakImageProvider(PeakCache& cache) : QQuickImageProvider(QQuickImageProvider::Image), cache_(cache) {}
+    using QObject::QObject;
 
-    QImage requestImage(const QString& id, QSize* size, const QSize& requestedSize) override;
+    // Null while the peaks load; loaded() fires on the cache's thread once they are in.
+    const PeakLevels* levels(const std::filesystem::path& file);
+
+signals:
+    void loaded();
 
 private:
-    PeakCache& cache_;
+    std::mutex mutex_;
+    // A null entry means the file is loading.
+    std::map<std::filesystem::path, std::unique_ptr<const PeakLevels>> files_;
+    // Declared last, so the pool waits for running loads before the map goes away.
+    QThreadPool pool_;
 };
 
 }  // namespace emerick::app

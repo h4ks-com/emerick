@@ -32,6 +32,7 @@ qt_add_library(emerick_app STATIC
     include/emerick/app/track_list_model.hpp
     include/emerick/app/transport_clock.hpp
     include/emerick/app/ui_api.hpp
+    include/emerick/app/waveform.hpp
     introspector.cpp
     lua_host.cpp
     mcp_server.cpp
@@ -50,7 +51,8 @@ qt_add_library(emerick_app STATIC
     track_actions.cpp
     track_list_model.cpp
     transport_clock.cpp
-    ui_api.cpp)
+    ui_api.cpp
+    waveform.cpp)
 target_include_directories(emerick_app PUBLIC include)
 target_compile_definitions(emerick_app PRIVATE EMERICK_VERSION="${PROJECT_VERSION}" SOL_PRINT_ERRORS=0)
 target_link_libraries(emerick_app

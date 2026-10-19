@@ -13,7 +13,6 @@
 #include <utility>
 #include <variant>
 
-#include "emerick/app/peak_cache.hpp"
 #include "emerick/app/project_state.hpp"
 #include "emerick/core/overloaded.hpp"
 #include "emerick/model/clip_edit.hpp"
@@ -68,8 +67,9 @@ QVariantList TrackListModel::clipList(const model::Track& track) const {
                                      {"fadeIn", QVariant::fromValue(audio.fadeIn)},
                                      {"fadeOut", QVariant::fromValue(audio.fadeOut)},
                                      {"gainDb", audio.gainDb},
-                                     {"peaks", peakSource(file.is_absolute() ? file : controller_.folder() / file,
-                                                          audio.sourceOffset, frames)}});
+                                     {"file", qs((file.is_absolute() ? file : controller_.folder() / file).string())},
+                                     {"sourceOffset", QVariant::fromValue(audio.sourceOffset)},
+                                     {"frames", QVariant::fromValue(frames)}});
                              },
                              [&](const model::MidiClip& midi) {
                                  entry.insert(QVariantMap{{"type", "midi"}, {"notes", noteList(midi)}});

@@ -104,18 +104,23 @@ Item {
             height: parent.height - Theme.clipLabelHeight
             clip: true
 
-            Image {
-                visible: content.clipItem.audio
+            Loader {
+                active: content.clipItem.audio
                 x: (content.clipItem.clip.start + content.clipItem.shift - content.clipItem.start)
                    * content.clipItem.pixelsPerTick
                 width: content.clipItem.clip.length * content.clipItem.pixelsPerTick
                 height: parent.height
-                source: content.clipItem.audio ? content.clipItem.clip.peaks : ""
-                sourceSize: Qt.size(Math.max(1, Math.min(Math.ceil(width), Theme.maxTextureWidth)),
-                                    Math.max(1, Math.ceil(height)))
-                asynchronous: true
-                fillMode: Image.Stretch
-                opacity: Theme.clipInk.a
+                sourceComponent: Waveform {
+                    readonly property real materialStart: content.clipItem.clip.start + content.clipItem.shift
+                    objectName: "waveform:" + content.clipItem.clipId
+                    peaks: Peaks
+                    file: content.clipItem.clip.file
+                    offset: content.clipItem.clip.sourceOffset
+                    frames: content.clipItem.clip.frames
+                    color: Theme.clipInk
+                    visibleLeft: (content.clipItem.viewFrom - materialStart) * content.clipItem.pixelsPerTick
+                    visibleRight: (content.clipItem.viewTo - materialStart) * content.clipItem.pixelsPerTick
+                }
             }
 
             Loader {

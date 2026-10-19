@@ -62,8 +62,8 @@ int run(int argc, char** argv) {
     const QCommandLineOption noLuaMcp("no-lua-mcp", "Leave the lua.eval tool out of MCP.");
     const QCommandLineOption audio("audio", "Audio backend: null or default.", "backend", "default");
     const QCommandLineOption midi("midi", "MIDI backend: virtual or default.", "backend", "default");
-    const QCommandLineOption profile("profile",
-                                     "Keep settings and new projects in this folder (for test runs).", "folder");
+    const QCommandLineOption profile("profile", "Keep settings and new projects in this folder (for test runs).",
+                                     "folder");
     parser.addOptions({mcpPort, mcpBindAny, noLuaMcp, audio, midi, profile});
     parser.process(application);
 
@@ -81,7 +81,8 @@ int run(int argc, char** argv) {
         {.sampleRate = registry.settingValue("audio.sampleRate").get<double>(),
          .blockFrames = registry.settingValue("audio.bufferSize").get<emerick::core::Frames>(),
          .recordingDelay = registry.settingValue("audio.recordingDelay").get<emerick::core::Frames>()},
-        profileFolder.isEmpty() ? std::filesystem::path{} : std::filesystem::path{profileFolder.toStdString()} / "projects");
+        profileFolder.isEmpty() ? std::filesystem::path{}
+                                : std::filesystem::path{profileFolder.toStdString()} / "projects");
     registerProjectActions(registry, controller, nav);
     emerick::yamaha::registerWith(registry, controller, nav);
     TrackListModel tracks(controller, registry);

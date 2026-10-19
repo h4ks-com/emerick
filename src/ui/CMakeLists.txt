@@ -13,6 +13,7 @@ qt_add_qml_module(emerick_ui
         ClipItem.qml
         CommandPalette.qml
         ConsolePanel.qml
+        DragGroup.qml
         DragNumber.qml
         GlassMenu.qml
         GlassMenuItem.qml
@@ -20,7 +21,6 @@ qt_add_qml_module(emerick_ui
         InputMeter.qml
         Inspector.qml
         KeyCommands.qml
-        LinkedFields.qml
         Main.qml
         RouteCombo.qml
         Ruler.qml

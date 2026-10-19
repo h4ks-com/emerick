@@ -8,6 +8,10 @@ Rectangle {
     objectName: "inspector"
     color: Theme.slate
 
+    readonly property DragGroup dragGroup: DragGroup {
+        target: inspector
+    }
+
     component RouteLabel: Label {
         color: Theme.inkDim
         font.pixelSize: Theme.textLabel
@@ -68,18 +72,10 @@ Rectangle {
     // A clip number that, with several clips selected, applies to every one of them as one undo step.
     component ClipNumber: DragNumber {
         required property var clipPanel
-        // Off for a field whose commit runs elsewhere, such as in LinkedFields.
-        property bool appliesItself: true
         objectName: actionId + ":" + (clipPanel.clip ? clipPanel.clip.id : "") + ":" + param
         badge: Nav.selectedClips.length > 1 ? Nav.selectedClips.length + " clips" : ""
+        actionsFor: number => clipPanel.clipCalls(actionId, {[param]: number})
         Layout.fillWidth: true
-        onCommitted: number => {
-            if (appliesItself) {
-                const params = {}
-                params[param] = number
-                clipPanel.applyToClips(actionId, params)
-            }
-        }
     }
 
     component PositionNumber: ClipNumber {
@@ -111,16 +107,8 @@ Rectangle {
             readonly property bool audioClip: clip !== undefined && clip.type === "audio"
             readonly property bool severalClips: Nav.selectedClips.length > 1
 
-            // Runs the action on the shown clip, or on every selected clip as one undo step.
-            function applyToClips(actionId, params) {
-                if (!severalClips) {
-                    Registry.runAction(actionId, Object.assign({clip: clip.id}, params))
-                    return
-                }
-                Registry.runActions(Registry.actionInfo(actionId).title, Nav.selectedClips.map(id => ({
-                    id: actionId,
-                    params: Object.assign({clip: id}, params)
-                })))
+            function clipCalls(actionId, params) {
+                return Nav.selectedClips.map(id => ({id: actionId, params: Object.assign({clip: id}, params)}))
             }
             visible: trackId === Nav.selectedTrack
             anchors.fill: parent
@@ -198,10 +186,9 @@ Rectangle {
                     clipPanel: panel
                     actionId: "clip.move"
                     param: "start"
-                    appliesItself: false
                     value: panel.clip ? panel.clip.start : 0
                     // clip.move moves the whole selection by the same offset itself.
-                    onCommitted: number => Registry.runAction("clip.move", {clip: panel.clip.id, start: number, selection: true})
+                    actionsFor: number => [{id: "clip.move", params: {clip: panel.clip.id, start: number, selection: true}}]
                 }
                 RouteLabel { text: "End"; visible: !panel.severalClips }
                 PositionNumber {
@@ -221,30 +208,17 @@ Rectangle {
                     from: 1
                     value: panel.clip ? panel.clip.length : 0
                 }
-                RowLayout {
+                RouteLabel {
+                    text: "Fades"
                     visible: panel.audioClip
                     Layout.columnSpan: 2
-                    Layout.topMargin: Theme.space2
-                    RouteLabel {
-                        text: "Fades"
-                        Layout.topMargin: 0
-                        Layout.fillWidth: true
-                    }
-                    ChromeButton {
-                        objectName: "edit.toggleLinkFades"
-                        active: Registry.settings["edit.linkFades"] === true
-                        activeColor: Theme.inkDim
-                        implicitHeight: Theme.headerButton
-                    }
                 }
                 RouteLabel { text: "In"; visible: panel.audioClip }
                 ClipNumber {
-                    id: fadeIn
                     visible: panel.audioClip
                     clipPanel: panel
                     actionId: "clip.setFade"
                     param: "fadeIn"
-                    appliesItself: false
                     from: 0
                     to: panel.clip ? panel.clip.length : 0
                     step: Project.ticksPerBeat / 16
@@ -253,22 +227,15 @@ Rectangle {
                 }
                 RouteLabel { text: "Out"; visible: panel.audioClip }
                 ClipNumber {
-                    id: fadeOut
                     visible: panel.audioClip
                     clipPanel: panel
                     actionId: "clip.setFade"
                     param: "fadeOut"
-                    appliesItself: false
                     from: 0
                     to: panel.clip ? panel.clip.length : 0
                     step: Project.ticksPerBeat / 16
                     unit: "ticks"
                     value: panel.audioClip ? panel.clip.fadeOut : 0
-                }
-                LinkedFields {
-                    fields: [fadeIn, fadeOut]
-                    linked: Registry.settings["edit.linkFades"] === true
-                    onCommitted: params => panel.applyToClips("clip.setFade", params)
                 }
                 RouteLabel { text: "Gain"; visible: panel.audioClip }
                 ClipNumber {

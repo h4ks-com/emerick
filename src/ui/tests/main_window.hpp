@@ -90,16 +90,31 @@ struct MainWindow {
         QCoreApplication::sendEvent(window, &event);
     }
 
-    // Presses at the center of target, moves by offset in steps and releases, holding modifiers throughout.
-    void drag(QQuickItem* target, QPointF offset, Qt::KeyboardModifiers modifiers = Qt::NoModifier) const {
+    // Presses at the center of target, moves through each offset from there in steps and releases at the last one,
+    // holding modifiers throughout.
+    void drag(QQuickItem* target, const std::vector<QPointF>& offsets,
+              Qt::KeyboardModifiers modifiers = Qt::NoModifier) const {
         const QPointF from = target->mapToScene({target->width() / 2, target->height() / 2});
         constexpr int kSteps = 5;
         send(QEvent::MouseButtonPress, from, Qt::LeftButton, modifiers);
-        for (int step = 1; step <= kSteps; ++step) {
-            send(QEvent::MouseMove, from + offset * step / kSteps, Qt::LeftButton, modifiers);
+        QPointF last;
+        for (const QPointF offset : offsets) {
+            for (int step = 1; step <= kSteps; ++step) {
+                send(QEvent::MouseMove, from + last + (offset - last) * step / kSteps, Qt::LeftButton, modifiers);
+            }
+            last = offset;
         }
-        send(QEvent::MouseButtonRelease, from + offset, Qt::NoButton, modifiers);
+        send(QEvent::MouseButtonRelease, from + last, Qt::NoButton, modifiers);
         settle();
+    }
+
+    void drag(QQuickItem* target, QPointF offset, Qt::KeyboardModifiers modifiers = Qt::NoModifier) const {
+        drag(target, std::vector{offset}, modifiers);
+    }
+
+    void hover(QQuickItem* target) const {
+        send(QEvent::MouseMove, target->mapToScene({target->width() / 2, target->height() / 2}), Qt::NoButton,
+             Qt::NoModifier);
     }
 
     void click(QQuickItem* target, Qt::MouseButton button = Qt::LeftButton) const {

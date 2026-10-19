@@ -262,22 +262,6 @@ void registerSelectionActions(Registry& registry, ProjectController& controller,
                          .defaultValue = true,
                          .hint = "Hold Alt while dragging to place freely",
                          .location = "settings.general"});
-    registry.addSetting({.id = "edit.linkFades",
-                         .title = "Link fade in and fade out",
-                         .aliases = {"same fades", "linked fades"},
-                         .category = "Settings / Editing",
-                         .type = SettingType::Boolean,
-                         .defaultValue = false,
-                         .location = "settings.general"});
-    registry.addAction(
-        {.id = "edit.toggleLinkFades",
-         .title = "Link fades",
-         .aliases = {"link fade in and out", "unlink fades"},
-         .category = "Clips",
-         .run = [&registry](const Json&) {
-             return Json{{"linkFades",
-                          registry.setSetting("edit.linkFades", !registry.settingValue("edit.linkFades").get<bool>())}};
-         }});
     registry.addAction(
         {.id = "edit.toggleSnap",
          .title = "Toggle snap to grid",

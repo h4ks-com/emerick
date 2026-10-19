@@ -91,7 +91,7 @@ TEST_CASE("dragging across mute buttons mutes every track it crosses in one undo
     }
 }
 
-TEST_CASE("with several clips selected an Inspector field sets them all, and linked fades move together") {
+TEST_CASE("with several clips selected an Inspector field sets them all") {
     MainWindow& main = MainWindow::instance();
     const std::string vox = main.rig.run("track.addAudio").at("id");
     writeConstant(main.rig.path("ones.wav"), 48000, 1.0F);
@@ -111,13 +111,98 @@ TEST_CASE("with several clips selected an Inspector field sets them all, and lin
     main.rig.run("project.undo");
     CHECK(audioClip(main, first).fadeIn == 0);
     CHECK(audioClip(main, second).fadeIn == 0);
-
-    main.rig.run("selection.set", {{"clips", {first}}});
-    main.rig.run("edit.toggleLinkFades");
-    typeInto(main, "clip.setFade:" + qid(first) + ":fadeOut", "240", Qt::Key_Return);
-    CHECK(audioClip(main, first).fadeIn == 240);
-    CHECK(audioClip(main, first).fadeOut == 240);
-    main.rig.run("edit.toggleLinkFades");
     main.rig.run("selection.clear");
     MainWindow::settle();
+}
+
+TEST_CASE("dragging down across Inspector fields gathers them, and a sideways drag moves them all in one undo step") {
+    MainWindow& main = MainWindow::instance();
+    const std::string vox = main.rig.run("track.addAudio").at("id");
+    writeConstant(main.rig.path("ones.wav"), 48000, 1.0F);
+    const std::string clip =
+        main.rig.run("clip.import", {{"track", vox}, {"path", main.rig.path("ones.wav").string()}}).at("id");
+    main.rig.run("selection.set", {{"clips", {clip}}});
+    MainWindow::settle();
+    QQuickItem* fadeIn = main.item("clip.setFade:" + qid(clip) + ":fadeIn");
+    QQuickItem* fadeOut = main.item("clip.setFade:" + qid(clip) + ":fadeOut");
+    QQuickItem* gain = main.item("clip.setGain:" + qid(clip) + ":db");
+    const QPointF center{fadeIn->width() / 2, fadeIn->height() / 2};
+    const QPointF toFadeOut = fadeOut->mapToScene(center) - fadeIn->mapToScene(center);
+    const QPointF toGain = gain->mapToScene(center) - fadeIn->mapToScene(center);
+    constexpr double kSteps = 10;
+    const QPointF sideways{kSteps * 4, 0};
+    const double fadeStep = fadeIn->property("step").toDouble();
+    const double gainStep = gain->property("step").toDouble();
+
+    const QPointF press = fadeIn->mapToScene(center);
+    main.send(QEvent::MouseButtonPress, press, Qt::LeftButton, Qt::NoModifier);
+    for (int step = 1; step <= 5; ++step) {
+        main.send(QEvent::MouseMove, press + toFadeOut * step / 5, Qt::LeftButton, Qt::NoModifier);
+    }
+    CHECK(fadeIn->property("gathered").toBool());
+    CHECK(fadeOut->property("gathered").toBool());
+    CHECK_FALSE(gain->property("gathered").toBool());
+    main.send(QEvent::MouseButtonRelease, press + toFadeOut, Qt::NoButton, Qt::NoModifier);
+    MainWindow::settle();
+    CHECK_FALSE(fadeIn->property("gathered").toBool());
+    CHECK(audioClip(main, clip).fadeIn == 0);
+
+    main.drag(fadeIn, {toFadeOut, toFadeOut + sideways});
+    CHECK(audioClip(main, clip).fadeIn == Catch::Approx(kSteps * fadeStep));
+    CHECK(audioClip(main, clip).fadeOut == Catch::Approx(kSteps * fadeStep));
+    CHECK(main.rig.controller->project().undoName() == "set clip fades");
+    main.rig.run("project.undo");
+    CHECK(audioClip(main, clip).fadeIn == 0);
+    CHECK(audioClip(main, clip).fadeOut == 0);
+
+    main.drag(main.item("clip.setFade:" + qid(clip) + ":fadeIn"), {toGain, toGain + sideways});
+    CHECK(audioClip(main, clip).fadeIn == Catch::Approx(kSteps * fadeStep));
+    CHECK(audioClip(main, clip).fadeOut == Catch::Approx(kSteps * fadeStep));
+    CHECK(audioClip(main, clip).gainDb == Catch::Approx(kSteps * gainStep));
+    main.rig.run("project.undo");
+    CHECK(audioClip(main, clip).fadeIn == 0);
+    CHECK(audioClip(main, clip).fadeOut == 0);
+    CHECK(audioClip(main, clip).gainDb == Catch::Approx(0.0));
+    main.rig.run("selection.clear");
+    MainWindow::settle();
+}
+
+TEST_CASE("dragging down across track gains and then sideways sets every gathered track in one undo step") {
+    MainWindow& main = MainWindow::instance();
+    const std::string first = main.rig.run("track.addAudio").at("id");
+    const std::string second = main.rig.run("track.addAudio").at("id");
+    MainWindow::settle();
+    QQuickItem* from = main.item("track.setGain:" + qid(first) + ":db");
+    const QPointF down = main.item("track.setGain:" + qid(second) + ":db")->mapToScene({}) - from->mapToScene({});
+
+    main.drag(from, {down, down + QPointF{40, 0}});
+    CHECK(trackOf(main, first).gainDb == Catch::Approx(5.0));
+    CHECK(trackOf(main, second).gainDb == Catch::Approx(5.0));
+    main.rig.run("project.undo");
+    CHECK(trackOf(main, first).gainDb == Catch::Approx(0.0));
+    CHECK(trackOf(main, second).gainDb == Catch::Approx(0.0));
+}
+
+TEST_CASE("the step arrows step the value without opening the editor, and stay while typing") {
+    MainWindow& main = MainWindow::instance();
+    const std::string vox = main.rig.run("track.addAudio").at("id");
+    const QString gain = "track.setGain:" + qid(vox) + ":db";
+    MainWindow::settle();
+
+    main.hover(main.item(gain));
+    main.click(main.item(gain + ":up"));
+    CHECK(trackOf(main, vox).gainDb == Catch::Approx(0.5));
+    CHECK_FALSE(main.item(gain)->property("editing").toBool());
+
+    main.click(main.item(gain));
+    REQUIRE(processUntil([&] { return main.item(gain)->property("editing").toBool(); }));
+    main.click(main.item(gain + ":up"));
+    CHECK(trackOf(main, vox).gainDb == Catch::Approx(1.0));
+    CHECK(main.item(gain)->property("editing").toBool());
+    CHECK(main.item(gain + ":down")->isVisible());
+    CHECK(main.item(gain + ":text")->property("text").toString() == "1.0 dB");
+    QTest::keyClick(main.window, Qt::Key_Return);
+    MainWindow::settle();
+    CHECK_FALSE(main.item(gain)->property("editing").toBool());
+    CHECK(trackOf(main, vox).gainDb == Catch::Approx(1.0));
 }

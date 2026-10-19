@@ -17,6 +17,9 @@ Rectangle {
     property string dragType
     // A right click opens the track menu at the pointer; the header button and agents open it at the header.
     property bool menuAtCursor: false
+    readonly property DragGroup dragGroup: DragGroup {
+        target: area
+    }
     readonly property real pixelsPerTick: Nav.pixelsPerTick
     readonly property real laneWidth: Math.max(0, width - Theme.trackHeaderWidth)
     readonly property real visibleTicks: laneWidth / pixelsPerTick

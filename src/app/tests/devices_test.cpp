@@ -1,3 +1,4 @@
+#include <QSettings>
 #include <catch2/catch_test_macros.hpp>
 #include <string>
 #include <vector>
@@ -26,6 +27,11 @@ std::vector<std::string> documentIds(const ProjectRig& rig) {
         ids.push_back(track.id.value);
     }
     return ids;
+}
+
+Json route(const ProjectRig& rig, const std::string& trackId, model::AudioRoute model::Track::* field) {
+    const model::AudioRoute& route = rig.controller->project().track(model::TrackId{trackId})->*field;
+    return {{"device", route.deviceId}, {"channels", route.channels}};
 }
 
 }  // namespace
@@ -134,4 +140,70 @@ TEST_CASE("the track list moves, removes and restores rows to follow the documen
     rig.run("track.rename", {{"track", "C"}, {"name", "Cello"}});
     CHECK(model.data(model.index(2), static_cast<int>(TrackListModel::Role::name)).toString() == "Cello");
     CHECK(resets == 0);
+}
+
+TEST_CASE("the default audio routes start on the first device that fits") {
+    const ProjectRig rig;
+    CHECK(rig.registry.settingValue("audio.defaultInput") == Json{{"device", "interface"}, {"channels", {1, 2}}});
+    CHECK(rig.registry.settingValue("audio.defaultOutput") == Json{{"device", "interface"}, {"channels", {1, 2}}});
+}
+
+TEST_CASE("new audio tracks take the default input and output") {
+    ProjectRig rig;
+    CHECK(rig.registry.setSetting("audio.defaultInput", {{"device", kMotuId}}) ==
+          Json{{"device", kMotuId}, {"channels", {1, 2}}});
+    rig.registry.setSetting("audio.defaultOutput", {{"device", kMotuId}, {"channels", {3, 4}}});
+    rig.registry.setSetting("audio.defaultOutput", {{"channels", {3}}});
+
+    const Json track = rig.run("track.addAudio");
+
+    CHECK(track.at("audioIn").at("device") == kMotuId);
+    CHECK(track.at("audioIn").at("channels") == Json{1, 2});
+    CHECK(track.at("audioOut").at("device") == kMotuId);
+    CHECK(track.at("audioOut").at("channels") == Json{3});
+}
+
+TEST_CASE("a default route the device cannot play is refused") {
+    ProjectRig rig;
+    CHECK_THROWS_AS(rig.registry.setSetting("audio.defaultOutput", {{"device", "interface"}, {"channels", {3}}}),
+                    AppError);
+    CHECK_THROWS_AS(rig.registry.setSetting("audio.defaultInput", {{"device", "keyboard"}}), AppError);
+    CHECK(rig.registry.settingValue("audio.defaultInput").at("device") == "interface");
+}
+
+TEST_CASE("a default input whose device is gone gives new tracks the first device that fits") {
+    ProjectRig rig;
+    QSettings(rig.dir.filePath("settings.ini"), QSettings::IniFormat)
+        .setValue("audio.defaultInput", R"({"device":"gone","channels":[1]})");
+    const Json track = rig.run("track.addAudio");
+    CHECK(track.at("audioIn").at("device") == "interface");
+}
+
+TEST_CASE("setting the input of all audio tracks is one undo step that skips other tracks") {
+    ProjectRig rig;
+    const std::string vox = rig.run("track.addAudio").at("id");
+    const std::string guitar = rig.run("track.addAudio").at("id");
+    const std::string keys = rig.run("track.addMidi").at("id");
+
+    const Json result = rig.run("track.setAllAudioIn", {{"device", kMotuId}, {"channels", {2}}});
+
+    CHECK(result.at("tracks") == Json{vox, guitar});
+    for (const std::string& id : {vox, guitar}) {
+        CHECK(route(rig, id, &model::Track::audioIn) == Json{{"device", kMotuId}, {"channels", {2}}});
+    }
+    CHECK(route(rig, keys, &model::Track::audioIn).at("device") == "");
+    rig.run("project.undo");
+    for (const std::string& id : {vox, guitar}) {
+        CHECK(route(rig, id, &model::Track::audioIn).at("device") == "interface");
+    }
+}
+
+TEST_CASE("setting the output of all audio tracks without params applies the default output") {
+    ProjectRig rig;
+    const std::string vox = rig.run("track.addAudio").at("id");
+    rig.registry.setSetting("audio.defaultOutput", {{"device", kMotuId}, {"channels", {3, 4}}});
+
+    rig.run("track.setAllAudioOut");
+
+    CHECK(route(rig, vox, &model::Track::audioOut) == Json{{"device", kMotuId}, {"channels", {3, 4}}});
 }

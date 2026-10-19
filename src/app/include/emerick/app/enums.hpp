@@ -12,7 +12,8 @@ namespace emerick::app {
 
 Q_NAMESPACE
 
-enum class SettingType : std::uint8_t { Integer, Number, String, Boolean, Color, Choice, List };
+// An AudioRoute value is {device, channels}, the params a route action takes.
+enum class SettingType : std::uint8_t { Integer, Number, String, Boolean, Color, Choice, List, AudioRoute };
 Q_ENUM_NS(SettingType)
 
 enum class FileDialogMode : std::uint8_t { Open, Save, Folder };

@@ -193,3 +193,23 @@ TEST_CASE("Key Commands records a new shortcut that then runs the action") {
     CHECK(main.rig.controller->positionTicks() == main.rig.controller->endTicks());
     MainWindow::settle();
 }
+
+TEST_CASE("the default input picker in Settings sets the default and its button applies it to every audio track") {
+    MainWindow& main = MainWindow::instance();
+    const std::string vox = main.rig.run("track.addAudio").at("id");
+    main.rig.run("settings.show.audio");
+    processUntil([] { return false; }, 50);
+
+    pick(main, "audio.defaultInput", "motu");
+    CHECK(main.rig.registry.settingValue("audio.defaultInput") == Json{{"device", kMotuId}, {"channels", {1, 2}}});
+    pick(main, "audio.defaultInput:channel", "2");
+    CHECK(main.rig.registry.settingValue("audio.defaultInput").at("channels") == Json{2});
+    main.click(main.item("track.setAllAudioIn"));
+    main.rig.registry.setSetting("audio.defaultInput", {{"device", "interface"}, {"channels", {1, 2}}});
+    main.rig.run("settings.show.general");
+    main.rig.run("settings.close");
+
+    CHECK(trackOf(main, vox).audioIn.deviceId == kMotuId);
+    CHECK(trackOf(main, vox).audioIn.channels == std::vector{2});
+    MainWindow::settle();
+}

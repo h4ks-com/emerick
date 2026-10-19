@@ -116,6 +116,12 @@ struct Setting {
     std::string location = {};
     // Reports the current value of a read-only setting the app measures, such as the audio latency.
     std::function<Json()> value = {};
+    // Computes the value while the store holds none, such as the first audio device that fits.
+    std::function<Json()> fallback = {};
+    // Merges a new value that may set only some fields into the current one and checks it, or throws AppError.
+    std::function<Json(const Json& current, const Json& change)> merge = {};
+    // An action the settings page offers as a button beside the value, such as applying it to every track.
+    std::string action = {};
 };
 
 struct RouteSections {
@@ -213,7 +219,7 @@ public:
     Json run(const std::string& id, const Json& params = Json::object(),
              ActionSource source = ActionSource::Code) const;
     [[nodiscard]] Json settingValue(const std::string& id) const;
-    Json setSetting(const std::string& id, const Json& value);
+    Json setSetting(const std::string& id, const Json& given);
     // Saves the shortcut in the settings store and takes it from any action that had it; an empty sequence clears it.
     Json setShortcut(const std::string& id, const std::string& sequence);
     [[nodiscard]] Json state(const std::string& name) const;

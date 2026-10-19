@@ -31,8 +31,8 @@ Q_ENUM_NS(Page)
 enum class ActionSource : std::uint8_t { Code, Ui, Mcp, Lua };
 Q_ENUM_NS(ActionSource)
 
-// Action lines are the action log: each action anyone ran, written as the Lua call that runs it.
-enum class ConsoleLine : std::uint8_t { Input, Print, Result, Error, Action };
+// Log lines are the action log: each action anyone ran, written as the Lua call that runs it.
+enum class ConsoleLine : std::uint8_t { Input, Print, Result, Error, Log };
 Q_ENUM_NS(ConsoleLine)
 
 enum class ConsoleFilter : std::uint8_t { All, Info, Output, Errors };
@@ -42,7 +42,7 @@ enum class ScriptScope : std::uint8_t { User, Project };
 Q_ENUM_NS(ScriptScope)
 
 // Api is a name in the emerick table; ActionId is the id string an emerick.run, emerick.setting or help call takes.
-enum class CodeToken : std::uint8_t { Keyword, String, Number, Comment, Call, Api, ActionId };
+enum class CodeToken : std::uint8_t { Keyword, StringLiteral, NumberLiteral, Comment, Call, Api, ActionId };
 Q_ENUM_NS(CodeToken)
 inline constexpr std::size_t kCodeTokens = 7;
 

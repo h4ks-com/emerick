@@ -145,7 +145,7 @@ TEST_CASE("the action log writes a UI action as the Lua line that runs it again"
     fixture.rig.registry.runAction("track.setMute", {{"track", QString::fromStdString(id)}, {"value", true}});
 
     const ConsoleEntry& logged = fixture.console.entries().back();
-    CHECK(logged.kind == ConsoleLine::Action);
+    CHECK(logged.kind == ConsoleLine::Log);
     CHECK(logged.source == ActionSource::Ui);
     CHECK(logged.text == R"(emerick.run("track.setMute", {track="Audio 1", value=true}))");
 
@@ -154,10 +154,27 @@ TEST_CASE("the action log writes a UI action as the Lua line that runs it again"
     const int serial = std::ranges::find(fixture.console.entries(), logged.text, &ConsoleEntry::text)->serial;
     fixture.rig.run("console.runAgain", {{"entry", serial}});
     CHECK(fixture.rig.controller->project().track(model::TrackId{id})->mute);
-    const auto info = fixture.lines(ConsoleLine::Action);
+    const auto info = fixture.lines(ConsoleLine::Log);
     CHECK(info.back() == logged.text);
-    CHECK(std::ranges::find(fixture.console.entries() | std::views::reverse, ConsoleLine::Action, &ConsoleEntry::kind)
+    CHECK(std::ranges::find(fixture.console.entries() | std::views::reverse, ConsoleLine::Log, &ConsoleEntry::kind)
               ->source == ActionSource::Lua);
+}
+
+TEST_CASE("the console colors the Lua of input and action lines") {
+    ConsoleRig fixture;
+    QTextDocument document;
+    fixture.console.attach(&document, {{"input", QColor(Qt::gray)}, {"call", "#00ff00"}, {"actionId", "#ff0000"}});
+    fixture.console.eval("help('track.setMute')");
+    const QTextBlock input = document.firstBlock();
+    REQUIRE(input.text() == "> help('track.setMute')");
+    const auto colorAt = [&](int position) {
+        QTextCursor cursor(&document);
+        cursor.setPosition(input.position() + position + 1);
+        return cursor.charFormat().foreground().color();
+    };
+    CHECK(colorAt(0) == QColor(Qt::gray));
+    CHECK(colorAt(2) == QColor("#00ff00"));
+    CHECK(colorAt(8) == QColor("#ff0000"));
 }
 
 TEST_CASE("the console keeps the last 5000 lines in its stream and its view") {

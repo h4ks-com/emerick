@@ -1,3 +1,6 @@
+#include <QQuickTextDocument>
+#include <QTextBlock>
+#include <QTextCursor>
 #include <algorithm>
 #include <catch2/catch_test_macros.hpp>
 #include <ranges>
@@ -18,7 +21,7 @@ void type(QWindow* window, std::string_view text) {
 }
 
 const ConsoleEntry& lastInfo(const Console& console) {
-    return *std::ranges::find(console.entries() | std::views::reverse, ConsoleLine::Action, &ConsoleEntry::kind);
+    return *std::ranges::find(console.entries() | std::views::reverse, ConsoleLine::Log, &ConsoleEntry::kind);
 }
 
 }  // namespace
@@ -63,6 +66,11 @@ TEST_CASE("the console panel completes action ids, runs Lua and logs the action 
     CHECK(lastInfo(main.console).text == R"(emerick.run("track.addAudio"))");
     CHECK(lastInfo(main.console).source == ActionSource::Lua);
     CHECK(main.item("console.output")->property("text").toString().contains("emerick.run(\"track.addAudio\")"));
+    auto* shown = main.item("console.output")->property("textDocument").value<QQuickTextDocument*>();
+    REQUIRE(shown != nullptr);
+    QTextCursor cursor(shown->textDocument()->firstBlock());
+    cursor.setPosition(cursor.position() + 3);
+    CHECK(cursor.charFormat().foreground().color() == QColor("#6FA0E0"));
 
     QTest::keyClick(main.window, Qt::Key_Up);
     CHECK(input->property("text") == "emerick.run(\"track.addAudio\")");

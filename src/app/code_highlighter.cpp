@@ -24,8 +24,8 @@ struct NodeKind {
 
 constexpr std::array kNodeKinds{
     NodeKind{"comment", NodeRule::Token, CodeToken::Comment},
-    NodeKind{"string", NodeRule::Token, CodeToken::String},
-    NodeKind{"number", NodeRule::Token, CodeToken::Number},
+    NodeKind{"string", NodeRule::Token, CodeToken::StringLiteral},
+    NodeKind{"number", NodeRule::Token, CodeToken::NumberLiteral},
     NodeKind{"true", NodeRule::Token, CodeToken::Keyword},
     NodeKind{"false", NodeRule::Token, CodeToken::Keyword},
     NodeKind{"nil", NodeRule::Token, CodeToken::Keyword},
@@ -189,7 +189,10 @@ std::vector<CodeSpan> luaSpans(std::string_view source) {
 CodeFormats codeFormats(const QVariantMap& colors) {
     CodeFormats formats;
     for (std::size_t token = 0; token < kCodeTokens; ++token) {
-        const auto color = colors.value(QString::fromStdString(enumKey(static_cast<CodeToken>(token)))).value<QColor>();
+        const QVariant value = colors.value(QString::fromStdString(enumKey(static_cast<CodeToken>(token))));
+        // QML hands over a color property as a QColor and a color in a plain object as its text.
+        const QColor color =
+            value.typeId() == QMetaType::QColor ? value.value<QColor>() : QColor::fromString(value.toString());
         if (color.isValid()) {
             formats.at(token).setForeground(color);
         }

@@ -17,7 +17,7 @@ namespace emerick::app {
 
 namespace {
 
-constexpr std::array kLineColors{"input", "print", "result", "error", "action"};
+constexpr std::array kLineColors{"input", "print", "result", "error", "log"};
 constexpr int kNoSerial = -1;
 
 std::string shown(const Json& value) {
@@ -35,7 +35,7 @@ std::optional<qsizetype> codeStart(ConsoleLine kind) {
     switch (kind) {
         case ConsoleLine::Input:
             return kPromptLength;
-        case ConsoleLine::Action:
+        case ConsoleLine::Log:
             return 0;
         case ConsoleLine::Print:
         case ConsoleLine::Result:
@@ -252,7 +252,7 @@ void Console::attachView(QQuickTextDocument* view, const QVariantMap& colors) {
 }
 
 void Console::logAction(const std::string& id, const Json& params, ActionSource source) {
-    append(ConsoleLine::Action, luaCall(id, namedTracks(params)), source);
+    append(ConsoleLine::Log, luaCall(id, namedTracks(params)), source);
 }
 
 Json Console::namedTracks(const Json& params) const {
@@ -281,7 +281,7 @@ bool Console::shows(ConsoleLine kind) const {
         case ConsoleFilter::All:
             return true;
         case ConsoleFilter::Info:
-            return kind == ConsoleLine::Action;
+            return kind == ConsoleLine::Log;
         case ConsoleFilter::Output:
             return kind == ConsoleLine::Input || kind == ConsoleLine::Print || kind == ConsoleLine::Result;
         case ConsoleFilter::Errors:
@@ -310,7 +310,7 @@ void Console::render(const ConsoleEntry& line) {
         }
         cursor.movePosition(QTextCursor::End);
     }
-    if (line.kind == ConsoleLine::Action) {
+    if (line.kind == ConsoleLine::Log) {
         cursor.insertText(qs("  -- " + enumKey(line.source)), sourceFormat_);
     }
     cursor.block().setUserState(line.serial);

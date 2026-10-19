@@ -93,7 +93,7 @@ void registerConsoleActions(Registry& registry, Nav& nav, Console& console) {
                         .run =
                             [&console](const Json& params) {
                                 const ConsoleEntry& line = console.entry(param<int>(params, "entry"));
-                                if (line.kind != ConsoleLine::Action) {
+                                if (line.kind != ConsoleLine::Log) {
                                     throw AppError("only action log lines run again");
                                 }
                                 return console.eval(std::string{line.text});

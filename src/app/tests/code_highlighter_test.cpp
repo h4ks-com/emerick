@@ -29,17 +29,18 @@ TEST_CASE("a Lua line splits into keywords, strings, numbers, comments, calls, A
         tokens(
             R"(local n = 2 if emerick.run("track.setMute", {track = "Keys", value = true}) then print(n) end -- done)") ==
         std::vector<std::pair<std::string, CodeToken>>{{"local", Keyword},
-                                                       {"2", Number},
+                                                       {"2", NumberLiteral},
                                                        {"if", Keyword},
                                                        {"emerick.run", Api},
                                                        {"\"track.setMute\"", ActionId},
-                                                       {"\"Keys\"", String},
+                                                       {"\"Keys\"", StringLiteral},
                                                        {"true", Keyword},
                                                        {"then", Keyword},
                                                        {"print", Call},
                                                        {"end", Keyword},
                                                        {"-- done", Comment}});
-    CHECK(tokens("t:add(1.5)") == std::vector<std::pair<std::string, CodeToken>>{{"add", Call}, {"1.5", Number}});
+    CHECK(tokens("t:add(1.5)") ==
+          std::vector<std::pair<std::string, CodeToken>>{{"add", Call}, {"1.5", NumberLiteral}});
     CHECK(tokens("x = emerick.ui.find") == std::vector<std::pair<std::string, CodeToken>>{{"emerick.ui.find", Api}});
     CHECK(tokens("emerick.run(\"unfinished").size() >= 1);
 }
@@ -49,7 +50,8 @@ TEST_CASE("the highlighter colors a document line in UTF-16 positions") {
     QTextDocument document(QString::fromUtf8("print(\"é\") -- ok"));
     CodeHighlighter highlighter;
     highlighter.setDocument(&document);
-    highlighter.setColors({{"call", QColor(Qt::red)}, {"string", QColor(Qt::green)}, {"comment", QColor(Qt::blue)}});
+    highlighter.setColors(
+        {{"call", QColor(Qt::red)}, {"stringLiteral", QColor(Qt::green)}, {"comment", QColor(Qt::blue)}});
     const QList<QTextLayout::FormatRange> ranges = document.firstBlock().layout()->formats();
     REQUIRE(ranges.size() == 3);
     CHECK((ranges[0].start == 0 && ranges[0].length == 5 && ranges[0].format.foreground().color() == Qt::red));

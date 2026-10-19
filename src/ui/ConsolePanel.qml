@@ -121,7 +121,7 @@ Rectangle {
                     print: Theme.ink,
                     result: Theme.ink,
                     error: Theme.rec,
-                    action: Theme.ink,
+                    log: Theme.ink,
                     source: Theme.inkDim
                 }, Theme.codeColors))
                 Component.onDestruction: Console.attachView(null, {})
@@ -162,7 +162,7 @@ Rectangle {
                 objectName: "console.runAgain"
                 actionId: "console.runAgain"
                 title: Registry.actionInfo(actionId).title
-                available: lineMenu.line.kind === App.ConsoleLine.Action
+                available: lineMenu.line.kind === App.ConsoleLine.Log
                 params: ({entry: lineMenu.line.serial})
             }
         }

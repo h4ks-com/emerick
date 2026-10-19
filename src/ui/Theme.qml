@@ -54,13 +54,13 @@ QtObject {
     readonly property string monoFamily: Qt.platform.os === "osx" ? "Menlo" : "monospace"
     // Lua syntax colors, muted like the track colors so code reads calmly next to the timeline.
     readonly property var codeColors: ({
-        keyword: "#B48EAD",
-        string: "#A3BE8C",
-        number: "#D08770",
+        keyword: "#C38FD4",
+        stringLiteral: "#9CC07A",
+        numberLiteral: "#E0956A",
         comment: "#6B707A",
-        call: "#88C0D0",
-        api: "#81A1C1",
-        actionId: "#C8B48A"
+        call: "#6FC2CF",
+        api: "#6FA0E0",
+        actionId: "#D88AA0"
     })
     readonly property int consoleHeight: 240
     readonly property int consoleMinHeight: 96

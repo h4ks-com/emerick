@@ -4,12 +4,9 @@ import QtQuick.Layouts
 import Emerick.App
 
 // The Lua console: the action log and the REPL in one stream, above a Lua prompt with completion.
-Rectangle {
+DockPanel {
     id: panel
     objectName: "console"
-    color: Theme.graphite
-
-    signal resizeBy(real delta)
 
     readonly property var filters: [
         {key: "all", title: "All", value: App.ConsoleFilter.All},
@@ -21,24 +18,6 @@ Rectangle {
     readonly property var promptActions: ["console.clear", "view.toggleConsole"]
 
     Component.onCompleted: input.forceActiveFocus()
-
-    Rectangle {
-        width: parent.width
-        height: Theme.hairline
-        color: Theme.rule
-    }
-
-    MouseArea {
-        objectName: "console.resize"
-        y: -Theme.splitterGrip / 2
-        width: parent.width
-        height: Theme.splitterGrip
-        z: 1
-        cursorShape: Qt.SizeVerCursor
-        property real pressY
-        onPressed: mouse => pressY = mouse.y
-        onPositionChanged: mouse => panel.resizeBy(pressY - mouse.y)
-    }
 
     ColumnLayout {
         anchors.fill: parent

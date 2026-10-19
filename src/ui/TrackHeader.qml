@@ -266,7 +266,7 @@ Rectangle {
                 font.pixelSize: Theme.textSmall
                 implicitWidth: Theme.gainReadoutWidth
                 implicitHeight: Theme.headerButton
-                onCommitted: number => Registry.runAction("track.setGain", {track: header.trackId, db: number})
+                actionsFor: number => [{id: "track.setGain", params: {track: header.trackId, db: number}}]
             }
         }
     }

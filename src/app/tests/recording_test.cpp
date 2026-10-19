@@ -84,6 +84,23 @@ TEST_CASE("an offline audio take becomes an audio clip file under the project fo
     CHECK(clips.at(0).at("file") != clips.at(1).at("file"));
 }
 
+TEST_CASE("a clipped input lights the track's meter and the take reports it") {
+    ProjectRig rig;
+    const std::string id = rig.run("track.addAudio", {{"name", "Keys"}}).at("id");
+    rig.run("track.setArm", {{"track", id}, {"value", true}});
+    recordWhile(rig, [&] {
+        rig.audio->setInput("interface", 1, {0.5F, 1.0F, -1.0F, 0.25F});
+        rig.audio->process(4800);
+        CHECK(processUntil([&] { return transportState(*rig.controller).at("inputLevels").contains(id); }));
+        CHECK(transportState(*rig.controller).at("inputLevels").at(id).at("clipped") == true);
+    });
+    REQUIRE(rig.waitForTakes(1) == 1);
+
+    const Json errors = projectState(*rig.controller).at("takeErrors");
+    REQUIRE(errors.size() == 1);
+    CHECK(errors.at(0).at("message").get<std::string>().starts_with("the input reached full scale on 2 samples"));
+}
+
 TEST_CASE("midi.inject feeds a virtual port and midi.sent lists what the app sent") {
     ProjectRig rig;
     registerVirtualMidiActions(rig.registry, *rig.midi);

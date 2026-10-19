@@ -30,11 +30,14 @@ public:
     SnapshotBuilder(SnapshotBuilder&&) = delete;
     SnapshotBuilder& operator=(SnapshotBuilder&&) = delete;
 
-    BuiltSnapshot build(const Session& session, const StreamLayout& layout);
+    // Audio takes skip their first captureOffset frames.
+    BuiltSnapshot build(const Session& session, const StreamLayout& layout, Frames captureOffset);
     void prune();
 
     [[nodiscard]] bool clipsBuffered() const;
     [[nodiscard]] bool midiFlushed() const;
+    // The input meter of every audio track with an input, by track id.
+    [[nodiscard]] std::vector<std::pair<std::string, std::shared_ptr<InputMeter>>> meters() const;
 
 private:
     std::shared_ptr<MidiInputPort> inputPort(const std::string& id);
@@ -42,7 +45,8 @@ private:
     void addClips(TrackState& state, const Track& track, const core::TempoMap& tempo, const StreamLayout& layout,
                   std::vector<SessionError>& errors);
     static void addMidiEvents(TrackState& state, const Track& track, const core::TempoMap& tempo, double sampleRate);
-    void addRecorder(TrackState& state, const Track& track, const Session& session, const StreamLayout& layout);
+    void addRecorder(TrackState& state, const Track& track, const Session& session, const StreamLayout& layout,
+                     Frames captureOffset);
 
     MidiBackend& midi_;
     TakeInbox& inbox_;
@@ -51,6 +55,7 @@ private:
     PollingSet<MidiOutputPort>& sender_;
     std::map<std::string, std::weak_ptr<ClipStream>> clips_;
     std::map<std::string, std::weak_ptr<TakeRecorder>> recorders_;
+    std::map<std::string, std::weak_ptr<InputMeter>> meters_;
     std::map<std::string, std::weak_ptr<MidiInputPort>> inputs_;
     std::map<std::string, std::weak_ptr<MidiOutputPort>> outputs_;
 };

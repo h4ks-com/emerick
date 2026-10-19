@@ -160,6 +160,16 @@ void registerProjectActions(Registry& registry, ProjectController& controller, N
     registry.addStateProvider("project", [&controller] { return projectState(controller); });
     registry.addStateProvider("transport", [&controller] { return transportState(controller); });
     registry.addStateProvider("devices", [&controller] { return devicesState(controller); });
+    registry.addSetting({.id = "audio.latency",
+                         .title = "Resulting latency",
+                         .aliases = {"round trip", "delay"},
+                         .category = "Settings / Audio",
+                         .type = SettingType::String,
+                         .defaultValue = "",
+                         .readOnly = true,
+                         .hint = "Input plus output latency the open devices report, buffer included",
+                         .location = "settings.audio",
+                         .value = [&controller] { return latencyText(controller.engine().layout()); }});
 
     registerProjectFileActions(registry, controller);
     registerProjectEditActions(registry, controller);

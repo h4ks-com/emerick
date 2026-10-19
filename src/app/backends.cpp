@@ -71,7 +71,11 @@ void registerVirtualMidiActions(Registry& registry, engine::VirtualMidiBackend& 
 std::unique_ptr<engine::AudioBackend> makeAudioBackend(std::string_view name) {
     static const std::vector<BackendFactory<engine::AudioBackend>> factories{
         {"null", [] { return std::make_unique<engine::NullAudioBackend>(); }},
+#ifdef __APPLE__
+        {"default", [] { return std::make_unique<engine::CoreAudioBackend>(); }}};
+#else
         {"default", [] { return std::make_unique<engine::MiniaudioBackend>(); }}};
+#endif
     return makeBackend(name, factories, "--audio");
 }
 

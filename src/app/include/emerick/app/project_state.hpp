@@ -20,6 +20,8 @@ Json tempoState(const core::TempoMap& tempo);
 Json projectState(ProjectController& controller);
 Json transportState(const ProjectController& controller);
 Json devicesState(const ProjectController& controller);
+// Reads "11.6 ms round trip, 5.8 ms output", as Logic shows it.
+std::string latencyText(const engine::StreamLayout& layout);
 
 // What the route pickers show: the current route as text, and each choice with the params that select it.
 std::string routeText(const model::AudioRoute& route);

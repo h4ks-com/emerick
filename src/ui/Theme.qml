@@ -71,6 +71,7 @@ QtObject {
     readonly property int maxTextureWidth: 4096
     readonly property int dragThreshold: 4
     readonly property real gainMinDb: -60
+    readonly property real meterFloorDb: -60
     readonly property real gainMaxDb: 6
     readonly property real wheelStep: 0.5
     readonly property real wheelZoom: 0.002

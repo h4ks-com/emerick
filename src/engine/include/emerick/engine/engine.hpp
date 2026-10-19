@@ -1,6 +1,7 @@
 #pragma once
 
 #include <memory>
+#include <string>
 #include <string_view>
 #include <vector>
 
@@ -15,6 +16,12 @@ struct TransportPosition {
     Ticks ticks = 0;
 };
 
+struct InputLevel {
+    std::string trackId;
+    float peak = 0.0F;     // the loudest input sample since the last reading
+    bool clipped = false;  // a sample reached full scale since the last reading
+};
+
 float fadeGain(Frames local, Frames length, Frames fadeIn, Frames fadeOut);
 
 // We call every method from the UI thread, and the audio thread runs only the backend callback.
@@ -23,6 +30,8 @@ public:
     struct Options {
         double sampleRate = 48000.0;
         Frames blockFrames = 256;
+        // Frames an audio take skips beyond the round trip the device reports, for devices that report it wrong.
+        Frames recordingDelay = 0;
     };
 
     Engine(std::unique_ptr<AudioBackend> audio, std::unique_ptr<MidiBackend> midi, Options options);
@@ -62,6 +71,8 @@ public:
     [[nodiscard]] bool midiFlushed() const;
     // Returns the takes finished since the last call.
     std::vector<RecordedTake> takeRecordings();
+    // Reads and resets the input level of every audio track with an input.
+    std::vector<InputLevel> takeInputLevels();
 
     [[nodiscard]] AudioBackend& audio();
     [[nodiscard]] MidiBackend& midi();

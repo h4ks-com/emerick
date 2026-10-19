@@ -6,6 +6,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <ranges>
 #include <set>
 #include <stdexcept>
 
@@ -107,7 +108,8 @@ struct Engine::Impl {
             checkRates(devices);
             reopen(devices);
         }
-        BuiltSnapshot built = builder.build(next, layout);
+        BuiltSnapshot built =
+            builder.build(next, layout, layout.inputLatency + layout.outputLatency + options.recordingDelay);
         deleteSnapshot(rt.pending.exchange(built.snapshot.release(), std::memory_order_acq_rel));
         session = std::move(next);
         errors = std::move(built.errors);
@@ -218,6 +220,15 @@ bool Engine::midiFlushed() const { return impl_->builder.midiFlushed(); }
 std::vector<RecordedTake> Engine::takeRecordings() {
     impl_->freeRetired();
     return impl_->inbox.take();
+}
+
+std::vector<InputLevel> Engine::takeInputLevels() {
+    return impl_->builder.meters() | std::views::transform([](const auto& entry) {
+               InputMeter& meter = *entry.second;
+               return InputLevel{entry.first, meter.peak.exchange(0.0F, std::memory_order_relaxed),
+                                 meter.clipped.exchange(false, std::memory_order_relaxed)};
+           }) |
+           std::ranges::to<std::vector>();
 }
 
 AudioBackend& Engine::audio() { return *impl_->audio; }

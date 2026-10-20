@@ -103,6 +103,12 @@ ApplicationWindow {
         }
     }
 
+    Shortcut {
+        sequence: "Escape"
+        enabled: Registry.gesturing
+        onActivated: Registry.cancelGesture()
+    }
+
     header: GlassPanel {
         height: Theme.headerHeight
         radius: 0

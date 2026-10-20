@@ -23,6 +23,8 @@ using ClipId = core::Id<ClipTag>;
 struct AudioRoute {
     std::string deviceId;
     std::vector<int> channels;
+
+    bool operator==(const AudioRoute&) const = default;
 };
 
 // Channel 0 is all channels, 1 to 16 one channel. The track with sysex set claims sysex from the port.
@@ -31,6 +33,8 @@ struct MidiRoute {
     int channel = 0;
     bool thru = false;
     bool sysex = false;
+
+    bool operator==(const MidiRoute&) const = default;
 };
 
 struct AudioClip {
@@ -42,11 +46,15 @@ struct AudioClip {
     double gainDb = 0.0;
     Ticks fadeIn = 0;
     Ticks fadeOut = 0;
+
+    bool operator==(const AudioClip&) const = default;
 };
 
 struct MidiEvent {
     Ticks at = 0;  // relative to the clip start
     std::vector<std::uint8_t> bytes;
+
+    bool operator==(const MidiEvent&) const = default;
 };
 
 struct MidiClip {
@@ -54,6 +62,8 @@ struct MidiClip {
     Ticks start = 0;
     Ticks length = 0;
     std::vector<MidiEvent> events;
+
+    bool operator==(const MidiClip&) const = default;
 };
 
 // Clips may overlap; overlapping clips stack as takes and nothing is overwritten.
@@ -76,6 +86,8 @@ struct Track {
     MidiRoute midiOut;
     std::vector<Clip> clips;
     nlohmann::json data;  // plugin-owned, the model never interprets it
+
+    bool operator==(const Track&) const = default;
 };
 
 struct Document {
@@ -83,6 +95,8 @@ struct Document {
     std::vector<Track> tracks;
     std::vector<std::string> clockPorts;                   // MIDI outputs that get clock, Start and Stop
     nlohmann::json pluginData = nlohmann::json::object();  // one plugin-owned value per plugin id
+
+    bool operator==(const Document&) const = default;
 };
 
 struct ClipRef {

@@ -2,25 +2,25 @@ import QtQuick
 import QtQuick.Controls.Basic
 import Emerick.App
 
-// A track's gain fader in dB, horizontal in a track header and vertical in a mixer strip. Releasing it runs
-// track.setGain once, so a drag is one undo step.
+// A track's gain fader in dB, horizontal in a track header and vertical in a mixer strip. A drag sets the gain live as
+// one registry gesture, so every view of the gain and the audio follow it and it undoes in one step.
 Slider {
     id: gain
     required property string trackId
     required property real gainDb
-    // The value to show, such as a linked readout's dragged value.
-    property real shownDb: gainDb
 
     objectName: "track.setGain:" + trackId
     from: Theme.gainMinDb
     to: Theme.gainMaxDb
-    value: shownDb
+    value: gainDb
     padding: 0
     ToolTip.visible: pressed || hovered
     ToolTip.text: "Set track gain   " + value.toFixed(1) + " dB"
+    onMoved: Registry.updateGesture(Registry.actionInfo("track.setGain").title,
+                                    [{id: "track.setGain", params: {track: trackId, db: value}}])
     onPressedChanged: {
-        if (!pressed && value !== gainDb) {
-            Registry.runAction("track.setGain", {track: trackId, db: value})
+        if (!pressed) {
+            Registry.endGesture()
         }
     }
     background: Rectangle {

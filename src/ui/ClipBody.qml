@@ -29,29 +29,24 @@ Item {
             anchors.margins: -Theme.space1
             cursorShape: Qt.SizeHorCursor
             property real pressX
-            onPressed: mouse => pressX = handle.clipItem.sceneX(grab, mouse)
-            onCanceled: handle.clipItem.clearPreview()
+            property real pressFade
+            onPressed: mouse => {
+                pressX = handle.clipItem.sceneX(grab, mouse)
+                pressFade = handle.fadeOut ? handle.clipItem.fadeOut : handle.clipItem.fadeIn
+            }
+            onCanceled: handle.clipItem.cancelDrag()
             onPositionChanged: mouse => {
                 const item = handle.clipItem
                 const ticks = (item.sceneX(grab, mouse) - pressX) / item.pixelsPerTick
                 if (handle.fadeOut) {
-                    item.previewFadeOut = Math.round(Math.max(0, Math.min(item.clip.fadeOut - ticks,
-                                                                          item.clip.length - item.fadeIn)))
+                    item.drag("clip.setFade", {fadeOut: Math.round(Math.max(0, Math.min(pressFade - ticks,
+                                                                                         item.clip.length - item.fadeIn)))})
                 } else {
-                    item.previewFadeIn = Math.round(Math.max(0, Math.min(item.clip.fadeIn + ticks,
-                                                                         item.clip.length - item.fadeOut)))
+                    item.drag("clip.setFade", {fadeIn: Math.round(Math.max(0, Math.min(pressFade + ticks,
+                                                                                       item.clip.length - item.fadeOut)))})
                 }
             }
-            onReleased: {
-                const item = handle.clipItem
-                if (handle.fadeOut && item.previewFadeOut >= 0) {
-                    item.commit("clip.setFade", {fadeOut: item.previewFadeOut})
-                } else if (!handle.fadeOut && item.previewFadeIn >= 0) {
-                    item.commit("clip.setFade", {fadeIn: item.previewFadeIn})
-                } else {
-                    item.clearPreview()
-                }
-            }
+            onReleased: Registry.endGesture()
         }
     }
 
@@ -106,27 +101,22 @@ Item {
 
             Loader {
                 active: content.clipItem.audio
-                x: (content.clipItem.clip.start + content.clipItem.shift - content.clipItem.start)
-                   * content.clipItem.pixelsPerTick
                 width: content.clipItem.clip.length * content.clipItem.pixelsPerTick
                 height: parent.height
                 sourceComponent: Waveform {
-                    readonly property real materialStart: content.clipItem.clip.start + content.clipItem.shift
                     objectName: "waveform:" + content.clipItem.clipId
                     peaks: Peaks
                     file: content.clipItem.clip.file
                     offset: content.clipItem.clip.sourceOffset
                     frames: content.clipItem.clip.frames
                     color: Theme.clipInk
-                    visibleLeft: (content.clipItem.viewFrom - materialStart) * content.clipItem.pixelsPerTick
-                    visibleRight: (content.clipItem.viewTo - materialStart) * content.clipItem.pixelsPerTick
+                    visibleLeft: (content.clipItem.viewFrom - content.clipItem.start) * content.clipItem.pixelsPerTick
+                    visibleRight: (content.clipItem.viewTo - content.clipItem.start) * content.clipItem.pixelsPerTick
                 }
             }
 
             Loader {
                 active: !content.clipItem.audio
-                x: (content.clipItem.clip.start + content.clipItem.shift - content.clipItem.start)
-                   * content.clipItem.pixelsPerTick
                 width: content.clipItem.clip.length * content.clipItem.pixelsPerTick
                 height: parent.height
                 sourceComponent: ClipNotes {
@@ -184,6 +174,8 @@ Item {
         anchors.rightMargin: Theme.clipGrip
         acceptedButtons: Qt.LeftButton | Qt.RightButton
         property point pressAt
+        property real pressStart
+        property real target
         property bool dragging: false
         property int rows: 0
         cursorShape: pressed ? Qt.ClosedHandCursor : Qt.ArrowCursor
@@ -205,11 +197,13 @@ Item {
                 return
             }
             pressAt = move.mapToItem(null, mouse.x, mouse.y)
+            pressStart = item.start
+            target = item.start
             dragging = false
             item.selectOnPress(mouse.modifiers)
         }
         onCanceled: {
-            content.clipItem.clearPreview()
+            content.clipItem.cancelDrag()
             endDrag()
         }
         onPositionChanged: mouse => {
@@ -221,31 +215,27 @@ Item {
             if (!dragging) {
                 return
             }
-            const target = item.place(item.clip.start + dx / item.pixelsPerTick, mouse.modifiers)
-            item.shift = target - item.clip.start
-            item.previewStart = target
-            item.previewEnd = target + item.clip.length
+            target = item.place(pressStart + dx / item.pixelsPerTick, mouse.modifiers)
+            item.drag("clip.move", {start: target, selection: true})
             const wanted = Math.round(dy / Nav.trackHeight)
             rows = item.timeline.trackIdAt(item.rowIndex + wanted) !== "" ? wanted : rows
             item.timeline.dragFrom = item.rowIndex
             item.timeline.dragType = item.clip.type
             item.timeline.dragRows = rows
         }
+        // We move the clip to another track only on release, because that rebuilds both rows and this item with them.
         onReleased: {
             const item = content.clipItem
-            const target = item.rowIndex + rows
-            const moved = dragging && (item.previewStart !== item.clip.start || rows !== 0)
-            const accepted = rows === 0 || item.timeline.rowAccepts(target, item.clip.type)
-            const params = {start: item.previewStart, selection: true}
-            if (rows !== 0) {
-                params.track = item.timeline.trackIdAt(target)
-            }
+            const row = item.rowIndex + rows
+            const accepted = rows === 0 || item.timeline.rowAccepts(row, item.clip.type)
+            const track = rows !== 0 ? item.timeline.trackIdAt(row) : ""
             endDrag()
-            if (moved && accepted) {
-                item.commit("clip.move", params)
-            } else {
-                item.clearPreview()
+            if (!accepted) {
+                Registry.cancelGesture()
+            } else if (track !== "") {
+                item.drag("clip.move", {start: target, selection: true, track: track})
             }
+            Registry.endGesture()
         }
     }
 
@@ -256,22 +246,21 @@ Item {
         height: parent.height
         cursorShape: Qt.SizeHorCursor
         property real pressX
-        onPressed: mouse => pressX = content.clipItem.sceneX(startGrip, mouse)
-        onCanceled: content.clipItem.clearPreview()
+        property real pressStart
+        property real pressEnd
+        onPressed: mouse => {
+            pressX = content.clipItem.sceneX(startGrip, mouse)
+            pressStart = content.clipItem.start
+            pressEnd = content.clipItem.end
+        }
         onPositionChanged: mouse => {
             const item = content.clipItem
-            const target = item.place(item.clip.start + (item.sceneX(startGrip, mouse) - pressX) / item.pixelsPerTick,
+            const target = item.place(pressStart + (item.sceneX(startGrip, mouse) - pressX) / item.pixelsPerTick,
                                       mouse.modifiers)
-            item.previewStart = Math.min(target, item.clip.start + item.clip.length - 1)
+            item.drag("clip.resize", {start: Math.min(target, pressEnd - 1)})
         }
-        onReleased: {
-            const item = content.clipItem
-            if (item.previewStart >= 0 && item.previewStart !== item.clip.start) {
-                item.commit("clip.resize", {start: item.previewStart})
-            } else {
-                item.clearPreview()
-            }
-        }
+        onReleased: Registry.endGesture()
+        onCanceled: content.clipItem.cancelDrag()
     }
 
     MouseArea {
@@ -282,23 +271,19 @@ Item {
         height: parent.height
         cursorShape: Qt.SizeHorCursor
         property real pressX
-        onPressed: mouse => pressX = content.clipItem.sceneX(endGrip, mouse)
-        onCanceled: content.clipItem.clearPreview()
+        property real pressEnd
+        onPressed: mouse => {
+            pressX = content.clipItem.sceneX(endGrip, mouse)
+            pressEnd = content.clipItem.end
+        }
         onPositionChanged: mouse => {
             const item = content.clipItem
-            const end = item.clip.start + item.clip.length
-            const target = item.place(end + (item.sceneX(endGrip, mouse) - pressX) / item.pixelsPerTick,
+            const target = item.place(pressEnd + (item.sceneX(endGrip, mouse) - pressX) / item.pixelsPerTick,
                                       mouse.modifiers)
-            item.previewEnd = Math.max(target, item.clip.start + 1)
+            item.drag("clip.resize", {end: Math.max(target, item.start + 1)})
         }
-        onReleased: {
-            const item = content.clipItem
-            if (item.previewEnd >= 0 && item.previewEnd !== item.clip.start + item.clip.length) {
-                item.commit("clip.resize", {end: item.previewEnd})
-            } else {
-                item.clearPreview()
-            }
-        }
+        onReleased: Registry.endGesture()
+        onCanceled: content.clipItem.cancelDrag()
     }
 
     FadeHandle {

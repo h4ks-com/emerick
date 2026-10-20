@@ -7,12 +7,18 @@
 #include <QtLogging>
 #include <algorithm>
 #include <array>
+#include <chrono>
 #include <limits>
+#include <optional>
 #include <ranges>
+#include <utility>
 
 namespace emerick::app {
 
 namespace {
+
+// A gesture updates the document at most once per 60 Hz frame.
+constexpr auto kGestureFrame = std::chrono::milliseconds{16};
 
 bool matchesType(const Setting& setting, const Json& value) {
     switch (setting.type) {
@@ -156,7 +162,15 @@ Json toJson(const QVariant& value) {
 Registry::Registry(const QString& settingsPath, QObject* parent)
     : QObject(parent),
       store_(settingsPath.isEmpty() ? std::make_unique<QSettings>()
-                                    : std::make_unique<QSettings>(settingsPath, QSettings::IniFormat)) {}
+                                    : std::make_unique<QSettings>(settingsPath, QSettings::IniFormat)) {
+    gestureFrame_.setSingleShot(true);
+    gestureFrame_.setInterval(kGestureFrame);
+    connect(&gestureFrame_, &QTimer::timeout, this, [this] {
+        if (gesturePending_) {
+            runGesture();
+        }
+    });
+}
 
 void Registry::addAction(Action entry) {
     if (action(entry.id) != nullptr || setting(entry.id) != nullptr) {
@@ -596,19 +610,92 @@ void Registry::activate(const QString& id) {
     }
 }
 
-QVariant Registry::runAction(const QString& id, const QVariantMap& params) const {
+std::optional<Json> Registry::runFromUi(const std::string& id, const Json& params) const {
     try {
-        return toVariant(run(id.toStdString(), toJson(QVariant{params}), ActionSource::Ui));
+        return run(id, params, ActionSource::Ui);
     } catch (const AppError& error) {
         qWarning() << error.what();
     } catch (const Json::exception& error) {
         qWarning() << error.what();
     }
-    return {};
+    return std::nullopt;
 }
 
-void Registry::setUndoGroup(std::function<void(const std::string&, const std::function<void()>&)> group) {
-    undoGroup_ = std::move(group);
+QVariant Registry::runAction(const QString& id, const QVariantMap& params) const {
+    const std::optional<Json> result = runFromUi(id.toStdString(), toJson(QVariant{params}));
+    return result ? toVariant(*result) : QVariant{};
+}
+
+void Registry::setUndoSteps(UndoSteps steps) { undoSteps_ = std::move(steps); }
+
+void Registry::updateGesture(const QString& name, const QVariantList& calls) {
+    if (gestureCancelled_) {
+        return;
+    }
+    gestureName_ = name.toStdString();
+    gestureCalls_ = calls | std::views::transform([](const QVariant& call) {
+                        const QVariantMap entry = call.toMap();
+                        return Call{entry.value("id").toString().toStdString(), toJson(entry.value("params"))};
+                    }) |
+                    std::ranges::to<std::vector>();
+    gesturePending_ = true;
+    setGesturing(true);
+    if (!gestureFrame_.isActive()) {
+        runGesture();
+    }
+}
+
+void Registry::runGesture() {
+    gesturePending_ = false;
+    const auto runAll = [this] {
+        const NestedRun nested{runDepth_, 1};
+        for (const Call& call : gestureCalls_) {
+            runFromUi(call.id, call.params);
+        }
+    };
+    if (undoSteps_.updateGesture) {
+        undoSteps_.updateGesture(gestureName_, runAll);
+    } else {
+        runAll();
+    }
+    gestureFrame_.start();
+}
+
+void Registry::endGesture() {
+    if (gesturePending_) {
+        runGesture();
+    }
+    gestureFrame_.stop();
+    gestureCancelled_ = false;
+    if (!gesturing_) {
+        return;
+    }
+    if (!undoSteps_.endGesture || undoSteps_.endGesture()) {
+        for (const Call& call : gestureCalls_) {
+            emit actionRan(call.id, call.params, ActionSource::Ui);
+        }
+    }
+    gestureCalls_.clear();
+    setGesturing(false);
+}
+
+void Registry::cancelGesture() {
+    gestureFrame_.stop();
+    gesturePending_ = false;
+    gestureCalls_.clear();
+    if (gesturing_) {
+        gestureCancelled_ = true;
+        if (undoSteps_.cancelGesture) {
+            undoSteps_.cancelGesture();
+        }
+        setGesturing(false);
+    }
+}
+
+void Registry::setGesturing(bool value) {
+    if (std::exchange(gesturing_, value) != value) {
+        emit gesturingChanged();
+    }
 }
 
 void Registry::runActions(const QString& name, const QVariantList& calls) const {
@@ -618,8 +705,8 @@ void Registry::runActions(const QString& name, const QVariantList& calls) const 
             runAction(entry.value("id").toString(), entry.value("params").toMap());
         }
     };
-    if (undoGroup_) {
-        undoGroup_(name.toStdString(), runAll);
+    if (undoSteps_.group) {
+        undoSteps_.group(name.toStdString(), runAll);
     } else {
         runAll();
     }

@@ -68,5 +68,7 @@ struct Command {
 void apply(Document& document, const Command& command);
 void revert(Document& document, const Command& command);
 Change changeOf(const Command& command);
+// One track when both changes name the same track, else the whole list.
+Change merged(const Change& first, const Change& second);
 
 }  // namespace emerick::model

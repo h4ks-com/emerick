@@ -276,3 +276,87 @@ TEST_CASE("reset replaces the document and clears history") {
     CHECK_FALSE(project.undoName());
     CHECK(calls == 1);
 }
+
+namespace {
+
+void setGain(Project& project, const TrackId& id, double db) {
+    project.editTrack(id, "set track gain", [&](Track& edited) { edited.gainDb = db; });
+}
+
+}  // namespace
+
+TEST_CASE("a gesture of many updates follows each one and undoes as one step") {
+    Project project;
+    const Track track = named("vox");
+    project.addTrack(track);
+    std::vector<Change> heard;
+    project.addListener([&](const Change& change) { heard.push_back(change); });
+
+    for (const double db : {-1.0, -2.0, -3.0}) {
+        project.updateGesture("drag gain", [&] { setGain(project, track.id, db); });
+        CHECK(project.track(track.id)->gainDb == db);
+    }
+    CHECK(heard.size() == 3);
+    CHECK(heard.back().track == track.id);
+    CHECK(project.endGesture());
+    CHECK(project.undoName() == "set track gain");
+
+    project.undo();
+    CHECK(project.track(track.id)->gainDb == 0.0);
+    CHECK(project.undoName() == "add track vox");
+}
+
+TEST_CASE("a gesture of several edits per update undoes as one step named after the gesture") {
+    Project project;
+    const Track first = named("a");
+    const Track second = named("b");
+    project.addTrack(first);
+    project.addTrack(second);
+    for (const double db : {1.0, 2.0}) {
+        project.updateGesture("drag gains", [&] {
+            setGain(project, first.id, db);
+            setGain(project, second.id, db);
+        });
+    }
+    CHECK(project.endGesture());
+    CHECK(project.undoName() == "drag gains");
+    project.undo();
+    CHECK(project.track(first.id)->gainDb == 0.0);
+    CHECK(project.track(second.id)->gainDb == 0.0);
+}
+
+TEST_CASE("cancelling a gesture reverts its edits and leaves no undo step") {
+    Project project;
+    const Track track = named("vox");
+    project.addTrack(track);
+    project.updateGesture("drag gain", [&] { setGain(project, track.id, -6.0); });
+    project.cancelGesture();
+    CHECK(project.track(track.id)->gainDb == 0.0);
+    CHECK(project.undoName() == "add track vox");
+    CHECK_FALSE(project.endGesture());
+}
+
+TEST_CASE("a gesture that returns to where it started leaves no undo step") {
+    Project project;
+    const Track track = named("vox");
+    project.addTrack(track);
+    project.updateGesture("drag gain", [&] { setGain(project, track.id, -6.0); });
+    project.updateGesture("drag gain", [&] { setGain(project, track.id, 0.0); });
+    CHECK_FALSE(project.endGesture());
+    CHECK(project.undoName() == "add track vox");
+    CHECK_FALSE(project.redoName());
+}
+
+TEST_CASE("an edit during a gesture keeps the gesture's step and later updates start a new one") {
+    Project project;
+    const Track track = named("vox");
+    project.addTrack(track);
+    project.updateGesture("drag gain", [&] { setGain(project, track.id, -6.0); });
+    project.addTrack(named("take"));
+    project.updateGesture("drag gain", [&] { setGain(project, track.id, -9.0); });
+    CHECK(project.endGesture());
+    CHECK(names(project) == std::vector<std::string>{"vox", "take"});
+    project.undo();
+    CHECK(project.track(track.id)->gainDb == -6.0);
+    CHECK(names(project) == std::vector<std::string>{"vox", "take"});
+}

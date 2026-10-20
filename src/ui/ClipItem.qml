@@ -17,19 +17,12 @@ Item {
     property real viewTo
     property bool editing: false
 
-    // Drag previews in ticks; -1 shows the clip as stored. shift moves the material along with a dragged clip.
-    property real previewStart: -1
-    property real previewEnd: -1
-    property real previewFadeIn: -1
-    property real previewFadeOut: -1
-    property real shift: 0
-
     readonly property string clipId: clip.id
     readonly property bool audio: clip.type === "audio"
-    readonly property real start: previewStart >= 0 ? previewStart : clip.start
-    readonly property real end: previewEnd >= 0 ? previewEnd : clip.start + clip.length
-    readonly property real fadeIn: audio ? (previewFadeIn >= 0 ? previewFadeIn : clip.fadeIn) : 0
-    readonly property real fadeOut: audio ? (previewFadeOut >= 0 ? previewFadeOut : clip.fadeOut) : 0
+    readonly property real start: clip.start
+    readonly property real end: clip.start + clip.length
+    readonly property real fadeIn: audio ? clip.fadeIn : 0
+    readonly property real fadeOut: audio ? clip.fadeOut : 0
     readonly property bool selected: Nav.selectedClips.indexOf(clipId) >= 0
     readonly property bool inView: end > viewFrom && start < viewTo
 
@@ -65,18 +58,15 @@ Item {
         }
     }
 
-    function clearPreview() {
-        previewStart = -1
-        previewEnd = -1
-        previewFadeIn = -1
-        previewFadeOut = -1
-        shift = 0
+    // Each call replaces the drag's last edit, so the clip and every view of it follow the drag as one undo step.
+    function drag(actionId, params) {
+        Registry.updateGesture(Registry.actionInfo(actionId).title,
+                               [{id: actionId, params: Object.assign({clip: clipId}, params)}])
     }
 
-    // We clear the preview first, because the action rebuilds this track's clips and with them this item.
-    function commit(actionId, params) {
-        clearPreview()
-        Registry.runAction(actionId, Object.assign({clip: clipId}, params))
+    function cancelDrag() {
+        Registry.cancelGesture()
+        Registry.endGesture()
     }
 
     Loader {

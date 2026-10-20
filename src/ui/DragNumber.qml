@@ -5,7 +5,8 @@ import Emerick.App
 // The one number field every view uses, after Blender's: drag sideways to change the value, Shift drags finely and
 // Ctrl snaps to coarse steps, the arrows step it, and a click opens it for typing. Enter commits, Escape cancels.
 // Inside a view with a DragGroup, dragging up or down first gathers the fields it crosses and the sideways drag moves
-// them all by the same number of steps. A gesture commits once, on release, so the actions it runs are one undo step.
+// them all by the same number of steps. A drag runs its actions live as one registry gesture, so every view of the value
+// follows it and it undoes in one step; Escape reverts it.
 Item {
     id: field
 
@@ -29,7 +30,8 @@ Item {
     // Returns NaN for text it cannot read. A leading + or - steps from the current value, and a/b divides.
     property var valueFromText: text => readNumber(text)
 
-    // A gesture holds the field while it previews dragValue, and gathered marks it as one of several moving together.
+    // A drag holds the field, and gathered marks it as one of several moving together. A field without actionsFor shows
+    // dragValue until it emits committed on release.
     property bool held: false
     property bool gathered: false
     property real dragStart
@@ -39,7 +41,7 @@ Item {
     readonly property bool editing: editor.visible
     readonly property bool editScope: true
     readonly property real margin: framed ? Theme.space4 : 0
-    readonly property real shown: held ? dragValue : value
+    readonly property real shown: held && !actionsFor ? dragValue : value
     readonly property string displayText: textFromValue(shown) + (badge ? "   " + badge : "")
 
     signal committed(real value)
@@ -80,15 +82,11 @@ Item {
         gathered = false
     }
 
-    // Runs the calls of every entry, {field, value}, as one undo step. Calls of one action that set different params
-    // of the same target merge into one call, so fade in and fade out of a clip set both fades at once.
-    function commitValues(entries) {
+    // The calls of every entry, {field, value}. Calls of one action that set different params of the same target merge
+    // into one call, so fade in and fade out of a clip set both fades at once.
+    function callsFor(entries) {
         const calls = []
         for (const entry of entries) {
-            if (!entry.field.actionsFor) {
-                entry.field.committed(entry.value)
-                continue
-            }
             for (const call of entry.field.actionsFor(entry.value)) {
                 const same = calls.find(other => other.id === call.id && Object.keys(call.params).every(
                                             key => !(key in other.params) || other.params[key] === call.params[key]))
@@ -99,17 +97,37 @@ Item {
                 }
             }
         }
-        if (calls.length === 1) {
-            Registry.runAction(calls[0].id, calls[0].params)
-        } else if (calls.length > 1) {
-            Registry.runActions(Registry.actionInfo(calls[0].id).title, calls)
-        }
+        return calls
+    }
+
+    function undoName(calls) {
+        return calls.length > 0 ? Registry.actionInfo(calls[0].id).title : ""
     }
 
     function commit(number) {
-        if (!isNaN(number) && clamped(number) !== value) {
-            commitValues([{field: field, value: clamped(number)}])
+        if (isNaN(number) || clamped(number) === value) {
+            return
         }
+        if (!actionsFor) {
+            committed(clamped(number))
+            return
+        }
+        const calls = callsFor([{field: field, value: clamped(number)}])
+        if (calls.length === 1) {
+            Registry.runAction(calls[0].id, calls[0].params)
+        } else if (calls.length > 1) {
+            Registry.runActions(undoName(calls), calls)
+        }
+    }
+
+    function dragTo(fields) {
+        const live = fields.filter(other => other.actionsFor)
+        if (live.length === 0) {
+            return
+        }
+        const calls = callsFor(live.filter(other => other.dragValue !== other.dragStart)
+                               .map(other => ({field: other, value: other.dragValue})))
+        Registry.updateGesture(undoName(calls), calls)
     }
 
     function stepBy(direction) {
@@ -227,17 +245,24 @@ Item {
             for (const other of fields) {
                 other.dragValue = other.stepped(steps, mouse.modifiers & Qt.ControlModifier)
             }
+            field.dragTo(fields)
         }
         onReleased: {
             const clicked = !dragging && !gathering
             const entries = finish()
             if (clicked) {
                 field.startEditing()
-            } else {
-                field.commitValues(entries)
             }
+            for (const entry of entries.filter(entry => !entry.field.actionsFor)) {
+                entry.field.committed(entry.value)
+            }
+            Registry.endGesture()
         }
-        onCanceled: finish()
+        onCanceled: {
+            finish()
+            Registry.cancelGesture()
+            Registry.endGesture()
+        }
     }
 
     TextInput {

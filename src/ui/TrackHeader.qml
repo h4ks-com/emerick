@@ -201,13 +201,11 @@ Rectangle {
             GainSlider {
                 trackId: header.trackId
                 gainDb: header.gainDb
-                shownDb: gainReadout.shown
                 Layout.fillWidth: true
                 Layout.preferredHeight: Theme.fadeHandle + Theme.space1
             }
 
             GainReadout {
-                id: gainReadout
                 trackId: header.trackId
                 gainDb: header.gainDb
             }

@@ -272,11 +272,13 @@ Rectangle {
                             item.pixelsPerTick = Qt.binding(() => area.pixelsPerTick)
                         }
                     }
+                    // We count the clips rather than list them, so an edit keeps the clip items and a drag survives it.
                     Repeater {
-                        model: row.laneComponent === "" ? row.clips : []
+                        model: row.laneComponent === "" ? row.clips.length : 0
                         delegate: ClipItem {
-                            required property var modelData
-                            clip: modelData
+                            required property int index
+                            // A removed clip's item can see the shorter list before the Repeater drops the item.
+                            clip: row.clips[index] ?? {id: "", type: "", start: 0, length: 0}
                             timeline: area
                             rowIndex: row.index
                             trackName: row.name

@@ -347,6 +347,8 @@ bool Engine::playing() const { return impl_->rt.publishedPlaying.load(std::memor
 
 const StreamLayout& Engine::layout() const { return impl_->layout; }
 
+bool Engine::streamOpen() const { return impl_->streamOpen; }
+
 const std::vector<SessionError>& Engine::sessionErrors() const { return impl_->errors; }
 
 bool Engine::readAheadReady() const {

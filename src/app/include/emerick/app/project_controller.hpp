@@ -148,6 +148,7 @@ private:
     void publish();
     void updateTrackErrors();
     void keepWarmWhileActive();
+    void logStreamChanges();
     void poll();
     void readInputLevels();
     void addTake(const engine::RecordedTake& take);
@@ -178,6 +179,7 @@ private:
     QVariantMap trackErrors_;
     std::optional<std::chrono::steady_clock::time_point> lastActive_;
     bool warm_ = false;
+    QString streamSummary_;
     QTimer timer_;
 };
 

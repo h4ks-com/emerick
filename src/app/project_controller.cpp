@@ -2,9 +2,11 @@
 
 #include <QCoreApplication>
 #include <QGuiApplication>
+#include <QStringList>
 #include <QtLogging>
 #include <algorithm>
 #include <chrono>
+#include <cmath>
 #include <cstdint>
 #include <format>
 #include <stdexcept>
@@ -388,6 +390,27 @@ void ProjectController::publish() {
     updateTrackErrors();
 }
 
+void ProjectController::logStreamChanges() {
+    QString summary = "audio closed";
+    if (engine_.streamOpen()) {
+        const engine::StreamLayout& layout = engine_.layout();
+        QStringList devices;
+        for (const engine::DeviceChannels& device : layout.devices) {
+            const auto info = std::ranges::find(engine_.audioDevices(), device.id, &engine::AudioDeviceInfo::id);
+            devices << QString::fromStdString(info != engine_.audioDevices().end() ? info->name : device.id);
+        }
+        summary = QString("audio open on %1 at %2 Hz, %3 frames, %4 ms out")
+                      .arg(devices.join(" + "))
+                      .arg(layout.sampleRate)
+                      .arg(layout.maxFrames)
+                      .arg(std::lround(static_cast<double>(layout.outputLatency) * 1000.0 / layout.sampleRate));
+    }
+    if (summary != streamSummary_) {
+        streamSummary_ = summary;
+        qInfo().noquote() << summary;
+    }
+}
+
 void ProjectController::keepWarmWhileActive() {
     const auto now = std::chrono::steady_clock::now();
     if (QGuiApplication::applicationState() == Qt::ApplicationActive) {
@@ -428,6 +451,7 @@ void ProjectController::poll() {
     }
     keepWarmWhileActive();
     engine_.releaseIdleStream();
+    logStreamChanges();
     updateTrackErrors();
     collectTakes();
     readInputLevels();

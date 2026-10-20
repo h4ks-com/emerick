@@ -1,6 +1,7 @@
 #include "emerick/app/project_state.hpp"
 
 #include <algorithm>
+#include <cmath>
 #include <format>
 #include <ranges>
 #include <span>
@@ -206,11 +207,35 @@ Json projectState(ProjectController& controller) {
     return result;
 }
 
+Json streamState(const engine::Engine& engine) {
+    const engine::StreamLayout& layout = engine.layout();
+    const auto milliseconds = [&](engine::Frames frames) {
+        return std::lround(static_cast<double>(frames) * 1000.0 / layout.sampleRate);
+    };
+    Json devices = Json::array();
+    for (const engine::DeviceChannels& device : layout.devices) {
+        const auto info = std::ranges::find(engine.audioDevices(), device.id, &engine::AudioDeviceInfo::id);
+        devices.push_back({{"id", device.id},
+                           {"name", info != engine.audioDevices().end() ? info->name : device.id},
+                           {"firstOutput", device.firstOutput + 1},
+                           {"outputs", device.outputs},
+                           {"firstInput", device.firstInput + 1},
+                           {"inputs", device.inputs}});
+    }
+    return {{"open", engine.streamOpen()},
+            {"sampleRate", layout.sampleRate},
+            {"blockFrames", layout.maxFrames},
+            {"inputLatencyMs", milliseconds(layout.inputLatency)},
+            {"outputLatencyMs", milliseconds(layout.outputLatency)},
+            {"devices", devices}};
+}
+
 Json transportState(const ProjectController& controller) {
     return {{"playing", controller.playing()},
             {"recording", controller.recording()},
             {"position", positionState(controller.positionTicks(), controller.project().document().tempo)},
-            {"inputLevels", toJson(controller.inputLevels())}};
+            {"inputLevels", toJson(controller.inputLevels())},
+            {"stream", streamState(controller.engine())}};
 }
 
 Json devicesState(const ProjectController& controller) {

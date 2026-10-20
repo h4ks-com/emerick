@@ -70,6 +70,7 @@ public:
     [[nodiscard]] TransportPosition position() const;
     [[nodiscard]] bool playing() const;
     [[nodiscard]] const StreamLayout& layout() const;
+    [[nodiscard]] bool streamOpen() const;
     [[nodiscard]] const std::vector<SessionError>& sessionErrors() const;
     // True once every locate has reached the audio thread and every clip has its read-ahead filled from there.
     [[nodiscard]] bool readAheadReady() const;

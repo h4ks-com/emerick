@@ -1,5 +1,6 @@
 #include <sndfile.h>
 
+#include <algorithm>
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 #include <cmath>
@@ -291,4 +292,36 @@ TEST_CASE("a recorder replaced in the middle of a take still reports the take") 
     REQUIRE(takes.size() == 1);
     CHECK(takes[0].audioFile.parent_path() == first.path);
     CHECK(readWav(takes[0].audioFile) == std::vector<float>(4800, 0.25F));
+}
+
+TEST_CASE("switching a playing track's output keeps its sound in time on the picked device") {
+    Rig rig;
+    const TempFolder folder;
+    std::vector<float> ramp(480000);
+    for (std::size_t frame = 0; frame < ramp.size(); ++frame) {
+        ramp[frame] = static_cast<float>(frame) / static_cast<float>(ramp.size());
+    }
+    writeWav(folder.path / "ramp.wav", ramp);
+    Track empty{.id = "a", .kind = TrackKind::audio};
+    empty.audioOut = {"interface", {1, 2}};
+    Track loud{.id = "b", .kind = TrackKind::audio};
+    loud.audioOut = {"keyboard", {1, 2}};
+    loud.audioClips.push_back({.path = folder.path / "ramp.wav", .start = 0, .length = 38400, .sourceOffset = 0});
+    rig.engine.keepWarm(true);
+    rig.engine.setSession({.tempo = kTempo, .tracks = {empty, loud}});
+    playFromStart(rig);
+    rig.audio.process(4800);
+
+    for (const std::string device : {"interface", "keyboard", "interface", "keyboard"}) {
+        INFO(device);
+        loud.audioOut = {device, {1, 2}};
+        rig.engine.setSession({.tempo = kTempo, .tracks = {empty, loud}});
+        rig.audio.process(kBlock);
+        REQUIRE(waitFor([&] { return rig.engine.readAheadReady(); }));
+        const Frames songFrame = rig.engine.position().frames;
+        const Frames from = rig.audio.processedFrames();
+        rig.audio.process(kBlock);
+        const float heard = rig.audio.output(device, 1)[static_cast<std::size_t>(from)];
+        CHECK(heard * static_cast<float>(ramp.size()) == Approx(static_cast<float>(songFrame)).margin(1.0));
+    }
 }

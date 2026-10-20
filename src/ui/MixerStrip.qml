@@ -73,7 +73,6 @@ Rectangle {
                 orientation: Qt.Vertical
                 trackId: strip.trackId
                 gainDb: strip.gainDb
-                shownDb: readout.shown
                 Layout.fillHeight: true
                 Layout.preferredWidth: Theme.faderCapWidth
             }
@@ -87,7 +86,6 @@ Rectangle {
         }
 
         GainReadout {
-            id: readout
             trackId: strip.trackId
             gainDb: strip.gainDb
             Layout.fillWidth: true

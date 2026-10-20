@@ -13,6 +13,8 @@ inline constexpr Ticks kTicksPerQuarter = 960;
 struct Meter {
     int numerator = 4;
     int denominator = 4;
+
+    bool operator==(const Meter&) const = default;
 };
 
 // Bars and beats count from 1, ticks from 0, as musicians and Logic write them.
@@ -38,6 +40,7 @@ struct TempoMap {
     [[nodiscard]] Ticks framesToTicks(Frames frames, double sampleRate) const;
     [[nodiscard]] BarBeatTick toBarBeatTick(Ticks ticks) const;
     [[nodiscard]] Ticks fromBarBeatTick(const BarBeatTick& position) const;
+    bool operator==(const TempoMap&) const = default;
 };
 
 }  // namespace emerick::core

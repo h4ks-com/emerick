@@ -3,6 +3,7 @@
 #include <QObject>
 #include <QSettings>
 #include <QString>
+#include <QTimer>
 #include <QUrl>
 #include <QVariant>
 #include <array>
@@ -124,6 +125,18 @@ struct Setting {
     std::string action = {};
 };
 
+// How actions become undo steps; the project installs these, so runActions and gestures work with any actions.
+struct UndoSteps {
+    using Edits = std::function<void(const std::string& name, const std::function<void()>& edits)>;
+    // Runs edits as one undo step named name.
+    Edits group = {};
+    // Replaces the open gesture's edits with these, so the document follows a drag and it stays one undo step.
+    Edits updateGesture = {};
+    // Returns whether the gesture left an undo step, which it does unless the document is back where it started.
+    std::function<bool()> endGesture = {};
+    std::function<void()> cancelGesture = {};
+};
+
 struct RouteSections {
     bool audio = false;
     bool midi = false;
@@ -192,6 +205,7 @@ class Registry : public QObject {
     Q_PROPERTY(QVariantList keyCommands READ keyCommands NOTIFY shortcutsChanged)
     Q_PROPERTY(QVariantMap menus READ menus NOTIFY settingsChanged)
     Q_PROPERTY(QStringList menuBar READ menuBar NOTIFY settingsChanged)
+    Q_PROPERTY(bool gesturing READ gesturing NOTIFY gesturingChanged)
 
 public:
     // An empty path uses the platform's default QSettings store.
@@ -204,8 +218,7 @@ public:
     void addMidiDeviceProfile(MidiDeviceProfile profile);
     void addLocation(Location location);
     void addStateProvider(const std::string& name, std::function<Json()> provider);
-    // Runs edits as one undo step named name; the project installs it, so runActions can group any actions.
-    void setUndoGroup(std::function<void(const std::string& name, const std::function<void()>& edits)> group);
+    void setUndoSteps(UndoSteps steps);
 
     [[nodiscard]] const Action* action(const std::string& id) const;
     [[nodiscard]] const Setting* setting(const std::string& id) const;
@@ -239,6 +252,7 @@ public:
     [[nodiscard]] QVariantMap menus() const;
     // The menu bar menus that hold any action, in kMenuBar order.
     [[nodiscard]] QStringList menuBar() const;
+    [[nodiscard]] bool gesturing() const { return gesturing_; }
     // Every action with its title, category and shortcut, for the key commands list.
     [[nodiscard]] QVariantList keyCommands() const;
     // The portable text of a key press, such as Ctrl+Shift+S, or empty for a modifier alone.
@@ -255,6 +269,12 @@ public:
     // Runs each {id, params} call as one undo step named name, such as a drag across toggles or an edit of every
     // selected clip. A call that fails is logged and the others still run.
     Q_INVOKABLE void runActions(const QString& name, const QVariantList& calls) const;
+    // A gesture, such as a drag, runs its latest calls at most once a frame, each run replacing the last, and ends as
+    // one undo step. The action log shows the last run's calls when the gesture ends. A cancelled gesture ignores
+    // updates until it ends, so Escape holds through the rest of the drag.
+    Q_INVOKABLE void updateGesture(const QString& name, const QVariantList& calls);
+    Q_INVOKABLE void endGesture();
+    Q_INVOKABLE void cancelGesture();
     // Runs the action with the file a dialog picked as its dialog param.
     Q_INVOKABLE QVariant runWithFile(const QString& id, const QUrl& file) const;
     Q_INVOKABLE bool setSettingValue(const QString& id, const QVariant& value);
@@ -264,6 +284,7 @@ signals:
     void shortcutsChanged();
     void fileDialogRequested(const QVariantMap& request);
     void confirmRequested(const QVariantMap& request);
+    void gesturingChanged();
     void actionRan(const std::string& id, const nlohmann::json& params, emerick::app::ActionSource source) const;
 
 private:
@@ -274,8 +295,23 @@ private:
     std::vector<MidiDeviceProfile> midiDeviceProfiles_;
     std::vector<Location> locations_;
     std::map<std::string, std::function<Json()>> stateProviders_;
-    std::function<void(const std::string&, const std::function<void()>&)> undoGroup_;
+    // Runs the action and logs its failure, as every UI call does.
+    std::optional<Json> runFromUi(const std::string& id, const Json& params) const;
+    void runGesture();
+    void setGesturing(bool value);
+
+    UndoSteps undoSteps_;
     mutable int runDepth_ = 0;
+    struct Call {
+        std::string id;
+        Json params;
+    };
+    std::string gestureName_;
+    std::vector<Call> gestureCalls_;
+    bool gesturePending_ = false;
+    bool gestureCancelled_ = false;
+    bool gesturing_ = false;
+    QTimer gestureFrame_;
 };
 
 QString qs(const std::string& text);

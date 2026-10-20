@@ -222,9 +222,14 @@ void registerProjectActions(Registry& registry, ProjectController& controller, N
     registry.addStateProvider("project", [&controller] { return projectState(controller); });
     registry.addStateProvider("transport", [&controller] { return transportState(controller); });
     registry.addStateProvider("devices", [&controller] { return devicesState(controller); });
-    registry.setUndoGroup([&controller](const std::string& name, const std::function<void()>& edits) {
-        controller.project().group(name, edits);
-    });
+    model::Project& project = controller.project();
+    registry.setUndoSteps(
+        {.group = [&project](const std::string& name,
+                             const std::function<void()>& edits) { project.group(name, edits); },
+         .updateGesture = [&project](const std::string& name,
+                                     const std::function<void()>& edits) { project.updateGesture(name, edits); },
+         .endGesture = [&project] { return project.endGesture(); },
+         .cancelGesture = [&project] { project.cancelGesture(); }});
     registry.addSetting({.id = "audio.latency",
                          .title = "Resulting latency",
                          .aliases = {"round trip", "delay"},

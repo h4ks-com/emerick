@@ -183,6 +183,71 @@ TEST_CASE("dragging down across track gains and then sideways sets every gathere
     CHECK(trackOf(main, second).gainDb == Catch::Approx(0.0));
 }
 
+TEST_CASE("the Inspector and the clip follow a fade handle drag while it lasts, and one undo restores the fade") {
+    MainWindow& main = MainWindow::instance();
+    const std::string vox = main.rig.run("track.addAudio").at("id");
+    writeConstant(main.rig.path("ones.wav"), 48000, 1.0F);
+    const std::string clip =
+        main.rig.run("clip.import", {{"track", vox}, {"path", main.rig.path("ones.wav").string()}}).at("id");
+    main.rig.run("selection.set", {{"clips", {clip}}});
+    MainWindow::settle();
+    const auto undoBefore = main.rig.controller->project().undoName();
+    QQuickItem* handle = main.item("clip.setFade:" + qid(clip) + ":in");
+    QQuickItem* field = main.item("clip.setFade:" + qid(clip) + ":fadeIn");
+    QQuickItem* clipItem = main.item("clip:" + qid(clip));
+    const double pixelsPerTick = main.rig.nav.pixelsPerTick();
+    const QPointF press = handle->mapToScene({handle->width() / 2, handle->height() / 2});
+
+    main.send(QEvent::MouseButtonPress, press, Qt::LeftButton, Qt::NoModifier);
+    for (const double ticks : {100.0, 200.0, 300.0, 400.0}) {
+        main.send(QEvent::MouseMove, press + QPointF{ticks * pixelsPerTick, 0}, Qt::LeftButton, Qt::NoModifier);
+    }
+    CHECK(processUntil([&] { return field->property("value").toDouble() == 400; }));
+    CHECK(clipItem->property("fadeIn").toDouble() == 400);
+    CHECK(audioClip(main, clip).fadeIn == 400);
+    main.send(QEvent::MouseButtonRelease, press + QPointF{400 * pixelsPerTick, 0}, Qt::NoButton, Qt::NoModifier);
+    MainWindow::settle();
+    CHECK(main.rig.controller->project().undoName() == "set clip fades");
+
+    main.rig.run("project.undo");
+    CHECK(audioClip(main, clip).fadeIn == 0);
+    CHECK(main.rig.controller->project().undoName() == undoBefore);
+    CHECK(processUntil([&] { return field->property("value").toDouble() == 0; }));
+    CHECK(clipItem->property("fadeIn").toDouble() == 0);
+
+    main.send(QEvent::MouseButtonPress, press, Qt::LeftButton, Qt::NoModifier);
+    main.send(QEvent::MouseMove, press + QPointF{300 * pixelsPerTick, 0}, Qt::LeftButton, Qt::NoModifier);
+    CHECK(processUntil([&] { return audioClip(main, clip).fadeIn == 300; }));
+    QTest::keyClick(main.window, Qt::Key_Escape);
+    CHECK(audioClip(main, clip).fadeIn == 0);
+    main.send(QEvent::MouseMove, press + QPointF{350 * pixelsPerTick, 0}, Qt::LeftButton, Qt::NoModifier);
+    main.send(QEvent::MouseButtonRelease, press + QPointF{350 * pixelsPerTick, 0}, Qt::NoButton, Qt::NoModifier);
+    MainWindow::settle();
+    CHECK(audioClip(main, clip).fadeIn == 0);
+    CHECK(main.rig.controller->project().undoName() == undoBefore);
+    main.rig.run("selection.clear");
+    MainWindow::settle();
+}
+
+TEST_CASE("dragging a track gain field moves its fader while the drag lasts") {
+    MainWindow& main = MainWindow::instance();
+    const std::string vox = main.rig.run("track.addAudio").at("id");
+    MainWindow::settle();
+    QQuickItem* field = main.item("track.setGain:" + qid(vox) + ":db");
+    QQuickItem* fader = main.item("track.setGain:" + qid(vox));
+    const QPointF press = field->mapToScene({field->width() / 2, field->height() / 2});
+
+    main.send(QEvent::MouseButtonPress, press, Qt::LeftButton, Qt::NoModifier);
+    for (int step = 1; step <= 5; ++step) {
+        main.send(QEvent::MouseMove, press + QPointF{8.0 * step, 0}, Qt::LeftButton, Qt::NoModifier);
+    }
+    CHECK(processUntil([&] { return fader->property("value").toDouble() == Catch::Approx(5.0); }));
+    main.send(QEvent::MouseButtonRelease, press + QPointF{40, 0}, Qt::NoButton, Qt::NoModifier);
+    MainWindow::settle();
+    main.rig.run("project.undo");
+    CHECK(trackOf(main, vox).gainDb == Catch::Approx(0.0));
+}
+
 TEST_CASE("the step arrows step the value without opening the editor, and stay while typing") {
     MainWindow& main = MainWindow::instance();
     const std::string vox = main.rig.run("track.addAudio").at("id");

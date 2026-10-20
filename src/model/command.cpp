@@ -88,8 +88,14 @@ Change changeOf(const Command& command) {
         Overloaded{[](const ReplaceTrack& op) { return Change{op.after.id}; }, [](const AddTrack&) { return Change{}; },
                    [](const RemoveTrack&) { return Change{}; }, [](const MoveTrack&) { return Change{}; },
                    [](const SetTempo&) { return Change{}; }, [](const SetClockPorts&) { return Change{}; },
-                   [](const SetPluginData&) { return Change{}; }, [](const Group&) { return Change{}; }},
+                   [](const SetPluginData&) { return Change{}; },
+                   [](const Group& op) {
+                       const auto changes = op.commands | std::views::transform(changeOf);
+                       return changes.empty() ? Change{} : std::ranges::fold_left(changes, changes.front(), merged);
+                   }},
         command.operation);
 }
+
+Change merged(const Change& first, const Change& second) { return first.track == second.track ? first : Change{}; }
 
 }  // namespace emerick::model

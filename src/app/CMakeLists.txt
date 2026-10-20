@@ -89,6 +89,7 @@ if(EMERICK_BUILD_TESTS)
         tests/code_highlighter_test.cpp
         tests/console_test.cpp
         tests/devices_test.cpp
+        tests/gesture_test.cpp
         tests/introspector_test.cpp
         tests/lua_host_test.cpp
         tests/mcp_server_test.cpp

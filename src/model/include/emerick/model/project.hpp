@@ -34,6 +34,12 @@ public:
     void group(std::string name, const std::function<void()>& edits);
     // The one path for property and clip edits: we edit a copy of the track and store it as one undo step.
     bool editTrack(const TrackId& id, std::string name, const std::function<void(Track&)>& edit);
+    // A gesture such as a drag is one undo step that each update replaces: we revert the last update's edits and run
+    // the new ones, so the document follows the drag. Any other edit, undo or redo ends the gesture first.
+    void updateGesture(std::string name, const std::function<void()>& edits);
+    // Keeps the gesture as one undo step and returns true, or drops it when the document is back where it started.
+    bool endGesture();
+    void cancelGesture();
 
     bool undo();
     bool redo();
@@ -47,20 +53,24 @@ public:
     void removeListener(std::size_t handle);
 
 private:
-    class GroupScope {
+    class DepthScope {
     public:
-        explicit GroupScope(Project& project);
-        ~GroupScope();
-        GroupScope(const GroupScope&) = delete;
-        GroupScope& operator=(const GroupScope&) = delete;
-        GroupScope(GroupScope&&) = delete;
-        GroupScope& operator=(GroupScope&&) = delete;
+        explicit DepthScope(int& depth);
+        ~DepthScope();
+        DepthScope(const DepthScope&) = delete;
+        DepthScope& operator=(const DepthScope&) = delete;
+        DepthScope(DepthScope&&) = delete;
+        DepthScope& operator=(DepthScope&&) = delete;
 
     private:
-        Project& project_;
+        int& depth_;
     };
 
     void execute(Command command);
+    // Folds the commands from first on into one step named name.
+    void collapseSince(std::size_t first, std::string name);
+    std::optional<Change> revertGesture();
+    void leaveGesture();
     void notify(const Change& change) const;
 
     Document document_;
@@ -70,6 +80,9 @@ private:
     std::size_t nextHandle_ = 1;
     int groupDepth_ = 0;
     bool groupChanged_ = false;
+    // history_[next_ - 1] is the open gesture's step.
+    bool gestureStep_ = false;
+    int gestureDepth_ = 0;
 };
 
 }  // namespace emerick::model

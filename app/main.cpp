@@ -3,7 +3,9 @@
 #include <QGuiApplication>
 #include <QQmlApplicationEngine>
 #include <QStandardPaths>
+#include <QtEnvironmentVariables>
 #include <QtLogging>
+#include <QtSystemDetection>
 #include <exception>
 #include <filesystem>
 #include <utility>
@@ -53,6 +55,10 @@ private:
 };
 
 int run(int argc, char** argv) {
+#ifdef Q_OS_MACOS
+    // A theme meant for Linux desktops, such as qt5ct, replaces the Cocoa theme, and with it the native file dialogs.
+    qunsetenv("QT_QPA_PLATFORMTHEME");
+#endif
     QGuiApplication application(argc, argv);
     QGuiApplication::setApplicationName("Emerick");
     QGuiApplication::setOrganizationName("Emerick");

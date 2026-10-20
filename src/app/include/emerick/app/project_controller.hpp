@@ -32,6 +32,7 @@ class ProjectController : public QObject {
     Q_PROPERTY(qint64 endTicks READ endTicks NOTIFY projectChanged)
     Q_PROPERTY(QVariantMap routeDevices READ routeDevices NOTIFY devicesChanged)
     Q_PROPERTY(QVariantMap inputLevels READ inputLevels NOTIFY inputLevelsChanged)
+    Q_PROPERTY(QVariantMap trackErrors READ trackErrors NOTIFY trackErrorsChanged)
     Q_PROPERTY(int midiChannelCount READ midiChannelCount CONSTANT)
     Q_PROPERTY(int trackColorCount READ trackColorCount CONSTANT)
     Q_PROPERTY(QString name READ name NOTIFY fileChanged)
@@ -115,6 +116,8 @@ public:
     // Per audio track id: peak, the loudest input sample of the last poll, and clipped, which stays set from the
     // first full scale sample until the next recording starts.
     [[nodiscard]] QVariantMap inputLevels() const { return inputLevels_; }
+    // Per track id, the reasons its routes do not play, one per line.
+    [[nodiscard]] QVariantMap trackErrors() const { return trackErrors_; }
     [[nodiscard]] static int midiChannelCount() { return kMidiChannels; }
     [[nodiscard]] static int trackColorCount() { return kTrackColors; }
 
@@ -125,6 +128,7 @@ signals:
     void projectChanged();
     void devicesChanged();
     void inputLevelsChanged();
+    void trackErrorsChanged();
     // The folder, the name or the edited flag changed.
     void fileChanged();
 
@@ -140,6 +144,7 @@ private:
     void waitForEngine(const std::function<bool()>& reached);
     void startEngine();
     void publish();
+    void updateTrackErrors();
     void poll();
     void readInputLevels();
     void addTake(const engine::RecordedTake& take);
@@ -167,6 +172,7 @@ private:
     core::Ticks lastTicks_ = -1;
     bool lastPlaying_ = false;
     QVariantMap inputLevels_;
+    QVariantMap trackErrors_;
     QTimer timer_;
 };
 

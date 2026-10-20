@@ -141,6 +141,16 @@ Rectangle {
                 ports: Project.routeDevices.midiOut
                 route: panel.midiOut
             }
+            Label {
+                objectName: "inspector.trackErrors"
+                visible: text !== ""
+                text: Project.trackErrors[panel.trackId] ?? ""
+                color: Theme.rec
+                font.pixelSize: Theme.textLabel
+                wrapMode: Text.Wrap
+                Layout.topMargin: Theme.space2
+                Layout.fillWidth: true
+            }
 
             Loader {
                 active: panel.clip !== undefined

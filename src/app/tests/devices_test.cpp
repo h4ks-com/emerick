@@ -122,6 +122,9 @@ TEST_CASE("a track on a device that cannot run at the engine's rate leaves the o
           Json{{"track", headphones.id.value},
                {"message", "Digital Keyboard runs at 44100 Hz; set Audio > Sample rate to 44100 and restart Emerick"}});
     CHECK(rig.audio->lastRequest().deviceIds == std::vector<std::string>{kMotuId});
+    CHECK(rig.controller->trackErrors() ==
+          QVariantMap{{QString::fromStdString(headphones.id.value),
+                       "Digital Keyboard runs at 44100 Hz; set Audio > Sample rate to 44100 and restart Emerick"}});
 }
 
 TEST_CASE("the stream opens on play with only the outputs, and closes again once stopped") {

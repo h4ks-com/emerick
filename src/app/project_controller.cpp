@@ -382,6 +382,22 @@ void ProjectController::publish() {
     } catch (const std::runtime_error& error) {
         sessionError_ = error.what();
     }
+    updateTrackErrors();
+}
+
+void ProjectController::updateTrackErrors() {
+    QVariantMap errors;
+    for (const auto* list : {&engine_.sessionErrors(), &std::as_const(routeErrors_)}) {
+        for (const engine::SessionError& error : *list) {
+            const QString id = QString::fromStdString(error.trackId);
+            const QString previous = errors.value(id).toString();
+            errors[id] = (previous.isEmpty() ? QString{} : previous + "\n") + QString::fromStdString(error.message);
+        }
+    }
+    if (errors != trackErrors_) {
+        trackErrors_ = std::move(errors);
+        emit trackErrorsChanged();
+    }
 }
 
 void ProjectController::poll() {
@@ -389,6 +405,7 @@ void ProjectController::poll() {
         refreshDevices();
     }
     engine_.releaseIdleStream();
+    updateTrackErrors();
     collectTakes();
     readInputLevels();
     const core::Ticks ticks = engine_.position().ticks;

@@ -86,6 +86,18 @@ void registerConsoleActions(Registry& registry, Nav& nav, Console& console) {
                                 return Json{{"text", text}};
                             },
                         .quiet = true});
+    registry.addAction({.id = "console.copyAll",
+                        .title = "Copy console",
+                        .aliases = {"copy log", "copy all console lines"},
+                        .category = kConsoleCategory,
+                        .run =
+                            [&console](const Json&) {
+                                const std::string text = console.shownText();
+                                QGuiApplication::clipboard()->setText(qs(text));
+                                return Json{{"text", text}};
+                            },
+                        .location = "console",
+                        .quiet = true});
     registry.addAction({.id = "console.runAgain",
                         .title = "Run console line again",
                         .category = kConsoleCategory,

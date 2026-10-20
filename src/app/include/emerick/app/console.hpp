@@ -53,6 +53,8 @@ public:
     [[nodiscard]] ConsoleFilter filter() const { return filter_; }
     [[nodiscard]] const std::deque<ConsoleEntry>& entries() const { return entries_; }
     [[nodiscard]] const ConsoleEntry& entry(int serial) const;
+    // The lines the filter shows, one per line as the console view shows them.
+    [[nodiscard]] std::string shownText() const;
     // The last count lines as {kind, text, source}.
     [[nodiscard]] Json recent(std::size_t count) const;
     [[nodiscard]] std::vector<std::string> history() const;

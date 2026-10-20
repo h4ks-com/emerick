@@ -1,6 +1,9 @@
+#include <QClipboard>
+#include <QGuiApplication>
 #include <QQuickTextDocument>
 #include <QTextBlock>
 #include <QTextCursor>
+#include <QtSystemDetection>
 #include <algorithm>
 #include <catch2/catch_test_macros.hpp>
 #include <ranges>
@@ -85,6 +88,81 @@ TEST_CASE("the console panel completes action ids, runs Lua and logs the action 
     CHECK(main.console.entries().back().text == "8");
 
     QTest::keyClick(main.window, Qt::Key_L, Qt::ControlModifier);
+    CHECK(main.console.entries().empty());
+    main.rig.run("view.toggleConsole");
+    MainWindow::settle();
+}
+
+TEST_CASE("the console log selects all and copies with the standard keys once clicked") {
+    MainWindow& main = MainWindow::instance();
+    main.rig.run("view.toggleConsole");
+    main.console.eval("print('first')");
+    main.console.eval("print('second')");
+    QQuickItem* output = main.item("console.output");
+    main.click(output);
+    REQUIRE(processUntil([&] { return output->hasActiveFocus(); }));
+
+    QTest::keyClick(main.window, Qt::Key_A, Qt::ControlModifier);
+    CHECK(output->property("selectedText").toString().contains("first"));
+    QTest::keyClick(main.window, Qt::Key_C, Qt::ControlModifier);
+    CHECK(QGuiApplication::clipboard()->text() == output->property("selectedText").toString());
+
+    QGuiApplication::clipboard()->clear();
+    main.click(main.item("console.copyAll"));
+    CHECK(QGuiApplication::clipboard()->text() == QString::fromStdString(main.console.shownText()));
+    main.rig.run("console.clear");
+    main.rig.run("view.toggleConsole");
+    MainWindow::settle();
+}
+
+TEST_CASE("the console prompt takes readline keys on the physical Control key and keeps Cmd for editing") {
+    MainWindow& main = MainWindow::instance();
+    main.rig.run("view.toggleConsole");
+    QQuickItem* input = main.item("console.eval");
+    REQUIRE(processUntil([&] { return input->hasActiveFocus(); }));
+    const auto cursor = [&] { return input->property("cursorPosition").toInt(); };
+    const auto text = [&] { return input->property("text").toString(); };
+#ifdef Q_OS_MACOS
+    constexpr Qt::KeyboardModifier kReadline = Qt::MetaModifier;
+#else
+    constexpr Qt::KeyboardModifier kReadline = Qt::ControlModifier;
+#endif
+
+    type(main.window, "return 1");
+    QTest::keyClick(main.window, Qt::Key_Return);
+    type(main.window, "foo bar");
+    QTest::keyClick(main.window, Qt::Key_A, kReadline);
+    CHECK(cursor() == 0);
+    QTest::keyClick(main.window, Qt::Key_F, kReadline);
+    CHECK(cursor() == 1);
+    QTest::keyClick(main.window, Qt::Key_E, kReadline);
+    CHECK(cursor() == 7);
+    QTest::keyClick(main.window, Qt::Key_B, kReadline);
+    CHECK(cursor() == 6);
+    QTest::keyClick(main.window, Qt::Key_K, kReadline);
+    CHECK(text() == "foo ba");
+    QTest::keyClick(main.window, Qt::Key_W, kReadline);
+    CHECK(text() == "foo ");
+    QTest::keyClick(main.window, Qt::Key_U, kReadline);
+    CHECK(text().isEmpty());
+    QTest::keyClick(main.window, Qt::Key_P, kReadline);
+    CHECK(text() == "return 1");
+    QTest::keyClick(main.window, Qt::Key_N, kReadline);
+    CHECK(text().isEmpty());
+
+#ifdef Q_OS_MACOS
+    type(main.window, "abc");
+    QTest::keyClick(main.window, Qt::Key_A, Qt::ControlModifier);
+    CHECK(input->property("selectedText") == "abc");
+    QTest::keyClick(main.window, Qt::Key_C, Qt::ControlModifier);
+    CHECK(QGuiApplication::clipboard()->text() == "abc");
+    QTest::keyClick(main.window, Qt::Key_X, Qt::ControlModifier);
+    CHECK(text().isEmpty());
+    QTest::keyClick(main.window, Qt::Key_V, Qt::ControlModifier);
+    CHECK(text() == "abc");
+#endif
+
+    QTest::keyClick(main.window, Qt::Key_L, kReadline);
     CHECK(main.console.entries().empty());
     main.rig.run("view.toggleConsole");
     MainWindow::settle();

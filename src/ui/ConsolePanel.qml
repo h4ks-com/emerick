@@ -55,8 +55,12 @@ DockPanel {
                     Layout.fillWidth: true
                 }
                 ChromeButton {
+                    objectName: "console.copyAll"
+                    iconName: "copy"
+                }
+                ChromeButton {
                     objectName: "console.clear"
-                    text: "Clear"
+                    iconName: "broom"
                 }
                 ChromeButton {
                     objectName: "view.toggleConsole"
@@ -108,11 +112,8 @@ DockPanel {
                 TapHandler {
                     acceptedButtons: Qt.RightButton
                     onTapped: eventPoint => {
-                        const line = Console.entryAt(output.positionAt(eventPoint.position.x, eventPoint.position.y))
-                        if (line.serial !== undefined) {
-                            lineMenu.line = line
-                            lineMenu.popup()
-                        }
+                        lineMenu.line = Console.entryAt(output.positionAt(eventPoint.position.x, eventPoint.position.y))
+                        lineMenu.popup()
                     }
                 }
             }
@@ -135,7 +136,13 @@ DockPanel {
                 objectName: "console.copyEntry"
                 actionId: "console.copyEntry"
                 title: Registry.actionInfo(actionId).title
+                available: lineMenu.line.serial !== undefined
                 params: ({entry: lineMenu.line.serial})
+            }
+            ActionMenuItem {
+                objectName: "console.copyAll"
+                actionId: "console.copyAll"
+                title: Registry.actionInfo(actionId).title
             }
             ActionMenuItem {
                 objectName: "console.runAgain"
@@ -174,6 +181,9 @@ DockPanel {
                 leftPadding: 0
                 wrapMode: TextEdit.Wrap
                 placeholderText: "Enter Lua to run, Shift+Enter adds a line, Tab completes"
+                ToolTip.text: placeholderText
+                ToolTip.visible: hovered && !activeFocus
+                ToolTip.delay: Theme.tooltipDelay
                 placeholderTextColor: Theme.inkDim
                 color: Theme.ink
                 selectionColor: Theme.rule
@@ -212,10 +222,52 @@ DockPanel {
                     cursorPosition = text.length
                     dismissed = true
                 }
+                function step(by) {
+                    if (completing) {
+                        by < 0 ? completions.decrementCurrentIndex() : completions.incrementCurrentIndex()
+                    } else {
+                        recall(by)
+                    }
+                }
                 function run() {
                     const code = text
                     text = ""
                     Registry.runAction("console.eval", {code: code})
+                }
+                function lineStart() {
+                    return text.lastIndexOf("\n", cursorPosition - 1) + 1
+                }
+                function lineEnd() {
+                    const end = text.indexOf("\n", cursorPosition)
+                    return end < 0 ? text.length : end
+                }
+                function wordStart() {
+                    let at = cursorPosition
+                    while (at > 0 && /\s/.test(text[at - 1])) {
+                        at--
+                    }
+                    while (at > 0 && !/\s/.test(text[at - 1])) {
+                        at--
+                    }
+                    return at
+                }
+
+                // The readline keys use the physical Control key, which Qt reports as Meta on macOS, where Cmd is Control.
+                readonly property int readlineModifier: Qt.platform.os === "osx" ? Qt.MetaModifier : Qt.ControlModifier
+                readonly property var readlineKeys: ({
+                    [Qt.Key_A]: () => cursorPosition = lineStart(),
+                    [Qt.Key_E]: () => cursorPosition = lineEnd(),
+                    [Qt.Key_B]: () => cursorPosition = Math.max(0, cursorPosition - 1),
+                    [Qt.Key_F]: () => cursorPosition = Math.min(text.length, cursorPosition + 1),
+                    [Qt.Key_U]: () => remove(lineStart(), cursorPosition),
+                    [Qt.Key_K]: () => remove(cursorPosition, lineEnd()),
+                    [Qt.Key_W]: () => remove(wordStart(), cursorPosition),
+                    [Qt.Key_P]: () => step(-1),
+                    [Qt.Key_N]: () => step(1),
+                    [Qt.Key_L]: () => Registry.activate("console.clear")
+                })
+                function readlineKey(event) {
+                    return event.modifiers === readlineModifier ? readlineKeys[event.key] : undefined
                 }
 
                 onTextChanged: {
@@ -224,10 +276,15 @@ DockPanel {
                 }
                 onCursorPositionChanged: refresh()
 
+                Keys.onShortcutOverride: event => event.accepted = readlineKey(event) !== undefined
                 Keys.onPressed: event => {
                     const sequence = Registry.keySequence(event.key, event.modifiers)
                     const shortcut = panel.promptActions.find(id => Registry.actionInfo(id).shortcut === sequence)
-                    if (shortcut !== undefined) {
+                    const readline = readlineKey(event)
+                    if (readline !== undefined) {
+                        event.accepted = true
+                        readline()
+                    } else if (shortcut !== undefined) {
                         event.accepted = true
                         Registry.activate(shortcut)
                     } else if ((event.key === Qt.Key_Return || event.key === Qt.Key_Enter) && !(event.modifiers & Qt.ShiftModifier)) {
@@ -243,22 +300,12 @@ DockPanel {
                     } else if (event.key === Qt.Key_Escape && completing) {
                         event.accepted = true
                         dismissed = true
-                    } else if (event.key === Qt.Key_Up) {
-                        if (completing) {
-                            event.accepted = true
-                            completions.decrementCurrentIndex()
-                        } else if (text.lastIndexOf("\n", cursorPosition - 1) < 0) {
-                            event.accepted = true
-                            recall(-1)
-                        }
-                    } else if (event.key === Qt.Key_Down) {
-                        if (completing) {
-                            event.accepted = true
-                            completions.incrementCurrentIndex()
-                        } else if (text.indexOf("\n", cursorPosition) < 0) {
-                            event.accepted = true
-                            recall(1)
-                        }
+                    } else if (event.key === Qt.Key_Up && (completing || lineStart() === 0)) {
+                        event.accepted = true
+                        step(-1)
+                    } else if (event.key === Qt.Key_Down && (completing || lineEnd() === text.length)) {
+                        event.accepted = true
+                        step(1)
                     }
                 }
 

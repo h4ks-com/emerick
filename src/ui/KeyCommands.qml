@@ -18,6 +18,9 @@ ColumnLayout {
         id: search
         objectName: "keys.search"
         placeholderText: "Search actions and keys"
+        ToolTip.text: placeholderText
+        ToolTip.visible: hovered && !activeFocus
+        ToolTip.delay: Theme.tooltipDelay
         placeholderTextColor: Theme.inkDim
         color: Theme.ink
         font.pixelSize: Theme.textBody

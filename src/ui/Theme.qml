@@ -125,7 +125,7 @@ QtObject {
     readonly property color beatLine: Qt.rgba(1, 1, 1, 0.03)
 
     // Track icons are Phosphor names; an icon we do not bundle shows as a note.
-    readonly property var icons: ["circle", "dots-three", "file", "gear-six", "guitar", "magnifying-glass", "metronome", "music-note", "music-notes", "pause", "piano-keys", "play", "sidebar-simple", "skip-back", "sliders", "squares-four", "stop", "waveform", "x"]
+    readonly property var icons: ["broom", "circle", "copy", "dots-three", "file", "gear-six", "guitar", "magnet", "magnifying-glass", "metronome", "music-note", "music-notes", "pause", "piano-keys", "play", "sidebar-simple", "skip-back", "sliders", "squares-four", "stop", "waveform", "x"]
     function iconSource(name) {
         return "icons/" + (icons.indexOf(name) >= 0 ? name : "music-note") + ".svg"
     }

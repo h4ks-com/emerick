@@ -56,6 +56,7 @@ Rectangle {
                 id: integerRow
                 DragNumber {
                     objectName: integerRow.modelData.id
+                    toolTip: integerRow.modelData.title
                     enabled: !integerRow.modelData.readOnly
                     from: integerRow.modelData.minimum
                     to: integerRow.modelData.maximum
@@ -70,6 +71,7 @@ Rectangle {
                 id: numberRow
                 DragNumber {
                     objectName: numberRow.modelData.id
+                    toolTip: numberRow.modelData.title
                     enabled: !numberRow.modelData.readOnly
                     from: numberRow.modelData.minimum
                     to: numberRow.modelData.maximum
@@ -93,6 +95,9 @@ Rectangle {
                         objectName: stringRow.modelData.id
                         enabled: !stringRow.modelData.readOnly
                         text: Registry.settings[objectName]
+                        ToolTip.text: stringRow.modelData.title
+                        ToolTip.visible: hovered && !activeFocus
+                        ToolTip.delay: Theme.tooltipDelay
                         onEditingFinished: Registry.setSettingValue(objectName, text)
                     }
                 }
@@ -103,6 +108,7 @@ Rectangle {
                         implicitWidth: Theme.menuWidth
                         enabled: !stringRow.modelData.readOnly
                         acceptsText: true
+                        toolTip: stringRow.modelData.title
                         model: stringRow.modelData.suggestions
                         currentId: Registry.settings[objectName]
                         onPicked: entry => Registry.setSettingValue(objectName, entry.id)
@@ -119,6 +125,9 @@ Rectangle {
                     objectName: booleanRow.modelData.id
                     enabled: !booleanRow.modelData.readOnly
                     checked: Registry.settings[objectName]
+                    ToolTip.text: booleanRow.modelData.title
+                    ToolTip.visible: hovered
+                    ToolTip.delay: Theme.tooltipDelay
                     onToggled: Registry.setSettingValue(objectName, checked)
                 }
             }
@@ -130,6 +139,7 @@ Rectangle {
                 SearchCombo {
                     objectName: choiceRow.modelData.id
                     enabled: !choiceRow.modelData.readOnly
+                    toolTip: choiceRow.modelData.title
                     model: choiceRow.modelData.choices.map(choice => ({id: String(choice), name: String(choice), value: choice}))
                     currentId: String(Registry.settings[objectName])
                     onPicked: entry => Registry.setSettingValue(objectName, entry.value)
@@ -146,6 +156,7 @@ Rectangle {
                         name: routeRow.modelData.id
                         devices: routeRow.modelData.suggestions
                         route: Registry.settings[name]
+                        toolTip: routeRow.modelData.title
                         onPicked: params => Registry.setSettingValue(name, params)
                         Layout.preferredWidth: Theme.menuWidth
                     }
@@ -192,13 +203,11 @@ Rectangle {
                             Layout.topMargin: Theme.space4
                             Layout.leftMargin: Theme.space2
                         }
-                        Button {
+                        ChromeButton {
                             id: sectionButton
                             objectName: "settings.show." + sectionEntry.modelData.key
                             text: sectionEntry.modelData.title
-                            flat: true
                             Layout.fillWidth: true
-                            onClicked: Registry.activate(objectName)
                             contentItem: Text {
                                 text: sectionButton.text
                                 color: sectionEntry.current ? Theme.ink : Theme.inkDim

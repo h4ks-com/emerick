@@ -1,5 +1,7 @@
 #include "emerick/app/console.hpp"
 
+#include <QClipboard>
+#include <QGuiApplication>
 #include <QTextBlock>
 #include <QTextDocument>
 #include <algorithm>
@@ -192,6 +194,20 @@ TEST_CASE("the console keeps the last 5000 lines in its stream and its view") {
     fixture.console.setFilter(ConsoleFilter::Errors);
     CHECK(document.blockCount() == 1);
     CHECK(document.firstBlock().text() == "console:1: late");
+}
+
+TEST_CASE("console.copyAll copies the lines the filter shows as the view shows them") {
+    ConsoleRig fixture;
+    QTextDocument document;
+    fixture.console.attach(&document, {});
+    fixture.console.eval("print('one')");
+    fixture.console.eval("error('two')");
+    fixture.rig.registry.run("view.toggleConsole", Json::object(), ActionSource::Ui);
+    CHECK(fixture.rig.run("console.copyAll").at("text") == document.toPlainText().toStdString());
+    CHECK(QGuiApplication::clipboard()->text() == document.toPlainText());
+
+    fixture.rig.run("console.setFilter", {{"filter", "errors"}});
+    CHECK(fixture.rig.run("console.copyAll").at("text") == "console:1: two");
 }
 
 TEST_CASE("console.log reads recent lines over MCP and a server without Lua refuses Lua actions") {

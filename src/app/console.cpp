@@ -29,6 +29,10 @@ std::string shown(const Json& value) {
 
 std::size_t index(ConsoleLine kind) { return static_cast<std::size_t>(kind); }
 
+std::string sourceTag(const ConsoleEntry& line) {
+    return line.kind == ConsoleLine::Log ? "  -- " + enumKey(line.source) : std::string{};
+}
+
 // Where the Lua starts in a line that shows code: after the prompt of an input line, or the whole action line.
 std::optional<qsizetype> codeStart(ConsoleLine kind) {
     constexpr qsizetype kPromptLength = 2;
@@ -163,6 +167,15 @@ const ConsoleEntry& Console::entry(int serial) const {
         throw AppError("console line " + std::to_string(serial) + " is no longer kept");
     }
     return entries_[static_cast<std::size_t>(serial - entries_.front().serial)];
+}
+
+std::string Console::shownText() const {
+    std::string text;
+    for (const ConsoleEntry& line :
+         entries_ | std::views::filter([this](const ConsoleEntry& entry) { return shows(entry.kind); })) {
+        text += (text.empty() ? "" : "\n") + line.text + sourceTag(line);
+    }
+    return text;
 }
 
 Json Console::recent(std::size_t count) const {
@@ -310,9 +323,7 @@ void Console::render(const ConsoleEntry& line) {
         }
         cursor.movePosition(QTextCursor::End);
     }
-    if (line.kind == ConsoleLine::Log) {
-        cursor.insertText(qs("  -- " + enumKey(line.source)), sourceFormat_);
-    }
+    cursor.insertText(qs(sourceTag(line)), sourceFormat_);
     cursor.block().setUserState(line.serial);
 }
 

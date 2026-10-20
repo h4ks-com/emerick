@@ -342,10 +342,12 @@ Rectangle {
             anchors.verticalCenter: parent.verticalCenter
             anchors.right: parent.right
             anchors.rightMargin: Theme.space2
+            implicitWidth: Theme.headerButton
             implicitHeight: Theme.headerButton
-            text: "Snap"
+            iconName: "magnet"
+            iconColor: Theme.inkDim
             active: Registry.settings["edit.snap"] === true
-            activeColor: Theme.inkDim
+            activeColor: Theme.ink
         }
         Rectangle {
             anchors.bottom: parent.bottom

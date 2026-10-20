@@ -138,8 +138,9 @@ Item {
         return null
     }
 
-    ToolTip.text: actionId ? Registry.actionInfo(actionId).title : ""
-    ToolTip.visible: actionId !== "" && hover.hovered && !held && !editing
+    property string toolTip: actionId ? Registry.actionInfo(actionId).title : ""
+    ToolTip.text: toolTip
+    ToolTip.visible: toolTip !== "" && hover.hovered && !held && !editing
     ToolTip.delay: Theme.tooltipDelay
 
     HoverHandler {

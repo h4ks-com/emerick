@@ -45,6 +45,9 @@ Popup {
             objectName: "palette.query"
             width: parent.width
             placeholderText: "Search actions and settings, or type > to run Lua"
+            ToolTip.text: placeholderText
+            ToolTip.visible: hovered && !activeFocus
+            ToolTip.delay: Theme.tooltipDelay
             placeholderTextColor: Theme.inkDim
             color: Theme.ink
             font.pixelSize: Theme.textTitle

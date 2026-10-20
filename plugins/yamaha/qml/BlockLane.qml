@@ -56,6 +56,9 @@ Item {
             border.width: activeFocus ? Theme.hairline : 0
             border.color: Theme.tape
             Keys.onDeletePressed: lane.run("delete", {at: modelData.at})
+            ToolTip.text: Registry.actionInfo(lane.actionPrefix + ".move").title
+            ToolTip.visible: blockArea.containsMouse && !blockArea.pressed
+            ToolTip.delay: Theme.tooltipDelay
 
             Text {
                 anchors.verticalCenter: parent.verticalCenter
@@ -67,7 +70,9 @@ Item {
             }
 
             MouseArea {
+                id: blockArea
                 anchors.fill: parent
+                hoverEnabled: true
                 drag.target: block
                 drag.axis: Drag.XAxis
                 drag.minimumX: 0
@@ -91,6 +96,9 @@ Item {
         height: lane.height
         width: Theme.labelWidth
         text: lane.editText
+        ToolTip.text: Registry.actionInfo(lane.actionPrefix + ".set").title
+        ToolTip.visible: hovered && !activeFocus
+        ToolTip.delay: Theme.tooltipDelay
         font.pixelSize: Theme.textBody
         onAccepted: {
             const params = {at: lane.editAt}

@@ -48,6 +48,8 @@ public:
     // Closes the stream once the transport stopped and no track listens live, so other apps have the devices to
     // themselves.
     void releaseIdleStream();
+    // A warm engine opens its stream now and keeps it open while stopped, so Play starts without opening devices.
+    void keepWarm(bool value);
 
     // We list devices once at startup and again on refreshDevices, so reading these never asks the hardware.
     [[nodiscard]] const std::vector<AudioDeviceInfo>& audioDevices() const;

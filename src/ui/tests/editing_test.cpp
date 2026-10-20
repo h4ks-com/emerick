@@ -82,6 +82,28 @@ TEST_CASE("the device picker filters as you type, picks with Enter and shows the
     CHECK(warnings().filter("polish() loop").isEmpty());
 }
 
+TEST_CASE("clicking a device in the picker's list picks it") {
+    MainWindow& main = MainWindow::instance();
+    const std::string vox = main.rig.run("track.addAudio").at("id");
+    const QString picker = "track.setAudioIn:" + qid(vox);
+    main.click(main.item(picker));
+    QObject* popup = main.item(picker)->property("popup").value<QObject*>();
+    REQUIRE(processUntil([&] { return popup->property("opened").toBool(); }));
+    typeText(main, "motu");
+    processUntil([] { return false; }, 100);
+
+    auto* list = qobject_cast<QQuickItem*>(popup->property("contentItem").value<QObject*>());
+    REQUIRE(list != nullptr);
+    QQuickItem* row = nullptr;
+    QMetaObject::invokeMethod(list, "itemAtIndex", Q_RETURN_ARG(QQuickItem*, row), Q_ARG(int, 0));
+    REQUIRE(row != nullptr);
+    main.click(row);
+    CHECK(processUntil([&] { return !popup->property("opened").toBool(); }));
+
+    CHECK(trackOf(main, vox).audioIn.deviceId == kMotuId);
+    MainWindow::settle();
+}
+
 TEST_CASE("the channel pickers set only the channels of the route") {
     MainWindow& main = MainWindow::instance();
     const std::string vox = main.rig.run("track.addAudio").at("id");

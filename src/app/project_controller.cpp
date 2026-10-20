@@ -1,6 +1,7 @@
 #include "emerick/app/project_controller.hpp"
 
 #include <QCoreApplication>
+#include <QGuiApplication>
 #include <QtLogging>
 #include <algorithm>
 #include <chrono>
@@ -23,6 +24,8 @@ namespace emerick::app {
 namespace {
 
 constexpr auto kPollPeriod = std::chrono::milliseconds{30};
+// After the user leaves the app we keep the devices open this long, so switching windows briefly costs no restart.
+constexpr auto kWarmAfterLeaving = std::chrono::seconds{20};
 constexpr auto kTransportTimeout = std::chrono::milliseconds{500};
 constexpr auto kTakeTimeout = std::chrono::seconds{3};
 // The take writer polls every 5 ms, so a MIDI take that has events arrives well within this.
@@ -385,6 +388,25 @@ void ProjectController::publish() {
     updateTrackErrors();
 }
 
+void ProjectController::keepWarmWhileActive() {
+    const auto now = std::chrono::steady_clock::now();
+    if (QGuiApplication::applicationState() == Qt::ApplicationActive) {
+        lastActive_ = now;
+    }
+    const bool warm = lastActive_.has_value() && now - *lastActive_ < kWarmAfterLeaving;
+    if (warm == warm_) {
+        return;
+    }
+    warm_ = warm;
+    try {
+        engine_.keepWarm(warm);
+    } catch (const std::invalid_argument& error) {
+        sessionError_ = error.what();
+    } catch (const std::runtime_error& error) {
+        sessionError_ = error.what();
+    }
+}
+
 void ProjectController::updateTrackErrors() {
     QVariantMap errors;
     for (const auto* list : {&engine_.sessionErrors(), &std::as_const(routeErrors_)}) {
@@ -404,6 +426,7 @@ void ProjectController::poll() {
     if (engine_.devicesChanged()) {
         refreshDevices();
     }
+    keepWarmWhileActive();
     engine_.releaseIdleStream();
     updateTrackErrors();
     collectTakes();

@@ -4,9 +4,11 @@
 #include <QString>
 #include <QTimer>
 #include <QVariantMap>
+#include <chrono>
 #include <filesystem>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <set>
 #include <string>
 #include <vector>
@@ -145,6 +147,7 @@ private:
     void startEngine();
     void publish();
     void updateTrackErrors();
+    void keepWarmWhileActive();
     void poll();
     void readInputLevels();
     void addTake(const engine::RecordedTake& take);
@@ -173,6 +176,8 @@ private:
     bool lastPlaying_ = false;
     QVariantMap inputLevels_;
     QVariantMap trackErrors_;
+    std::optional<std::chrono::steady_clock::time_point> lastActive_;
+    bool warm_ = false;
     QTimer timer_;
 };
 

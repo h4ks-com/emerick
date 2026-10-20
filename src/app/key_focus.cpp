@@ -74,12 +74,13 @@ bool editsText(QObject* focus, const QKeyEvent& key) {
 
 // A picker's list is a popup in the window's overlay, and the picker moves its own field's focus.
 bool insidePopup(const QQuickWindow& window, QPointF scenePosition) {
-    const auto* overlay = window.property("overlay").value<QQuickItem*>();
-    if (overlay == nullptr) {
-        return false;
+    for (const QQuickItem* layer : window.contentItem()->childItems()) {
+        if (layer->inherits("QQuickOverlay")) {
+            const QPointF at = layer->mapFromScene(scenePosition);
+            return layer->childAt(at.x(), at.y()) != nullptr;
+        }
     }
-    const QPointF at = overlay->mapFromScene(scenePosition);
-    return overlay->childAt(at.x(), at.y()) != nullptr;
+    return false;
 }
 
 // A control such as a number field whose step arrows sit beside its editor marks itself with editScope, so a press

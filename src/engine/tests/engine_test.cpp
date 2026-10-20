@@ -115,6 +115,24 @@ TEST_CASE("a stopped session with no track listening opens no device and still l
     CHECK(rig.engine.position().frames == 24000 + kBlock);
 }
 
+TEST_CASE("a warm engine keeps its routed outputs open while stopped, and a session without routes opens nothing") {
+    Rig rig;
+    rig.engine.setSession({.tempo = kTempo, .tracks = {}});
+    rig.engine.keepWarm(true);
+    CHECK_FALSE(rig.audio.isOpen());
+
+    Track vox{.id = "vox", .kind = TrackKind::audio};
+    vox.audioOut = {"keyboard", {1, 2}};
+    rig.engine.setSession({.tempo = kTempo, .tracks = {vox}});
+    CHECK(rig.audio.isOpen());
+    rig.engine.releaseIdleStream();
+    CHECK(rig.audio.isOpen());
+
+    rig.engine.keepWarm(false);
+    rig.engine.releaseIdleStream();
+    CHECK_FALSE(rig.audio.isOpen());
+}
+
 TEST_CASE("only armed or monitored tracks open their input device, after every output device") {
     Rig rig;
     Track vox{.id = "vox", .kind = TrackKind::audio, .armed = true};

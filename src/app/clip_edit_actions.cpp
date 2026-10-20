@@ -128,7 +128,7 @@ void registerClipboardActions(Registry& registry, ProjectController& controller,
                                 copyClips(controller, nav, *clipboard);
                                 return Json{{"copied", clipboard->size()}};
                             },
-                        .menus = {kEditMenu}});
+                        .menus = {kEditMenu, kClipContextMenu}});
     registry.addAction({.id = "clip.cut",
                         .title = "Cut clips",
                         .aliases = {"cut"},
@@ -140,7 +140,7 @@ void registerClipboardActions(Registry& registry, ProjectController& controller,
                                 deleteClips(controller, selectedClips(controller, nav));
                                 return Json{{"copied", clipboard->size()}};
                             },
-                        .menus = {kEditMenu}});
+                        .menus = {kEditMenu, kClipContextMenu}});
     registry.addAction(
         {.id = "clip.paste",
          .title = "Paste clips",
@@ -150,7 +150,7 @@ void registerClipboardActions(Registry& registry, ProjectController& controller,
          .schema = {{"properties", {{"track", {{"type", "string"}}}, {"at", Json::object()}}}},
          .run = [&registry, &controller, &nav,
                  clipboard](const Json& params) { return pasteClips(registry, controller, nav, *clipboard, params); },
-         .menus = {kEditMenu, kLaneContextMenu}});
+         .menus = {kEditMenu, kClipContextMenu, kLaneContextMenu}});
 }
 
 }  // namespace

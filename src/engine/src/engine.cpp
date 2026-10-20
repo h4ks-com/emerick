@@ -64,6 +64,7 @@ struct Engine::Impl {
     std::optional<StreamRequest> layoutRequest;
     bool streamOpen = false;
     bool transportRequested = false;
+    bool warm = false;
     std::vector<SessionError> errors;
     std::uint64_t locatesRequested = 0;
     RealtimeState rt;
@@ -143,7 +144,7 @@ struct Engine::Impl {
         if (changed && streamOpen) {
             closeStream();
         }
-        if (!streamOpen && (transportRequested || listensLive(next))) {
+        if (!streamOpen && (transportRequested || warm || listensLive(next))) {
             openStream(request, next);
         } else {
             if (changed) {
@@ -168,8 +169,15 @@ struct Engine::Impl {
         push({.type = Command::Type::stop});
     }
 
+    void keepWarm(bool value) {
+        warm = value;
+        if (const StreamRequest request = requestFor(session); warm && !streamOpen && !request.deviceIds.empty()) {
+            openStream(request, session);
+        }
+    }
+
     void releaseIdleStream() {
-        if (streamOpen && !transportRequested && !rt.publishedPlaying.load(std::memory_order_relaxed) &&
+        if (streamOpen && !warm && !transportRequested && !rt.publishedPlaying.load(std::memory_order_relaxed) &&
             !listensLive(session) && builder.midiFlushed()) {
             audio->close();
             streamOpen = false;
@@ -300,6 +308,8 @@ bool Engine::devicesChanged() const {
 void Engine::refreshDevices() { impl_->refreshDevices(); }
 
 void Engine::releaseIdleStream() { impl_->releaseIdleStream(); }
+
+void Engine::keepWarm(bool value) { impl_->keepWarm(value); }
 
 void Engine::play() { impl_->play(); }
 

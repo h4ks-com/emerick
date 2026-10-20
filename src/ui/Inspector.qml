@@ -22,6 +22,7 @@ Rectangle {
         required property string actionId
         required property string trackId
         name: actionId + ":" + trackId
+        toolTip: Registry.actionInfo(actionId).title
         onPicked: params => Registry.runAction(actionId, Object.assign({track: trackId}, params))
         Layout.fillWidth: true
     }

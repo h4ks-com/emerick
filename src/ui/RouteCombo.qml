@@ -9,5 +9,6 @@ SearchCombo {
     property string part
     objectName: actionId + ":" + trackId + (part ? ":" + part : "")
     missingText: part ? currentId : "Missing device"
+    toolTip: Registry.actionInfo(actionId).title
     onPicked: entry => Registry.runAction(actionId, Object.assign({track: trackId}, entry.params))
 }

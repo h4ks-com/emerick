@@ -10,6 +10,7 @@ Item {
     property var model: []
     property string currentId
     property bool acceptsText: false
+    property string toolTip
     // What the closed picker shows when no entry has currentId.
     property string missingText: currentId
     readonly property var current: model.find(entry => entry.id === currentId)
@@ -74,6 +75,9 @@ Item {
             radius: Theme.radiusClip
             color: popup.opened || field.hovered ? Theme.rule : Theme.lift
         }
+        ToolTip.text: control.toolTip
+        ToolTip.visible: control.toolTip !== "" && hovered && !popup.opened
+        ToolTip.delay: Theme.tooltipDelay
         onPressed: control.open()
         onTextEdited: {
             if (!popup.opened) {

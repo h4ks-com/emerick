@@ -40,11 +40,14 @@ qt_add_qml_module(emerick_ui
         TransportBar.qml
         TransportDisplay.qml
     RESOURCES
+        icons/broom.svg
         icons/circle.svg
+        icons/copy.svg
         icons/dots-three.svg
         icons/file.svg
         icons/gear-six.svg
         icons/guitar.svg
+        icons/magnet.svg
         icons/magnifying-glass.svg
         icons/metronome.svg
         icons/music-note.svg
@@ -64,7 +67,7 @@ target_link_libraries(emerick_ui PRIVATE Qt6::Quick Qt6::QuickControls2)
 
 if(EMERICK_BUILD_TESTS)
     # QML singletons register once per process, so each test that loads a view gets its own binary.
-    foreach(name console editing file_menu mixer picker timeline transport_bar value_controls)
+    foreach(name console editing file_menu mixer picker timeline tooltips transport_bar value_controls)
         emerick_test(emerick_ui_${name}_tests tests/${name}_test.cpp)
         target_include_directories(emerick_ui_${name}_tests PRIVATE ${PROJECT_SOURCE_DIR}/src/app/tests)
         target_link_libraries(emerick_ui_${name}_tests PRIVATE emerick_app emerick_uiplugin Qt6::Quick Qt6::Test)

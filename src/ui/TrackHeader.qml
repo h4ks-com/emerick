@@ -89,17 +89,13 @@ Rectangle {
             Layout.fillWidth: true
             Layout.alignment: header.roomy ? Qt.AlignTop : Qt.AlignVCenter
 
-            Button {
+            ChromeButton {
                 objectName: "track.select:" + header.trackId
-                flat: true
-                padding: 0
-                display: AbstractButton.IconOnly
-                icon.source: Theme.iconSource(header.icon)
-                icon.color: header.selected ? Theme.ink : Theme.inkDim
-                icon.width: Theme.iconSize
-                icon.height: Theme.iconSize
+                actionId: "track.select"
+                params: ({track: header.trackId})
+                iconName: header.icon
+                iconColor: header.selected ? Theme.ink : Theme.inkDim
                 background: null
-                onClicked: Registry.runAction("track.select", {track: header.trackId})
             }
 
             Item {
@@ -121,6 +117,9 @@ Rectangle {
                     objectName: "track.rename:" + header.trackId
                     anchors.fill: parent
                     visible: Nav.renamingTrack === header.trackId
+                    ToolTip.text: Registry.actionInfo("track.rename").title
+                    ToolTip.visible: hovered && !activeFocus
+                    ToolTip.delay: Theme.tooltipDelay
                     padding: 0
                     leftPadding: Theme.space1
                     color: Theme.ink

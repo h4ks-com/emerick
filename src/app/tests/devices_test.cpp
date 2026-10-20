@@ -4,6 +4,7 @@
 #include <vector>
 
 #include "emerick/app/track_list_model.hpp"
+#include "emerick/model/json.hpp"
 #include "project_rig.hpp"
 
 using namespace emerick;
@@ -95,6 +96,52 @@ TEST_CASE("a route to a device that cannot run at the engine's rate fails with t
     rig.controller->flush();
     CHECK(rig.controller->project().track(model::TrackId{vox})->audioIn.deviceId == "interface");
     CHECK(rig.audioLister->opens == opens);
+}
+
+TEST_CASE("a track on a device that cannot run at the engine's rate leaves the other outputs changeable") {
+    ProjectRig rig;
+    model::Document document;
+    model::Track speakers;
+    speakers.kind = "audio";
+    speakers.audioOut = {"interface", {1, 2}};
+    model::Track headphones;
+    headphones.kind = "audio";
+    headphones.audioOut = {"keyboard", {1, 2}};
+    document.tracks = {speakers, headphones};
+    const auto folder = rig.path("song.erk");
+    model::saveProject(document, folder);
+    rig.run("project.open", {{"path", folder.string()}});
+
+    rig.run("track.setAudioOut", {{"track", speakers.id.value}, {"device", kMotuId}});
+    const Json state = projectState(*rig.controller);
+    rig.run("transport.play");
+
+    CHECK_FALSE(state.contains("sessionError"));
+    REQUIRE(state.at("routeErrors").size() == 1);
+    CHECK(state.at("routeErrors").at(0) ==
+          Json{{"track", headphones.id.value},
+               {"message", "Digital Keyboard runs at 44100 Hz; set Audio > Sample rate to 44100 and restart Emerick"}});
+    CHECK(rig.audio->lastRequest().deviceIds == std::vector<std::string>{kMotuId});
+}
+
+TEST_CASE("the stream opens on play with only the outputs, and closes again once stopped") {
+    ProjectRig rig;
+    const std::string vox = rig.run("track.addAudio").at("id");
+    rig.controller->flush();
+    CHECK_FALSE(rig.audio->isOpen());
+
+    rig.run("transport.play");
+    CHECK(rig.audio->lastRequest().deviceIds == std::vector<std::string>{"interface"});
+    CHECK(rig.audio->lastRequest().inputDeviceIds.empty());
+    rig.run("transport.stop");
+    CHECK(processUntil([&] { return !rig.audio->isOpen(); }));
+
+    rig.run("track.setArm", {{"track", vox}, {"value", true}});
+    rig.controller->flush();
+    CHECK(rig.audio->isOpen());
+    CHECK(rig.audio->lastRequest().inputDeviceIds == std::vector<std::string>{"interface"});
+    processUntil([] { return false; }, 100);
+    CHECK(rig.audio->isOpen());
 }
 
 TEST_CASE("one group of edits publishes the session once and inserts its rows without a reset") {

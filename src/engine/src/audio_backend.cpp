@@ -83,9 +83,11 @@ std::vector<AudioDeviceInfo> OfflineBackend::devices() { return devices_; }
 
 StreamLayout OfflineBackend::open(const StreamRequest& request, AudioCallback callback) {
     layout_ = concatenateDevices(devices_, request);
+    request_ = request;
     callback_ = std::move(callback);
     inputs_.clear();
-    outputs_.assign(static_cast<std::size_t>(layout_.outputChannels), {});
+    outputs_.assign(static_cast<std::size_t>(layout_.outputChannels),
+                    std::vector<float>(static_cast<std::size_t>(processed_), 0.0F));
     return layout_;
 }
 

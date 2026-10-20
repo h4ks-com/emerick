@@ -138,6 +138,7 @@ private:
     void scheduleFlush();
     void settleTakes();
     void waitForEngine(const std::function<bool()>& reached);
+    void startEngine();
     void publish();
     void poll();
     void readInputLevels();

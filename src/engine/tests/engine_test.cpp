@@ -92,6 +92,45 @@ TEST_CASE("transport position advances in frames and ticks and locates by ticks"
     CHECK(rig.engine.position().ticks == 2400);
 }
 
+TEST_CASE("a stopped session with no track listening opens no device and still locates") {
+    Rig rig;
+    Track vox{.id = "vox", .kind = TrackKind::audio};
+    vox.audioIn = {"interface", {1}};
+    vox.audioOut = {"keyboard", {1, 2}};
+    rig.engine.setSession({.tempo = kTempo, .tracks = {vox}});
+    CHECK_FALSE(rig.audio.isOpen());
+    rig.engine.locate(960);
+    CHECK(rig.engine.position().ticks == 960);
+
+    rig.engine.play();
+    CHECK(rig.audio.lastRequest().deviceIds == std::vector<std::string>{"keyboard"});
+    CHECK(rig.audio.lastRequest().inputDeviceIds.empty());
+    rig.audio.process(kBlock);
+    rig.engine.releaseIdleStream();
+    CHECK(rig.audio.isOpen());
+    rig.engine.stop();
+    rig.audio.process(kBlock);
+    rig.engine.releaseIdleStream();
+    CHECK_FALSE(rig.audio.isOpen());
+    CHECK(rig.engine.position().frames == 24000 + kBlock);
+}
+
+TEST_CASE("only armed or monitored tracks open their input device, after every output device") {
+    Rig rig;
+    Track vox{.id = "vox", .kind = TrackKind::audio, .armed = true};
+    vox.audioIn = {"interface", {1}};
+    vox.audioOut = {"keyboard", {1, 2}};
+    Track guitar{.id = "guitar", .kind = TrackKind::audio};
+    guitar.audioIn = {"keyboard", {1}};
+    rig.engine.setSession({.tempo = kTempo, .tracks = {vox, guitar}});
+
+    CHECK(rig.audio.isOpen());
+    CHECK(rig.audio.lastRequest().deviceIds == std::vector<std::string>{"keyboard", "interface"});
+    CHECK(rig.audio.lastRequest().inputDeviceIds == std::vector<std::string>{"interface"});
+    rig.engine.releaseIdleStream();
+    CHECK(rig.audio.isOpen());
+}
+
 TEST_CASE("clock ports get Start, then a clock every 40 ticks on the exact frame, then Stop") {
     Rig rig;
     rig.engine.setSession({.tempo = kTempo, .clockPorts = {kPort1}});
@@ -232,8 +271,10 @@ TEST_CASE("a session on a device that cannot run at the engine's rate throws and
     Engine engine(std::move(owner),
                   std::make_unique<VirtualMidiBackend>(std::vector<std::string>{}, std::vector<std::string>{}),
                   {kRate, kBlock});
-    engine.setSession({.tempo = kTempo});
-    Track keys{.id = "keys", .kind = TrackKind::audio};
+    Track vox{.id = "vox", .kind = TrackKind::audio, .monitor = true};
+    vox.audioIn = {"interface", {1}};
+    engine.setSession({.tempo = kTempo, .tracks = {vox}});
+    Track keys{.id = "keys", .kind = TrackKind::audio, .armed = true};
     keys.audioIn = {"slow", {1}};
     REQUIRE_THROWS_WITH(engine.setSession({.tempo = kTempo, .tracks = {keys}}),
                         "Slow Keyboard runs at 44100 Hz; set Audio > Sample rate to 44100 and restart Emerick");

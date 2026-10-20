@@ -42,8 +42,12 @@ public:
     Engine& operator=(Engine&&) = delete;
 
     // We swap the session in at the next block and list every clip we skip in sessionErrors. A device that cannot
-    // run at the engine's sample rate throws before the open stream changes.
+    // run at the engine's sample rate throws before the open stream changes. We open the devices the outputs route
+    // to and the inputs of armed and monitored tracks, and only while the transport runs or a track listens live.
     void setSession(Session session);
+    // Closes the stream once the transport stopped and no track listens live, so other apps have the devices to
+    // themselves.
+    void releaseIdleStream();
 
     // We list devices once at startup and again on refreshDevices, so reading these never asks the hardware.
     [[nodiscard]] const std::vector<AudioDeviceInfo>& audioDevices() const;

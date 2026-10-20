@@ -22,10 +22,11 @@ engine::Track midiEngineTrack(const model::Track& track);
 engine::Session toSession(const model::Document& document, const Registry& registry,
                           const std::filesystem::path& folder);
 
-// One track routed to a device that is gone must not stop the others, so we clear its route for the engine and
-// report it.
-std::vector<engine::SessionError> dropMissingDevices(engine::Session& session,
-                                                     std::span<const engine::AudioDeviceInfo> devices);
+// One track routed to a device that is gone or cannot run at sampleRate must not stop the others, so we clear its
+// route for the engine and report it.
+std::vector<engine::SessionError> dropUnusableDevices(engine::Session& session,
+                                                      std::span<const engine::AudioDeviceInfo> devices,
+                                                      double sampleRate);
 // Older builds could store a device id with text after it; a known id that starts the stored one replaces it.
 void repairDeviceIds(model::Document& document, std::span<const engine::AudioDeviceInfo> devices);
 

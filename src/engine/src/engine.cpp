@@ -5,11 +5,16 @@
 #include "emerick/engine/engine.hpp"
 
 #include <algorithm>
+#include <array>
 #include <chrono>
+#include <memory>
+#include <optional>
 #include <ranges>
 #include <set>
 #include <stdexcept>
+#include <utility>
 
+#include "clock.hpp"
 #include "rt_process.hpp"
 #include "snapshot_builder.hpp"
 
@@ -17,20 +22,22 @@ namespace emerick::engine {
 
 namespace {
 
-std::vector<std::string> devicesUsedBy(const Session& session) {
-    std::vector<std::string> ids;
-    for (const Track& track : session.tracks) {
-        for (const std::string& id : {track.audioIn.deviceId, track.audioOut.deviceId}) {
-            if (!id.empty() && std::ranges::find(ids, id) == ids.end()) {
-                ids.push_back(id);
-            }
-        }
+void addOnce(std::vector<std::string>& ids, const std::string& id) {
+    if (!id.empty() && !std::ranges::contains(ids, id)) {
+        ids.push_back(id);
     }
-    const std::string& metronome = session.metronome.audioOut.deviceId;
-    if (!metronome.empty() && std::ranges::find(ids, metronome) == ids.end()) {
-        ids.push_back(metronome);
-    }
-    return ids;
+}
+
+bool listensToAudioInput(const Track& track) { return track.armed || track.monitor; }
+
+// Live MIDI passes through the audio callback, so a MIDI input keeps the stream running as an armed track does.
+bool listensLive(const Session& session) {
+    return std::ranges::any_of(
+        session.tracks, [](const Track& track) { return listensToAudioInput(track) || !track.midiIn.portId.empty(); });
+}
+
+bool sameDevices(const StreamRequest& left, const StreamRequest& right) {
+    return left.deviceIds == right.deviceIds && left.inputDeviceIds == right.inputDeviceIds;
 }
 
 void deleteSnapshot(Snapshot* snapshot) { std::unique_ptr<Snapshot>{snapshot}.reset(); }
@@ -53,8 +60,10 @@ struct Engine::Impl {
 
     Session session;
     StreamLayout layout;
-    std::vector<std::string> openDevices;
+    // The devices layout describes, open or not.
+    std::optional<StreamRequest> layoutRequest;
     bool streamOpen = false;
+    bool transportRequested = false;
     std::vector<SessionError> errors;
     std::uint64_t locatesRequested = 0;
     RealtimeState rt;
@@ -89,15 +98,31 @@ struct Engine::Impl {
         if (!rt.commands.try_enqueue(command)) {
             throw std::runtime_error("engine command queue is full");
         }
+        if (!streamOpen) {
+            runIdleBlock();
+        }
     }
 
-    void pushTrack(Command command, std::string_view trackId) {
-        if (std::ranges::find(session.tracks, trackId, &Track::id) == session.tracks.end()) {
+    // With the stream closed the audio thread is gone, so the UI thread applies commands and swaps snapshots in with
+    // a block of no frames.
+    void runIdleBlock() {
+        float unused = 0.0F;
+        const std::vector<const float*> inputs(static_cast<std::size_t>(layout.inputChannels), &unused);
+        const std::vector<float*> outputs(static_cast<std::size_t>(layout.outputChannels), &unused);
+        processBlock(rt, {0, steadyNowNs(), inputs, outputs});
+        freeRetired();
+    }
+
+    // Returns the session's track, which keeps the change for the snapshot we build when the stream opens again.
+    Track& pushTrack(Command command, std::string_view trackId) {
+        const auto track = std::ranges::find(session.tracks, trackId, &Track::id);
+        if (track == session.tracks.end()) {
             throw std::invalid_argument("unknown track " + std::string(trackId));
         }
         std::ranges::copy(trackId, command.trackId.begin());
         command.trackIdLength = trackId.size();
         push(command);
+        return *track;
     }
 
     void setSession(Session next) {
@@ -107,18 +132,77 @@ struct Engine::Impl {
                 throw std::invalid_argument("track ids must be unique and 1 to 64 characters: " + track.id);
             }
         }
-        const std::vector<std::string> devices = devicesUsedBy(next);
-        if (!streamOpen || devices != openDevices) {
-            checkRates(devices);
-            reopen(devices);
+        for (Track& track : next.tracks) {
+            if (!listensToAudioInput(track)) {
+                track.audioIn = {};
+            }
         }
+        const StreamRequest request = requestFor(next);
+        checkRates(request.deviceIds);
+        const bool changed = !layoutRequest || !sameDevices(request, *layoutRequest);
+        if (changed && streamOpen) {
+            closeStream();
+        }
+        if (!streamOpen && (transportRequested || listensLive(next))) {
+            openStream(request, next);
+        } else {
+            if (changed) {
+                useLayout(concatenateDevices(audioDevices, request), request);
+            }
+            publishSnapshot(next);
+        }
+        session = std::move(next);
+        builder.prune();
+    }
+
+    void play() {
+        if (!streamOpen) {
+            openStream(requestFor(session), session);
+        }
+        transportRequested = true;
+        push({.type = Command::Type::play});
+    }
+
+    void stop() {
+        transportRequested = false;
+        push({.type = Command::Type::stop});
+    }
+
+    void releaseIdleStream() {
+        if (streamOpen && !transportRequested && !rt.publishedPlaying.load(std::memory_order_relaxed) &&
+            !listensLive(session) && builder.midiFlushed()) {
+            audio->close();
+            streamOpen = false;
+            runIdleBlock();
+        }
+    }
+
+    // Outputs come first, so a combined device takes its clock from an output.
+    StreamRequest requestFor(const Session& next) const {
+        StreamRequest request{.deviceIds = {},
+                              .sampleRate = options.sampleRate,
+                              .blockFrames = options.blockFrames,
+                              .available = audioDevices};
+        for (const Track& track : next.tracks) {
+            addOnce(request.deviceIds, track.audioOut.deviceId);
+        }
+        addOnce(request.deviceIds, next.metronome.audioOut.deviceId);
+        for (const Track& track : next.tracks) {
+            addOnce(request.deviceIds, track.audioIn.deviceId);
+            addOnce(request.inputDeviceIds, track.audioIn.deviceId);
+        }
+        return request;
+    }
+
+    void publishSnapshot(const Session& next) {
         BuiltSnapshot built =
             builder.build(next, layout, layout.inputLatency + layout.outputLatency + options.recordingDelay);
         deleteSnapshot(rt.pending.exchange(built.snapshot.release(), std::memory_order_acq_rel));
-        session = std::move(next);
         errors = std::move(built.errors);
+        if (!streamOpen) {
+            runIdleBlock();
+        }
         freeRetired();
-        builder.prune();
     }
 
     void refreshDevices() {
@@ -140,19 +224,58 @@ struct Engine::Impl {
         }
     }
 
-    // The callback can run as soon as open starts the stream, so we drop every snapshot built for the old layout first.
-    void reopen(const std::vector<std::string>& devices) {
-        if (streamOpen) {
-            audio->close();
-            streamOpen = false;
-        }
+    void closeStream() {
+        audio->close();
+        streamOpen = false;
+        dropSnapshots();
+    }
+
+    void dropSnapshots() {
         deleteSnapshot(std::exchange(rt.current, nullptr));
         deleteSnapshot(rt.pending.exchange(nullptr, std::memory_order_acq_rel));
         freeRetired();
-        layout = audio->open({devices, options.sampleRate, options.blockFrames, audioDevices},
-                             [this](const AudioBlock& block) { processBlock(rt, block); });
-        openDevices = devices;
+    }
+
+    // The callback can run as soon as open starts the stream, so we take every snapshot built for the old layout away
+    // from it first; until we publish one the callback leaves the playhead alone. We keep them until the new snapshot
+    // holds their clip streams, so the read-ahead survives.
+    void openStream(const StreamRequest& request, const Session& next) {
+        std::array<std::unique_ptr<Snapshot>, 2> old{
+            std::unique_ptr<Snapshot>{std::exchange(rt.current, nullptr)},
+            std::unique_ptr<Snapshot>{rt.pending.exchange(nullptr, std::memory_order_acq_rel)}};
+        const Frames closedFrames = layout.maxFrames;
+        try {
+            useLayout(audio->open(request, [this](const AudioBlock& block) { processBlock(rt, block); }), request);
+        } catch (const std::runtime_error&) {
+            restoreClosedSnapshots(old);
+            throw;
+        } catch (const std::invalid_argument&) {
+            restoreClosedSnapshots(old);
+            throw;
+        }
         streamOpen = true;
+        // Clip streams and recorders size their buffers for one block, so a larger device block needs new ones.
+        if (layout.maxFrames > closedFrames) {
+            old = {};
+        }
+        publishSnapshot(next);
+    }
+
+    // The stream stays closed, so the idle block keeps applying commands to the snapshots we took away.
+    void restoreClosedSnapshots(std::array<std::unique_ptr<Snapshot>, 2>& old) {
+        rt.current = old[0].release();
+        rt.pending.store(old[1].release(), std::memory_order_release);
+    }
+
+    // The default output device can run at another rate than the last layout, so we keep the playhead on its tick.
+    void useLayout(StreamLayout next, const StreamRequest& request) {
+        if (next.sampleRate != layout.sampleRate) {
+            const Ticks at = session.tempo.framesToTicks(rt.frame, layout.sampleRate);
+            rt.frame = session.tempo.ticksToFrames(at, next.sampleRate);
+            rt.publishedFrame.store(rt.frame, std::memory_order_relaxed);
+        }
+        layout = std::move(next);
+        layoutRequest = request;
     }
 };
 
@@ -176,9 +299,11 @@ bool Engine::devicesChanged() const {
 
 void Engine::refreshDevices() { impl_->refreshDevices(); }
 
-void Engine::play() { impl_->push({.type = Command::Type::play}); }
+void Engine::releaseIdleStream() { impl_->releaseIdleStream(); }
 
-void Engine::stop() { impl_->push({.type = Command::Type::stop}); }
+void Engine::play() { impl_->play(); }
+
+void Engine::stop() { impl_->stop(); }
 
 void Engine::locate(Ticks ticks) {
     impl_->push({.type = Command::Type::locate, .ticks = ticks});
@@ -188,19 +313,19 @@ void Engine::locate(Ticks ticks) {
 void Engine::setRecording(bool on) { impl_->push({.type = Command::Type::record, .on = on}); }
 
 void Engine::setMute(std::string_view trackId, bool mute) {
-    impl_->pushTrack({.type = Command::Type::mute, .on = mute}, trackId);
+    impl_->pushTrack({.type = Command::Type::mute, .on = mute}, trackId).mute = mute;
 }
 
 void Engine::setSolo(std::string_view trackId, bool solo) {
-    impl_->pushTrack({.type = Command::Type::solo, .on = solo}, trackId);
+    impl_->pushTrack({.type = Command::Type::solo, .on = solo}, trackId).solo = solo;
 }
 
 void Engine::setArmed(std::string_view trackId, bool armed) {
-    impl_->pushTrack({.type = Command::Type::arm, .on = armed}, trackId);
+    impl_->pushTrack({.type = Command::Type::arm, .on = armed}, trackId).armed = armed;
 }
 
 void Engine::setGain(std::string_view trackId, float gain) {
-    impl_->pushTrack({.type = Command::Type::gain, .gain = gain}, trackId);
+    impl_->pushTrack({.type = Command::Type::gain, .gain = gain}, trackId).gain = gain;
 }
 
 TransportPosition Engine::position() const {

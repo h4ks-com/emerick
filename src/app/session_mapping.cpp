@@ -2,8 +2,10 @@
 
 #include <algorithm>
 #include <cmath>
+#include <optional>
 #include <ranges>
 #include <string>
+#include <utility>
 #include <variant>
 #include <vector>
 
@@ -103,27 +105,32 @@ engine::Session toSession(const model::Document& document, const Registry& regis
     return session;
 }
 
-std::vector<engine::SessionError> dropMissingDevices(engine::Session& session,
-                                                     std::span<const engine::AudioDeviceInfo> devices) {
+std::vector<engine::SessionError> dropUnusableDevices(engine::Session& session,
+                                                      std::span<const engine::AudioDeviceInfo> devices,
+                                                      double sampleRate) {
     std::vector<engine::SessionError> errors;
-    const auto drop = [&](const engine::Track& track, engine::AudioRoute& route, const char* side) {
-        if (!route.deviceId.empty() && !std::ranges::contains(devices, route.deviceId, &engine::AudioDeviceInfo::id)) {
-            errors.push_back({track.id, std::string{"the audio "} + side + " device " + route.deviceId +
-                                            " is missing, pick a device in the inspector"});
+    const auto drop = [&](const std::string& owner, engine::AudioRoute& route, const std::string& missingText) {
+        if (route.deviceId.empty()) {
+            return;
+        }
+        const auto device = std::ranges::find(devices, route.deviceId, &engine::AudioDeviceInfo::id);
+        auto problem =
+            device == devices.end() ? std::optional{missingText} : engine::unsupportedRate(*device, sampleRate);
+        if (problem) {
+            errors.push_back({owner, std::move(*problem)});
             route = {};
         }
     };
     for (engine::Track& track : session.tracks) {
-        drop(track, track.audioIn, "input");
-        drop(track, track.audioOut, "output");
+        for (auto [route, side] : {std::pair{&track.audioIn, "input"}, std::pair{&track.audioOut, "output"}}) {
+            drop(track.id, *route,
+                 std::string{"the audio "} + side + " device " + route->deviceId +
+                     " is missing, pick a device in the inspector");
+        }
     }
     engine::AudioRoute& metronome = session.metronome.audioOut;
-    if (!metronome.deviceId.empty() &&
-        !std::ranges::contains(devices, metronome.deviceId, &engine::AudioDeviceInfo::id)) {
-        errors.push_back({engine::kMetronomeId, "the metronome output device " + metronome.deviceId +
-                                                    " is missing, so it plays on the main output"});
-        metronome = {};
-    }
+    drop(engine::kMetronomeId, metronome,
+         "the metronome output device " + metronome.deviceId + " is missing, so it plays on the main output");
     return errors;
 }
 

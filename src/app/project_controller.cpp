@@ -242,7 +242,11 @@ void ProjectController::flush() {
 }
 
 void ProjectController::refreshDevices() {
+    const std::vector<engine::AudioDeviceInfo> before = engine_.audioDevices();
     engine_.refreshDevices();
+    if (engine_.audioDevices() != before) {
+        scheduleFlush();
+    }
     emit devicesChanged();
 }
 
@@ -253,10 +257,20 @@ void ProjectController::waitForEngine(const std::function<bool()>& reached) {
     emit transportChanged();
 }
 
+void ProjectController::startEngine() {
+    try {
+        engine_.play();
+    } catch (const std::invalid_argument& error) {
+        throw AppError(error.what());
+    } catch (const std::runtime_error& error) {
+        throw AppError(error.what());
+    }
+}
+
 void ProjectController::play() {
     flush();
     emit aboutToPlay();
-    engine_.play();
+    startEngine();
     waitForEngine([this] { return engine_.playing(); });
 }
 
@@ -291,7 +305,13 @@ void ProjectController::record() {
     emit inputLevelsChanged();
     engine_.setRecording(true);
     emit aboutToPlay();
-    engine_.play();
+    try {
+        startEngine();
+    } catch (const AppError&) {
+        engine_.setRecording(false);
+        pendingAudioTakes_.clear();
+        throw;
+    }
     recording_ = true;
     waitForEngine([this] { return engine_.playing(); });
 }
@@ -343,7 +363,7 @@ void ProjectController::setMetronome(const engine::Metronome& metronome) {
 void ProjectController::publish() {
     engine::Session session = toSession(project_.document(), registry_, folder_);
     session.metronome = metronome_;
-    routeErrors_ = dropMissingDevices(session, engine_.audioDevices());
+    routeErrors_ = dropUnusableDevices(session, engine_.audioDevices(), options_.sampleRate);
     std::set<std::string> ids;
     std::set<std::string> audioIds;
     for (const engine::Track& track : session.tracks) {
@@ -368,6 +388,7 @@ void ProjectController::poll() {
     if (engine_.devicesChanged()) {
         refreshDevices();
     }
+    engine_.releaseIdleStream();
     collectTakes();
     readInputLevels();
     const core::Ticks ticks = engine_.position().ticks;

@@ -25,6 +25,7 @@ struct AudioDeviceInfo {
     int outputChannels = 0;
     // Empty when the device runs at any rate; the default lets brace initializers skip it.
     std::vector<double> sampleRates = {};  // NOLINT(readability-redundant-member-init)
+    bool operator==(const AudioDeviceInfo&) const = default;
 };
 
 // Names the device and the rates it runs at when it cannot run at sampleRate.
@@ -55,7 +56,10 @@ struct StreamLayout {
 };
 
 struct StreamRequest {
-    std::vector<std::string> deviceIds;  // empty opens the default output device
+    // Empty opens the default output device at the rate and buffer size it already runs at.
+    std::vector<std::string> deviceIds;
+    // The devices among deviceIds whose inputs we read; the others open their outputs only.
+    std::vector<std::string> inputDeviceIds = {};  // NOLINT(readability-redundant-member-init)
     double sampleRate = 48000.0;
     Frames blockFrames = 256;
     // The last listing, so opening never lists devices again; the default lets brace initializers skip it.
@@ -114,11 +118,15 @@ public:
     StreamLayout open(const StreamRequest& request, AudioCallback callback) override;
     void close() override;
 
+    // Runs the callback only while the stream is open.
     void process(Frames frames);
     // Feeds samples to a device input channel from the current frame on; silence follows them.
     void setInput(std::string_view deviceId, int channel, std::vector<float> samples);
+    // Every frame processed so far, at its index; frames from before the last open are silent.
     [[nodiscard]] std::vector<float> output(std::string_view deviceId, int channel) const;
     [[nodiscard]] Frames processedFrames() const { return processed_; }
+    [[nodiscard]] bool isOpen() const { return static_cast<bool>(callback_); }
+    [[nodiscard]] const StreamRequest& lastRequest() const { return request_; }
     [[nodiscard]] std::int64_t hostTimeAt(Frames frame) const;
 
 private:
@@ -129,6 +137,7 @@ private:
 
     std::vector<AudioDeviceInfo> devices_;
     std::int64_t startTimeNs_ = 0;
+    StreamRequest request_;
     StreamLayout layout_;
     AudioCallback callback_;
     Frames processed_ = 0;
@@ -157,7 +166,8 @@ private:
 
 #ifdef __APPLE__
 // Real devices through the CoreAudio HAL. Several devices open as one private aggregate device with drift
-// compensation. The device runs at the requested rate or open throws, and at the nearest buffer size it allows.
+// compensation. A requested device runs at the requested rate or open throws, and at the nearest buffer size it
+// allows; the default output device keeps the rate and buffer size it runs at.
 class CoreAudioBackend final : public AudioBackend {
 public:
     CoreAudioBackend();

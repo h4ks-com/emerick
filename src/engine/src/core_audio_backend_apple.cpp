@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <array>
 #include <chrono>
+#include <cstddef>
 #include <optional>
 #include <ranges>
 #include <span>
@@ -173,6 +174,31 @@ std::vector<AudioObjectID> allDevices() {
 
 int sum(const std::vector<int>& values) { return std::ranges::fold_left(values, 0, std::plus{}); }
 
+// We switch off the inputs of devices we only play to, so a Bluetooth headset keeps its music profile for every app
+// and no microphone turns on. An aggregate lists its sub-devices' input streams in sub-device order.
+void readOnlyRequestedInputs(AudioObjectID device, AudioDeviceIOProcID proc, const StreamRequest& request) {
+    std::vector<UInt32> streamIsOn;
+    for (const std::string& id : request.deviceIds) {
+        const std::size_t streams = streamChannels(deviceForUid(id), kAudioObjectPropertyScopeInput).size();
+        streamIsOn.insert(streamIsOn.end(), streams, std::ranges::contains(request.inputDeviceIds, id) ? 1 : 0);
+    }
+    if (streamIsOn.empty() || streamIsOn.size() != streamChannels(device, kAudioObjectPropertyScopeInput).size()) {
+        return;
+    }
+    std::vector<AudioHardwareIOProcStreamUsage> storage(1 + streamIsOn.size());
+    AudioHardwareIOProcStreamUsage& usage = storage.front();
+    // The HAL names an IOProc by its IOProcID in this untyped field.
+    usage.mIOProc = reinterpret_cast<void*>(proc);  // NOLINT(cppcoreguidelines-pro-type-reinterpret-cast)
+    usage.mNumberStreams = static_cast<UInt32>(streamIsOn.size());
+    // NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-array-to-pointer-decay)
+    std::ranges::copy(streamIsOn, std::span(usage.mStreamIsOn, streamIsOn.size()).begin());
+    const AudioObjectPropertyAddress where =
+        address(kAudioDevicePropertyIOProcStreamUsage, kAudioObjectPropertyScopeInput);
+    const auto size = static_cast<UInt32>(offsetof(AudioHardwareIOProcStreamUsage, mStreamIsOn) +
+                                          (streamIsOn.size() * sizeof(UInt32)));
+    AudioObjectSetPropertyData(device, &where, 0, nullptr, size, &usage);
+}
+
 }  // namespace
 
 struct CoreAudioBackend::Impl {
@@ -255,13 +281,19 @@ StreamLayout CoreAudioBackend::open(const StreamRequest& request, AudioCallback 
     const std::string name = request.deviceIds.size() > 1 ? "the combined audio devices"
                                                           : stringProperty(impl.device, kAudioObjectPropertyName);
 
-    layout.sampleRate = runAt(impl.device, request.sampleRate);
-    if (layout.sampleRate != request.sampleRate) {
-        close();
-        throw std::runtime_error(name + " does not run at " + std::to_string(std::lround(request.sampleRate)) +
-                                 " Hz; set Audio > Sample rate to a rate it lists and restart Emerick");
+    if (request.deviceIds.empty()) {
+        layout.sampleRate =
+            property<Float64>(impl.device, address(kAudioDevicePropertyNominalSampleRate)).value_or(0.0);
+        layout.maxFrames = property<UInt32>(impl.device, address(kAudioDevicePropertyBufferFrameSize)).value_or(0);
+    } else {
+        layout.sampleRate = runAt(impl.device, request.sampleRate);
+        if (layout.sampleRate != request.sampleRate) {
+            close();
+            throw std::runtime_error(name + " does not run at " + std::to_string(std::lround(request.sampleRate)) +
+                                     " Hz; set Audio > Sample rate to a rate it lists and restart Emerick");
+        }
+        layout.maxFrames = useBufferSize(impl.device, request.blockFrames);
     }
-    layout.maxFrames = useBufferSize(impl.device, request.blockFrames);
     layout.inputLatency = layout.maxFrames + latency(impl.device, kAudioObjectPropertyScopeInput);
     layout.outputLatency = layout.maxFrames + latency(impl.device, kAudioObjectPropertyScopeOutput);
 
@@ -282,8 +314,12 @@ StreamLayout CoreAudioBackend::open(const StreamRequest& request, AudioCallback 
     impl.layout = layout;
     impl.callback = std::move(callback);
 
-    if (AudioDeviceCreateIOProcID(impl.device, &Impl::ioProc, impl_.get(), &impl.procId) != noErr ||
-        AudioDeviceStart(impl.device, impl.procId) != noErr) {
+    if (AudioDeviceCreateIOProcID(impl.device, &Impl::ioProc, impl_.get(), &impl.procId) != noErr) {
+        close();
+        throw std::runtime_error("cannot start " + name);
+    }
+    readOnlyRequestedInputs(impl.device, impl.procId, opened);
+    if (AudioDeviceStart(impl.device, impl.procId) != noErr) {
         close();
         throw std::runtime_error("cannot start " + name);
     }

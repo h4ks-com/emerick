@@ -36,8 +36,11 @@ public:
 
     [[nodiscard]] bool clipsBuffered() const;
     [[nodiscard]] bool midiFlushed() const;
+    using Meters = std::map<std::string, std::weak_ptr<LevelMeter>>;
     // The input meter of every audio track with an input, by track id.
-    [[nodiscard]] std::vector<std::pair<std::string, std::shared_ptr<InputMeter>>> meters() const;
+    [[nodiscard]] const Meters& inputMeters() const { return inputMeters_; }
+    // The output meter of every track with an audio output, by track id.
+    [[nodiscard]] const Meters& outputMeters() const { return outputMeters_; }
 
 private:
     std::shared_ptr<MidiInputPort> inputPort(const std::string& id);
@@ -59,7 +62,8 @@ private:
     PollingSet<MidiOutputPort>& sender_;
     std::map<std::string, std::weak_ptr<ClipStream>> clips_;
     std::map<std::string, std::weak_ptr<TakeRecorder>> recorders_;
-    std::map<std::string, std::weak_ptr<InputMeter>> meters_;
+    Meters inputMeters_;
+    Meters outputMeters_;
     std::map<std::string, std::weak_ptr<MidiInputPort>> inputs_;
     std::map<std::string, std::weak_ptr<MidiOutputPort>> outputs_;
     // The sounds depend only on these, so a snapshot keeps the sounds the last one built while they stay the same.

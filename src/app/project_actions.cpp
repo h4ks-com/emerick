@@ -214,6 +214,20 @@ void registerTransportActions(Registry& registry, ProjectController& controller)
                             controller.project().setClockPorts(std::move(clockPorts));
                             return Json{{"clockOut", controller.project().document().clockPorts}};
                         }});
+    registry.addAction({.id = "meters.resetClips",
+                        .title = "Reset clip indicators",
+                        .description = "Clears the clip lights of track, or of every track without it",
+                        .aliases = {"clear clip", "clear overload"},
+                        .category = "Transport",
+                        .schema = {{"properties", {{"track", {{"type", "string"}}}}}},
+                        .run = [&controller](const Json& params) {
+                            if (params.contains("track")) {
+                                controller.meters().resetClips(trackParam(controller.project(), params).value);
+                            } else {
+                                controller.meters().resetClips();
+                            }
+                            return Json{{"meters", controller.meters().state()}};
+                        }});
 }
 
 }  // namespace

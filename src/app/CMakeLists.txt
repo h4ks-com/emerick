@@ -41,6 +41,7 @@ qt_add_library(emerick_app STATIC
     include/emerick/app/session_mapping.hpp
     include/emerick/app/stem_export.hpp
     include/emerick/app/track_list_model.hpp
+    include/emerick/app/track_meters.hpp
     include/emerick/app/transport_clock.hpp
     include/emerick/app/ui_api.hpp
     include/emerick/app/waveform.hpp
@@ -67,6 +68,7 @@ qt_add_library(emerick_app STATIC
     track_actions.cpp
     track_edit_actions.cpp
     track_list_model.cpp
+    track_meters.cpp
     transport_clock.cpp
     ui_api.cpp
     waveform.cpp)

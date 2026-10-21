@@ -74,6 +74,14 @@ QtObject {
     readonly property int faderGroove: 3
     readonly property int faderCapWidth: 28
     readonly property int faderCapHeight: 14
+    // Level meters turn from meterSafe to meterHot between these levels and reach rec at full scale.
+    readonly property color meterSafe: "#5FA35A"
+    readonly property color meterHot: "#E0C341"
+    readonly property real meterSafeDb: -18
+    readonly property real meterHotDb: -6
+    readonly property int meterBar: 2
+    readonly property int meterGap: 1
+    readonly property int meterClipLight: 4
 
     readonly property int transportButton: 36
     readonly property int displayHeight: 44
@@ -103,7 +111,6 @@ QtObject {
     readonly property int dragCoarseSteps: 10
     readonly property int sweepSampleSpacing: 4
     readonly property real gainMinDb: -60
-    readonly property real meterFloorDb: -60
     readonly property real gainMaxDb: 6
     readonly property real gainStepDb: 0.5
     readonly property real clipGainMaxDb: 24

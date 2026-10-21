@@ -79,7 +79,7 @@ Rectangle {
     ColumnLayout {
         anchors.fill: parent
         anchors.leftMargin: Theme.colorStripe + Theme.space2
-        anchors.rightMargin: Theme.space2
+        anchors.rightMargin: Theme.space2 + (meter.visible ? meter.width : 0)
         anchors.topMargin: Theme.space1
         anchors.bottomMargin: Theme.space1
         spacing: Theme.space1
@@ -185,12 +185,6 @@ Rectangle {
             }
         }
 
-        InputMeter {
-            trackId: header.trackId
-            Layout.fillWidth: true
-            Layout.leftMargin: Theme.iconSize + Theme.space2
-        }
-
         RowLayout {
             visible: header.roomy
             spacing: Theme.space2
@@ -209,6 +203,15 @@ Rectangle {
                 gainDb: header.gainDb
             }
         }
+    }
+
+    LevelMeter {
+        id: meter
+        trackId: header.trackId
+        input: header.armed || header.monitor
+        anchors.right: parent.right
+        anchors.rightMargin: Theme.hairline
+        height: parent.height
     }
 
     Rectangle {

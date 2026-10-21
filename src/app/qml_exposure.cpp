@@ -22,6 +22,7 @@ void exposeToQml(QQmlEngine& engine, Registry& registry, Nav& nav, ProjectContro
     qmlRegisterSingletonInstance("Emerick.App", 1, 0, "Clock",
                                  std::make_unique<TransportClock>(controller, &engine).release());
     qmlRegisterSingletonInstance("Emerick.App", 1, 0, "Peaks", &peaks);
+    qmlRegisterSingletonInstance("Emerick.App", 1, 0, "Meters", &controller.meters());
     if (console != nullptr) {
         qmlRegisterSingletonInstance("Emerick.App", 1, 0, "Console", console);
     }

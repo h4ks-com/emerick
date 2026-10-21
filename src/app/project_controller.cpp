@@ -302,12 +302,6 @@ void ProjectController::record() {
             pendingAudioTakes_.insert(track.id.value);
         }
     }
-    for (QVariant& level : inputLevels_) {
-        QVariantMap cleared = level.toMap();
-        cleared.insert("clipped", false);
-        level = cleared;
-    }
-    emit inputLevelsChanged();
     engine_.setRecording(true);
     emit aboutToPlay();
     try {
@@ -454,7 +448,7 @@ void ProjectController::poll() {
     logStreamChanges();
     updateTrackErrors();
     collectTakes();
-    readInputLevels();
+    readLevels();
     const core::Ticks ticks = engine_.position().ticks;
     const bool isPlaying = engine_.playing();
     if (ticks != lastTicks_ || isPlaying != lastPlaying_) {
@@ -464,17 +458,11 @@ void ProjectController::poll() {
     }
 }
 
-void ProjectController::readInputLevels() {
-    QVariantMap next;
-    for (const engine::InputLevel& level : engine_.takeInputLevels()) {
-        const QString id = qs(level.trackId);
-        const bool clipped = level.clipped || inputLevels_.value(id).toMap().value("clipped").toBool();
-        next.insert(id, QVariantMap{{"peak", level.peak}, {"clipped", clipped}});
-    }
-    if (next != inputLevels_) {
-        inputLevels_ = std::move(next);
-        emit inputLevelsChanged();
-    }
+void ProjectController::readLevels() {
+    const auto now = std::chrono::steady_clock::now();
+    const std::chrono::duration<double> elapsed = now - lastLevels_;
+    lastLevels_ = now;
+    meters_.update(engine_.takeInputLevels(), engine_.takeOutputLevels(), elapsed.count());
 }
 
 int ProjectController::collectTakes() {

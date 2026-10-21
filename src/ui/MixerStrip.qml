@@ -3,7 +3,7 @@ import QtQuick.Controls.Basic
 import QtQuick.Layouts
 import Emerick.App
 
-// One track's channel strip: its output, gain fader with input meter, mute, solo and arm, and its name.
+// One track's channel strip: its output, gain fader with level meter, mute, solo and arm, and its name.
 Rectangle {
     id: strip
     required property string trackId
@@ -12,6 +12,7 @@ Rectangle {
     required property bool mute
     required property bool solo
     required property bool armed
+    required property bool monitor
     required property real gainDb
     required property bool audioRoutes
     required property bool midiRoutes
@@ -76,9 +77,9 @@ Rectangle {
                 Layout.fillHeight: true
                 Layout.preferredWidth: Theme.faderCapWidth
             }
-            InputMeter {
-                vertical: true
+            LevelMeter {
                 trackId: strip.trackId
+                input: strip.armed || strip.monitor
                 Layout.fillHeight: true
                 Layout.topMargin: Theme.faderCapHeight / 2
                 Layout.bottomMargin: Theme.faderCapHeight / 2

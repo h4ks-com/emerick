@@ -1,5 +1,6 @@
 #pragma once
 
+#include <chrono>
 #include <memory>
 #include <string>
 #include <string_view>
@@ -23,6 +24,8 @@ struct InputLevel {
 };
 
 float fadeGain(Frames local, Frames length, Frames fadeIn, Frames fadeOut);
+
+inline constexpr auto kStreamStall = std::chrono::seconds{2};
 
 // We call every method from the UI thread, and the audio thread runs only the backend callback.
 class Engine {
@@ -71,6 +74,11 @@ public:
     [[nodiscard]] bool playing() const;
     [[nodiscard]] const StreamLayout& layout() const;
     [[nodiscard]] bool streamOpen() const;
+    // Returns true once when the open stream made no callback for kStreamStall while the transport runs or a track
+    // listens live. We then close the stream and stop the transport, so every take in flight finishes.
+    bool watchStream(std::chrono::steady_clock::time_point now);
+    // True from a stall until the stream calls back again.
+    [[nodiscard]] bool streamStalled() const;
     [[nodiscard]] const std::vector<SessionError>& sessionErrors() const;
     // True once every locate has reached the audio thread and every clip has its read-ahead filled from there.
     [[nodiscard]] bool readAheadReady() const;

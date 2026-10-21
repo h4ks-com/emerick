@@ -28,6 +28,7 @@ class ProjectController : public QObject {
     Q_PROPERTY(qint64 positionTicks READ positionTicks NOTIFY transportChanged)
     Q_PROPERTY(bool playing READ playing NOTIFY transportChanged)
     Q_PROPERTY(bool recording READ recording NOTIFY transportChanged)
+    Q_PROPERTY(QString streamError READ streamError NOTIFY transportChanged)
     Q_PROPERTY(QString tempoText READ tempoText NOTIFY projectChanged)
     Q_PROPERTY(qint64 ticksPerBeat READ ticksPerBeat NOTIFY projectChanged)
     Q_PROPERTY(qint64 ticksPerBar READ ticksPerBar NOTIFY projectChanged)
@@ -104,6 +105,8 @@ public:
     [[nodiscard]] qint64 positionTicks() const { return engine_.position().ticks; }
     [[nodiscard]] bool playing() const { return engine_.playing(); }
     [[nodiscard]] bool recording() const { return recording_; }
+    // Set while the audio device stopped calling back, until it runs again.
+    [[nodiscard]] QString streamError() const;
     [[nodiscard]] QString tempoText() const;
     [[nodiscard]] qint64 ticksPerBeat() const { return project_.document().tempo.ticksPerBeat(); }
     [[nodiscard]] qint64 ticksPerBar() const { return project_.document().tempo.ticksPerBar(); }
@@ -149,6 +152,7 @@ private:
     void updateTrackErrors();
     void keepWarmWhileActive();
     void logStreamChanges();
+    void watchStream();
     void poll();
     void readInputLevels();
     void addTake(const engine::RecordedTake& take);
@@ -175,6 +179,7 @@ private:
     core::Ticks stopTicks_ = 0;
     core::Ticks lastTicks_ = -1;
     bool lastPlaying_ = false;
+    bool lastStalled_ = false;
     QVariantMap inputLevels_;
     QVariantMap trackErrors_;
     std::optional<std::chrono::steady_clock::time_point> lastActive_;

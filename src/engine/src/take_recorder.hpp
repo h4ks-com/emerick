@@ -41,22 +41,27 @@ public:
     void begin(Ticks startTick);
     void writeAudio(std::span<const float* const> channels, Frames frames);
     void writeMidi(Ticks tick, std::span<const std::uint8_t> bytes);
+    void countLostMidi(std::uint32_t events) { lostMidi_ += events; }
     void end();
 
     void poll();
 
 private:
     enum class Kind : std::uint8_t { begin, audio, midi, end };
+    // Audio frames we could not push are owed, and the writer writes them as silence before the next record.
     struct Header {
         Kind kind = Kind::begin;
         std::uint32_t size = 0;
         Ticks tick = 0;
+        Frames owedFrames = 0;
     };
 
     template <class T>
     bool writeKeepingRoomForEnd(const Header& header, std::span<const T> payload);
     void start(Ticks startTick);
+    void writeSilence(Frames frames);
     void writeSamples(std::uint32_t frames);
+    void writeToFile(std::uint32_t frames);
     void markDamaged(std::string error);
     void finish();
 
@@ -71,7 +76,8 @@ private:
 
     bool recording_ = false;
     Frames framesToSkip_ = 0;
-    std::uint32_t dropped_ = 0;
+    Frames owedFrames_ = 0;
+    std::uint32_t lostMidi_ = 0;
     std::vector<float> interleaved_;
 
     std::optional<RecordedTake> take_;

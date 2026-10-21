@@ -13,7 +13,9 @@ constexpr std::size_t kMidiRingBytes = std::size_t{1} << 18;
 MidiInputPort::MidiInputPort(MidiBackend& backend, const std::string& portId)
     : ring(kMidiRingBytes),
       input(backend.openInput(portId, [this](std::span<const std::uint8_t> bytes, std::int64_t timestampNs) {
-          writeRecord(ring, MidiRecordHeader{timestampNs, static_cast<std::uint32_t>(bytes.size())}, bytes);
+          if (!writeRecord(ring, MidiRecordHeader{timestampNs, static_cast<std::uint32_t>(bytes.size())}, bytes)) {
+              lost.fetch_add(1, std::memory_order_relaxed);
+          }
       })) {}
 
 MidiOutputPort::MidiOutputPort(MidiBackend& backend, const std::string& portId)

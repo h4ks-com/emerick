@@ -35,6 +35,7 @@ constexpr auto kTakeSettle = std::chrono::milliseconds{50};
 constexpr double kLocateWindowSeconds = 0.25;
 constexpr auto kAutosaveDelay = std::chrono::seconds{2};
 constexpr double kPercent = 100.0;
+constexpr double kMillisecondsPerSecond = 1000.0;
 
 std::string clippedText(const engine::RecordedTake& take) {
     const double share = kPercent * static_cast<double>(take.clippedSamples) /
@@ -43,6 +44,32 @@ std::string clippedText(const engine::RecordedTake& take) {
         "the input reached full scale on {} samples ({:.2f}%), so it clipped before Emerick; turn "
         "down the source's output level and record again",
         take.clippedSamples, share);
+}
+
+std::vector<std::string> takeProblems(const engine::RecordedTake& take, double sampleRate) {
+    std::vector<std::string> problems;
+    if (!take.error.empty()) {
+        problems.push_back(take.error);
+    }
+    if (take.clippedSamples > 0) {
+        problems.push_back(clippedText(take));
+    }
+    if (take.droppedFrames > 0) {
+        problems.push_back(std::format(
+            "lost {} ms of input because the disk fell behind, and the take keeps silence there so later audio stays "
+            "in time; close other apps that write to disk and record again",
+            std::llround(static_cast<double>(take.droppedFrames) * kMillisecondsPerSecond / sampleRate)));
+    }
+    if (take.nonFiniteSamples > 0) {
+        problems.push_back(std::format(
+            "the input sent {} invalid samples (NaN or infinite), recorded as silence; check the audio device",
+            take.nonFiniteSamples));
+    }
+    if (take.droppedMidiEvents > 0) {
+        problems.push_back(std::format("lost {} MIDI events because the recording queue was full; record again",
+                                       take.droppedMidiEvents));
+    }
+    return problems;
 }
 
 }  // namespace
@@ -432,7 +459,7 @@ void ProjectController::keepWarmWhileActive() {
 
 void ProjectController::updateTrackErrors() {
     QVariantMap errors;
-    for (const auto* list : {&engine_.sessionErrors(), &std::as_const(routeErrors_)}) {
+    for (const auto* list : {&engine_.sessionErrors(), &std::as_const(routeErrors_), &std::as_const(takeErrors_)}) {
         for (const engine::SessionError& error : *list) {
             const QString id = QString::fromStdString(error.trackId);
             const QString previous = errors.value(id).toString();
@@ -450,18 +477,35 @@ void ProjectController::poll() {
         refreshDevices();
     }
     keepWarmWhileActive();
+    watchStream();
     engine_.releaseIdleStream();
     logStreamChanges();
-    updateTrackErrors();
     collectTakes();
+    updateTrackErrors();
     readInputLevels();
     const core::Ticks ticks = engine_.position().ticks;
     const bool isPlaying = engine_.playing();
-    if (ticks != lastTicks_ || isPlaying != lastPlaying_) {
+    const bool stalled = engine_.streamStalled();
+    if (ticks != lastTicks_ || isPlaying != lastPlaying_ || stalled != lastStalled_) {
         lastTicks_ = ticks;
         lastPlaying_ = isPlaying;
+        lastStalled_ = stalled;
         emit transportChanged();
     }
+}
+
+void ProjectController::watchStream() {
+    if (engine_.watchStream(std::chrono::steady_clock::now())) {
+        qWarning().noquote() << streamError();
+        stop();
+    }
+}
+
+QString ProjectController::streamError() const {
+    return engine_.streamStalled() ? QStringLiteral(
+                                         "The audio device stopped responding, so Emerick stopped and kept the "
+                                         "recording; reconnect the device or press Play to try again")
+                                   : QString{};
 }
 
 void ProjectController::readInputLevels() {
@@ -482,11 +526,8 @@ int ProjectController::collectTakes() {
     const std::size_t errorsBefore = takeErrors_.size();
     for (const engine::RecordedTake& take : takes) {
         pendingAudioTakes_.erase(take.trackId);
-        if (!take.error.empty()) {
-            takeErrors_.push_back({take.trackId, take.error});
-        }
-        if (take.clippedSamples > 0) {
-            takeErrors_.push_back({take.trackId, clippedText(take)});
+        for (std::string& problem : takeProblems(take, engine_.layout().sampleRate)) {
+            takeErrors_.push_back({take.trackId, std::move(problem)});
         }
         try {
             addTake(take);

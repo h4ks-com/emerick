@@ -103,6 +103,28 @@ TEST_CASE("a clipped input lights the track's meter and the take reports it") {
     CHECK(errors.at(0).at("message").get<std::string>().starts_with("the input reached full scale on 2 samples"));
 }
 
+TEST_CASE("a device that stops calling back stops the transport, keeps the take and reports it until it runs again") {
+    ProjectRig rig;
+    const std::string id = rig.run("track.addAudio", {{"name", "Vox"}}).at("id");
+    rig.run("track.setArm", {{"track", id}, {"value", true}});
+    rig.run("transport.record");
+    rig.audio->setInput("interface", 1, std::vector<float>(4800, 0.25F));
+    rig.audio->process(4800);
+    rig.clock.stop();
+
+    REQUIRE(processUntil([&] { return !rig.controller->streamError().isEmpty(); }, 4000));
+    const Json transport = transportState(*rig.controller);
+    CHECK(transport.at("streamError").get<std::string>().starts_with("The audio device stopped responding"));
+    CHECK(transport.at("playing") == false);
+    CHECK(transport.at("recording") == false);
+    REQUIRE(rig.waitForTakes(1) == 1);
+    CHECK(projectState(*rig.controller).at("tracks").at(0).at("clips").size() == 1);
+
+    rig.clock.start(1);
+    rig.run("transport.play");
+    CHECK(processUntil([&] { return rig.controller->streamError().isEmpty(); }));
+}
+
 TEST_CASE("midi.inject feeds a virtual port and midi.sent lists what the app sent") {
     ProjectRig rig;
     registerVirtualMidiActions(rig.registry, *rig.midi);

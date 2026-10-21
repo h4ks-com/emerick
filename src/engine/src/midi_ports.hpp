@@ -23,6 +23,8 @@ struct MidiInputPort {
     MidiInputPort(MidiBackend& backend, const std::string& portId);
 
     SpscRing ring;
+    // Messages the full ring turned away; the audio thread reads and resets it.
+    std::atomic<std::uint32_t> lost{0};
     // We declare the input after the ring so the input stops writing before the ring goes away.
     std::unique_ptr<MidiInput> input;
 };

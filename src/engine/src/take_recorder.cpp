@@ -10,6 +10,7 @@ namespace {
 
 constexpr double kRecordRingSeconds = 2.0;
 constexpr std::size_t kMidiRingBytes = std::size_t{1} << 18;
+constexpr Frames kSilenceChunkFrames = Frames{1} << 16;
 
 std::filesystem::path freeTakePath(const std::filesystem::path& folder, const std::string& trackId) {
     for (int number = 1;; ++number) {
@@ -56,9 +57,10 @@ TakeRecorder::~TakeRecorder() {
 }
 
 void TakeRecorder::begin(Ticks startTick) {
-    dropped_ = 0;
+    owedFrames_ = 0;
+    lostMidi_ = 0;
     framesToSkip_ = captureOffset_;
-    recording_ = writeKeepingRoomForEnd(Header{Kind::begin, 0, startTick}, std::span<const std::uint8_t>{});
+    recording_ = writeKeepingRoomForEnd(Header{Kind::begin, 0, startTick, 0}, std::span<const std::uint8_t>{});
 }
 
 void TakeRecorder::writeAudio(std::span<const float* const> channels, Frames frames) {
@@ -75,24 +77,26 @@ void TakeRecorder::writeAudio(std::span<const float* const> channels, Frames fra
         }
     }
     const auto samples = std::span<const float>(interleaved_).first(static_cast<std::size_t>(frames) * width);
-    writeKeepingRoomForEnd(Header{Kind::audio, static_cast<std::uint32_t>(frames), 0}, samples);
+    if (writeKeepingRoomForEnd(Header{Kind::audio, static_cast<std::uint32_t>(frames), 0, owedFrames_}, samples)) {
+        owedFrames_ = 0;
+    } else {
+        owedFrames_ += frames;
+    }
 }
 
 void TakeRecorder::writeMidi(Ticks tick, std::span<const std::uint8_t> bytes) {
-    writeKeepingRoomForEnd(Header{Kind::midi, static_cast<std::uint32_t>(bytes.size()), tick}, bytes);
+    if (!writeKeepingRoomForEnd(Header{Kind::midi, static_cast<std::uint32_t>(bytes.size()), tick, 0}, bytes)) {
+        ++lostMidi_;
+    }
 }
 
 template <class T>
 bool TakeRecorder::writeKeepingRoomForEnd(const Header& header, std::span<const T> payload) {
-    if (ring_.writable() >= 2 * sizeof(Header) + payload.size_bytes() && writeRecord(ring_, header, payload)) {
-        return true;
-    }
-    ++dropped_;
-    return false;
+    return ring_.writable() >= 2 * sizeof(Header) + payload.size_bytes() && writeRecord(ring_, header, payload);
 }
 
 void TakeRecorder::end() {
-    writeRecord(ring_, Header{Kind::end, dropped_, 0});
+    writeRecord(ring_, Header{Kind::end, lostMidi_, 0, owedFrames_});
     recording_ = false;
 }
 
@@ -105,6 +109,7 @@ void TakeRecorder::poll() {
                 start(header.tick);
                 break;
             case Kind::audio:
+                writeSilence(header.owedFrames);
                 writeSamples(header.size);
                 break;
             case Kind::midi:
@@ -115,9 +120,9 @@ void TakeRecorder::poll() {
                 }
                 break;
             case Kind::end:
-                if (header.size > 0) {
-                    markDamaged("the recording buffer overflowed and " + std::to_string(header.size) +
-                                " blocks were lost");
+                writeSilence(header.owedFrames);
+                if (take_) {
+                    take_->droppedMidiEvents = header.size;
                 }
                 finish();
                 break;
@@ -132,7 +137,10 @@ void TakeRecorder::start(Ticks startTick) {
                          .midiEvents = {},
                          .error = {},
                          .samples = 0,
-                         .clippedSamples = 0};
+                         .clippedSamples = 0,
+                         .nonFiniteSamples = 0,
+                         .droppedFrames = 0,
+                         .droppedMidiEvents = 0};
     if (trackKind_ != TrackKind::audio) {
         return;
     }
@@ -149,16 +157,36 @@ void TakeRecorder::start(Ticks startTick) {
     }
 }
 
+void TakeRecorder::writeSilence(Frames frames) {
+    if (!take_ || frames == 0) {
+        return;
+    }
+    take_->droppedFrames += frames;
+    while (frames > 0) {
+        const auto chunk = static_cast<std::uint32_t>(std::min(frames, kSilenceChunkFrames));
+        samples_.assign(static_cast<std::size_t>(chunk) * static_cast<std::size_t>(channels_), 0.0F);
+        writeToFile(chunk);
+        frames -= chunk;
+    }
+}
+
 void TakeRecorder::writeSamples(std::uint32_t frames) {
     samples_.resize(static_cast<std::size_t>(frames) * static_cast<std::size_t>(channels_));
     readInto(ring_, std::span(samples_));
     if (!take_) {
         return;
     }
+    const auto nonFinite = [](float sample) { return !std::isfinite(sample); };
+    take_->nonFiniteSamples += static_cast<std::uint64_t>(std::ranges::count_if(samples_, nonFinite));
+    std::ranges::replace_if(samples_, nonFinite, 0.0F);
     take_->samples += samples_.size();
     take_->clippedSamples += static_cast<std::uint64_t>(
         std::ranges::count_if(samples_, [](float sample) { return std::abs(sample) >= kFullScale; }));
-    if (file_ && sf_writef_float(file_.get(), samples_.data(), frames) != frames) {
+    writeToFile(frames);
+}
+
+void TakeRecorder::writeToFile(std::uint32_t frames) {
+    if (take_ && file_ && sf_writef_float(file_.get(), samples_.data(), frames) != frames) {
         markDamaged("cannot write all audio to " + take_->audioFile.string());
     }
 }

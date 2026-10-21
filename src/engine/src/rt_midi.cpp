@@ -112,10 +112,23 @@ void route(Snapshot& snapshot, const RealtimeState& state, const MidiInputPort* 
     }
 }
 
+void countLostMidi(Snapshot& snapshot, const RealtimeState& state, MidiInputPort* port) {
+    const std::uint32_t lost = port->lost.exchange(0, std::memory_order_relaxed);
+    if (lost == 0 || !state.taking) {
+        return;
+    }
+    for (TrackState& track : snapshot.tracks) {
+        if (track.midiIn.get() == port && track.recorder && track.recorder->recording()) {
+            track.recorder->countLostMidi(lost);
+        }
+    }
+}
+
 }  // namespace
 
 void receiveMidi(Snapshot& snapshot, const RealtimeState& state, const AudioBlock& block, Frames blockStartFrame) {
     for (const auto& port : snapshot.inputs) {
+        countLostMidi(snapshot, state, port.get());
         MidiRecordHeader header;
         while (readValue(port->ring, header)) {
             if (header.size == 0 || header.size > snapshot.incoming.size()) {

@@ -28,7 +28,7 @@ emerick_target(emerick_engine)
 
 if(EMERICK_BUILD_TESTS)
     emerick_test(emerick_engine_tests tests/engine_test.cpp tests/interleaved_io_test.cpp tests/metronome_test.cpp
-        tests/recording_test.cpp)
+        tests/recording_test.cpp tests/stream_health_test.cpp)
     target_include_directories(emerick_engine_tests PRIVATE src)
     target_link_libraries(emerick_engine_tests PRIVATE emerick_engine PkgConfig::SNDFILE)
 endif()

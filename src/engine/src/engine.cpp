@@ -6,6 +6,7 @@
 
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <chrono>
 #include <memory>
 #include <optional>
@@ -84,6 +85,10 @@ struct Engine::Impl {
     std::vector<SessionError> errors;
     std::uint64_t locatesRequested = 0;
     RealtimeState rt;
+    std::atomic<std::uint64_t> callbacks{0};
+    std::uint64_t seenCallbacks = 0;
+    std::optional<std::chrono::steady_clock::time_point> calledBackAt;
+    bool stalled = false;
 
     PollingSet<ClipStream> reader{std::chrono::milliseconds(2)};
     PollingSet<TakeRecorder> writer{std::chrono::milliseconds(5)};
@@ -201,6 +206,27 @@ struct Engine::Impl {
         }
     }
 
+    bool watchStream(std::chrono::steady_clock::time_point now) {
+        const std::uint64_t seen = callbacks.load(std::memory_order_relaxed);
+        const bool watched = streamOpen && (transportRequested || listensLive(session));
+        if (seen != seenCallbacks) {
+            stalled = false;
+        }
+        if (!watched || seen != seenCallbacks || !calledBackAt) {
+            seenCallbacks = seen;
+            calledBackAt = watched ? std::optional(now) : std::nullopt;
+            return false;
+        }
+        if (now - *calledBackAt < kStreamStall) {
+            return false;
+        }
+        stalled = true;
+        audio->close();
+        streamOpen = false;
+        stop();
+        return true;
+    }
+
     // Outputs come first, so a combined device takes its clock from an output.
     StreamRequest requestFor(const Session& next) const {
         StreamRequest request{.deviceIds = {},
@@ -269,7 +295,12 @@ struct Engine::Impl {
             std::unique_ptr<Snapshot>{rt.pending.exchange(nullptr, std::memory_order_acq_rel)}};
         const Frames closedFrames = layout.maxFrames;
         try {
-            useLayout(audio->open(request, [this](const AudioBlock& block) { processBlock(rt, block); }), request);
+            useLayout(audio->open(request,
+                                  [this](const AudioBlock& block) {
+                                      callbacks.fetch_add(1, std::memory_order_relaxed);
+                                      processBlock(rt, block);
+                                  }),
+                      request);
         } catch (const std::runtime_error&) {
             restoreClosedSnapshots(old);
             throw;
@@ -278,6 +309,7 @@ struct Engine::Impl {
             throw;
         }
         streamOpen = true;
+        calledBackAt.reset();
         // Clip streams and recorders size their buffers for one block, so a larger device block needs new ones.
         if (layout.maxFrames > closedFrames) {
             old = {};
@@ -364,6 +396,10 @@ bool Engine::playing() const { return impl_->rt.publishedPlaying.load(std::memor
 const StreamLayout& Engine::layout() const { return impl_->layout; }
 
 bool Engine::streamOpen() const { return impl_->streamOpen; }
+
+bool Engine::watchStream(std::chrono::steady_clock::time_point now) { return impl_->watchStream(now); }
+
+bool Engine::streamStalled() const { return impl_->stalled; }
 
 const std::vector<SessionError>& Engine::sessionErrors() const { return impl_->errors; }
 

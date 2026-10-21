@@ -109,6 +109,7 @@ struct ProjectRig {
         midiLister = midiOwner.get();
         controller = std::make_unique<ProjectController>(registry, std::move(audioOwner), std::move(midiOwner),
                                                          engine::Engine::Options{kRate, kBlock}, path("Projects"));
+        controller->setWarmWhileActive(false);
         registerProjectActions(registry, *controller, nav);
         QObject::connect(&clock, &QTimer::timeout, [this] { audio->process(kBlock); });
         clock.start(1);

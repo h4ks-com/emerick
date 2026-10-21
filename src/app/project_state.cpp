@@ -251,6 +251,7 @@ Json transportState(const ProjectController& controller) {
     return {{"playing", controller.playing()},
             {"recording", controller.recording()},
             {"position", positionState(controller.positionTicks(), controller.project().document().tempo)},
+            {"streamError", controller.streamError().toStdString()},
             {"meters", controller.meters().state()},
             {"stream", streamState(controller.engine())}};
 }

@@ -29,6 +29,7 @@ class ProjectController : public QObject {
     Q_PROPERTY(qint64 positionTicks READ positionTicks NOTIFY transportChanged)
     Q_PROPERTY(bool playing READ playing NOTIFY transportChanged)
     Q_PROPERTY(bool recording READ recording NOTIFY transportChanged)
+    Q_PROPERTY(QString streamError READ streamError NOTIFY transportChanged)
     Q_PROPERTY(QString tempoText READ tempoText NOTIFY projectChanged)
     Q_PROPERTY(qint64 ticksPerBeat READ ticksPerBeat NOTIFY projectChanged)
     Q_PROPERTY(qint64 ticksPerBar READ ticksPerBar NOTIFY projectChanged)
@@ -98,6 +99,8 @@ public:
 
     // Project edits reach the engine and the views once per event loop turn; flush sends a pending one right away.
     void flush();
+    // Tests turn this off, since whether the app is active depends on the host and not on the test.
+    void setWarmWhileActive(bool enabled) { warmWhileActive_ = enabled; }
     // Lists the devices again; we also do this whenever a backend reports a device change.
     void refreshDevices();
 
@@ -105,6 +108,8 @@ public:
     [[nodiscard]] qint64 positionTicks() const { return engine_.position().ticks; }
     [[nodiscard]] bool playing() const { return engine_.playing(); }
     [[nodiscard]] bool recording() const { return recording_; }
+    // Set while the audio device stopped calling back, until it runs again.
+    [[nodiscard]] QString streamError() const;
     [[nodiscard]] QString tempoText() const;
     [[nodiscard]] qint64 ticksPerBeat() const { return project_.document().tempo.ticksPerBeat(); }
     [[nodiscard]] qint64 ticksPerBar() const { return project_.document().tempo.ticksPerBar(); }
@@ -153,6 +158,7 @@ private:
     void updateTrackErrors();
     void keepWarmWhileActive();
     void logStreamChanges();
+    void watchStream();
     void poll();
     void readLevels();
     void addTake(const engine::RecordedTake& take);
@@ -182,9 +188,11 @@ private:
     bool lastPlaying_ = false;
     TrackMeters meters_;
     std::chrono::steady_clock::time_point lastLevels_ = std::chrono::steady_clock::now();
+    bool lastStalled_ = false;
     QVariantMap trackErrors_;
     std::optional<std::chrono::steady_clock::time_point> lastActive_;
     bool warm_ = false;
+    bool warmWhileActive_ = true;
     QString streamSummary_;
     QTimer timer_;
 };

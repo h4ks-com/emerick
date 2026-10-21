@@ -284,18 +284,6 @@ TEST_CASE("a take whose file cannot be created comes back damaged and without a 
     CHECK_FALSE(takes[0].error.empty());
 }
 
-TEST_CASE("a take that overflows the recording buffer comes back damaged") {
-    constexpr Frames kHugeBlock = 144000;
-    Rig rig{kHugeBlock};
-    const TempFolder folder;
-    rig.engine.setSession({.tempo = kTempo, .tracks = {recordingTrack()}, .takeFolder = folder.path});
-
-    const auto takes = recordFor(rig, kHugeBlock);
-    REQUIRE(takes.size() == 1);
-    CHECK(std::filesystem::exists(takes[0].audioFile));
-    CHECK(takes[0].error.contains("overflowed"));
-}
-
 TEST_CASE("a recorder replaced in the middle of a take still reports the take") {
     Rig rig;
     const TempFolder first;

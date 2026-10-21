@@ -6,6 +6,7 @@
 #include <vector>
 
 #include "emerick/app/action_params.hpp"
+#include "emerick/app/project_state.hpp"
 #include "emerick/yamaha/chart.hpp"
 #include "registration.hpp"
 
@@ -52,6 +53,24 @@ Json chartState(const app::ProjectController& controller, const model::TrackId& 
     return {{"track", id.value},
             {"data", track.data.is_null() ? Json::array() : track.data},
             {"chart", chartText(trackChart(track), controller.project().document().tempo)}};
+}
+
+// A section that already has a marker of its name at its position keeps that one.
+Json addSectionMarkers(app::ProjectController& controller, const model::Track& track) {
+    std::vector<model::Marker> markers = controller.project().document().markers;
+    int added = 0;
+    for (const SectionEvent& event : eventsOf<SectionEvent>(track.data)) {
+        const std::string name = sectionName(event);
+        if (std::ranges::none_of(
+                markers, [&](const model::Marker& marker) { return marker.at == event.at && marker.name == name; })) {
+            markers.push_back({.name = name, .at = event.at, .color = std::nullopt});
+            ++added;
+        }
+    }
+    if (added > 0) {
+        controller.project().setMarkers(std::move(markers), "add markers from " + track.name);
+    }
+    return {{"added", added}, {"markers", app::markersState(controller.project().document())}};
 }
 
 template <class Event>
@@ -192,6 +211,26 @@ void registerChartActions(app::Registry& registry, app::ProjectController& contr
                                                             [&](auto& events) { placeAt(events, event); });
                         }});
     registerMoveAndDelete<SectionEvent>(registry, controller, kSectionEvents);
+    registry.addAction({.id = "yamaha.section.addMarkers",
+                        .title = "Add markers from style sections",
+                        .aliases = {"sections to markers", "mark sections"},
+                        .category = "Yamaha",
+                        .schema = {{"properties", {{"track", {{"type", "string"}}}}}},
+                        .run =
+                            [&controller](const Json& params) {
+                                if (params.contains("track")) {
+                                    const model::TrackId id = kindTrack(controller, params, kSectionEvents);
+                                    return addSectionMarkers(controller, *controller.project().track(id));
+                                }
+                                const auto& tracks = controller.project().document().tracks;
+                                const auto style =
+                                    std::ranges::find(tracks, std::string{kStyleKind}, &model::Track::kind);
+                                if (style == tracks.end()) {
+                                    throw AppError("add a Style track first, or pass track");
+                                }
+                                return addSectionMarkers(controller, *style);
+                            },
+                        .menus = {kYamahaMenu}});
 
     registry.addAction({.id = "yamaha.chart.text",
                         .title = "Show chord chart",

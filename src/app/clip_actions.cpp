@@ -260,7 +260,7 @@ void registerSelectionActions(Registry& registry, ProjectController& controller,
                          .category = "Settings / Editing",
                          .type = SettingType::Boolean,
                          .defaultValue = true,
-                         .hint = "Hold Alt while dragging to place freely",
+                         .hint = "Hold Command (Ctrl on Linux and Windows) while dragging to snap the other way",
                          .location = "settings.general"});
     registry.addAction(
         {.id = "edit.toggleSnap",

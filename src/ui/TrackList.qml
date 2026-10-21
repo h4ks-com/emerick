@@ -21,6 +21,7 @@ Rectangle {
         target: area
     }
     readonly property real pixelsPerTick: Nav.pixelsPerTick
+    readonly property int lanesTop: Theme.rulerHeight + Theme.markerLaneHeight
     readonly property real laneWidth: Math.max(0, width - Theme.trackHeaderWidth)
     readonly property real visibleTicks: laneWidth / pixelsPerTick
     readonly property real totalTicks: Math.max(Project.endTicks + Theme.timelineTailBars * Project.ticksPerBar,
@@ -89,7 +90,7 @@ Rectangle {
             }
             const rows = [...Array(list.count).keys()]
             const row = rows.find(index => area.trackIdAt(index) === Nav.trackMenu)
-            const top = Theme.rulerHeight + (row === undefined ? 0 : row) * Nav.trackHeight - list.contentY
+            const top = area.lanesTop + (row === undefined ? 0 : row) * Nav.trackHeight - list.contentY
             trackMenu.popup(area, Theme.trackHeaderWidth - Theme.space5, top + Theme.space5)
         }
     }
@@ -108,7 +109,7 @@ Rectangle {
     MouseArea {
         objectName: "tracks.empty"
         anchors.fill: parent
-        anchors.topMargin: Theme.rulerHeight
+        anchors.topMargin: area.lanesTop
         acceptedButtons: Qt.LeftButton | Qt.RightButton
         onPressed: mouse => {
             if (Theme.isContextClick(mouse)) {
@@ -175,9 +176,9 @@ Rectangle {
             required property int index
             readonly property int bar: (Math.floor(area.scrollTicks / (area.barStep * Project.ticksPerBar)) + index) * area.barStep
             x: area.xOf(bar * Project.ticksPerBar)
-            y: Theme.rulerHeight
+            y: area.lanesTop
             width: area.barStep * Project.ticksPerBar * area.pixelsPerTick
-            height: area.height - Theme.rulerHeight
+            height: area.height - area.lanesTop
             Rectangle {
                 width: Theme.hairline
                 height: parent.height
@@ -200,7 +201,7 @@ Rectangle {
         id: list
         objectName: "tracks.list"
         anchors.fill: parent
-        anchors.topMargin: Theme.rulerHeight
+        anchors.topMargin: area.lanesTop
         interactive: false
         boundsBehavior: Flickable.StopAtBounds
         cacheBuffer: Nav.trackHeight * 4
@@ -328,7 +329,7 @@ Rectangle {
     Rectangle {
         objectName: "tracks.dropIndicator"
         visible: area.dropIndex >= 0
-        y: Theme.rulerHeight + area.dropIndex * Nav.trackHeight - list.contentY - height / 2
+        y: area.lanesTop + area.dropIndex * Nav.trackHeight - list.contentY - height / 2
         width: area.width
         height: Theme.selectionWidth
         color: Theme.ink
@@ -337,11 +338,11 @@ Rectangle {
     Rectangle {
         x: 0
         width: Theme.trackHeaderWidth
-        height: Theme.rulerHeight
+        height: area.lanesTop
         color: Theme.slate
         ChromeButton {
             objectName: "edit.toggleSnap"
-            anchors.verticalCenter: parent.verticalCenter
+            y: (Theme.rulerHeight - height) / 2
             anchors.right: parent.right
             anchors.rightMargin: Theme.space2
             implicitWidth: Theme.headerButton
@@ -350,6 +351,16 @@ Rectangle {
             iconColor: Theme.inkDim
             active: Registry.settings["edit.snap"] === true
             activeColor: Theme.ink
+            hint: "Hold " + (Qt.platform.os === "osx" ? "⌘" : "Ctrl") + " while dragging to snap the other way"
+        }
+        Text {
+            y: Theme.rulerHeight
+            height: Theme.markerLaneHeight
+            leftPadding: Theme.space3
+            verticalAlignment: Text.AlignVCenter
+            text: "Markers"
+            color: Theme.inkDim
+            font.pixelSize: Theme.textSmall
         }
         Rectangle {
             anchors.bottom: parent.bottom
@@ -367,6 +378,15 @@ Rectangle {
         pixelsPerTick: area.pixelsPerTick
         barStep: area.barStep
         showBeats: area.showBeats
+    }
+
+    MarkerLane {
+        x: Theme.trackHeaderWidth
+        y: Theme.rulerHeight
+        width: area.laneWidth
+        height: Theme.markerLaneHeight
+        scrollTicks: area.scrollTicks
+        pixelsPerTick: area.pixelsPerTick
     }
 
     Rectangle {

@@ -48,6 +48,11 @@ void Project::setPluginData(const std::string& plugin, nlohmann::json value, std
     execute({std::move(name), SetPluginData{plugin, std::move(before), std::move(value)}});
 }
 
+void Project::setMarkers(std::vector<Marker> markers, std::string name) {
+    std::ranges::stable_sort(markers, {}, &Marker::at);
+    execute({std::move(name), SetMarkers{document_.markers, std::move(markers)}});
+}
+
 void Project::group(std::string name, const std::function<void()>& edits) {
     leaveGesture();
     const std::size_t first = next_;

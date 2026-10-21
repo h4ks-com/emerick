@@ -32,6 +32,7 @@ class ProjectController : public QObject {
     Q_PROPERTY(qint64 ticksPerBeat READ ticksPerBeat NOTIFY projectChanged)
     Q_PROPERTY(qint64 ticksPerBar READ ticksPerBar NOTIFY projectChanged)
     Q_PROPERTY(qint64 endTicks READ endTicks NOTIFY projectChanged)
+    Q_PROPERTY(QVariantList markers READ markers NOTIFY projectChanged)
     Q_PROPERTY(QVariantMap routeDevices READ routeDevices NOTIFY devicesChanged)
     Q_PROPERTY(QVariantMap inputLevels READ inputLevels NOTIFY inputLevelsChanged)
     Q_PROPERTY(QVariantMap trackErrors READ trackErrors NOTIFY trackErrorsChanged)
@@ -109,7 +110,12 @@ public:
     [[nodiscard]] qint64 ticksPerBar() const { return project_.document().tempo.ticksPerBar(); }
     [[nodiscard]] qint64 endTicks() const;
     // The nearest beat when the edit.snap setting is on, else ticks unchanged; never before bar 1.
-    Q_INVOKABLE qint64 snapped(qint64 ticks) const;
+    [[nodiscard]] qint64 snapped(qint64 ticks) const;
+    // Where a drag or click puts ticks: snapped as edit.snap says, or the other way while Ctrl (Command on macOS) is
+    // held, as Logic does with Control.
+    Q_INVOKABLE qint64 placed(qint64 ticks, int modifiers) const;
+    // Each marker's state in position order.
+    [[nodiscard]] QVariantList markers() const;
     [[nodiscard]] QVariantMap routeDevices() const;
     // A position as bar.beat.tick, or with duration a length counted from zero, as the number fields show them.
     Q_INVOKABLE QString ticksText(qint64 ticks, bool duration) const;
@@ -153,6 +159,7 @@ private:
     void readInputLevels();
     void addTake(const engine::RecordedTake& take);
     void moveTo(const std::filesystem::path& folder, model::Document document);
+    [[nodiscard]] qint64 snappedIf(bool snap, qint64 ticks) const;
 
     const Registry& registry_;
     engine::Engine::Options options_;

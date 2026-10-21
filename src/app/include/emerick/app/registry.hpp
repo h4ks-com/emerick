@@ -49,6 +49,9 @@ inline constexpr const char* kProjectMenu = "Project";
 inline constexpr const char* kTrackContextMenu = "Track context";
 inline constexpr const char* kClipContextMenu = "Clip context";
 inline constexpr const char* kLaneContextMenu = "Tracks area context";
+// The menus of a marker and of the marker lane, which run their actions with the clicked marker or position.
+inline constexpr const char* kMarkerContextMenu = "Marker context";
+inline constexpr const char* kMarkerLaneContextMenu = "Marker lane context";
 // The menu the metronome button opens on a right click.
 inline constexpr const char* kMetronomeMenu = "Metronome";
 

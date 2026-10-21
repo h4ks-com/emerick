@@ -22,8 +22,6 @@ namespace emerick::yamaha {
 
 namespace {
 
-constexpr const char* kYamahaMenu = "Plugins/Yamaha Arranger";
-
 using app::AppError;
 using app::Json;
 

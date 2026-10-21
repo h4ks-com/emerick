@@ -15,6 +15,7 @@ namespace emerick::yamaha {
 
 inline constexpr const char* kChordKind = "yamaha.chord";
 inline constexpr const char* kStyleKind = "yamaha.style";
+inline constexpr const char* kYamahaMenu = "Plugins/Yamaha Arranger";
 
 inline constexpr const char* kChordChannelSetting = "yamaha.chordDetectChannel";
 inline constexpr const char* kControllerPortSetting = "yamaha.controllerPort";

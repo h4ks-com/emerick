@@ -30,6 +30,8 @@ public:
     void setClockPorts(std::vector<std::string> ports);
     // A null value removes the plugin's data.
     void setPluginData(const std::string& plugin, nlohmann::json value, std::string name);
+    // Stores the markers sorted by position.
+    void setMarkers(std::vector<Marker> markers, std::string name);
     // Every edit made inside edits becomes one undo step named name, and listeners hear one change at the end.
     void group(std::string name, const std::function<void()>& edits);
     // The one path for property and clip edits: we edit a copy of the track and store it as one undo step.

@@ -10,7 +10,7 @@
 
 namespace emerick::model {
 
-// A set track means that track changed; no track means the track list or the tempo changed.
+// A set track means that track changed; no track means the track list, the tempo or the markers changed.
 struct Change {
     std::optional<TrackId> track;
 };
@@ -52,6 +52,11 @@ struct SetPluginData {
     nlohmann::json after;
 };
 
+struct SetMarkers {
+    std::vector<Marker> before;
+    std::vector<Marker> after;
+};
+
 struct Command;
 
 // Several commands that undo and redo as one step.
@@ -61,7 +66,8 @@ struct Group {
 
 struct Command {
     std::string name;
-    std::variant<AddTrack, RemoveTrack, ReplaceTrack, MoveTrack, SetTempo, SetClockPorts, SetPluginData, Group>
+    std::variant<AddTrack, RemoveTrack, ReplaceTrack, MoveTrack, SetTempo, SetClockPorts, SetPluginData, SetMarkers,
+                 Group>
         operation;
 };
 

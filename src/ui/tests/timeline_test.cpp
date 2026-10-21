@@ -132,23 +132,31 @@ TEST_CASE("dragging a clip selects it and moves it to the nearest beat") {
     CHECK(timeline.clip(id).start == 960);
     CHECK(timeline.rig.controller->project().undoName() == "move clip");
 
-    timeline.drag(QString::fromStdString("clip.move:" + id), 100 * pixelsPerTick, Qt::AltModifier);
+    timeline.drag(QString::fromStdString("clip.move:" + id), 100 * pixelsPerTick, Qt::ControlModifier);
     CHECK(timeline.clip(id).start == 1060);
+
+    timeline.rig.run("edit.toggleSnap");
+    timeline.drag(QString::fromStdString("clip.move:" + id), 900 * pixelsPerTick, Qt::ControlModifier);
+    CHECK(timeline.clip(id).start == 1920);
+    timeline.rig.run("edit.toggleSnap");
 }
 
-TEST_CASE("dragging a fade handle inward sets the fade without snapping") {
+TEST_CASE("dragging a fade handle snaps the fade's edge to the beat grid, and Ctrl places it freely") {
     Timeline& timeline = Timeline::instance();
     const std::string id = timeline.addClip();
     timeline.rig.run("selection.set", {{"clips", {id}}});
     const auto pixelsPerTick = timeline.rig.nav.pixelsPerTick();
 
-    timeline.drag(QString::fromStdString("clip.setFade:" + id + ":in"), 400 * pixelsPerTick);
+    timeline.drag(QString::fromStdString("clip.setFade:" + id + ":in"), 400 * pixelsPerTick, Qt::ControlModifier);
     CHECK(timeline.clip(id).fadeIn == 400);
     CHECK(timeline.rig.controller->project().undoName() == "set clip fades");
 
-    timeline.drag(QString::fromStdString("clip.setFade:" + id + ":out"), -300 * pixelsPerTick);
+    timeline.drag(QString::fromStdString("clip.setFade:" + id + ":out"), -300 * pixelsPerTick, Qt::ControlModifier);
     CHECK(timeline.clip(id).fadeOut == 300);
     CHECK(timeline.clip(id).fadeIn == 400);
+
+    timeline.drag(QString::fromStdString("clip.setFade:" + id + ":in"), 500 * pixelsPerTick);
+    CHECK(timeline.clip(id).fadeIn == 960);
 }
 
 TEST_CASE("a ten minute clip draws only the pixel columns in view at any zoom and scroll") {
@@ -173,12 +181,15 @@ TEST_CASE("a ten minute clip draws only the pixel columns in view at any zoom an
     timeline.rig.nav.setPixelsPerTick(kDefaultPixelsPerTick);
 }
 
-TEST_CASE("dragging a clip edge trims it on the beat grid") {
+TEST_CASE("dragging a clip edge trims it on the beat grid, and with Ctrl off the grid") {
     Timeline& timeline = Timeline::instance();
     const std::string id = timeline.addClip();
 
     timeline.drag(QString::fromStdString("clip.resize:" + id + ":right"), -900 * timeline.rig.nav.pixelsPerTick());
     CHECK(timeline.clip(id).length == 960);
+    timeline.drag(QString::fromStdString("clip.resize:" + id + ":right"), -100 * timeline.rig.nav.pixelsPerTick(),
+                  Qt::ControlModifier);
+    CHECK(timeline.clip(id).length == 860);
 }
 
 namespace {
@@ -292,4 +303,53 @@ TEST_CASE("a horizontal wheel over a clip scrolls sideways, and with Alt zooms a
     CHECK(nav.pixelsPerTick() > zoom);
     CHECK(nav.trackHeight() == height);
     CHECK(std::abs(tickUnderPointer() - anchor) < 1.0);
+}
+
+namespace {
+
+const model::Marker& markerOf(const Timeline& timeline, const std::string& id) {
+    return *model::findMarker(timeline.rig.controller->project().document(), model::MarkerId{id});
+}
+
+}  // namespace
+
+TEST_CASE("double clicking the marker lane adds a marker at the pointer on the beat grid") {
+    Timeline& timeline = Timeline::instance();
+    Nav& nav = timeline.rig.nav;
+    nav.setScrollTicks(0);
+    nav.setPixelsPerTick(kDefaultPixelsPerTick);
+    const auto before = timeline.rig.controller->project().document().markers.size();
+    QQuickItem* lane = timeline.item("marker.add");
+    const QPointF at = lane->mapToScene({1000 * nav.pixelsPerTick(), lane->height() / 2});
+
+    QTest::mouseDClick(&timeline.view, Qt::LeftButton, Qt::NoModifier, at.toPoint());
+    Timeline::settle();
+    REQUIRE(timeline.rig.controller->project().document().markers.size() == before + 1);
+    CHECK(markerOf(timeline, nav.selectedMarker().toStdString()).at == 960);
+    CHECK(timeline.rig.controller->project().undoName() == "add marker");
+}
+
+TEST_CASE("dragging a marker moves it live on the grid as one undo step, and Ctrl places it freely") {
+    Timeline& timeline = Timeline::instance();
+    Nav& nav = timeline.rig.nav;
+    nav.setScrollTicks(0);
+    nav.setPixelsPerTick(kDefaultPixelsPerTick);
+    const std::string id = timeline.rig.run("marker.add", {{"at", 0}, {"name", "Drag me"}}).at("id");
+    const QString flag = QString::fromStdString("marker.move:" + id);
+    const QPointF beatStep{1000 * nav.pixelsPerTick(), 0};
+
+    const QPointF start = timeline.press(flag);
+    timeline.moveBy(start, beatStep);
+    CHECK(processUntil([&] { return markerOf(timeline, id).at == 960; }));
+    timeline.moveBy(start + beatStep, beatStep);
+    CHECK(processUntil([&] { return markerOf(timeline, id).at == 1920; }));
+    timeline.send(QEvent::MouseButtonRelease, start + 2 * beatStep, Qt::NoButton, Qt::NoModifier);
+    Timeline::settle();
+    CHECK(timeline.rig.controller->project().undoName() == "move marker");
+    timeline.rig.run("project.undo");
+    CHECK(markerOf(timeline, id).at == 0);
+    CHECK(timeline.rig.controller->project().undoName() == "add marker");
+
+    timeline.drag(flag, 1000 * nav.pixelsPerTick(), Qt::ControlModifier);
+    CHECK(markerOf(timeline, id).at == 1000);
 }

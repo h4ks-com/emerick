@@ -16,8 +16,10 @@ using core::Ticks;
 
 struct TrackTag {};
 struct ClipTag {};
+struct MarkerTag {};
 using TrackId = core::Id<TrackTag>;
 using ClipId = core::Id<ClipTag>;
+using MarkerId = core::Id<MarkerTag>;
 
 // Channels are 1-based.
 struct AudioRoute {
@@ -90,9 +92,21 @@ struct Track {
     bool operator==(const Track&) const = default;
 };
 
+// A named position on the timeline, as on Logic's marker track. The color indexes the track colors; a marker without
+// one shows in the lane's own color.
+struct Marker {
+    MarkerId id = MarkerId::make();
+    std::string name;
+    Ticks at = 0;
+    std::optional<int> color;
+
+    bool operator==(const Marker&) const = default;
+};
+
 struct Document {
     core::TempoMap tempo;
     std::vector<Track> tracks;
+    std::vector<Marker> markers;                           // sorted by position
     std::vector<std::string> clockPorts;                   // MIDI outputs that get clock, Start and Stop
     nlohmann::json pluginData = nlohmann::json::object();  // one plugin-owned value per plugin id
 
@@ -109,5 +123,6 @@ const ClipId& clipId(const Clip& clip);
 Track* findTrack(Document& document, const TrackId& id);
 const Track* findTrack(const Document& document, const TrackId& id);
 std::optional<ClipRef> findClip(const Document& document, const ClipId& id);
+const Marker* findMarker(const Document& document, const MarkerId& id);
 
 }  // namespace emerick::model

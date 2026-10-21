@@ -7,7 +7,8 @@
 
 namespace emerick::model {
 
-inline constexpr int kFormatVersion = 1;
+// Format 2 added markers, so a format 1 project loads with none.
+inline constexpr int kFormatVersion = 2;
 
 nlohmann::json toJson(const Document& document);
 

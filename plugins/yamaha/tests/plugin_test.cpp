@@ -60,7 +60,7 @@ TEST_CASE("the plugin lists its settings under the Plugins group and its actions
     const QVariantMap submenu = menus.value("Plugins").toList().front().toMap();
     CHECK(submenu.value("title").toString() == "Yamaha Arranger");
     CHECK(submenu.value("row").toInt() == static_cast<int>(app::MenuRow::Menu));
-    CHECK(menus.value("Plugins/Yamaha Arranger").toList().size() == 4);
+    CHECK(menus.value("Plugins/Yamaha Arranger").toList().size() == 5);
 
     const QVariantList port = rig.registry.settingsAt("settings.yamaha").at(1).toMap().value("suggestions").toList();
     REQUIRE(port.size() == 1);
@@ -241,6 +241,23 @@ TEST_CASE("section actions set, move and delete with undo and redo") {
     CHECK_THROWS_AS(rig.run("yamaha.section.set", {{"track", id}, {"at", 0}, {"kind", "main"}, {"variation", 4}}),
                     app::AppError);
     CHECK_THROWS_AS(rig.run("yamaha.section.set", {{"track", id}, {"at", 0}, {"kind", "verse"}}), app::AppError);
+}
+
+TEST_CASE("style sections become markers once, as one undo step") {
+    YamahaRig rig;
+    const std::string id = rig.addTrack("yamaha.style");
+    rig.run("yamaha.section.set", {{"track", id}, {"at", 0}, {"name", "Intro 1"}});
+    rig.run("yamaha.section.set", {{"track", id}, {"at", kBar}, {"kind", "main"}});
+    rig.run("marker.add", {{"at", kBar}, {"name", "Main A"}});
+
+    CHECK(rig.run("yamaha.section.addMarkers", {{"track", id}}).at("added") == 1);
+    const auto& markers = rig.controller->project().document().markers;
+    REQUIRE(markers.size() == 2);
+    CHECK(markers[0].name == "Intro 1");
+    CHECK(markers[1].at == kBar);
+    CHECK(rig.run("yamaha.section.addMarkers", {{"track", id}}).at("added") == 0);
+    rig.run("project.undo");
+    CHECK(rig.controller->project().document().markers.size() == 1);
 }
 
 TEST_CASE("the lanes draw chords with N.C. as a gap and sections in their colors") {

@@ -146,6 +146,17 @@ TEST_CASE("snapping rounds to the nearest beat until snap is toggled off") {
     CHECK(rig.controller->snapped(200) == 0);
 }
 
+TEST_CASE("holding Ctrl places a drag the other way from the snap setting") {
+    ProjectRig rig;
+    CHECK(rig.controller->placed(1000, Qt::NoModifier) == 960);
+    CHECK(rig.controller->placed(1000, Qt::ControlModifier) == 1000);
+    CHECK(rig.controller->placed(1000, Qt::AltModifier) == 960);
+    rig.run("edit.toggleSnap");
+    CHECK(rig.controller->placed(1000, Qt::NoModifier) == 1000);
+    CHECK(rig.controller->placed(1000, Qt::ControlModifier | Qt::ShiftModifier) == 960);
+    CHECK(rig.controller->placed(-5, Qt::NoModifier) == 0);
+}
+
 TEST_CASE("the session mapping turns the document into engine tracks") {
     ProjectRig rig;
     model::Document document;

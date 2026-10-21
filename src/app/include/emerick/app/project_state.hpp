@@ -20,6 +20,9 @@ Json trackState(const model::Track& track, const core::TempoMap& tempo,
 // The device name and channels, such as "MOTU M2 1-2", or the id of a device that is gone.
 std::string audioRouteText(const model::AudioRoute& route, std::span<const engine::AudioDeviceInfo> devices);
 Json tempoState(const core::TempoMap& tempo);
+// Number counts the markers from 1 in position order, as the go to marker keys do.
+Json markerState(const model::Marker& marker, int number, const core::TempoMap& tempo);
+Json markersState(const model::Document& document);
 // Sends a pending edit to the engine first, so sessionError and skippedClips describe the current project.
 Json projectState(ProjectController& controller);
 Json transportState(const ProjectController& controller);

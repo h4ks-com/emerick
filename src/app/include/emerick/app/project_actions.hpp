@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <functional>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -37,6 +38,12 @@ bool trackTakesClip(const Registry& registry, const model::Track& track, const m
 void deleteClips(ProjectController& controller, const std::vector<model::ClipId>& ids);
 // The selected clip ids that still exist.
 std::vector<model::ClipId> selectedClips(const ProjectController& controller, const Nav& nav);
+
+// Add, rename, move, color, delete, select and go to markers. They act on the selected marker without a marker param.
+void registerMarkerActions(Registry& registry, ProjectController& controller, Nav& nav);
+// The selected marker when it still exists.
+std::optional<model::MarkerId> selectedMarker(const ProjectController& controller, const Nav& nav);
+void deleteMarker(ProjectController& controller, const model::MarkerId& id);
 
 void registerProjectFileActions(Registry& registry, ProjectController& controller);
 void registerProjectFolderActions(Registry& registry, ProjectController& controller, Nav& nav);

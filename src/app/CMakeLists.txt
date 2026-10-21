@@ -48,6 +48,7 @@ qt_add_library(emerick_app STATIC
     key_focus.cpp
     lua_host.cpp
     lua_text.cpp
+    marker_actions.cpp
     mcp_server.cpp
     mcp_tools.cpp
     metronome_actions.cpp
@@ -92,6 +93,7 @@ if(EMERICK_BUILD_TESTS)
         tests/gesture_test.cpp
         tests/introspector_test.cpp
         tests/lua_host_test.cpp
+        tests/marker_test.cpp
         tests/mcp_server_test.cpp
         tests/metronome_test.cpp
         tests/peak_cache_test.cpp

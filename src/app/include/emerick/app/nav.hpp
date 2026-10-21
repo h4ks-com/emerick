@@ -24,6 +24,8 @@ class Nav : public QObject {
     Q_PROPERTY(QString settingsTab READ settingsTab WRITE setSettingsTab NOTIFY changed)
     Q_PROPERTY(QString selectedTrack READ selectedTrack WRITE setSelectedTrack NOTIFY changed)
     Q_PROPERTY(QString renamingTrack READ renamingTrack WRITE setRenamingTrack NOTIFY changed)
+    Q_PROPERTY(QString selectedMarker READ selectedMarker WRITE setSelectedMarker NOTIFY selectionChanged)
+    Q_PROPERTY(QString renamingMarker READ renamingMarker WRITE setRenamingMarker NOTIFY changed)
     Q_PROPERTY(QString trackMenu READ trackMenu WRITE setTrackMenu NOTIFY changed)
     Q_PROPERTY(bool paletteOpen READ paletteOpen WRITE setPaletteOpen NOTIFY changed)
     Q_PROPERTY(bool aboutOpen READ aboutOpen WRITE setAboutOpen NOTIFY changed)
@@ -46,6 +48,11 @@ public:
     [[nodiscard]] QString selectedTrack() const { return selectedTrack_; }
     // The track whose header shows its name field.
     [[nodiscard]] QString renamingTrack() const { return renamingTrack_; }
+    // Selecting clips deselects the marker and selecting a marker deselects the clips, so Delete removes what was
+    // picked last.
+    [[nodiscard]] QString selectedMarker() const { return selectedMarker_; }
+    // The marker whose flag shows its name field.
+    [[nodiscard]] QString renamingMarker() const { return renamingMarker_; }
     // The track whose context menu is open.
     [[nodiscard]] QString trackMenu() const { return trackMenu_; }
     [[nodiscard]] bool paletteOpen() const { return paletteOpen_; }
@@ -66,6 +73,13 @@ public:
     void setSettingsTab(const QString& value) { assign(settingsTab_, value, &Nav::changed); }
     void setSelectedTrack(const QString& value) { assign(selectedTrack_, value, &Nav::changed); }
     void setRenamingTrack(const QString& value) { assign(renamingTrack_, value, &Nav::changed); }
+    void setSelectedMarker(const QString& value) {
+        if (!value.isEmpty()) {
+            assign(selectedClips_, {}, &Nav::selectionChanged);
+        }
+        assign(selectedMarker_, value, &Nav::selectionChanged);
+    }
+    void setRenamingMarker(const QString& value) { assign(renamingMarker_, value, &Nav::changed); }
     void setTrackMenu(const QString& value) { assign(trackMenu_, value, &Nav::changed); }
     void setPaletteOpen(bool value) { assign(paletteOpen_, value, &Nav::changed); }
     void setAboutOpen(bool value) { assign(aboutOpen_, value, &Nav::changed); }
@@ -74,7 +88,12 @@ public:
     void setConsoleOpen(bool value) { assign(consoleOpen_, value, &Nav::changed); }
     void setMixerOpen(bool value) { assign(mixerOpen_, value, &Nav::changed); }
     void setMetronomeMenuOpen(bool value) { assign(metronomeMenuOpen_, value, &Nav::changed); }
-    void setSelectedClips(const QStringList& value) { assign(selectedClips_, value, &Nav::selectionChanged); }
+    void setSelectedClips(const QStringList& value) {
+        if (!value.isEmpty()) {
+            assign(selectedMarker_, {}, &Nav::selectionChanged);
+        }
+        assign(selectedClips_, value, &Nav::selectionChanged);
+    }
     void setPixelsPerTick(double value) {
         assign(pixelsPerTick_, std::clamp(value, kMinPixelsPerTick, kMaxPixelsPerTick), &Nav::viewChanged);
     }
@@ -93,6 +112,7 @@ public:
                 {"settingsTab", settingsTab_.toStdString()},
                 {"selectedTrack", selectedTrack_.toStdString()},
                 {"selectedClips", clips},
+                {"selectedMarker", selectedMarker_.toStdString()},
                 {"pixelsPerTick", pixelsPerTick_},
                 {"trackHeight", trackHeight_},
                 {"scrollTicks", scrollTicks_},
@@ -124,6 +144,8 @@ private:
     QString settingsTab_ = QStringLiteral("general");
     QString selectedTrack_;
     QString renamingTrack_;
+    QString selectedMarker_;
+    QString renamingMarker_;
     QString trackMenu_;
     bool paletteOpen_ = false;
     bool aboutOpen_ = false;

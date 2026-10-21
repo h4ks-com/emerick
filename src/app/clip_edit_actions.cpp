@@ -206,6 +206,8 @@ void registerClipEditActions(Registry& registry, ProjectController& controller, 
                             [&controller, &nav](const Json&) {
                                 if (const auto clips = selectedClips(controller, nav); !clips.empty()) {
                                     deleteClips(controller, clips);
+                                } else if (const auto marker = selectedMarker(controller, nav)) {
+                                    deleteMarker(controller, *marker);
                                 } else {
                                     controller.project().removeTrack(targetTrack(controller, nav, Json::object()));
                                 }

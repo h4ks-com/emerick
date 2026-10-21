@@ -134,18 +134,18 @@ TEST_CASE("an input meter reports the peak and full scale samples, and a take co
     rig.audio.setInput("interface", 2, {0.25F, -0.5F, 0.1F});
     rig.audio.process(kBlock);
 
-    std::vector<InputLevel> levels = rig.engine.takeInputLevels();
+    std::vector<LevelReading> levels = rig.engine.takeInputLevels();
     REQUIRE(levels.size() == 1);
     CHECK(levels[0].trackId == "vox");
-    CHECK(levels[0].peak == 0.5F);
+    CHECK(levels[0].peaks == std::vector{0.5F});
     CHECK_FALSE(levels[0].clipped);
-    CHECK(rig.engine.takeInputLevels()[0].peak == 0.0F);
+    CHECK(rig.engine.takeInputLevels()[0].peaks == std::vector{0.0F});
 
     rig.audio.setInput("interface", 2, {0.5F, 1.0F, -1.0F, 0.2F});
     const std::vector<RecordedTake> takes = recordFor(rig, kBlock);
 
     levels = rig.engine.takeInputLevels();
-    CHECK(levels[0].peak == 1.0F);
+    CHECK(levels[0].peaks == std::vector{1.0F});
     CHECK(levels[0].clipped);
     REQUIRE(takes.size() == 1);
     CHECK(takes[0].samples == static_cast<std::uint64_t>(kBlock));
@@ -217,6 +217,30 @@ TEST_CASE("a missing or wrong rate clip is skipped and reported while the other 
     const Frames start = rig.audio.processedFrames();
     rig.audio.process(kBlock);
     CHECK(rig.audio.output("keyboard", 1)[static_cast<std::size_t>(start)] == 1.0F);
+}
+
+TEST_CASE("a playing clip meters its track's post-fader output per channel and leaves the other tracks silent") {
+    Rig rig;
+    const TempFolder folder;
+    writeWav(folder.path / "ones.wav", std::vector<float>(48000, 1.0F));
+    Track pad{.id = "pad", .kind = TrackKind::audio, .gain = 0.5F};
+    pad.audioOut = {"interface", {1, 2}};
+    pad.audioClips = {{.path = folder.path / "ones.wav", .start = 0, .length = 960}};
+    Track quiet{.id = "quiet", .kind = TrackKind::audio};
+    quiet.audioOut = {"interface", {1}};
+    rig.engine.setSession({.tempo = kTempo, .tracks = {pad, quiet}});
+    playFromStart(rig);
+    rig.engine.takeOutputLevels();
+    rig.audio.process(kBlock);
+
+    const std::vector<LevelReading> levels = rig.engine.takeOutputLevels();
+    REQUIRE(levels.size() == 2);
+    CHECK(levels[0].trackId == "pad");
+    CHECK(levels[0].peaks == std::vector{0.5F, 0.5F});
+    CHECK_FALSE(levels[0].clipped);
+    CHECK(levels[1].trackId == "quiet");
+    CHECK(levels[1].peaks == std::vector{0.0F});
+    CHECK(rig.audio.output("interface", 1)[static_cast<std::size_t>(rig.audio.processedFrames() - 1)] == 0.5F);
 }
 
 TEST_CASE("read-ahead is ready again only once the new position is buffered") {

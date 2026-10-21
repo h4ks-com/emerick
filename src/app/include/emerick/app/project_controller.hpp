@@ -14,6 +14,7 @@
 #include <vector>
 
 #include "emerick/app/registry.hpp"
+#include "emerick/app/track_meters.hpp"
 #include "emerick/engine/engine.hpp"
 #include "emerick/model/project.hpp"
 
@@ -33,7 +34,6 @@ class ProjectController : public QObject {
     Q_PROPERTY(qint64 ticksPerBar READ ticksPerBar NOTIFY projectChanged)
     Q_PROPERTY(qint64 endTicks READ endTicks NOTIFY projectChanged)
     Q_PROPERTY(QVariantMap routeDevices READ routeDevices NOTIFY devicesChanged)
-    Q_PROPERTY(QVariantMap inputLevels READ inputLevels NOTIFY inputLevelsChanged)
     Q_PROPERTY(QVariantMap trackErrors READ trackErrors NOTIFY trackErrorsChanged)
     Q_PROPERTY(int midiChannelCount READ midiChannelCount CONSTANT)
     Q_PROPERTY(int trackColorCount READ trackColorCount CONSTANT)
@@ -115,9 +115,8 @@ public:
     Q_INVOKABLE QString ticksText(qint64 ticks, bool duration) const;
     // Reads text in the same form, or plain ticks; returns -1 for text it cannot read.
     Q_INVOKABLE qint64 parseTicks(const QString& text, bool duration) const;
-    // Per audio track id: peak, the loudest input sample of the last poll, and clipped, which stays set from the
-    // first full scale sample until the next recording starts.
-    [[nodiscard]] QVariantMap inputLevels() const { return inputLevels_; }
+    [[nodiscard]] TrackMeters& meters() { return meters_; }
+    [[nodiscard]] const TrackMeters& meters() const { return meters_; }
     // Per track id, the reasons its routes do not play, one per line.
     [[nodiscard]] QVariantMap trackErrors() const { return trackErrors_; }
     [[nodiscard]] static int midiChannelCount() { return kMidiChannels; }
@@ -129,7 +128,6 @@ signals:
     void transportChanged();
     void projectChanged();
     void devicesChanged();
-    void inputLevelsChanged();
     void trackErrorsChanged();
     // The folder, the name or the edited flag changed.
     void fileChanged();
@@ -150,7 +148,7 @@ private:
     void keepWarmWhileActive();
     void logStreamChanges();
     void poll();
-    void readInputLevels();
+    void readLevels();
     void addTake(const engine::RecordedTake& take);
     void moveTo(const std::filesystem::path& folder, model::Document document);
 
@@ -175,7 +173,8 @@ private:
     core::Ticks stopTicks_ = 0;
     core::Ticks lastTicks_ = -1;
     bool lastPlaying_ = false;
-    QVariantMap inputLevels_;
+    TrackMeters meters_;
+    std::chrono::steady_clock::time_point lastLevels_ = std::chrono::steady_clock::now();
     QVariantMap trackErrors_;
     std::optional<std::chrono::steady_clock::time_point> lastActive_;
     bool warm_ = false;

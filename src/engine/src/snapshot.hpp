@@ -11,6 +11,7 @@
 #include <vector>
 
 #include "clip_stream.hpp"
+#include "emerick/engine/engine.hpp"
 #include "emerick/engine/session.hpp"
 #include "metronome_sounds.hpp"
 #include "midi_ports.hpp"
@@ -37,10 +38,12 @@ struct ScheduledMidi {
     std::size_t size = 0;
 };
 
-// The audio thread raises these and the UI thread reads and resets them.
-struct InputMeter {
-    std::atomic<float> peak{0.0F};
+// The audio thread raises the peaks and the clip flag, and the UI thread reads and resets them.
+struct LevelMeter {
+    std::array<std::atomic<float>, kMeterChannels> peaks{};
     std::atomic<bool> clipped{false};
+    // Only the UI thread touches this.
+    std::size_t channels = 0;
 };
 
 struct TrackState {
@@ -65,7 +68,10 @@ struct TrackState {
     std::vector<std::uint8_t> midiBytes;
     std::array<std::bitset<kMidiNotes>, kMidiChannels> soundingNotes{};
     std::shared_ptr<TakeRecorder> recorder;
-    std::shared_ptr<InputMeter> meter;
+    std::shared_ptr<LevelMeter> inputMeter;
+    std::shared_ptr<LevelMeter> outputMeter;
+    // The track's post-fader signal per output for the current block, so we meter it before it joins the mix.
+    std::vector<std::vector<float>> mix;
 };
 
 struct MetronomeState {

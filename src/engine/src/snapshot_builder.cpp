@@ -19,6 +19,12 @@ std::shared_ptr<T> cached(std::map<std::string, std::weak_ptr<T>>& cache, const 
     return made;
 }
 
+std::shared_ptr<LevelMeter> meter(SnapshotBuilder::Meters& meters, const std::string& trackId, std::size_t channels) {
+    std::shared_ptr<LevelMeter> found = cached(meters, trackId, [] { return std::make_shared<LevelMeter>(); });
+    found->channels = std::min(channels, kMeterChannels);
+    return found;
+}
+
 std::vector<int> channelIndices(const std::string& owner, const AudioRoute& route, const StreamLayout& layout,
                                 bool input) {
     std::vector<int> indices;
@@ -72,6 +78,10 @@ BuiltSnapshot SnapshotBuilder::build(const Session& session, const StreamLayout&
         }
         if (!track.midiOut.portId.empty()) {
             state.midiOut = outputPort(track.midiOut.portId);
+        }
+        if (!state.outputs.empty()) {
+            state.outputMeter = meter(outputMeters_, track.id, state.outputs.size());
+            state.mix.assign(state.outputs.size(), std::vector<float>(static_cast<std::size_t>(layout.maxFrames)));
         }
         addClips(state, track, session.tempo, layout, built.errors);
         addMidiEvents(state, track, session.tempo, layout.sampleRate);
@@ -184,7 +194,7 @@ void SnapshotBuilder::addRecorder(TrackState& state, const Track& track, const S
         return;
     }
     if (track.kind == TrackKind::audio) {
-        state.meter = cached(meters_, track.id, [] { return std::make_shared<InputMeter>(); });
+        state.inputMeter = meter(inputMeters_, track.id, state.inputs.size());
     }
     const int channels = static_cast<int>(state.inputs.size());
     const std::string key = track.id + "/" + std::to_string(static_cast<int>(track.kind)) + "/" +
@@ -214,7 +224,8 @@ void SnapshotBuilder::prune() {
     const auto expired = [](const auto& entry) { return entry.second.expired(); };
     std::erase_if(clips_, expired);
     std::erase_if(recorders_, expired);
-    std::erase_if(meters_, expired);
+    std::erase_if(inputMeters_, expired);
+    std::erase_if(outputMeters_, expired);
     std::erase_if(inputs_, expired);
     std::erase_if(outputs_, expired);
 }
@@ -224,16 +235,6 @@ bool SnapshotBuilder::clipsBuffered() const {
         const auto stream = entry.second.lock();
         return !stream || stream->buffered();
     });
-}
-
-std::vector<std::pair<std::string, std::shared_ptr<InputMeter>>> SnapshotBuilder::meters() const {
-    std::vector<std::pair<std::string, std::shared_ptr<InputMeter>>> alive;
-    for (const auto& [trackId, meter] : meters_) {
-        if (auto locked = meter.lock()) {
-            alive.emplace_back(trackId, std::move(locked));
-        }
-    }
-    return alive;
 }
 
 bool SnapshotBuilder::midiFlushed() const {

@@ -41,9 +41,11 @@ Glass: the control bar and popovers use a translucent `slate` at 88% with a 1 px
 +-----------+----------------------------------------------------------+
 ```
 
-Left aligned everywhere. Track header holds arm, mute, solo, name and an instrument icon; the inspector shows the selected track's inputs and outputs per track (audio device and channels, MIDI port and channel), always visible, never hidden in a global preference.
+Left aligned everywhere. Track header holds arm, mute, solo, name and an instrument icon, and a thin level meter along its right edge; the inspector shows the selected track's inputs and outputs per track (audio device and channels, MIDI port and channel), always visible, never hidden in a global preference.
 
-The mixer (X) docks at the bottom of the window above the console. Each track gets a channel strip with its output, a vertical gain fader beside the input meter, mute, solo and arm, and its name on its color. Single keys such as Space and X run their actions anywhere except while a text field has focus. Cmd+C, Cmd+X, Cmd+V and Cmd+A edit the focused text, such as a selection in the console log, and edit clips everywhere else.
+The mixer (X) docks at the bottom of the window above the console. Each track gets a channel strip with its output, a vertical gain fader beside the level meter, mute, solo and arm, and its name on its color.
+
+A level meter shows a track's post-fader output, or its input while the track is armed or monitoring: one 2 px bar per channel rising from green through yellow to `rec` at full scale, a held peak tick, and a clip light on top that stays lit until clicked or until "Reset clip indicators" runs. Single keys such as Space and X run their actions anywhere except while a text field has focus. Cmd+C, Cmd+X, Cmd+V and Cmd+A edit the focused text, such as a selection in the console log, and edit clips everywhere else.
 
 ## Principles
 

@@ -137,10 +137,11 @@ void apply(RealtimeState& state, Snapshot& snapshot, const Command& command, con
     }
 }
 
-void playAudioClips(const Snapshot& snapshot, Frames frame, const AudioBlock& block) {
+// Plays frames from frame on into each track's mix, starting offset frames into the block.
+void playAudioClips(Snapshot& snapshot, Frames frame, Frames offset, Frames frames) {
     const bool soloActive = anySolo(snapshot);
-    const Frames blockEnd = frame + block.frames;
-    for (const TrackState& track : snapshot.tracks) {
+    const Frames blockEnd = frame + frames;
+    for (TrackState& track : snapshot.tracks) {
         if (track.outputs.empty() || !audible(track, soloActive)) {
             continue;
         }
@@ -155,7 +156,7 @@ void playAudioClips(const Snapshot& snapshot, Frames frame, const AudioBlock& bl
             const std::span<const float> samples = clip.stream->read(local, count);
             const auto channels = static_cast<std::size_t>(clip.stream->channels());
             for (std::size_t out = 0; out < track.outputs.size(); ++out) {
-                float* destination = block.outputs[static_cast<std::size_t>(track.outputs[out])] + (from - frame);
+                float* destination = track.mix[out].data() + offset + (from - frame);
                 const std::size_t source = std::min(out, channels - 1);
                 for (Frames index = 0; index < count; ++index) {
                     const float gain =
@@ -167,18 +168,36 @@ void playAudioClips(const Snapshot& snapshot, Frames frame, const AudioBlock& bl
     }
 }
 
-void meterInput(InputMeter& meter, std::span<const float* const> channels, Frames frames) {
+float peakOf(const float* samples, Frames frames) {
     float peak = 0.0F;
-    for (const float* channel : channels) {
-        for (Frames frame = 0; frame < frames; ++frame) {
-            peak = std::max(peak, std::abs(channel[frame]));
-        }
+    for (Frames frame = 0; frame < frames; ++frame) {
+        peak = std::max(peak, std::abs(samples[frame]));
     }
-    if (peak > meter.peak.load(std::memory_order_relaxed)) {
-        meter.peak.store(peak, std::memory_order_relaxed);
+    return peak;
+}
+
+void raise(LevelMeter& meter, std::size_t channel, float peak) {
+    std::atomic<float>& held = meter.peaks.at(std::min(channel, kMeterChannels - 1));
+    if (peak > held.load(std::memory_order_relaxed)) {
+        held.store(peak, std::memory_order_relaxed);
     }
     if (peak >= kFullScale) {
         meter.clipped.store(true, std::memory_order_relaxed);
+    }
+}
+
+// Meters each track's mix, adds it to its outputs and clears it for the next block.
+void mixTracks(Snapshot& snapshot, const AudioBlock& block) {
+    for (TrackState& track : snapshot.tracks) {
+        for (std::size_t out = 0; out < track.mix.size(); ++out) {
+            float* mixed = track.mix[out].data();
+            float* destination = block.outputs[static_cast<std::size_t>(track.outputs[out])];
+            for (Frames index = 0; index < block.frames; ++index) {
+                destination[index] += mixed[index];
+            }
+            raise(*track.outputMeter, out, peakOf(mixed, block.frames));
+            std::fill_n(mixed, block.frames, 0.0F);
+        }
     }
 }
 
@@ -192,13 +211,15 @@ void monitorAndRecordAudio(Snapshot& snapshot, const AudioBlock& block, Frames r
         for (std::size_t index = 0; index < track.inputs.size(); ++index) {
             track.inputPointers[index] = block.inputs[static_cast<std::size_t>(track.inputs[index])];
         }
-        if (track.meter) {
-            meterInput(*track.meter, track.inputPointers, block.frames);
+        if (track.inputMeter) {
+            for (std::size_t index = 0; index < track.inputPointers.size(); ++index) {
+                raise(*track.inputMeter, index, peakOf(track.inputPointers[index], block.frames));
+            }
         }
         if (track.monitor && audible(track, soloActive)) {
-            for (std::size_t out = 0; out < track.outputs.size(); ++out) {
+            for (std::size_t out = 0; out < track.mix.size(); ++out) {
                 const float* source = track.inputPointers[std::min(out, track.inputPointers.size() - 1)];
-                float* destination = block.outputs[static_cast<std::size_t>(track.outputs[out])];
+                float* destination = track.mix[out].data();
                 for (Frames index = 0; index < block.frames; ++index) {
                     destination[index] += source[index] * track.gain;
                 }
@@ -275,11 +296,12 @@ void processBlock(RealtimeState& state, const AudioBlock& block) {
         const AudioBlock rolling = rollFrom == 0 ? block : tailOf(snapshot, block, rollFrom);
         sendClock(snapshot, state.frame, rolling);
         playMidiClips(snapshot, state.frame, rolling);
-        playAudioClips(snapshot, state.frame, rolling);
+        playAudioClips(snapshot, state.frame, rollFrom, rolling.frames);
         playMetronome(state, snapshot, block, rollFrom, state.frame);
     }
     renderMetronome(state, snapshot, block);
     monitorAndRecordAudio(snapshot, block, rollFrom);
+    mixTracks(snapshot, block);
     if (state.transportPlaying) {
         state.frame += block.frames - rollFrom;
     }

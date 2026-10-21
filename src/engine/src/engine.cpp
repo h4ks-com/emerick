@@ -42,6 +42,22 @@ bool sameDevices(const StreamRequest& left, const StreamRequest& right) {
 
 void deleteSnapshot(Snapshot* snapshot) { std::unique_ptr<Snapshot>{snapshot}.reset(); }
 
+std::vector<LevelReading> takeLevels(const SnapshotBuilder::Meters& meters) {
+    std::vector<LevelReading> readings;
+    for (const auto& [trackId, weak] : meters) {
+        const std::shared_ptr<LevelMeter> meter = weak.lock();
+        if (!meter) {
+            continue;
+        }
+        readings.push_back({trackId,
+                            meter->peaks | std::views::take(meter->channels) | std::views::transform([](auto& peak) {
+                                return peak.exchange(0.0F, std::memory_order_relaxed);
+                            }) | std::ranges::to<std::vector>(),
+                            meter->clipped.exchange(false, std::memory_order_relaxed)});
+    }
+    return readings;
+}
+
 }  // namespace
 
 struct Engine::Impl {
@@ -363,14 +379,9 @@ std::vector<RecordedTake> Engine::takeRecordings() {
     return impl_->inbox.take();
 }
 
-std::vector<InputLevel> Engine::takeInputLevels() {
-    return impl_->builder.meters() | std::views::transform([](const auto& entry) {
-               InputMeter& meter = *entry.second;
-               return InputLevel{entry.first, meter.peak.exchange(0.0F, std::memory_order_relaxed),
-                                 meter.clipped.exchange(false, std::memory_order_relaxed)};
-           }) |
-           std::ranges::to<std::vector>();
-}
+std::vector<LevelReading> Engine::takeInputLevels() { return takeLevels(impl_->builder.inputMeters()); }
+
+std::vector<LevelReading> Engine::takeOutputLevels() { return takeLevels(impl_->builder.outputMeters()); }
 
 AudioBackend& Engine::audio() { return *impl_->audio; }
 

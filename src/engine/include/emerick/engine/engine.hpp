@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstddef>
 #include <memory>
 #include <string>
 #include <string_view>
@@ -16,10 +17,13 @@ struct TransportPosition {
     Ticks ticks = 0;
 };
 
-struct InputLevel {
+// Meters show at most this many channels; the last one also shows every channel beyond it.
+inline constexpr std::size_t kMeterChannels = 2;
+
+struct LevelReading {
     std::string trackId;
-    float peak = 0.0F;     // the loudest input sample since the last reading
-    bool clipped = false;  // a sample reached full scale since the last reading
+    std::vector<float> peaks;  // the loudest sample per metered channel since the last reading
+    bool clipped = false;      // a sample reached full scale since the last reading
 };
 
 float fadeGain(Frames local, Frames length, Frames fadeIn, Frames fadeOut);
@@ -79,7 +83,9 @@ public:
     // Returns the takes finished since the last call.
     std::vector<RecordedTake> takeRecordings();
     // Reads and resets the input level of every audio track with an input.
-    std::vector<InputLevel> takeInputLevels();
+    std::vector<LevelReading> takeInputLevels();
+    // Reads and resets the post-fader output level of every track with an audio output.
+    std::vector<LevelReading> takeOutputLevels();
 
     [[nodiscard]] AudioBackend& audio();
     [[nodiscard]] MidiBackend& midi();

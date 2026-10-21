@@ -112,10 +112,6 @@ Rectangle {
                 devices: Project.routeDevices.audioIn
                 route: panel.audioIn
             }
-            InputMeter {
-                trackId: panel.trackId
-                Layout.fillWidth: true
-            }
             RouteLabel { text: "Audio output"; visible: panel.audioRoutes }
             AudioRoute {
                 visible: panel.audioRoutes

@@ -92,8 +92,8 @@ TEST_CASE("a clipped input lights the track's meter and the take reports it") {
         rig.audio->setInput("interface", 1, {0.5F, 1.0F, -1.0F, 0.25F});
         rig.audio->process(4800);
         CHECK(processUntil([&] {
-            const Json levels = transportState(*rig.controller).at("inputLevels");
-            return levels.contains(id) && levels.at(id).at("clipped") == true;
+            const Json meters = transportState(*rig.controller).at("meters");
+            return meters.contains(id) && meters.at(id).at("input").at("clipped") == true;
         }));
     });
     REQUIRE(rig.waitForTakes(1) == 1);

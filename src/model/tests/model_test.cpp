@@ -40,6 +40,7 @@ Document sampleDocument() {
     track.clips.emplace_back(MidiClip{ClipId::make(), 0, 1920, {{0, {0x90, 60, 100}}, {480, {0xF0, 0x43, 0xF7}}}});
     document.tracks.push_back(track);
     document.tracks.push_back(named("Bass"));
+    document.markers = {{.name = "Intro", .at = 0}, {.name = "Chorus", .at = 7680, .color = 3}};
     document.clockPorts = {"Digital Keyboard Port 1"};
     document.pluginData = {{"yamaha", {{"voices", {{{"channel", 9}}}}}}};
     return document;
@@ -56,13 +57,43 @@ TEST_CASE("document round trips through json") {
     CHECK(std::get<MidiClip>(loaded.tracks[0].clips[1]).events[1].bytes == std::vector<std::uint8_t>{0xF0, 0x43, 0xF7});
     CHECK(loaded.tracks[0].midiIn.sysex);
     CHECK(loaded.tracks[0].data == document.tracks[0].data);
-    CHECK(toJson(document)["format"] == 1);
+    CHECK(toJson(document)["format"] == kFormatVersion);
+    CHECK(loaded.markers == document.markers);
 }
 
 TEST_CASE("unknown format is rejected") {
     auto json = toJson(Document{});
-    json["format"] = 2;
+    json["format"] = kFormatVersion + 1;
     CHECK_THROWS_AS(documentFromJson(json), std::runtime_error);
+}
+
+TEST_CASE("a format 1 project loads with no markers") {
+    auto json = toJson(sampleDocument());
+    json["format"] = 1;
+    json.erase("markers");
+    const Document loaded = documentFromJson(json);
+    CHECK(loaded.markers.empty());
+    CHECK(loaded.tracks.size() == 2);
+}
+
+TEST_CASE("markers stay sorted by position and undo and redo as one step each") {
+    Project project;
+    const Marker verse{.name = "Verse", .at = 3840};
+    const Marker intro{.name = "Intro", .at = 0, .color = 2};
+    project.setMarkers({verse, intro}, "add markers");
+    CHECK(project.document().markers == std::vector{intro, verse});
+    CHECK(findMarker(project.document(), verse.id)->name == "Verse");
+
+    Marker moved = verse;
+    moved.at = 0;
+    project.setMarkers({intro, moved}, "move marker");
+    CHECK(project.document().markers.front().at == 0);
+    project.undo();
+    CHECK(project.document().markers == std::vector{intro, verse});
+    project.undo();
+    CHECK(project.document().markers.empty());
+    project.redo();
+    CHECK(project.undoName() == "add markers");
 }
 
 TEST_CASE("project saves to and loads from a folder") {

@@ -27,6 +27,7 @@ qt_add_qml_module(emerick_ui
         Inspector.qml
         KeyCommands.qml
         Main.qml
+        MarkerLane.qml
         Mixer.qml
         MixerStrip.qml
         RouteCombo.qml

@@ -529,12 +529,22 @@ QString ProjectController::tempoText() const {
 
 qint64 ProjectController::endTicks() const { return projectEnd(project_.document()); }
 
-qint64 ProjectController::snapped(qint64 ticks) const {
+qint64 ProjectController::snappedIf(bool snap, qint64 ticks) const {
     const core::Ticks beat = ticksPerBeat();
-    const core::Ticks result =
-        registry_.settingValue("edit.snap").get<bool>() ? (ticks + beat / 2) / beat * beat : ticks;
-    return std::max<core::Ticks>(result, 0);
+    return std::max<core::Ticks>(snap ? (ticks + beat / 2) / beat * beat : ticks, 0);
 }
+
+qint64 ProjectController::snapped(qint64 ticks) const {
+    return snappedIf(registry_.settingValue("edit.snap").get<bool>(), ticks);
+}
+
+qint64 ProjectController::placed(qint64 ticks, int modifiers) const {
+    const bool invert =
+        Qt::KeyboardModifiers::fromInt(static_cast<unsigned int>(modifiers)).testFlag(Qt::ControlModifier);
+    return snappedIf(registry_.settingValue("edit.snap").get<bool>() != invert, ticks);
+}
+
+QVariantList ProjectController::markers() const { return toVariant(markersState(project_.document())).toList(); }
 
 QString ProjectController::ticksText(qint64 ticks, bool duration) const {
     const core::TempoMap& tempo = project_.document().tempo;

@@ -3,6 +3,8 @@
 #include <algorithm>
 #include <array>
 #include <fstream>
+#include <optional>
+#include <ranges>
 #include <stdexcept>
 #include <string>
 #include <string_view>
@@ -90,6 +92,19 @@ Track trackFromJson(const nlohmann::json& json) {
     return track;
 }
 
+nlohmann::json markerToJson(const Marker& marker) {
+    return {{"id", marker.id.value},
+            {"name", marker.name},
+            {"at", marker.at},
+            {"color", marker.color ? nlohmann::json(*marker.color) : nlohmann::json(nullptr)}};
+}
+
+Marker markerFromJson(const nlohmann::json& json) {
+    const auto& color = json.at("color");
+    return {MarkerId{json.at("id")}, json.at("name"), json.at("at"),
+            color.is_null() ? std::nullopt : std::optional<int>{color.get<int>()}};
+}
+
 }  // namespace
 
 nlohmann::json toJson(const Document& document) {
@@ -103,17 +118,22 @@ nlohmann::json toJson(const Document& document) {
               {"numerator", document.tempo.meter.numerator},
               {"denominator", document.tempo.meter.denominator}}},
             {"tracks", std::move(tracks)},
+            {"markers",
+             document.markers | std::views::transform(markerToJson) | std::ranges::to<nlohmann::json::array_t>()},
             {"clockPorts", document.clockPorts},
             {"pluginData", document.pluginData}};
 }
 
 Document documentFromJson(const nlohmann::json& json) {
-    if (json.at("format") != kFormatVersion) {
-        throw std::runtime_error("unsupported project format: " + json.at("format").dump());
+    const auto& format = json.at("format");
+    if (!format.is_number_integer() || format.get<int>() < 1 || format.get<int>() > kFormatVersion) {
+        throw std::runtime_error("unsupported project format: " + format.dump());
     }
     const auto& tempo = json.at("tempo");
     Document document{{tempo.at("bpm"), {tempo.at("numerator"), tempo.at("denominator")}},
                       {},
+                      json.value("markers", nlohmann::json::array()) | std::views::transform(markerFromJson) |
+                          std::ranges::to<std::vector>(),
                       json.value("clockPorts", std::vector<std::string>{}),
                       json.value("pluginData", nlohmann::json::object())};
     for (const auto& track : json.at("tracks")) {

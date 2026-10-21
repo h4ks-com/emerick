@@ -179,6 +179,22 @@ Json tempoState(const core::TempoMap& tempo) {
     return {{"bpm", tempo.bpm}, {"numerator", tempo.meter.numerator}, {"denominator", tempo.meter.denominator}};
 }
 
+Json markerState(const model::Marker& marker, int number, const core::TempoMap& tempo) {
+    return {{"id", marker.id.value},
+            {"name", marker.name},
+            {"number", number},
+            {"at", marker.at},
+            {"position", tempo.toBarBeatTick(marker.at).format()},
+            {"color", marker.color ? Json(*marker.color) : Json(nullptr)}};
+}
+
+Json markersState(const model::Document& document) {
+    return std::views::zip(std::views::iota(1), document.markers) | std::views::transform([&](const auto& entry) {
+               return markerState(std::get<1>(entry), std::get<0>(entry), document.tempo);
+           }) |
+           std::ranges::to<Json::array_t>();
+}
+
 Json projectState(ProjectController& controller) {
     controller.flush();
     const model::Project& project = controller.project();
@@ -187,6 +203,7 @@ Json projectState(ProjectController& controller) {
                 {"untitled", controller.untitled()},
                 {"tempo", tempoState(document.tempo)},
                 {"clockOut", document.clockPorts},
+                {"markers", markersState(document)},
                 {"undo", project.undoName() ? Json(*project.undoName()) : Json(nullptr)},
                 {"redo", project.redoName() ? Json(*project.redoName()) : Json(nullptr)},
                 {"tracks", document.tracks | std::views::transform([&](const model::Track& track) {

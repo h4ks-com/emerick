@@ -39,11 +39,11 @@ Item {
                 const item = handle.clipItem
                 const ticks = (item.sceneX(grab, mouse) - pressX) / item.pixelsPerTick
                 if (handle.fadeOut) {
-                    item.drag("clip.setFade", {fadeOut: Math.round(Math.max(0, Math.min(pressFade - ticks,
-                                                                                         item.clip.length - item.fadeIn)))})
+                    const fade = item.end - item.place(item.end - pressFade + ticks, mouse.modifiers)
+                    item.drag("clip.setFade", {fadeOut: Math.max(0, Math.min(fade, item.clip.length - item.fadeIn))})
                 } else {
-                    item.drag("clip.setFade", {fadeIn: Math.round(Math.max(0, Math.min(pressFade + ticks,
-                                                                                       item.clip.length - item.fadeOut)))})
+                    const fade = item.place(item.start + pressFade + ticks, mouse.modifiers) - item.start
+                    item.drag("clip.setFade", {fadeIn: Math.max(0, Math.min(fade, item.clip.length - item.fadeOut))})
                 }
             }
             onReleased: Registry.endGesture()

@@ -37,10 +37,8 @@ Item {
         return area.mapToItem(null, mouse.x, 0).x
     }
 
-    // Alt places freely; otherwise the position snaps when the edit.snap setting is on.
     function place(ticks, modifiers) {
-        const rounded = Math.round(ticks)
-        return modifiers & Qt.AltModifier ? Math.max(0, rounded) : Project.snapped(rounded)
+        return Project.placed(Math.round(ticks), modifiers)
     }
 
     function selectOnPress(modifiers) {

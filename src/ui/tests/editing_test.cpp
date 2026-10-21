@@ -160,6 +160,40 @@ TEST_CASE("Backspace and Delete remove the selected clips, or the selected track
     MainWindow::settle();
 }
 
+TEST_CASE("marker keys add and visit markers, the list locates, a double click renames and Delete removes") {
+    MainWindow& main = MainWindow::instance();
+    const core::Ticks bar = main.rig.controller->ticksPerBar();
+    main.rig.run("transport.locate", {{"position", 2 * bar}});
+    const auto& markers = main.rig.controller->project().document().markers;
+    const auto before = markers.size();
+
+    QTest::keyClick(main.window, Qt::Key_Apostrophe, Qt::AltModifier);
+    REQUIRE(markers.size() == before + 1);
+    const std::string id = main.rig.nav.selectedMarker().toStdString();
+    CHECK(model::findMarker(main.rig.controller->project().document(), model::MarkerId{id})->at == 2 * bar);
+    main.rig.run("transport.locate", {{"position", 0}});
+    QTest::keyClick(main.window, Qt::Key_Period, Qt::AltModifier);
+    CHECK(main.rig.controller->positionTicks() == 2 * bar);
+
+    main.rig.run("transport.locate", {{"position", 0}});
+    main.click(main.item("marker.goto:" + qid(id)));
+    CHECK(processUntil([&] { return main.rig.controller->positionTicks() == 2 * bar; }));
+
+    QQuickItem* flag = main.item("marker.move:" + qid(id));
+    QTest::mouseDClick(main.window, Qt::LeftButton, Qt::NoModifier,
+                       flag->mapToScene({flag->width() / 2, flag->height() / 2}).toPoint());
+    REQUIRE(processUntil([&] { return main.item("marker.rename:" + qid(id))->hasActiveFocus(); }));
+    typeText(main, "Bridge");
+    QTest::keyClick(main.window, Qt::Key_Return);
+    CHECK(model::findMarker(main.rig.controller->project().document(), model::MarkerId{id})->name == "Bridge");
+
+    main.rig.run("marker.select", {{"marker", id}});
+    processUntil([] { return false; }, 50);
+    QTest::keyClick(main.window, Qt::Key_Delete);
+    CHECK(markers.size() == before);
+    MainWindow::settle();
+}
+
 TEST_CASE("the settings close button and Escape close settings") {
     MainWindow& main = MainWindow::instance();
     main.rig.run("settings.open");

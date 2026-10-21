@@ -28,4 +28,9 @@ std::optional<ClipRef> findClip(const Document& document, const ClipId& id) {
     return std::nullopt;
 }
 
+const Marker* findMarker(const Document& document, const MarkerId& id) {
+    const auto found = std::ranges::find(document.markers, id, &Marker::id);
+    return found == document.markers.end() ? nullptr : &*found;
+}
+
 }  // namespace emerick::model

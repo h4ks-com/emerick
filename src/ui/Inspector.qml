@@ -95,6 +95,7 @@ Rectangle {
             visible: trackId === Nav.selectedTrack
             anchors.fill: parent
             anchors.margins: Theme.space3
+            anchors.bottomMargin: markers.height + 2 * Theme.space3
             spacing: Theme.space1
 
             Label {
@@ -246,6 +247,77 @@ Rectangle {
             }
 
             Item { Layout.fillHeight: true }
+        }
+    }
+
+    ColumnLayout {
+        id: markers
+        objectName: "inspector.markers"
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.bottom: parent.bottom
+        anchors.margins: Theme.space3
+        spacing: Theme.space1
+
+        Label {
+            text: "Markers"
+            color: Theme.ink
+            font.pixelSize: Theme.textBody
+            font.weight: Font.Medium
+        }
+        Label {
+            visible: Project.markers.length === 0
+            text: "No markers yet, " + Theme.shortcutText(Registry.actionInfo("marker.add").shortcut) + " to add one at the playhead"
+            color: Theme.inkDim
+            font.pixelSize: Theme.textLabel
+            wrapMode: Text.Wrap
+            Layout.fillWidth: true
+        }
+        ListView {
+            clip: true
+            model: Project.markers
+            boundsBehavior: Flickable.StopAtBounds
+            Layout.fillWidth: true
+            Layout.preferredHeight: Math.min(count, Theme.markerListRows) * Theme.buttonHeight
+            ScrollBar.vertical: ScrollBar {}
+            delegate: ItemDelegate {
+                id: row
+                required property var modelData
+                objectName: "marker.goto:" + modelData.id
+                width: ListView.view.width
+                height: Theme.buttonHeight
+                highlighted: Nav.selectedMarker === modelData.id
+                ToolTip.text: Registry.actionInfo("marker.goto").title + " " + modelData.number
+                ToolTip.visible: hovered
+                ToolTip.delay: Theme.tooltipDelay
+                onClicked: Registry.runAction("marker.goto", {marker: modelData.id})
+                background: Rectangle {
+                    radius: Theme.radiusClip
+                    color: row.highlighted ? Theme.glow(Theme.tape) : row.hovered ? Theme.lift : Theme.clear
+                }
+                contentItem: RowLayout {
+                    spacing: Theme.space2
+                    Label {
+                        text: row.modelData.number
+                        color: Theme.inkDim
+                        font.pixelSize: Theme.textLabel
+                        font.features: {"tnum": 1}
+                    }
+                    Label {
+                        text: row.modelData.name
+                        color: Theme.ink
+                        font.pixelSize: Theme.textLabel
+                        elide: Text.ElideRight
+                        Layout.fillWidth: true
+                    }
+                    Label {
+                        text: row.modelData.position
+                        color: Theme.inkDim
+                        font.pixelSize: Theme.textLabel
+                        font.features: {"tnum": 1}
+                    }
+                }
+            }
         }
     }
 

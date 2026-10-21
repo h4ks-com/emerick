@@ -11,6 +11,8 @@ Button {
     property color activeColor: Theme.tape
     property string iconName
     property color iconColor: Theme.ink
+    // A second tooltip line, such as a modifier that changes what a drag does.
+    property string hint
     // A delegate binds its objectName after this first evaluates, while actionId is still empty.
     readonly property var info: actionId ? Registry.actionInfo(actionId) : ({})
     readonly property string shortcutText: info.shortcut ? Theme.shortcutText(info.shortcut) : ""
@@ -23,7 +25,7 @@ Button {
     icon.width: Theme.iconSize
     icon.height: Theme.iconSize
     icon.color: active ? activeColor : iconColor
-    ToolTip.text: shortcutText ? info.title + "   " + shortcutText : info.title
+    ToolTip.text: (shortcutText ? info.title + "   " + shortcutText : info.title) + (hint ? "\n" + hint : "")
     ToolTip.visible: hovered
     ToolTip.delay: Theme.tooltipDelay
     contentItem: IconLabel {

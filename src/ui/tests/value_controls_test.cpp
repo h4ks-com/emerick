@@ -197,15 +197,16 @@ TEST_CASE("the Inspector and the clip follow a fade handle drag while it lasts, 
     QQuickItem* clipItem = main.item("clip:" + qid(clip));
     const double pixelsPerTick = main.rig.nav.pixelsPerTick();
     const QPointF press = handle->mapToScene({handle->width() / 2, handle->height() / 2});
+    const Qt::KeyboardModifiers offGrid = Qt::ControlModifier;
 
-    main.send(QEvent::MouseButtonPress, press, Qt::LeftButton, Qt::NoModifier);
+    main.send(QEvent::MouseButtonPress, press, Qt::LeftButton, offGrid);
     for (const double ticks : {100.0, 200.0, 300.0, 400.0}) {
-        main.send(QEvent::MouseMove, press + QPointF{ticks * pixelsPerTick, 0}, Qt::LeftButton, Qt::NoModifier);
+        main.send(QEvent::MouseMove, press + QPointF{ticks * pixelsPerTick, 0}, Qt::LeftButton, offGrid);
     }
     CHECK(processUntil([&] { return field->property("value").toDouble() == 400; }));
     CHECK(clipItem->property("fadeIn").toDouble() == 400);
     CHECK(audioClip(main, clip).fadeIn == 400);
-    main.send(QEvent::MouseButtonRelease, press + QPointF{400 * pixelsPerTick, 0}, Qt::NoButton, Qt::NoModifier);
+    main.send(QEvent::MouseButtonRelease, press + QPointF{400 * pixelsPerTick, 0}, Qt::NoButton, offGrid);
     MainWindow::settle();
     CHECK(main.rig.controller->project().undoName() == "set clip fades");
 
@@ -215,13 +216,13 @@ TEST_CASE("the Inspector and the clip follow a fade handle drag while it lasts, 
     CHECK(processUntil([&] { return field->property("value").toDouble() == 0; }));
     CHECK(clipItem->property("fadeIn").toDouble() == 0);
 
-    main.send(QEvent::MouseButtonPress, press, Qt::LeftButton, Qt::NoModifier);
-    main.send(QEvent::MouseMove, press + QPointF{300 * pixelsPerTick, 0}, Qt::LeftButton, Qt::NoModifier);
+    main.send(QEvent::MouseButtonPress, press, Qt::LeftButton, offGrid);
+    main.send(QEvent::MouseMove, press + QPointF{300 * pixelsPerTick, 0}, Qt::LeftButton, offGrid);
     CHECK(processUntil([&] { return audioClip(main, clip).fadeIn == 300; }));
     QTest::keyClick(main.window, Qt::Key_Escape);
     CHECK(audioClip(main, clip).fadeIn == 0);
-    main.send(QEvent::MouseMove, press + QPointF{350 * pixelsPerTick, 0}, Qt::LeftButton, Qt::NoModifier);
-    main.send(QEvent::MouseButtonRelease, press + QPointF{350 * pixelsPerTick, 0}, Qt::NoButton, Qt::NoModifier);
+    main.send(QEvent::MouseMove, press + QPointF{350 * pixelsPerTick, 0}, Qt::LeftButton, offGrid);
+    main.send(QEvent::MouseButtonRelease, press + QPointF{350 * pixelsPerTick, 0}, Qt::NoButton, offGrid);
     MainWindow::settle();
     CHECK(audioClip(main, clip).fadeIn == 0);
     CHECK(main.rig.controller->project().undoName() == undoBefore);

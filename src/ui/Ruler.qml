@@ -65,9 +65,8 @@ Rectangle {
         objectName: "transport.locate"
         anchors.fill: parent
         onPressed: mouse => {
-            const ticks = Math.round(ruler.scrollTicks + mouse.x / ruler.pixelsPerTick)
             Registry.runAction("transport.locate", {
-                position: mouse.modifiers & Qt.AltModifier ? ticks : Project.snapped(ticks)
+                position: Project.placed(Math.round(ruler.scrollTicks + mouse.x / ruler.pixelsPerTick), mouse.modifiers)
             })
         }
     }

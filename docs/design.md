@@ -43,6 +43,8 @@ Glass: the control bar and popovers use a translucent `slate` at 88% with a 1 px
 
 Left aligned everywhere. Track header holds arm, mute, solo, name and an instrument icon; the inspector shows the selected track's inputs and outputs per track (audio device and channels, MIDI port and channel), always visible, never hidden in a global preference.
 
+A marker lane under the bar ruler shows each marker as a named flag, and the inspector lists the markers under the track routes; clicking one moves the playhead there. Drags snap to the beat grid while snap is on, and holding Command (Ctrl on Linux and Windows) snaps them the other way, as Control does in Logic.
+
 The mixer (X) docks at the bottom of the window above the console. Each track gets a channel strip with its output, a vertical gain fader beside the input meter, mute, solo and arm, and its name on its color. Single keys such as Space and X run their actions anywhere except while a text field has focus. Cmd+C, Cmd+X, Cmd+V and Cmd+A edit the focused text, such as a selection in the console log, and edit clips everywhere else.
 
 ## Principles

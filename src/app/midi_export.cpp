@@ -74,6 +74,13 @@ std::vector<TimedBytes> conductor(const engine::Session& session, const model::D
                                                    kClocksPerClick, kThirtySecondsPerQuarter)
                 .bytes}};
     std::map<core::Ticks, std::string> markers;
+    const auto addMarker = [&](core::Ticks at, const std::string& name) {
+        std::string& text = markers[at];
+        text += text.empty() ? name : ", " + name;
+    };
+    for (const model::Marker& marker : document.markers) {
+        addMarker(marker.at, marker.name);
+    }
     for (const engine::Track& track : session.tracks) {
         const model::Track* source = model::findTrack(document, model::TrackId{track.id});
         const TrackType* type = source == nullptr ? nullptr : registry.trackType(source->kind);
@@ -81,8 +88,7 @@ std::vector<TimedBytes> conductor(const engine::Session& session, const model::D
             continue;
         }
         for (const Marker& marker : type->markers(*source)) {
-            std::string& text = markers[marker.at];
-            text += text.empty() ? marker.text : ", " + marker.text;
+            addMarker(marker.at, marker.text);
         }
     }
     for (const auto& [at, text] : markers) {

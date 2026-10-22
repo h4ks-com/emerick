@@ -37,6 +37,7 @@ qt_add_library(emerick_app STATIC
     include/emerick/app/project_actions.hpp
     include/emerick/app/project_bundle.hpp
     include/emerick/app/project_controller.hpp
+    include/emerick/app/project_health.hpp
     include/emerick/app/project_state.hpp
     include/emerick/app/qml_exposure.hpp
     include/emerick/app/registry.hpp
@@ -66,6 +67,7 @@ qt_add_library(emerick_app STATIC
     project_bundle.cpp
     project_controller.cpp
     project_file_actions.cpp
+    project_health.cpp
     project_state.cpp
     qml_exposure.cpp
     registry.cpp
@@ -102,6 +104,7 @@ if(EMERICK_BUILD_TESTS)
         tests/devices_test.cpp
         tests/fade_test.cpp
         tests/gesture_test.cpp
+        tests/health_test.cpp
         tests/hostile_params_test.cpp
         tests/introspector_test.cpp
         tests/lua_host_test.cpp

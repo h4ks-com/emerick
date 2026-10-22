@@ -23,6 +23,7 @@ qt_add_qml_module(emerick_ui
         GlassMenu.qml
         GlassMenuItem.qml
         GlassPanel.qml
+        HealthPanel.qml
         Inspector.qml
         KeyCommands.qml
         LevelMeter.qml

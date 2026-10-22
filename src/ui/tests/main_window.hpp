@@ -121,6 +121,8 @@ struct MainWindow {
     }
 
     void click(QQuickItem* target, Qt::MouseButton button = Qt::LeftButton) const {
+        // We grab a frame so pending layout passes run and we click where the item really is.
+        window->grabWindow();
         const QPointF at = target->mapToScene({target->width() / 2, target->height() / 2});
         for (const QEvent::Type type : {QEvent::MouseButtonPress, QEvent::MouseButtonRelease}) {
             QMouseEvent event{type,

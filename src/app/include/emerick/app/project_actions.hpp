@@ -30,6 +30,8 @@ model::TrackId targetTrack(const ProjectController& controller, const Nav& nav, 
 Json trackResult(const ProjectController& controller, const model::TrackId& id);
 Json editTrack(ProjectController& controller, const model::TrackId& id, std::string name,
                const std::function<void(model::Track&)>& edit);
+// One submenu entry per track color, passing its index as the color param.
+std::vector<MenuChoice> colorChoices();
 // Clip actions without a clip param act on the selected clips, so their shortcuts work on what the user selected.
 void registerClipActions(Registry& registry, ProjectController& controller, Nav& nav);
 // Copy, cut, paste, select all and clip neighbors, and the Delete key's action.

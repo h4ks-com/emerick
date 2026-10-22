@@ -3,6 +3,7 @@
 #include <QObject>
 #include <QString>
 #include <QTimer>
+#include <QVariantList>
 #include <QVariantMap>
 #include <chrono>
 #include <filesystem>
@@ -38,6 +39,7 @@ class ProjectController : public QObject {
     Q_PROPERTY(QVariantList markers READ markers NOTIFY projectChanged)
     Q_PROPERTY(QVariantMap routeDevices READ routeDevices NOTIFY devicesChanged)
     Q_PROPERTY(QVariantMap trackErrors READ trackErrors NOTIFY trackErrorsChanged)
+    Q_PROPERTY(QVariantList healthIssues READ healthIssues NOTIFY healthChanged)
     Q_PROPERTY(int midiChannelCount READ midiChannelCount CONSTANT)
     Q_PROPERTY(int trackColorCount READ trackColorCount CONSTANT)
     Q_PROPERTY(QString name READ name NOTIFY fileChanged)
@@ -140,6 +142,8 @@ public:
     [[nodiscard]] const TrackMeters& meters() const { return meters_; }
     // Per track id, the reasons its routes do not play, one per line.
     [[nodiscard]] QVariantMap trackErrors() const { return trackErrors_; }
+    Json checkHealth();
+    [[nodiscard]] QVariantList healthIssues() const { return healthIssues_; }
     [[nodiscard]] static int midiChannelCount() { return kMidiChannels; }
     [[nodiscard]] static int trackColorCount() { return kTrackColors; }
 
@@ -150,6 +154,7 @@ signals:
     void projectChanged();
     void devicesChanged();
     void trackErrorsChanged();
+    void healthChanged();
     // The folder, the name or the edited flag changed.
     void fileChanged();
 
@@ -201,6 +206,7 @@ private:
     std::chrono::steady_clock::time_point lastLevels_ = std::chrono::steady_clock::now();
     bool lastStalled_ = false;
     QVariantMap trackErrors_;
+    QVariantList healthIssues_;
     std::optional<std::chrono::steady_clock::time_point> lastActive_;
     bool warm_ = false;
     bool warmWhileActive_ = true;

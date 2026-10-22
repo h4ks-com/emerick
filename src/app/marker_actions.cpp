@@ -210,12 +210,15 @@ void registerMarkerEdits(Registry& registry, ProjectController& controller, Nav&
          .title = "Set marker color",
          .category = "Markers",
          .schema = {{"properties", {{"marker", {{"type", "string"}}}, {"color", {{"type", "integer"}}}}}},
-         .run = [&controller, &nav](const Json& params) {
-             const model::MarkerId id = targetMarker(controller, nav, params);
-             const auto color = colorParam(params);
-             return editMarker(controller, id, "set marker color",
-                               [&](model::Marker& marker) { marker.color = color; });
-         }});
+         .run =
+             [&controller, &nav](const Json& params) {
+                 const model::MarkerId id = targetMarker(controller, nav, params);
+                 const auto color = colorParam(params);
+                 return editMarker(controller, id, "set marker color",
+                                   [&](model::Marker& marker) { marker.color = color; });
+             },
+         .menus = {kMarkerContextMenu},
+         .submenu = colorChoices});
     registry.addAction({.id = "marker.delete",
                         .title = "Delete marker",
                         .aliases = {"remove marker"},

@@ -2,7 +2,6 @@
 set -eu
 cd "$(dirname "$0")/.."
 NAME=emerick-e2e
-docker build -t emerick-dev -f docker/Dockerfile .
 docker rm -f $NAME >/dev/null 2>&1 || true
 docker run -d --name $NAME -p 127.0.0.1:7777:7777 emerick-dev >/dev/null
 trap 'docker logs $NAME 2>&1 | tail -20; docker rm -f $NAME >/dev/null' EXIT

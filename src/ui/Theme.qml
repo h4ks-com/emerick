@@ -86,6 +86,7 @@ QtObject {
     readonly property int transportButton: 36
     readonly property int displayHeight: 44
     readonly property int tooltipDelay: 500
+    readonly property int noticeDuration: 10000
     readonly property color displayInset: Qt.rgba(0, 0, 0, 0.35)
     function glow(color) {
         return Qt.rgba(color.r, color.g, color.b, 0.18)

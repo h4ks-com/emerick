@@ -41,9 +41,9 @@ struct FuzzRig : ProjectRig {
 
     // An audio track with a clip on a file in the project, a MIDI track with a clip and a marker.
     void populate() {
-        const std::filesystem::path audio = controller->folder() / "audio";
-        std::filesystem::create_directories(audio);
-        writeConstant(audio / "tone.wav", 48000, 0.25F);
+        const std::filesystem::path audioFolder = controller->folder() / "audio";
+        std::filesystem::create_directories(audioFolder);
+        writeConstant(audioFolder / "tone.wav", 48000, 0.25F);
         model::Track vox;
         vox.name = "Vox";
         vox.clips.emplace_back(model::AudioClip{.start = 0, .length = 3840, .file = "audio/tone.wav"});

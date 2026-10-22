@@ -290,10 +290,12 @@ void registerProjectActions(Registry& registry, ProjectController& controller, N
                         .title = "Refresh audio and MIDI devices",
                         .aliases = {"rescan devices", "find new devices"},
                         .category = "Devices",
-                        .run = [&controller](const Json&) {
-                            controller.refreshDevices();
-                            return devicesState(controller);
-                        }});
+                        .run =
+                            [&controller](const Json&) {
+                                controller.refreshDevices();
+                                return devicesState(controller);
+                            },
+                        .menus = {kSettingsMenu}});
 }
 
 }  // namespace emerick::app

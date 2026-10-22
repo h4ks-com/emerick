@@ -96,222 +96,233 @@ Rectangle {
         }
     }
 
-    Repeater {
-        model: Tracks
-        delegate: ColumnLayout {
-            id: panel
-            required property string trackId
-            required property string name
-            required property var clips
-            required property bool audioRoutes
-            required property bool midiRoutes
-            required property var audioIn
-            required property var audioOut
-            required property var midiIn
-            required property var midiOut
-            required property real pan
-            readonly property var clip: visible && Nav.selectedClips.length > 0
-                                        ? clips.find(entry => entry.id === Nav.selectedClips[0]) : undefined
-            readonly property bool audioClip: clip !== undefined && clip.type === "audio"
-            readonly property bool severalClips: Nav.selectedClips.length > 1
+    Flickable {
+        objectName: "inspector.scroll"
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.top: parent.top
+        anchors.bottom: markers.top
+        anchors.bottomMargin: Theme.space3
+        contentHeight: contentItem.childrenRect.height + 2 * Theme.space3
+        boundsBehavior: Flickable.StopAtBounds
+        clip: true
+        ScrollBar.vertical: ScrollBar {}
 
-            function clipCalls(actionId, params) {
-                return Nav.selectedClips.map(id => ({id: actionId, params: Object.assign({clip: id}, params)}))
-            }
-            visible: trackId === Nav.selectedTrack
-            anchors.fill: parent
-            anchors.margins: Theme.space3
-            anchors.bottomMargin: markers.height + 2 * Theme.space3
-            spacing: Theme.space1
+        Repeater {
+            model: Tracks
+            delegate: ColumnLayout {
+                id: panel
+                required property string trackId
+                required property string name
+                required property var clips
+                required property bool audioRoutes
+                required property bool midiRoutes
+                required property var audioIn
+                required property var audioOut
+                required property var midiIn
+                required property var midiOut
+                required property real pan
+                readonly property var clip: visible && Nav.selectedClips.length > 0
+                                            ? clips.find(entry => entry.id === Nav.selectedClips[0]) : undefined
+                readonly property bool audioClip: clip !== undefined && clip.type === "audio"
+                readonly property bool severalClips: Nav.selectedClips.length > 1
 
-            Label {
-                text: panel.name
-                color: Theme.ink
-                font.pixelSize: Theme.textBody
-                font.weight: Font.Medium
-            }
-
-            RouteLabel { text: "Pan" }
-            PanNumber {
-                trackId: panel.trackId
-                pan: panel.pan
-            }
-
-            RouteLabel { text: "Audio input"; visible: panel.audioRoutes }
-            AudioRoute {
-                visible: panel.audioRoutes
-                actionId: "track.setAudioIn"
-                trackId: panel.trackId
-                devices: Project.routeDevices.audioIn
-                route: panel.audioIn
-            }
-            RouteLabel { text: "Audio output"; visible: panel.audioRoutes }
-            AudioRoute {
-                visible: panel.audioRoutes
-                actionId: "track.setAudioOut"
-                trackId: panel.trackId
-                devices: Project.routeDevices.audioOut
-                route: panel.audioOut
-            }
-
-            RouteLabel { text: "MIDI input"; visible: panel.midiRoutes }
-            MidiRoute {
-                visible: panel.midiRoutes
-                actionId: "track.setMidiIn"
-                trackId: panel.trackId
-                ports: Project.routeDevices.midiIn
-                route: panel.midiIn
-            }
-            RouteLabel { text: "MIDI output"; visible: panel.midiRoutes }
-            MidiRoute {
-                visible: panel.midiRoutes
-                actionId: "track.setMidiOut"
-                trackId: panel.trackId
-                ports: Project.routeDevices.midiOut
-                route: panel.midiOut
-            }
-            Label {
-                objectName: "inspector.trackErrors"
-                visible: text !== ""
-                text: Project.trackErrors[panel.trackId] ?? ""
-                color: Theme.rec
-                font.pixelSize: Theme.textLabel
-                wrapMode: Text.Wrap
-                Layout.topMargin: Theme.space2
-                Layout.fillWidth: true
-            }
-
-            Loader {
-                active: panel.clip !== undefined
-                Layout.topMargin: Theme.space4
-                Layout.fillWidth: true
-                sourceComponent: clipProperties
-            }
-
-            Component {
-                id: clipProperties
-                GridLayout {
-                columns: 2
-                columnSpacing: Theme.space2
-                rowSpacing: Theme.space1
+                function clipCalls(actionId, params) {
+                    return Nav.selectedClips.map(id => ({id: actionId, params: Object.assign({clip: id}, params)}))
+                }
+                visible: trackId === Nav.selectedTrack
+                x: Theme.space3
+                y: Theme.space3
+                width: parent.width - 2 * Theme.space3
+                spacing: Theme.space1
 
                 Label {
-                    text: panel.severalClips ? Nav.selectedClips.length + " clips" : panel.clip ? "Clip, take " + panel.clip.take : ""
+                    text: panel.name
                     color: Theme.ink
                     font.pixelSize: Theme.textBody
                     font.weight: Font.Medium
-                    Layout.columnSpan: 2
                 }
-                RouteLabel { text: "Start" }
-                PositionNumber {
-                    clipPanel: panel
-                    actionId: "clip.move"
-                    param: "start"
-                    value: panel.clip ? panel.clip.start : 0
-                    // clip.move moves the whole selection by the same offset itself.
-                    actionsFor: number => [{id: "clip.move", params: {clip: panel.clip.id, start: number, selection: true}}]
+
+                RouteLabel { text: "Pan" }
+                PanNumber {
+                    trackId: panel.trackId
+                    pan: panel.pan
                 }
-                RouteLabel { text: "End"; visible: !panel.severalClips }
-                PositionNumber {
-                    visible: !panel.severalClips
-                    clipPanel: panel
-                    actionId: "clip.resize"
-                    param: "end"
-                    from: panel.clip ? panel.clip.start + 1 : 0
-                    value: panel.clip ? panel.clip.start + panel.clip.length : 0
+
+                RouteLabel { text: "Audio input"; visible: panel.audioRoutes }
+                AudioRoute {
+                    visible: panel.audioRoutes
+                    actionId: "track.setAudioIn"
+                    trackId: panel.trackId
+                    devices: Project.routeDevices.audioIn
+                    route: panel.audioIn
                 }
-                RouteLabel { text: "Length" }
-                PositionNumber {
-                    clipPanel: panel
-                    actionId: "clip.resize"
-                    param: "length"
-                    duration: true
-                    from: 1
-                    value: panel.clip ? panel.clip.length : 0
+                RouteLabel { text: "Audio output"; visible: panel.audioRoutes }
+                AudioRoute {
+                    visible: panel.audioRoutes
+                    actionId: "track.setAudioOut"
+                    trackId: panel.trackId
+                    devices: Project.routeDevices.audioOut
+                    route: panel.audioOut
                 }
-                RouteLabel {
-                    text: "Fades"
-                    visible: panel.audioClip
-                    Layout.columnSpan: 2
+
+                RouteLabel { text: "MIDI input"; visible: panel.midiRoutes }
+                MidiRoute {
+                    visible: panel.midiRoutes
+                    actionId: "track.setMidiIn"
+                    trackId: panel.trackId
+                    ports: Project.routeDevices.midiIn
+                    route: panel.midiIn
                 }
-                RouteLabel { text: "In"; visible: panel.audioClip }
-                ClipNumber {
-                    visible: panel.audioClip
-                    clipPanel: panel
-                    actionId: "clip.setFade"
-                    param: "fadeIn"
-                    from: 0
-                    to: panel.clip ? panel.clip.length : 0
-                    step: Project.ticksPerBeat / 16
-                    unit: "ticks"
-                    value: panel.audioClip ? panel.clip.fadeIn : 0
+                RouteLabel { text: "MIDI output"; visible: panel.midiRoutes }
+                MidiRoute {
+                    visible: panel.midiRoutes
+                    actionId: "track.setMidiOut"
+                    trackId: panel.trackId
+                    ports: Project.routeDevices.midiOut
+                    route: panel.midiOut
                 }
-                RouteLabel { text: "In shape"; visible: panel.audioClip }
-                FadeShapes {
-                    visible: panel.audioClip
-                    actionId: "clip.setFadeInShape"
-                    current: panel.audioClip ? panel.clip.fadeInShape : ""
+                Label {
+                    objectName: "inspector.trackErrors"
+                    visible: text !== ""
+                    text: Project.trackErrors[panel.trackId] ?? ""
+                    color: Theme.rec
+                    font.pixelSize: Theme.textLabel
+                    wrapMode: Text.Wrap
+                    Layout.topMargin: Theme.space2
+                    Layout.fillWidth: true
                 }
-                RouteLabel { text: "In curve"; visible: panel.audioClip }
-                ClipNumber {
-                    visible: panel.audioClip
-                    clipPanel: panel
-                    actionId: "clip.setFade"
-                    param: "fadeInCurve"
-                    from: -1
-                    to: 1
-                    step: 0.05
-                    decimals: 2
-                    value: panel.audioClip ? panel.clip.fadeInCurve : 0
+
+                Loader {
+                    active: panel.clip !== undefined
+                    Layout.topMargin: Theme.space4
+                    Layout.fillWidth: true
+                    sourceComponent: clipProperties
                 }
-                RouteLabel { text: "Out"; visible: panel.audioClip }
-                ClipNumber {
-                    visible: panel.audioClip
-                    clipPanel: panel
-                    actionId: "clip.setFade"
-                    param: "fadeOut"
-                    from: 0
-                    to: panel.clip ? panel.clip.length : 0
-                    step: Project.ticksPerBeat / 16
-                    unit: "ticks"
-                    value: panel.audioClip ? panel.clip.fadeOut : 0
-                }
-                RouteLabel { text: "Out shape"; visible: panel.audioClip }
-                FadeShapes {
-                    visible: panel.audioClip
-                    actionId: "clip.setFadeOutShape"
-                    current: panel.audioClip ? panel.clip.fadeOutShape : ""
-                    mirrored: true
-                }
-                RouteLabel { text: "Out curve"; visible: panel.audioClip }
-                ClipNumber {
-                    visible: panel.audioClip
-                    clipPanel: panel
-                    actionId: "clip.setFade"
-                    param: "fadeOutCurve"
-                    from: -1
-                    to: 1
-                    step: 0.05
-                    decimals: 2
-                    value: panel.audioClip ? panel.clip.fadeOutCurve : 0
-                }
-                RouteLabel { text: "Gain"; visible: panel.audioClip }
-                ClipNumber {
-                    visible: panel.audioClip
-                    clipPanel: panel
-                    actionId: "clip.setGain"
-                    param: "db"
-                    from: Theme.gainMinDb
-                    to: Theme.clipGainMaxDb
-                    step: Theme.gainStepDb
-                    decimals: 1
-                    unit: "dB"
-                    value: panel.audioClip ? panel.clip.gainDb : 0
-                }
+
+                Component {
+                    id: clipProperties
+                    GridLayout {
+                    columns: 2
+                    columnSpacing: Theme.space2
+                    rowSpacing: Theme.space1
+
+                    Label {
+                        text: panel.severalClips ? Nav.selectedClips.length + " clips" : panel.clip ? "Clip, take " + panel.clip.take : ""
+                        color: Theme.ink
+                        font.pixelSize: Theme.textBody
+                        font.weight: Font.Medium
+                        Layout.columnSpan: 2
+                    }
+                    RouteLabel { text: "Start" }
+                    PositionNumber {
+                        clipPanel: panel
+                        actionId: "clip.move"
+                        param: "start"
+                        value: panel.clip ? panel.clip.start : 0
+                        // clip.move moves the whole selection by the same offset itself.
+                        actionsFor: number => [{id: "clip.move", params: {clip: panel.clip.id, start: number, selection: true}}]
+                    }
+                    RouteLabel { text: "End"; visible: !panel.severalClips }
+                    PositionNumber {
+                        visible: !panel.severalClips
+                        clipPanel: panel
+                        actionId: "clip.resize"
+                        param: "end"
+                        from: panel.clip ? panel.clip.start + 1 : 0
+                        value: panel.clip ? panel.clip.start + panel.clip.length : 0
+                    }
+                    RouteLabel { text: "Length" }
+                    PositionNumber {
+                        clipPanel: panel
+                        actionId: "clip.resize"
+                        param: "length"
+                        duration: true
+                        from: 1
+                        value: panel.clip ? panel.clip.length : 0
+                    }
+                    RouteLabel {
+                        text: "Fades"
+                        visible: panel.audioClip
+                        Layout.columnSpan: 2
+                    }
+                    RouteLabel { text: "In"; visible: panel.audioClip }
+                    ClipNumber {
+                        visible: panel.audioClip
+                        clipPanel: panel
+                        actionId: "clip.setFade"
+                        param: "fadeIn"
+                        from: 0
+                        to: panel.clip ? panel.clip.length : 0
+                        step: Project.ticksPerBeat / 16
+                        unit: "ticks"
+                        value: panel.audioClip ? panel.clip.fadeIn : 0
+                    }
+                    RouteLabel { text: "In shape"; visible: panel.audioClip }
+                    FadeShapes {
+                        visible: panel.audioClip
+                        actionId: "clip.setFadeInShape"
+                        current: panel.audioClip ? panel.clip.fadeInShape : ""
+                    }
+                    RouteLabel { text: "In curve"; visible: panel.audioClip }
+                    ClipNumber {
+                        visible: panel.audioClip
+                        clipPanel: panel
+                        actionId: "clip.setFade"
+                        param: "fadeInCurve"
+                        from: -1
+                        to: 1
+                        step: 0.05
+                        decimals: 2
+                        value: panel.audioClip ? panel.clip.fadeInCurve : 0
+                    }
+                    RouteLabel { text: "Out"; visible: panel.audioClip }
+                    ClipNumber {
+                        visible: panel.audioClip
+                        clipPanel: panel
+                        actionId: "clip.setFade"
+                        param: "fadeOut"
+                        from: 0
+                        to: panel.clip ? panel.clip.length : 0
+                        step: Project.ticksPerBeat / 16
+                        unit: "ticks"
+                        value: panel.audioClip ? panel.clip.fadeOut : 0
+                    }
+                    RouteLabel { text: "Out shape"; visible: panel.audioClip }
+                    FadeShapes {
+                        visible: panel.audioClip
+                        actionId: "clip.setFadeOutShape"
+                        current: panel.audioClip ? panel.clip.fadeOutShape : ""
+                        mirrored: true
+                    }
+                    RouteLabel { text: "Out curve"; visible: panel.audioClip }
+                    ClipNumber {
+                        visible: panel.audioClip
+                        clipPanel: panel
+                        actionId: "clip.setFade"
+                        param: "fadeOutCurve"
+                        from: -1
+                        to: 1
+                        step: 0.05
+                        decimals: 2
+                        value: panel.audioClip ? panel.clip.fadeOutCurve : 0
+                    }
+                    RouteLabel { text: "Gain"; visible: panel.audioClip }
+                    ClipNumber {
+                        visible: panel.audioClip
+                        clipPanel: panel
+                        actionId: "clip.setGain"
+                        param: "db"
+                        from: Theme.gainMinDb
+                        to: Theme.clipGainMaxDb
+                        step: Theme.gainStepDb
+                        decimals: 1
+                        unit: "dB"
+                        value: panel.audioClip ? panel.clip.gainDb : 0
+                    }
+                    }
                 }
             }
-
-            Item { Layout.fillHeight: true }
         }
     }
 

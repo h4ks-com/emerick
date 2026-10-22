@@ -18,6 +18,7 @@
 
 #include "emerick/app/event_wait.hpp"
 #include "emerick/app/project_bundle.hpp"
+#include "emerick/app/project_health.hpp"
 #include "emerick/app/project_state.hpp"
 #include "emerick/app/session_mapping.hpp"
 #include "emerick/app/stem_export.hpp"
@@ -126,6 +127,17 @@ void ProjectController::moveTo(const std::filesystem::path& folder, model::Docum
     project_.reset(std::move(document));
     setEdited(false);
     emit fileChanged();
+    checkHealth();
+}
+
+Json ProjectController::checkHealth() {
+    const Json issues = healthJson(app::checkHealth(project_.document(), {.folder = folder_,
+                                                                          .sampleRate = options_.sampleRate,
+                                                                          .audioDevices = engine_.audioDevices(),
+                                                                          .midiPorts = engine_.midiPorts()}));
+    healthIssues_ = toVariant(issues).toList();
+    emit healthChanged();
+    return issues;
 }
 
 void ProjectController::createUntitled() {

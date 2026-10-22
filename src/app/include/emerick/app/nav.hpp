@@ -32,6 +32,7 @@ class Nav : public QObject {
     Q_PROPERTY(QString trackMenu READ trackMenu WRITE setTrackMenu NOTIFY changed)
     Q_PROPERTY(bool paletteOpen READ paletteOpen WRITE setPaletteOpen NOTIFY changed)
     Q_PROPERTY(bool aboutOpen READ aboutOpen WRITE setAboutOpen NOTIFY changed)
+    Q_PROPERTY(bool healthOpen READ healthOpen WRITE setHealthOpen NOTIFY changed)
     Q_PROPERTY(bool inspectorOpen READ inspectorOpen WRITE setInspectorOpen NOTIFY changed)
     Q_PROPERTY(bool projectMenuOpen READ projectMenuOpen WRITE setProjectMenuOpen NOTIFY changed)
     Q_PROPERTY(bool consoleOpen READ consoleOpen WRITE setConsoleOpen NOTIFY changed)
@@ -64,6 +65,7 @@ public:
     [[nodiscard]] QString trackMenu() const { return trackMenu_; }
     [[nodiscard]] bool paletteOpen() const { return paletteOpen_; }
     [[nodiscard]] bool aboutOpen() const { return aboutOpen_; }
+    [[nodiscard]] bool healthOpen() const { return healthOpen_; }
     [[nodiscard]] bool inspectorOpen() const { return inspectorOpen_; }
     [[nodiscard]] bool projectMenuOpen() const { return projectMenuOpen_; }
     [[nodiscard]] bool consoleOpen() const { return consoleOpen_; }
@@ -96,6 +98,7 @@ public:
     void setTrackMenu(const QString& value) { assign(trackMenu_, value, &Nav::changed); }
     void setPaletteOpen(bool value) { assign(paletteOpen_, value, &Nav::changed); }
     void setAboutOpen(bool value) { assign(aboutOpen_, value, &Nav::changed); }
+    void setHealthOpen(bool value) { assign(healthOpen_, value, &Nav::changed); }
     void setInspectorOpen(bool value) { assign(inspectorOpen_, value, &Nav::changed); }
     void setProjectMenuOpen(bool value) { assign(projectMenuOpen_, value, &Nav::changed); }
     void setConsoleOpen(bool value) { assign(consoleOpen_, value, &Nav::changed); }
@@ -145,6 +148,7 @@ public:
                 {"scrollTicks", scrollTicks_},
                 {"paletteOpen", paletteOpen_},
                 {"aboutOpen", aboutOpen_},
+                {"healthOpen", healthOpen_},
                 {"inspectorOpen", inspectorOpen_},
                 {"projectMenuOpen", projectMenuOpen_},
                 {"consoleOpen", consoleOpen_},
@@ -180,6 +184,7 @@ private:
     QString trackMenu_;
     bool paletteOpen_ = false;
     bool aboutOpen_ = false;
+    bool healthOpen_ = false;
     bool inspectorOpen_ = true;
     bool projectMenuOpen_ = false;
     bool consoleOpen_ = false;

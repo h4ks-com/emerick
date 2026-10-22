@@ -283,6 +283,45 @@ ApplicationWindow {
 
     CommandPalette {}
 
+    HealthPanel {}
+
+    GlassPanel {
+        id: healthNotice
+        property bool shown: false
+        anchors.right: parent.right
+        anchors.bottom: parent.bottom
+        anchors.margins: Theme.space4
+        width: noticeButton.implicitWidth + 2 * Theme.space2
+        height: noticeButton.implicitHeight + 2 * Theme.space2
+        visible: shown && !Nav.healthOpen
+        ChromeButton {
+            id: noticeButton
+            objectName: "project.health"
+            anchors.centerIn: parent
+            text: "Review " + Project.healthIssues.length + (Project.healthIssues.length === 1 ? " project issue" : " project issues")
+            onClicked: healthNotice.shown = false
+        }
+        Timer {
+            id: noticeTimer
+            interval: Theme.noticeDuration
+            onTriggered: healthNotice.shown = false
+        }
+        Connections {
+            target: Project
+            function onHealthChanged() {
+                healthNotice.shown = Project.healthIssues.length > 0 && !Nav.healthOpen
+                noticeTimer.restart()
+            }
+        }
+        Connections {
+            target: Nav
+            function onChanged() {
+                if (Nav.healthOpen)
+                    healthNotice.shown = false
+            }
+        }
+    }
+
     Popup {
         anchors.centerIn: parent
         padding: Theme.space5

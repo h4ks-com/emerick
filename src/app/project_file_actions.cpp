@@ -165,6 +165,18 @@ void registerProjectFolderActions(Registry& registry, ProjectController& control
                             },
                         .menus = {kFileMenu},
                         .confirm = "Delete the audio files that no clip uses? Undo cannot bring them back."});
+    registry.addLocation({.id = "health", .reveal = [&nav] { nav.setHealthOpen(true); }});
+    registry.addAction({.id = "project.health",
+                        .title = "Check project health",
+                        .aliases = {"missing files", "find problems", "project issues"},
+                        .category = "Project",
+                        .run =
+                            [&registry, &controller](const Json&) {
+                                const Json issues = controller.checkHealth();
+                                registry.reveal("health");
+                                return Json{{"issues", issues}};
+                            },
+                        .menus = {kFileMenu}});
     registry.addAction({.id = "project.showMenu",
                         .title = "Show or hide project menu",
                         .aliases = {"file menu", "document menu"},

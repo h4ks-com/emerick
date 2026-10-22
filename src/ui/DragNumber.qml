@@ -24,6 +24,11 @@ Item {
     // Returns the registry calls, {id, params}, that set a number. Without it the field emits committed.
     property var actionsFor
     property bool framed: true
+    // A knob draws itself over the field: it hides the text, drags up and down outside a DragGroup too, and a double
+    // click or Alt-click sets resetValue where a click would open the field for typing.
+    property bool showsText: true
+    property bool dragsVertically: false
+    property real resetValue: NaN
     property alias font: label.font
     property color textColor: Theme.ink
     property var textFromValue: number => number.toFixed(decimals) + (unit ? " " + unit : "")
@@ -178,7 +183,7 @@ Item {
         anchors.fill: parent
         anchors.leftMargin: field.margin
         anchors.rightMargin: field.margin
-        visible: !field.editing
+        visible: !field.editing && field.showsText
         text: field.displayText
         color: !field.enabled ? Theme.inkDim : field.gathered ? Theme.graphite : field.textColor
         font.pixelSize: Theme.textLabel
@@ -227,9 +232,9 @@ Item {
         }
         onPositionChanged: mouse => {
             const at = mapToItem(null, mouse.x, mouse.y)
-            const dx = at.x - press.x
-            const sideways = Math.abs(dx) >= Theme.dragThreshold
             const group = field.dragGroup()
+            const dx = at.x - press.x + (field.dragsVertically && !group ? press.y - at.y : 0)
+            const sideways = Math.abs(dx) >= Theme.dragThreshold
             if (!dragging && !gathering && !sideways && group && Math.abs(at.y - press.y) >= Theme.dragThreshold) {
                 gathering = true
             }
@@ -248,17 +253,20 @@ Item {
             }
             field.dragTo(fields)
         }
-        onReleased: {
+        onReleased: mouse => {
             const clicked = !dragging && !gathering
             const entries = finish()
-            if (clicked) {
+            if (clicked && isNaN(field.resetValue)) {
                 field.startEditing()
+            } else if (clicked && mouse.modifiers & Qt.AltModifier) {
+                field.commit(field.resetValue)
             }
             for (const entry of entries.filter(entry => !entry.field.actionsFor)) {
                 entry.field.committed(entry.value)
             }
             Registry.endGesture()
         }
+        onDoubleClicked: if (!isNaN(field.resetValue)) field.commit(field.resetValue)
         onCanceled: {
             finish()
             Registry.cancelGesture()
@@ -291,7 +299,7 @@ Item {
         required property int direction
         y: (field.height - height) / 2
         width: Theme.space4
-        visible: (hover.hovered || field.editing) && !field.held
+        visible: (hover.hovered || field.editing) && !field.held && field.showsText
         text: direction < 0 ? "‹" : "›"
         color: Theme.inkDim
         font.pixelSize: Theme.textTitle

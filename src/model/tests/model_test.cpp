@@ -33,6 +33,7 @@ Document sampleDocument() {
     track.color = 7;
     track.armed = true;
     track.gainDb = -6.0;
+    track.pan = -0.25;
     track.audioIn = {"genos", {1, 2}};
     track.midiIn = {"Digital Keyboard Port 1", 3, true, true};
     track.data = {{"voices", {1, 2, 3}}};
@@ -74,6 +75,18 @@ TEST_CASE("a format 1 project loads with no markers") {
     const Document loaded = documentFromJson(json);
     CHECK(loaded.markers.empty());
     CHECK(loaded.tracks.size() == 2);
+}
+
+TEST_CASE("a format 2 project loads with every track centered and saves its pan") {
+    auto json = toJson(sampleDocument());
+    json["format"] = 2;
+    for (auto& track : json["tracks"]) {
+        track.erase("pan");
+    }
+    for (const Track& track : documentFromJson(json).tracks) {
+        CHECK(track.pan == 0.0);
+    }
+    CHECK(documentFromJson(toJson(sampleDocument())).tracks[0].pan == -0.25);
 }
 
 TEST_CASE("markers stay sorted by position and undo and redo as one step each") {

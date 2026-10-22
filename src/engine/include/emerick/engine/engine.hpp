@@ -29,6 +29,13 @@ struct LevelReading {
 
 float fadeGain(Frames local, Frames length, Frames fadeIn, Frames fadeOut);
 
+struct StereoGains {
+    float left = 1.0F;
+    float right = 1.0F;
+};
+
+StereoGains panGains(float pan, PanLaw law);
+
 inline constexpr auto kStreamStall = std::chrono::seconds{2};
 
 // We call every method from the UI thread, and the audio thread runs only the backend callback.
@@ -73,6 +80,7 @@ public:
     void setSolo(std::string_view trackId, bool solo);
     void setArmed(std::string_view trackId, bool armed);
     void setGain(std::string_view trackId, float gain);
+    void setPan(std::string_view trackId, float pan);
 
     [[nodiscard]] TransportPosition position() const;
     [[nodiscard]] bool playing() const;

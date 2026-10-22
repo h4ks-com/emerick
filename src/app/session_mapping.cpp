@@ -47,6 +47,7 @@ engine::Track commonFields(const model::Track& track, engine::TrackKind kind) {
             .solo = track.solo,
             .monitor = track.monitor,
             .gain = gainFromDb(track.gainDb),
+            .pan = static_cast<float>(track.pan),
             .audioIn = {},
             .audioOut = {},
             .midiIn = {},
@@ -60,6 +61,16 @@ engine::Track commonFields(const model::Track& track, engine::TrackKind kind) {
 }  // namespace
 
 float gainFromDb(double db) { return static_cast<float>(std::pow(10.0, db / 20.0)); }
+
+engine::PanLaw panLawFromSettings(const Registry& registry) {
+    if (registry.setting(kPanLawSetting) == nullptr) {
+        return engine::PanLaw::constantPower;
+    }
+    const Json value = registry.settingValue(kPanLawSetting);
+    const auto* const found =
+        std::ranges::find(kPanLaws, value, [](const NamedPanLaw& entry) { return Json(entry.name); });
+    return found == kPanLaws.end() ? engine::PanLaw::constantPower : found->law;
+}
 
 engine::Track audioEngineTrack(const model::Track& track, const std::filesystem::path& folder) {
     engine::Track result = commonFields(track, engine::TrackKind::audio);
@@ -94,7 +105,8 @@ engine::Session toSession(const model::Document& document, const Registry& regis
                             .tracks = {},
                             .clockPorts = document.clockPorts,
                             .takeFolder = folder / "audio",
-                            .metronome = {}};
+                            .metronome = {},
+                            .panLaw = panLawFromSettings(registry)};
     const PlaybackContext context{.tempo = document.tempo, .folder = folder};
     for (const model::Track& track : document.tracks) {
         const TrackType* type = registry.trackType(track.kind);

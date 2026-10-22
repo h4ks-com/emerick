@@ -386,6 +386,10 @@ void Engine::setGain(std::string_view trackId, float gain) {
     impl_->pushTrack({.type = Command::Type::gain, .gain = gain}, trackId).gain = gain;
 }
 
+void Engine::setPan(std::string_view trackId, float pan) {
+    impl_->pushTrack({.type = Command::Type::pan, .pan = pan}, trackId).pan = pan;
+}
+
 TransportPosition Engine::position() const {
     const Frames frames = impl_->rt.publishedFrame.load(std::memory_order_relaxed);
     return {frames, impl_->session.tempo.framesToTicks(frames, impl_->layout.sampleRate)};

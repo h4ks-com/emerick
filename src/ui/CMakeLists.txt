@@ -30,6 +30,8 @@ qt_add_qml_module(emerick_ui
         MarkerLane.qml
         Mixer.qml
         MixerStrip.qml
+        PanKnob.qml
+        PanNumber.qml
         RouteCombo.qml
         Ruler.qml
         SearchCombo.qml

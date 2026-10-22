@@ -379,6 +379,18 @@ void ProjectController::setLiveGain(const model::TrackId& id, double db) {
     }
 }
 
+void ProjectController::setLivePan(const model::TrackId& id, double pan) {
+    if (sessionTracks_.contains(id.value)) {
+        engine_.setPan(id.value, static_cast<float>(pan));
+    }
+}
+
+void ProjectController::panLawChanged(engine::PanLaw law) {
+    if (std::exchange(panLaw_, law) != law) {
+        scheduleFlush();
+    }
+}
+
 void ProjectController::setMetronome(const engine::Metronome& metronome) {
     if (metronome != metronome_) {
         metronome_ = metronome;

@@ -83,7 +83,7 @@ TEST_CASE("audio clips play with track gain, clip gain and fades on the output c
     track.audioOut = {"keyboard", {1, 2}};
     track.audioClips.push_back(
         {.path = path, .start = 0, .length = 960, .sourceOffset = 0, .gain = 0.5F, .fadeIn = 240, .fadeOut = 240});
-    rig.engine.setSession({.tempo = kTempo, .tracks = {track}});
+    rig.engine.setSession({.tempo = kTempo, .tracks = {track}, .panLaw = PanLaw::zeroDb});
     playFromStart(rig);
     const Frames start = rig.audio.processedFrames();
     rig.audio.process(30000);
@@ -104,6 +104,73 @@ TEST_CASE("audio clips play with track gain, clip gain and fades on the output c
     const Frames again = rig.audio.processedFrames();
     rig.audio.process(12800);
     CHECK(rig.audio.output("keyboard", 1)[static_cast<std::size_t>(again + 12000)] == Approx(0.5F));
+}
+
+TEST_CASE("each pan law plays a hard-panned track at full level on its side and drops a centered one by its law") {
+    for (const PanLaw law : {PanLaw::zeroDb, PanLaw::constantPower, PanLaw::compromise, PanLaw::linear}) {
+        CHECK(panGains(-1.0F, law).left == Approx(1.0F));
+        CHECK(panGains(-1.0F, law).right == Approx(0.0F).margin(1e-6));
+        CHECK(panGains(1.0F, law).right == Approx(1.0F));
+    }
+    const auto centerDb = [](PanLaw law) { return 20.0F * std::log10(panGains(0.0F, law).left); };
+    CHECK(centerDb(PanLaw::zeroDb) == Approx(0.0F));
+    CHECK(centerDb(PanLaw::constantPower) == Approx(-3.01F).margin(0.01));
+    CHECK(centerDb(PanLaw::compromise) == Approx(-4.52F).margin(0.01));
+    CHECK(centerDb(PanLaw::linear) == Approx(-6.02F).margin(0.01));
+}
+
+TEST_CASE("pan with the -3 dB law plays a mono clip hard left at full level and centered at -3 dB on each side") {
+    Rig rig;
+    const TempFolder folder;
+    writeWav(folder.path / "ones.wav", std::vector<float>(48000, 1.0F));
+    Track pad{.id = "pad", .kind = TrackKind::audio, .pan = -1.0F};
+    pad.audioOut = {"keyboard", {1, 2}};
+    pad.audioClips = {{.path = folder.path / "ones.wav", .start = 0, .length = 1920}};
+    rig.engine.setSession({.tempo = kTempo, .tracks = {pad}, .panLaw = PanLaw::constantPower});
+    playFromStart(rig);
+    rig.audio.process(kBlock * 4);
+    const auto last = [&](int channel) {
+        return rig.audio.output("keyboard", channel)[static_cast<std::size_t>(rig.audio.processedFrames() - 1)];
+    };
+    CHECK(last(1) == Approx(1.0F));
+    CHECK(last(2) == Approx(0.0F).margin(1e-6));
+
+    rig.engine.setPan("pad", 0.0F);
+    rig.engine.takeOutputLevels();
+    rig.audio.process(kBlock * 2);
+    CHECK(last(1) == Approx(std::numbers::sqrt2_v<float> / 2));
+    CHECK(last(2) == Approx(std::numbers::sqrt2_v<float> / 2));
+    const std::vector<LevelReading> levels = rig.engine.takeOutputLevels();
+    REQUIRE(levels.size() == 1);
+    CHECK(levels[0].peaks[1] == Approx(std::numbers::sqrt2_v<float> / 2));
+}
+
+TEST_CASE("a gain change during playback ramps across a block with no step larger than the ramp") {
+    Rig rig;
+    const TempFolder folder;
+    writeWav(folder.path / "ones.wav", std::vector<float>(48000, 1.0F));
+    Track pad{.id = "pad", .kind = TrackKind::audio};
+    pad.audioOut = {"keyboard", {1, 2}};
+    pad.audioClips = {{.path = folder.path / "ones.wav", .start = 0, .length = 1920}};
+    rig.engine.setSession({.tempo = kTempo, .tracks = {pad}, .panLaw = PanLaw::zeroDb});
+    playFromStart(rig);
+    const Frames start = rig.audio.processedFrames();
+    rig.audio.process(kBlock * 4);
+    rig.engine.setGain("pad", 0.25F);
+    rig.audio.process(kBlock * 4);
+    pad.gain = 1.0F;
+    rig.engine.setSession({.tempo = kTempo, .tracks = {pad}, .panLaw = PanLaw::zeroDb});
+    rig.audio.process(kBlock * 4);
+
+    const auto output = rig.audio.output("keyboard", 1);
+    const std::vector<float> played(output.begin() + start + 1, output.begin() + rig.audio.processedFrames());
+    float largestStep = 0.0F;
+    for (std::size_t frame = 1; frame < played.size(); ++frame) {
+        largestStep = std::max(largestStep, std::abs(played[frame] - played[frame - 1]));
+    }
+    CHECK(largestStep <= 0.75F / static_cast<float>(kBlock) + 1e-6F);
+    CHECK(played[static_cast<std::size_t>(kBlock * 8) - 2] == Approx(0.25F));
+    CHECK(played.back() == Approx(1.0F));
 }
 
 TEST_CASE("an audio take skips the recording delay so it lines up with what the player heard") {
@@ -228,7 +295,7 @@ TEST_CASE("a playing clip meters its track's post-fader output per channel and l
     pad.audioClips = {{.path = folder.path / "ones.wav", .start = 0, .length = 960}};
     Track quiet{.id = "quiet", .kind = TrackKind::audio};
     quiet.audioOut = {"interface", {1}};
-    rig.engine.setSession({.tempo = kTempo, .tracks = {pad, quiet}});
+    rig.engine.setSession({.tempo = kTempo, .tracks = {pad, quiet}, .panLaw = PanLaw::zeroDb});
     playFromStart(rig);
     rig.engine.takeOutputLevels();
     rig.audio.process(kBlock);
@@ -320,14 +387,14 @@ TEST_CASE("switching a playing track's output keeps its sound in time on the pic
     loud.audioOut = {"keyboard", {1, 2}};
     loud.audioClips.push_back({.path = folder.path / "ramp.wav", .start = 0, .length = 38400, .sourceOffset = 0});
     rig.engine.keepWarm(true);
-    rig.engine.setSession({.tempo = kTempo, .tracks = {empty, loud}});
+    rig.engine.setSession({.tempo = kTempo, .tracks = {empty, loud}, .panLaw = PanLaw::zeroDb});
     playFromStart(rig);
     rig.audio.process(4800);
 
     for (const std::string device : {"interface", "keyboard", "interface", "keyboard"}) {
         INFO(device);
         loud.audioOut = {device, {1, 2}};
-        rig.engine.setSession({.tempo = kTempo, .tracks = {empty, loud}});
+        rig.engine.setSession({.tempo = kTempo, .tracks = {empty, loud}, .panLaw = PanLaw::zeroDb});
         rig.audio.process(kBlock);
         REQUIRE(waitFor([&] { return rig.engine.readAheadReady(); }));
         const Frames songFrame = rig.engine.position().frames;

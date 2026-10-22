@@ -72,20 +72,20 @@ nlohmann::json trackToJson(const Track& track) {
     for (const Clip& clip : track.clips) {
         clips.push_back(clipToJson(clip));
     }
-    return {{"id", track.id.value},   {"name", track.name},       {"kind", track.kind},
-            {"icon", track.icon},     {"color", track.color},     {"mute", track.mute},
-            {"solo", track.solo},     {"armed", track.armed},     {"monitor", track.monitor},
-            {"gainDb", track.gainDb}, {"audioIn", track.audioIn}, {"audioOut", track.audioOut},
-            {"midiIn", track.midiIn}, {"midiOut", track.midiOut}, {"clips", std::move(clips)},
-            {"data", track.data}};
+    return {{"id", track.id.value},       {"name", track.name},     {"kind", track.kind},
+            {"icon", track.icon},         {"color", track.color},   {"mute", track.mute},
+            {"solo", track.solo},         {"armed", track.armed},   {"monitor", track.monitor},
+            {"gainDb", track.gainDb},     {"pan", track.pan},       {"audioIn", track.audioIn},
+            {"audioOut", track.audioOut}, {"midiIn", track.midiIn}, {"midiOut", track.midiOut},
+            {"clips", std::move(clips)},  {"data", track.data}};
 }
 
 Track trackFromJson(const nlohmann::json& json) {
-    Track track{
-        TrackId{json.at("id")}, json.at("name"),     json.at("kind"),   json.at("icon"),    json.at("color"),
-        json.at("mute"),        json.at("solo"),     json.at("armed"),  json.at("monitor"), json.value("gainDb", 0.0),
-        json.at("audioIn"),     json.at("audioOut"), json.at("midiIn"), json.at("midiOut"), {},
-        json.at("data")};
+    Track track{TrackId{json.at("id")}, json.at("name"),           json.at("kind"),        json.at("icon"),
+                json.at("color"),       json.at("mute"),           json.at("solo"),        json.at("armed"),
+                json.at("monitor"),     json.value("gainDb", 0.0), json.value("pan", 0.0), json.at("audioIn"),
+                json.at("audioOut"),    json.at("midiIn"),         json.at("midiOut"),     {},
+                json.at("data")};
     for (const auto& clip : json.at("clips")) {
         track.clips.push_back(clipFromJson(clip));
     }

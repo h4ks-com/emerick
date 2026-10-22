@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <numbers>
 #include <span>
 
 #include "clock.hpp"
@@ -16,6 +17,16 @@ namespace emerick::engine {
 
 namespace {
 
+// A rebuilt snapshot starts each track from the gains the old one played, so an edit ramps to its new gain.
+void keepOutputGains(const Snapshot& from, Snapshot& to) {
+    for (TrackState& track : to.tracks) {
+        const auto old = std::ranges::find(from.tracks, track.id, &TrackState::id);
+        if (old != from.tracks.end() && old->outputGains.size() == track.outputGains.size()) {
+            std::ranges::copy(old->outputGains, track.outputGains.begin());
+        }
+    }
+}
+
 void adoptPending(RealtimeState& state) {
     if (state.pending.load(std::memory_order_acquire) == nullptr) {
         return;
@@ -25,6 +36,7 @@ void adoptPending(RealtimeState& state) {
     }
     Snapshot* next = state.pending.exchange(nullptr, std::memory_order_acq_rel);
     if (state.current != nullptr) {
+        keepOutputGains(*state.current, *next);
         state.retired.try_enqueue(state.current);
     }
     state.current = next;
@@ -134,6 +146,11 @@ void apply(RealtimeState& state, Snapshot& snapshot, const Command& command, con
                 track->gain = command.gain;
             }
             break;
+        case Command::Type::pan:
+            if (track != nullptr) {
+                track->pan = command.pan;
+            }
+            break;
     }
 }
 
@@ -159,8 +176,7 @@ void playAudioClips(Snapshot& snapshot, Frames frame, Frames offset, Frames fram
                 float* destination = track.mix[out].data() + offset + (from - frame);
                 const std::size_t source = std::min(out, channels - 1);
                 for (Frames index = 0; index < count; ++index) {
-                    const float gain =
-                        track.gain * clip.gain * fadeGain(local + index, clip.length, clip.fadeIn, clip.fadeOut);
+                    const float gain = clip.gain * fadeGain(local + index, clip.length, clip.fadeIn, clip.fadeOut);
                     destination[index] += samples[static_cast<std::size_t>(index) * channels + source] * gain;
                 }
             }
@@ -186,11 +202,23 @@ void raise(LevelMeter& meter, std::size_t channel, float peak) {
     }
 }
 
-// Meters each track's mix, adds it to its outputs and clears it for the next block.
+void rampGain(float* samples, Frames frames, float& from, float to) {
+    const float step = (to - from) / static_cast<float>(frames);
+    for (Frames index = 0; index < frames; ++index) {
+        samples[index] *= from + (step * static_cast<float>(index + 1));
+    }
+    from = to;
+}
+
+// Applies each track's fader and pan to its mix, meters it, adds it to its outputs and clears it for the next block.
 void mixTracks(Snapshot& snapshot, const AudioBlock& block) {
+    if (block.frames == 0) {
+        return;
+    }
     for (TrackState& track : snapshot.tracks) {
         for (std::size_t out = 0; out < track.mix.size(); ++out) {
             float* mixed = track.mix[out].data();
+            rampGain(mixed, block.frames, track.outputGains[out], outputGain(track, out, snapshot.panLaw));
             float* destination = block.outputs[static_cast<std::size_t>(track.outputs[out])];
             for (Frames index = 0; index < block.frames; ++index) {
                 destination[index] += mixed[index];
@@ -221,7 +249,7 @@ void monitorAndRecordAudio(Snapshot& snapshot, const AudioBlock& block, Frames r
                 const float* source = track.inputPointers[std::min(out, track.inputPointers.size() - 1)];
                 float* destination = track.mix[out].data();
                 for (Frames index = 0; index < block.frames; ++index) {
-                    destination[index] += source[index] * track.gain;
+                    destination[index] += source[index];
                 }
             }
         }
@@ -271,6 +299,24 @@ float fadeGain(Frames local, Frames length, Frames fadeIn, Frames fadeOut) {
         gain = std::min(gain, static_cast<float>(length - local) / static_cast<float>(fadeOut));
     }
     return std::clamp(gain, 0.0F, 1.0F);
+}
+
+StereoGains panGains(float pan, PanLaw law) {
+    pan = std::isnan(pan) ? 0.0F : std::clamp(pan, -1.0F, 1.0F);
+    const float angle = (pan + 1.0F) * std::numbers::pi_v<float> / 4.0F;
+    const StereoGains power{.left = std::cos(angle), .right = std::sin(angle)};
+    const StereoGains linear{.left = (1.0F - pan) / 2.0F, .right = (1.0F + pan) / 2.0F};
+    switch (law) {
+        case PanLaw::zeroDb:
+            return {.left = std::min(1.0F - pan, 1.0F), .right = std::min(1.0F + pan, 1.0F)};
+        case PanLaw::constantPower:
+            return power;
+        case PanLaw::compromise:
+            return {.left = std::sqrt(power.left * linear.left), .right = std::sqrt(power.right * linear.right)};
+        case PanLaw::linear:
+            return linear;
+    }
+    return power;
 }
 
 void processBlock(RealtimeState& state, const AudioBlock& block) {

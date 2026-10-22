@@ -82,6 +82,7 @@ struct Track {
     bool armed = false;
     bool monitor = false;
     double gainDb = 0.0;
+    double pan = 0.0;  // -1 hard left, 0 center, 1 hard right
     AudioRoute audioIn;
     AudioRoute audioOut;
     MidiRoute midiIn;

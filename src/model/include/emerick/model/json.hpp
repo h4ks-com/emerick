@@ -7,8 +7,8 @@
 
 namespace emerick::model {
 
-// Format 2 added markers, so a format 1 project loads with none.
-inline constexpr int kFormatVersion = 2;
+// Format 2 added markers and format 3 track pan, so older projects load with no markers and centered tracks.
+inline constexpr int kFormatVersion = 3;
 
 nlohmann::json toJson(const Document& document);
 

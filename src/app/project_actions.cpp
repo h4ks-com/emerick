@@ -3,12 +3,14 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <ranges>
 #include <string>
 #include <utility>
 #include <vector>
 
 #include "emerick/app/action_params.hpp"
 #include "emerick/app/project_state.hpp"
+#include "emerick/app/session_mapping.hpp"
 
 namespace emerick::app {
 
@@ -256,6 +258,19 @@ void registerProjectActions(Registry& registry, ProjectController& controller, N
                          .hint = "Input plus output latency the open devices report, buffer included",
                          .location = "settings.audio",
                          .value = [&controller] { return latencyText(controller.engine().layout()); }});
+    registry.addSetting(
+        {.id = kPanLawSetting,
+         .title = "Pan law",
+         .aliases = {"pan curve", "center attenuation"},
+         .category = "Settings / Audio",
+         .type = SettingType::Choice,
+         .defaultValue = "-3 dB constant power",
+         .choices = kPanLaws | std::views::transform(&NamedPanLaw::name) | std::ranges::to<Json::array_t>(),
+         .hint = "How much a centered track drops on each side, in playback, exports and meters",
+         .location = "settings.audio"});
+    QObject::connect(&registry, &Registry::settingsChanged, &controller,
+                     [&registry, &controller] { controller.panLawChanged(panLawFromSettings(registry)); });
+    controller.panLawChanged(panLawFromSettings(registry));
 
     registerProjectFileActions(registry, controller);
     registerProjectEditActions(registry, controller);

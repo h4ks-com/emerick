@@ -114,6 +114,10 @@ QtObject {
     readonly property real gainMaxDb: 6
     readonly property real gainStepDb: 0.5
     readonly property real clipGainMaxDb: 24
+    readonly property real panStep: 0.01
+    readonly property real panKnobStep: 0.02
+    readonly property int panKnob: 20
+    readonly property real panKnobSweep: 135
     readonly property real minBpm: 20
     readonly property real maxBpm: 400
     readonly property real numberSettingStep: 0.1

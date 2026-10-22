@@ -54,6 +54,7 @@ struct TrackState {
     bool solo = false;
     bool monitor = false;
     float gain = 1.0F;
+    float pan = 0.0F;
     std::vector<int> inputs;
     std::vector<int> outputs;
     std::vector<const float*> inputPointers;
@@ -70,8 +71,11 @@ struct TrackState {
     std::shared_ptr<TakeRecorder> recorder;
     std::shared_ptr<LevelMeter> inputMeter;
     std::shared_ptr<LevelMeter> outputMeter;
-    // The track's post-fader signal per output for the current block, so we meter it before it joins the mix.
+    // The track's signal per output for the current block, so we apply its fader and pan and meter it before it joins
+    // the mix.
     std::vector<std::vector<float>> mix;
+    // The gain per output that the last block ended on, so we ramp from it and a fader move never clicks.
+    std::vector<float> outputGains;
 };
 
 struct MetronomeState {
@@ -86,6 +90,7 @@ struct MetronomeState {
 struct Snapshot {
     core::TempoMap tempo;
     double sampleRate = 48000.0;
+    PanLaw panLaw = PanLaw::constantPower;
     std::vector<TrackState> tracks;
     std::vector<std::shared_ptr<MidiOutputPort>> clockPorts;
     std::vector<std::shared_ptr<MidiInputPort>> inputs;
@@ -96,6 +101,15 @@ struct Snapshot {
 };
 
 inline bool anySolo(const Snapshot& snapshot) { return std::ranges::any_of(snapshot.tracks, &TrackState::solo); }
+
+// Pan applies to a stereo output pair; a track on one output or on more than two plays at its gain on each.
+inline float outputGain(const TrackState& track, std::size_t output, PanLaw law) {
+    if (track.outputs.size() != 2) {
+        return track.gain;
+    }
+    const StereoGains pan = panGains(track.pan, law);
+    return track.gain * (output == 0 ? pan.left : pan.right);
+}
 
 inline bool audible(const TrackState& track, bool soloActive) { return !track.mute && (!soloActive || track.solo); }
 

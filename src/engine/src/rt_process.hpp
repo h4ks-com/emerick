@@ -19,12 +19,13 @@ inline constexpr std::size_t kMaxTrackIdLength = 64;
 inline constexpr std::size_t kMetronomeVoices = 16;
 
 struct Command {
-    enum class Type : std::uint8_t { play, stop, locate, record, mute, solo, arm, gain };
+    enum class Type : std::uint8_t { play, stop, locate, record, mute, solo, arm, gain, pan };
     Type type = Type::play;
     std::array<char, kMaxTrackIdLength> trackId{};
     std::size_t trackIdLength = 0;
     Ticks ticks = 0;
     float gain = 1.0F;
+    float pan = 0.0F;
     bool on = false;
 
     [[nodiscard]] std::string_view track() const { return {trackId.data(), trackIdLength}; }

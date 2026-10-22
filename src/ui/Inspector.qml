@@ -84,6 +84,7 @@ Rectangle {
             required property var audioOut
             required property var midiIn
             required property var midiOut
+            required property real pan
             readonly property var clip: visible && Nav.selectedClips.length > 0
                                         ? clips.find(entry => entry.id === Nav.selectedClips[0]) : undefined
             readonly property bool audioClip: clip !== undefined && clip.type === "audio"
@@ -103,6 +104,12 @@ Rectangle {
                 color: Theme.ink
                 font.pixelSize: Theme.textBody
                 font.weight: Font.Medium
+            }
+
+            RouteLabel { text: "Pan" }
+            PanNumber {
+                trackId: panel.trackId
+                pan: panel.pan
             }
 
             RouteLabel { text: "Audio input"; visible: panel.audioRoutes }

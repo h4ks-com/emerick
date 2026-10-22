@@ -34,6 +34,9 @@ public:
         midiOut,
         audioRoutes,
         midiRoutes,
+        busRoutes,
+        sends,
+        outputBusName,
         clips,
         trackData,
         laneComponent,
@@ -57,6 +60,9 @@ private:
     void syncRows();
 
     [[nodiscard]] QVariantList clipList(const model::Track& track) const;
+    [[nodiscard]] QVariantList sendList(const model::Track& track) const;
+    [[nodiscard]] QString trackName(const model::TrackId& id) const;
+    [[nodiscard]] bool isBus(const model::TrackId& id) const;
 
     ProjectController& controller_;
     model::Project& project_;

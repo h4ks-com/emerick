@@ -380,6 +380,23 @@ TEST_CASE("export stems renders each audio track from bar 1 to the project end")
           1);
 }
 
+TEST_CASE("export mix plays bus returns, and stems export each track dry and each bus with the tracks feeding it") {
+    ProjectRig rig;
+    const std::string vox = rig.run("track.addAudio", {{"name", "Vox"}}).at("id");
+    const std::string verb = rig.run("track.addBus", {{"name", "Verb"}}).at("id");
+    writeConstant(rig.path("ones.wav"), 48000, 1.0F);
+    rig.run("clip.import", {{"track", vox}, {"path", rig.path("ones.wav").string()}});
+    rig.run("send.add", {{"track", vox}, {"bus", verb}, {"db", -6.0206}});
+
+    const auto folder = rig.path("export");
+    rig.run("export.mix", {{"path", (folder / "mix.wav").string()}});
+    CHECK(readChannel(folder / "mix.wav", 0)[24000] == Approx(1.5F).margin(1e-3));
+
+    CHECK(rig.run("export.stems", {{"folder", folder.string()}}).at("files").size() == 2);
+    CHECK(readChannel(folder / "Vox.wav", 0)[24000] == Approx(1.0F).margin(1e-3));
+    CHECK(readChannel(folder / "Verb.wav", 0)[24000] == Approx(0.5F).margin(1e-3));
+}
+
 TEST_CASE("a plugin track kind renders to MIDI and folds takes into its data") {
     ProjectRig rig;
     rig.registry.addTrackType(

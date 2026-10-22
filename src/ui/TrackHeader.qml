@@ -17,6 +17,8 @@ Rectangle {
     property bool monitor
     property real gainDb
     property real pan
+    // A bus has no input, so it shows no arm or monitor button.
+    property bool records: true
     // The row a drag would move this track to, or -1 while no drag runs.
     property int dropIndex: -1
 
@@ -172,6 +174,7 @@ Rectangle {
                 text: "S"
             }
             FlagButton {
+                visible: header.records
                 trackId: header.trackId
                 flag: "track.setArm"
                 value: header.armed
@@ -179,6 +182,7 @@ Rectangle {
                 activeColor: Theme.rec
             }
             FlagButton {
+                visible: header.records
                 trackId: header.trackId
                 flag: "track.setMonitor"
                 value: header.monitor

@@ -146,6 +146,19 @@ inline std::vector<QString> itemTitles(QObject* menu) {
     return titles;
 }
 
+inline QObject* menuItem(QObject* menu, const QString& title) {
+    const int count = menu->property("count").toInt();
+    for (int index = 0; index < count; ++index) {
+        QQuickItem* item = nullptr;
+        QMetaObject::invokeMethod(menu, "itemAt", Q_RETURN_ARG(QQuickItem*, item), Q_ARG(int, index));
+        if (item != nullptr && item->property("text").toString() == title) {
+            return item;
+        }
+    }
+    FAIL("no menu item " << title.toStdString());
+    return nullptr;
+}
+
 inline std::vector<QString> registryTitles(const Registry& registry, const QString& menu) {
     std::vector<QString> titles;
     for (const QVariant& entry : registry.menus().value(menu).toList()) {

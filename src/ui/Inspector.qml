@@ -105,6 +105,8 @@ Rectangle {
             required property var clips
             required property bool audioRoutes
             required property bool midiRoutes
+            required property bool busRoutes
+            required property var sends
             required property var audioIn
             required property var audioOut
             required property var midiIn
@@ -145,13 +147,21 @@ Rectangle {
                 devices: Project.routeDevices.audioIn
                 route: panel.audioIn
             }
-            RouteLabel { text: "Audio output"; visible: panel.audioRoutes }
+            RouteLabel { text: "Audio output"; visible: panel.audioRoutes || panel.busRoutes }
             AudioRoute {
-                visible: panel.audioRoutes
+                visible: panel.audioRoutes || panel.busRoutes
                 actionId: "track.setAudioOut"
                 trackId: panel.trackId
                 devices: Project.routeDevices.audioOut
                 route: panel.audioOut
+            }
+
+            RouteLabel { text: "Sends"; visible: panel.audioRoutes || panel.busRoutes }
+            SendList {
+                visible: panel.audioRoutes || panel.busRoutes
+                trackId: panel.trackId
+                sends: panel.sends
+                Layout.fillWidth: true
             }
 
             RouteLabel { text: "MIDI input"; visible: panel.midiRoutes }

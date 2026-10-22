@@ -64,6 +64,43 @@ TEST_CASE("document round trips through json") {
     CHECK(loaded.markers == document.markers);
 }
 
+TEST_CASE("sends and output buses round trip, and a format 3 project loads with none") {
+    Document document = sampleDocument();
+    Track bus = named("Reverb");
+    bus.kind = "bus";
+    document.tracks[0].sends = {{.bus = bus.id, .levelDb = -6.0, .pre = true, .enabled = false}};
+    document.tracks[1].outputBus = bus.id;
+    document.tracks.push_back(bus);
+    const Document loaded = documentFromJson(toJson(document));
+    CHECK(loaded.tracks[0].sends == document.tracks[0].sends);
+    CHECK(loaded.tracks[1].outputBus == bus.id);
+
+    auto json = toJson(document);
+    json["format"] = 3;
+    for (auto& track : json["tracks"]) {
+        track.erase("sends");
+        track.erase("outputBus");
+    }
+    for (const Track& track : documentFromJson(json).tracks) {
+        CHECK(track.sends.empty());
+        CHECK(track.outputBus.empty());
+    }
+}
+
+TEST_CASE("reaches follows sends and output buses through a chain of buses") {
+    Document document;
+    Track vox = named("Vox");
+    Track verb = named("Verb");
+    Track master = named("Master");
+    vox.sends = {{.bus = verb.id, .levelDb = 0.0, .pre = false, .enabled = false}};
+    verb.outputBus = master.id;
+    document.tracks = {vox, verb, master};
+    CHECK(reaches(document, vox.id, master.id));
+    CHECK(reaches(document, verb.id, master.id));
+    CHECK_FALSE(reaches(document, master.id, vox.id));
+    CHECK_FALSE(reaches(document, master.id, verb.id));
+}
+
 TEST_CASE("unknown format is rejected") {
     auto json = toJson(Document{});
     json["format"] = kFormatVersion + 1;

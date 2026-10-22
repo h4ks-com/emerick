@@ -225,6 +225,7 @@ Rectangle {
             required property bool monitor
             required property real gainDb
             required property real pan
+            required property bool busRoutes
             required property var clips
             required property var trackData
             required property string laneComponent
@@ -314,6 +315,7 @@ Rectangle {
                 monitor: row.monitor
                 gainDb: row.gainDb
                 pan: row.pan
+                records: !row.busRoutes
                 onDropIndexChanged: area.dropIndex = dropIndex
                 onContextRequested: area.menuAtCursor = true
             }

@@ -77,10 +77,20 @@ struct MidiClip {
 // earlier ones wherever it plays at full gain, so its fades crossfade with the clips beneath it.
 using Clip = std::variant<AudioClip, MidiClip>;
 
+// A send feeds a copy of a track's signal to a bus, before or after the track's fader and pan.
+struct Send {
+    TrackId bus;
+    double levelDb = 0.0;
+    bool pre = false;
+    bool enabled = true;
+
+    bool operator==(const Send&) const = default;
+};
+
 struct Track {
     TrackId id = TrackId::make();
     std::string name;
-    std::string kind = "audio";  // "audio", "midi" or a plugin kind such as "yamaha.chord"
+    std::string kind = "audio";  // "audio", "midi", "bus" or a plugin kind such as "yamaha.chord"
     std::string icon;
     int color = 0;
     bool mute = false;
@@ -93,6 +103,9 @@ struct Track {
     AudioRoute audioOut;
     MidiRoute midiIn;
     MidiRoute midiOut;
+    // A track with an output bus plays into that bus in place of its audio output.
+    TrackId outputBus;
+    std::vector<Send> sends;
     std::vector<Clip> clips;
     nlohmann::json data;  // plugin-owned, the model never interprets it
 
@@ -131,5 +144,10 @@ Track* findTrack(Document& document, const TrackId& id);
 const Track* findTrack(const Document& document, const TrackId& id);
 std::optional<ClipRef> findClip(const Document& document, const ClipId& id);
 const Marker* findMarker(const Document& document, const MarkerId& id);
+// The buses a track plays into through its output bus and its sends. Disabled sends count too, so enabling one never
+// closes a loop.
+std::vector<TrackId> busesFedBy(const Track& track);
+// True when audio from track from arrives at track to through sends and output buses.
+bool reaches(const Document& document, const TrackId& from, const TrackId& to);
 
 }  // namespace emerick::model

@@ -44,19 +44,6 @@ void pick(MainWindow& main, const QString& picker, const QString& filter) {
     processUntil([] { return false; }, 50);
 }
 
-QObject* menuItem(QObject* menu, const QString& title) {
-    const int count = menu->property("count").toInt();
-    for (int index = 0; index < count; ++index) {
-        QQuickItem* item = nullptr;
-        QMetaObject::invokeMethod(menu, "itemAt", Q_RETURN_ARG(QQuickItem*, item), Q_ARG(int, index));
-        if (item != nullptr && item->property("text").toString() == title) {
-            return item;
-        }
-    }
-    FAIL("no menu item " << title.toStdString());
-    return nullptr;
-}
-
 }  // namespace
 
 TEST_CASE("the device picker filters as you type, picks with Enter and shows the device name") {

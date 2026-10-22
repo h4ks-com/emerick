@@ -252,7 +252,7 @@ void registerTrackEditActions(Registry& registry, ProjectController& controller,
                         .schema = {{"properties", {{"track", {{"type", "string"}}}}}},
                         .run =
                             [&controller, &nav](const Json& params) {
-                                controller.project().removeTrack(targetTrack(controller, nav, params));
+                                removeTrack(controller, targetTrack(controller, nav, params));
                                 return projectState(controller);
                             },
                         .menus = trackMenus()});

@@ -32,6 +32,7 @@ engine::PanLaw panLawFromSettings(const Registry& registry);
 // The building blocks a TrackType's toEngine starts from.
 engine::Track audioEngineTrack(const model::Track& track, const std::filesystem::path& folder);
 engine::Track midiEngineTrack(const model::Track& track);
+engine::Track busEngineTrack(const model::Track& track);
 
 // Each track plays through its TrackType; a kind without one stays silent. Relative clip files resolve against the
 // project folder, and takes go to <folder>/audio.

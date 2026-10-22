@@ -10,6 +10,8 @@ inline void ensureApplication() {
     static int argc = 1;
     static char name[] = "emerick_app_tests";
     static char* argv[] = {name, nullptr};
+    // Tests never show a window on the machine that runs them, even when started outside ctest.
+    qputenv("QT_QPA_PLATFORM", "offscreen");
     // We never delete the application, because destroying it during static teardown crashes Qt Quick.
     static const auto* application = new QGuiApplication(argc, argv);
     (void)application;

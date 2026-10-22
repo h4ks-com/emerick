@@ -17,6 +17,7 @@ Emerick is a small native DAW in C++23 and Qt 6.11 QML. It records and plays aud
 - `make test` build and run all unit tests
 - `make run ARGS="--audio=null --midi=virtual"` run the app
 - `--profile <folder>` keeps settings and new projects in that folder; every test or agent run passes one
+- Tests run offscreen and never show a window; agents run the app only inside a VM, never on the machine they build on
 - `make format` / `make format-check` clang-format
 - `make lint` clang-tidy, warnings are errors
 - `make quality` the full gate: format-check, lint, test

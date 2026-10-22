@@ -283,6 +283,23 @@ void registerTrackEditActions(Registry& registry, ProjectController& controller,
                             controller.setLiveGain(id, db);
                             return result;
                         }});
+    registry.addAction({.id = "track.setPan",
+                        .title = "Set track pan",
+                        .aliases = {"balance", "pan knob"},
+                        .category = "Tracks",
+                        .schema = {{"required", {"track", "value"}},
+                                   {"properties", {{"value", {{"type", "number"}, {"minimum", -1}, {"maximum", 1}}}}}},
+                        .run = [&controller](const Json& params) {
+                            const auto id = trackParam(controller.project(), params);
+                            const auto value = param<double>(params, "value");
+                            if (value < -1.0 || value > 1.0) {
+                                throw AppError("value must be from -1 (hard left) to 1 (hard right)");
+                            }
+                            Json result = editTrack(controller, id, "set track pan",
+                                                    [&](model::Track& track) { track.pan = value; });
+                            controller.setLivePan(id, value);
+                            return result;
+                        }});
     registerTrackLooks(registry, controller, nav);
 }
 

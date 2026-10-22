@@ -1,5 +1,6 @@
 #pragma once
 
+#include <array>
 #include <filesystem>
 #include <span>
 #include <vector>
@@ -12,6 +13,20 @@
 namespace emerick::app {
 
 float gainFromDb(double db);
+
+inline constexpr const char* kPanLawSetting = "audio.panLaw";
+
+struct NamedPanLaw {
+    engine::PanLaw law;
+    const char* name;
+};
+
+inline constexpr std::array kPanLaws{
+    NamedPanLaw{engine::PanLaw::zeroDb, "0 dB"}, NamedPanLaw{engine::PanLaw::constantPower, "-3 dB constant power"},
+    NamedPanLaw{engine::PanLaw::compromise, "-4.5 dB"}, NamedPanLaw{engine::PanLaw::linear, "-6 dB linear"}};
+
+// A registry without the setting plays the default law.
+engine::PanLaw panLawFromSettings(const Registry& registry);
 
 // The building blocks a TrackType's toEngine starts from.
 engine::Track audioEngineTrack(const model::Track& track, const std::filesystem::path& folder);

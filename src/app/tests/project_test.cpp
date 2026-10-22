@@ -4,6 +4,7 @@
 #include <catch2/catch_test_macros.hpp>
 #include <filesystem>
 #include <map>
+#include <numbers>
 #include <string>
 #include <vector>
 
@@ -48,10 +49,15 @@ TEST_CASE("track and clip actions round trip through undo and redo") {
     CHECK(rig.run("track.rename", {{"track", "Vox"}, {"name", "Lead"}}).at("name") == "Lead");
     CHECK(rig.run("track.setMute", {{"track", id}, {"value", true}}).at("mute") == true);
     CHECK(rig.run("track.setGain", {{"track", "Lead"}, {"db", -6.0}}).at("gainDb") == -6.0);
+    CHECK(rig.run("track.setPan", {{"track", "Lead"}, {"value", -0.5}}).at("pan") == -0.5);
+    CHECK_THROWS_AS(rig.run("track.setPan", {{"track", id}, {"value", 1.5}}), AppError);
     CHECK_THROWS_AS(rig.run("track.setMute", {{"track", "nobody"}, {"value", true}}), AppError);
     CHECK_THROWS_AS(rig.run("track.setAudioIn", {{"track", id}, {"device", "interface"}, {"channels", {3}}}), AppError);
 
     Json state = rig.run("project.undo");
+    CHECK(state.at("tracks").at(0).at("pan") == 0.0);
+    CHECK(state.at("redo") == "set track pan");
+    state = rig.run("project.undo");
     CHECK(state.at("tracks").at(0).at("gainDb") == 0.0);
     CHECK(state.at("redo") == "set track gain");
     state = rig.run("project.undo");
@@ -163,6 +169,7 @@ TEST_CASE("the session mapping turns the document into engine tracks") {
     model::Track audio;
     audio.name = "Pad";
     audio.gainDb = -20.0;
+    audio.pan = 0.25;
     audio.audioOut = {"interface", {1, 2}};
     model::AudioClip clip;
     clip.file = "audio/pad.wav";
@@ -192,6 +199,10 @@ TEST_CASE("the session mapping turns the document into engine tracks") {
     CHECK(pad.id == audio.id.value);
     CHECK(pad.kind == engine::TrackKind::audio);
     CHECK(pad.gain == Approx(0.1F));
+    CHECK(pad.pan == 0.25F);
+    CHECK(session.panLaw == engine::PanLaw::constantPower);
+    rig.registry.setSetting(kPanLawSetting, "-6 dB linear");
+    CHECK(toSession(document, rig.registry, "/projects/song").panLaw == engine::PanLaw::linear);
     CHECK(pad.audioClips.at(0).path == "/projects/song/audio/pad.wav");
     CHECK(pad.audioClips.at(0).gain == Approx(10.0F));
     const engine::Track& keys = session.tracks[1];
@@ -310,6 +321,7 @@ TEST_CASE("export stems renders each audio track from bar 1 to the project end")
     rig.run("clip.import", {{"track", bass}, {"path", rig.path("half.wav").string()}, {"at", "2.1.0"}});
     rig.run("track.setGain", {{"track", pad}, {"db", -6.0206}});
     rig.run("track.setMute", {{"track", bass}, {"value", true}});
+    rig.run("track.setPan", {{"track", pad}, {"value", 1.0}});
 
     const auto folder = rig.path("stems");
     const Json result = rig.run("export.stems", {{"folder", folder.string()}});
@@ -324,12 +336,14 @@ TEST_CASE("export stems renders each audio track from bar 1 to the project end")
     const auto padSamples = readChannel(folder / "Pad.wav", 1);
     CHECK(padSamples[24000] == Approx(0.5F).margin(1e-4));
     CHECK(padSamples[60000] == 0.0F);
-    CHECK(readChannel(folder / "Bass.wav", 0)[100000] == Approx(1.0F));
+    CHECK(readChannel(folder / "Pad.wav", 0)[24000] == Approx(0.0F).margin(1e-6));
+    CHECK(readChannel(folder / "Bass.wav", 0)[100000] == Approx(std::numbers::sqrt2_v<float> / 2));
 
     rig.run("export.mix", {{"path", (folder / "mix.wav").string()}});
-    const auto mix = readChannel(folder / "mix.wav", 0);
+    const auto mix = readChannel(folder / "mix.wav", 1);
     CHECK(mix[24000] == Approx(0.5F).margin(1e-4));
     CHECK(mix[100000] == 0.0F);
+    CHECK(readChannel(folder / "mix.wav", 0)[24000] == Approx(0.0F).margin(1e-6));
 
     CHECK(rig.run("export.stems", {{"folder", rig.path("one").string()}, {"tracks", {"Bass"}}}).at("files").size() ==
           1);

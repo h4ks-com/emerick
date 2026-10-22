@@ -90,9 +90,12 @@ public:
     void setLiveSolo(const model::TrackId& id, bool value);
     void setLiveArmed(const model::TrackId& id, bool value);
     void setLiveGain(const model::TrackId& id, double db);
+    void setLivePan(const model::TrackId& id, double pan);
 
     // The metronome plays from these settings once the next flush publishes them.
     void setMetronome(const engine::Metronome& metronome);
+    // Playback and exports read the pan law from the registry; a new law reaches playback at the next flush.
+    void panLawChanged(engine::PanLaw law);
 
     // Returns how many finished takes it added, one undo step each.
     int collectTakes();
@@ -181,6 +184,7 @@ private:
     std::vector<engine::SessionError> takeErrors_;
     std::vector<engine::SessionError> routeErrors_;
     engine::Metronome metronome_;
+    engine::PanLaw panLaw_ = engine::PanLaw::constantPower;
     bool recording_ = false;
     bool flushPending_ = false;
     core::Ticks stopTicks_ = 0;

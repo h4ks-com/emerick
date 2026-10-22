@@ -68,6 +68,13 @@ TEST_CASE("typing into a number field commits with Enter and cancels with Escape
     typeInto(main, gain, "3", Qt::Key_Escape);
     CHECK(trackOf(main, vox).gainDb == Catch::Approx(-10.5));
     CHECK_FALSE(main.item(gain)->property("editing").toBool());
+
+    const QString pan = "track.setPan:" + qid(vox);
+    typeInto(main, pan, "L 30", Qt::Key_Return);
+    CHECK(trackOf(main, vox).pan == Catch::Approx(-0.3));
+    CHECK(main.item(pan)->property("displayText").toString() == "L 30");
+    typeInto(main, pan, "C", Qt::Key_Return);
+    CHECK(trackOf(main, vox).pan == 0.0);
 }
 
 TEST_CASE("dragging across mute buttons mutes every track it crosses in one undo step") {

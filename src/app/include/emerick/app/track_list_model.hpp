@@ -27,6 +27,7 @@ public:
         armed,
         monitor,
         gainDb,
+        pan,
         audioIn,
         audioOut,
         midiIn,

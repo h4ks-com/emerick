@@ -18,7 +18,8 @@ void registerProjectActions(Registry& registry, ProjectController& controller, N
 
 // The audio and MIDI track kinds with their add actions, and every track action.
 void registerTrackActions(Registry& registry, ProjectController& controller, Nav& nav);
-// Rename, duplicate, delete, select, flags, gain, color and icon. They act on the selected track without a track param.
+// Rename, duplicate, delete, select, flags, gain, pan, color and icon. They act on the selected track without a track
+// param.
 void registerTrackEditActions(Registry& registry, ProjectController& controller, Nav& nav);
 // The track named by params, or the selected track when params names none.
 model::TrackId targetTrack(const ProjectController& controller, const Nav& nav, const Json& params);

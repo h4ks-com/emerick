@@ -133,6 +133,8 @@ QVariant TrackListModel::data(const QModelIndex& index, int role) const {
             return track.monitor;
         case Role::gainDb:
             return track.gainDb;
+        case Role::pan:
+            return track.pan;
         case Role::audioIn:
             return audioRoute(track.audioIn);
         case Role::audioOut:
@@ -158,7 +160,7 @@ QVariant TrackListModel::data(const QModelIndex& index, int role) const {
 }
 
 QHash<int, QByteArray> TrackListModel::roleNames() const {
-    static constexpr std::array<std::pair<Role, const char*>, 20> kNames{{{Role::id, "trackId"},
+    static constexpr std::array<std::pair<Role, const char*>, 21> kNames{{{Role::id, "trackId"},
                                                                           {Role::name, "name"},
                                                                           {Role::kind, "kind"},
                                                                           {Role::icon, "icon"},
@@ -168,6 +170,7 @@ QHash<int, QByteArray> TrackListModel::roleNames() const {
                                                                           {Role::armed, "armed"},
                                                                           {Role::monitor, "monitor"},
                                                                           {Role::gainDb, "gainDb"},
+                                                                          {Role::pan, "pan"},
                                                                           {Role::audioIn, "audioIn"},
                                                                           {Role::audioOut, "audioOut"},
                                                                           {Role::midiIn, "midiIn"},

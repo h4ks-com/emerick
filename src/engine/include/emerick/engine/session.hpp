@@ -57,6 +57,7 @@ struct Track {
     bool solo = false;
     bool monitor = false;
     float gain = 1.0F;
+    float pan = 0.0F;  // -1 hard left, 0 center, 1 hard right
     AudioRoute audioIn;
     AudioRoute audioOut;
     MidiRoute midiIn;
@@ -95,12 +96,17 @@ struct Metronome {
     bool operator==(const Metronome&) const = default;
 };
 
+// How loud a centered track plays on each side of a stereo output pair. Each law plays a hard-panned track at full
+// level on its side.
+enum class PanLaw : std::uint8_t { zeroDb, constantPower, compromise, linear };
+
 struct Session {
     core::TempoMap tempo;
     std::vector<Track> tracks;
     std::vector<std::string> clockPorts;  // MIDI outputs that get clock, Start and Stop
     std::filesystem::path takeFolder;     // recorded audio takes are written here
     Metronome metronome;
+    PanLaw panLaw = PanLaw::constantPower;
 };
 
 // A clip we skipped because its file is missing or at another sample rate.

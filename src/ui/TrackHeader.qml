@@ -16,6 +16,7 @@ Rectangle {
     property bool armed
     property bool monitor
     property real gainDb
+    property real pan
     // The row a drag would move this track to, or -1 while no drag runs.
     property int dropIndex: -1
 
@@ -201,6 +202,11 @@ Rectangle {
             GainReadout {
                 trackId: header.trackId
                 gainDb: header.gainDb
+            }
+
+            PanKnob {
+                trackId: header.trackId
+                pan: header.pan
             }
         }
     }

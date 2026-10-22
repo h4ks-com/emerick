@@ -51,6 +51,7 @@ BuiltSnapshot SnapshotBuilder::build(const Session& session, const StreamLayout&
     Snapshot& snapshot = *built.snapshot;
     snapshot.tempo = session.tempo;
     snapshot.sampleRate = layout.sampleRate;
+    snapshot.panLaw = session.panLaw;
     for (const std::string& id : session.clockPorts) {
         snapshot.clockPorts.push_back(outputPort(id));
     }
@@ -63,6 +64,7 @@ BuiltSnapshot SnapshotBuilder::build(const Session& session, const StreamLayout&
         state.solo = track.solo;
         state.monitor = track.monitor;
         state.gain = track.gain;
+        state.pan = track.pan;
         state.inputs = channelIndices("track " + track.id, track.audioIn, layout, true);
         state.outputs = channelIndices("track " + track.id, track.audioOut, layout, false);
         state.inputPointers.resize(state.inputs.size());
@@ -82,6 +84,10 @@ BuiltSnapshot SnapshotBuilder::build(const Session& session, const StreamLayout&
         if (!state.outputs.empty()) {
             state.outputMeter = meter(outputMeters_, track.id, state.outputs.size());
             state.mix.assign(state.outputs.size(), std::vector<float>(static_cast<std::size_t>(layout.maxFrames)));
+            state.outputGains =
+                std::views::iota(std::size_t{0}, state.outputs.size()) |
+                std::views::transform([&](std::size_t output) { return outputGain(state, output, snapshot.panLaw); }) |
+                std::ranges::to<std::vector>();
         }
         addClips(state, track, session.tempo, layout, built.errors);
         addMidiEvents(state, track, session.tempo, layout.sampleRate);

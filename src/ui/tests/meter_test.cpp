@@ -30,6 +30,7 @@ TEST_CASE("a track header meter rises during playback, latches its clip light an
     const std::string quiet = main.rig.run("track.addAudio").at("id");
     writeConstant(main.rig.path("ones.wav"), 48000, 1.0F);
     main.rig.run("clip.import", {{"track", pad}, {"path", main.rig.path("ones.wav").string()}});
+    main.rig.run("track.setPan", {{"track", pad}, {"value", -1.0}});
 
     QObject* padMeter = headerMeter(main, pad);
     QObject* quietMeter = headerMeter(main, quiet);

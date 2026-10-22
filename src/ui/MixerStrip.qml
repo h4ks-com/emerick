@@ -3,7 +3,7 @@ import QtQuick.Controls.Basic
 import QtQuick.Layouts
 import Emerick.App
 
-// One track's channel strip: its output, gain fader with level meter, mute, solo and arm, and its name.
+// One track's channel strip: its output, pan knob, gain fader with level meter, mute, solo and arm, and its name.
 Rectangle {
     id: strip
     required property string trackId
@@ -14,6 +14,7 @@ Rectangle {
     required property bool armed
     required property bool monitor
     required property real gainDb
+    required property real pan
     required property bool audioRoutes
     required property bool midiRoutes
     required property var audioOut
@@ -64,6 +65,12 @@ Rectangle {
                 radius: Theme.radiusClip
                 color: Theme.graphite
             }
+        }
+
+        PanKnob {
+            trackId: strip.trackId
+            pan: strip.pan
+            Layout.alignment: Qt.AlignHCenter
         }
 
         RowLayout {

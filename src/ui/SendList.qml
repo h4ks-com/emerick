@@ -3,8 +3,8 @@ import QtQuick.Controls.Basic
 import QtQuick.Layouts
 import Emerick.App
 
-// A track's sends: per bus a level and a pre-fader switch, and in the full list an on switch and a remove button. The
-// add button picks a bus to send to, or a new one.
+// A track's sends: per bus its name over its level, a pre-fader switch, and in the full list an on switch and a remove
+// button. The add button picks a bus to send to, or a new one.
 ColumnLayout {
     id: list
     required property string trackId
@@ -14,58 +14,78 @@ ColumnLayout {
 
     Repeater {
         model: list.sends
-        RowLayout {
-            id: row
+        ColumnLayout {
+            id: send
             required property var modelData
             readonly property var target: ({track: list.trackId, bus: modelData.bus})
-            spacing: Theme.space1
+            spacing: Theme.hairline
             Layout.fillWidth: true
 
+            RowLayout {
+                spacing: Theme.space1
+                Layout.fillWidth: true
+
+                Label {
+                    objectName: "send.bus:" + list.trackId + ":" + send.modelData.bus
+                    text: send.modelData.busName
+                    color: send.modelData.enabled ? Theme.ink : Theme.inkDim
+                    font.pixelSize: Theme.textSmall
+                    elide: Text.ElideRight
+                    Layout.fillWidth: true
+                    Layout.minimumWidth: 0
+                    ToolTip.text: "Send to " + send.modelData.busName
+                    ToolTip.visible: name.hovered
+                    ToolTip.delay: Theme.tooltipDelay
+                    HoverHandler {
+                        id: name
+                    }
+                }
+                ChromeButton {
+                    objectName: "send.setPre:" + list.trackId + ":" + send.modelData.bus
+                    actionId: "send.setPre"
+                    params: Object.assign({value: !send.modelData.pre}, send.target)
+                    active: send.modelData.pre
+                    text: "P"
+                    padding: 0
+                    implicitWidth: Theme.headerButton
+                    implicitHeight: Theme.headerButton
+                }
+                ChromeButton {
+                    objectName: "send.setEnabled:" + list.trackId + ":" + send.modelData.bus
+                    visible: !list.compact
+                    actionId: "send.setEnabled"
+                    params: Object.assign({value: !send.modelData.enabled}, send.target)
+                    active: send.modelData.enabled
+                    text: "On"
+                    implicitHeight: Theme.headerButton
+                }
+                ChromeButton {
+                    objectName: "send.remove:" + list.trackId + ":" + send.modelData.bus
+                    visible: !list.compact
+                    actionId: "send.remove"
+                    params: send.target
+                    iconName: "x"
+                    iconColor: Theme.inkDim
+                    implicitWidth: Theme.headerButton
+                    implicitHeight: Theme.headerButton
+                }
+            }
+
             DragNumber {
-                id: level
-                objectName: "send.setLevel:" + list.trackId + ":" + row.modelData.bus
+                objectName: "send.setLevel:" + list.trackId + ":" + send.modelData.bus
                 actionId: "send.setLevel"
-                value: row.modelData.db
+                value: send.modelData.db
                 from: Theme.gainMinDb
                 to: Theme.gainMaxDb
                 step: Theme.gainStepDb
                 decimals: 1
-                textFromValue: number => row.modelData.busName + "  " + number.toFixed(1)
-                valueFromText: text => level.readNumber(text.replace(row.modelData.busName, ""))
-                textColor: row.modelData.enabled ? Theme.ink : Theme.inkDim
+                unit: list.compact ? "" : "dB"
+                textColor: send.modelData.enabled ? Theme.ink : Theme.inkDim
                 font.pixelSize: Theme.textSmall
+                implicitWidth: Theme.gainReadoutWidth
                 implicitHeight: Theme.headerButton
                 Layout.fillWidth: true
-                actionsFor: number => [{id: "send.setLevel", params: Object.assign({db: number}, row.target)}]
-            }
-            ChromeButton {
-                objectName: "send.setPre:" + list.trackId + ":" + row.modelData.bus
-                actionId: "send.setPre"
-                params: Object.assign({value: !row.modelData.pre}, row.target)
-                active: row.modelData.pre
-                text: "P"
-                padding: 0
-                implicitWidth: Theme.headerButton
-                implicitHeight: Theme.headerButton
-            }
-            ChromeButton {
-                objectName: "send.setEnabled:" + list.trackId + ":" + row.modelData.bus
-                visible: !list.compact
-                actionId: "send.setEnabled"
-                params: Object.assign({value: !row.modelData.enabled}, row.target)
-                active: row.modelData.enabled
-                text: "On"
-                implicitHeight: Theme.headerButton
-            }
-            ChromeButton {
-                objectName: "send.remove:" + list.trackId + ":" + row.modelData.bus
-                visible: !list.compact
-                actionId: "send.remove"
-                params: row.target
-                iconName: "x"
-                iconColor: Theme.inkDim
-                implicitWidth: Theme.headerButton
-                implicitHeight: Theme.headerButton
+                actionsFor: number => [{id: "send.setLevel", params: Object.assign({db: number}, send.target)}]
             }
         }
     }

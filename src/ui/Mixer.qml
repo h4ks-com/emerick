@@ -13,7 +13,7 @@ DockPanel {
         model: Tracks
         delegate: MixerStrip {
             visible: busRoutes === strips.buses
-            height: flick.height
+            height: row.stripHeight
         }
     }
 
@@ -23,13 +23,15 @@ DockPanel {
         anchors.fill: parent
         anchors.topMargin: Theme.hairline
         contentWidth: row.width
+        contentHeight: row.height
         interactive: false
         clip: true
         ScrollBar.horizontal: ScrollBar {}
+        ScrollBar.vertical: ScrollBar {}
 
         Row {
             id: row
-            height: flick.height
+            readonly property real stripHeight: Math.max(flick.height, ...children.map(child => child.implicitHeight))
             Strips { buses: false }
             Strips { buses: true }
         }

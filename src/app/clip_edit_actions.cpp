@@ -203,8 +203,10 @@ void registerClipEditActions(Registry& registry, ProjectController& controller, 
                         .shortcut = "Backspace",
                         .extraShortcuts = {"Delete"},
                         .run =
-                            [&controller, &nav](const Json&) {
-                                if (const auto clips = selectedClips(controller, nav); !clips.empty()) {
+                            [&registry, &controller, &nav](const Json&) {
+                                if (!nav.selectedPoints().isEmpty()) {
+                                    registry.run("automation.deletePoints");
+                                } else if (const auto clips = selectedClips(controller, nav); !clips.empty()) {
                                     deleteClips(controller, clips);
                                 } else if (const auto marker = selectedMarker(controller, nav)) {
                                     deleteMarker(controller, *marker);

@@ -3,6 +3,7 @@
 #include <QObject>
 #include <QString>
 #include <QStringList>
+#include <QVariantMap>
 #include <algorithm>
 #include <nlohmann/json.hpp>
 
@@ -42,6 +43,9 @@ class Nav : public QObject {
     Q_PROPERTY(QString pianoRollClip READ pianoRollClip WRITE setPianoRollClip NOTIFY changed)
     Q_PROPERTY(QStringList selectedNotes READ selectedNotes WRITE setSelectedNotes NOTIFY selectionChanged)
     Q_PROPERTY(int keyHeight READ keyHeight WRITE setKeyHeight NOTIFY viewChanged)
+    Q_PROPERTY(bool automationOpen READ automationOpen WRITE setAutomationOpen NOTIFY changed)
+    Q_PROPERTY(QVariantMap automationLanes READ automationLanes WRITE setAutomationLanes NOTIFY changed)
+    Q_PROPERTY(QStringList selectedPoints READ selectedPoints WRITE setSelectedPoints NOTIFY selectionChanged)
     Q_PROPERTY(QStringList selectedClips READ selectedClips WRITE setSelectedClips NOTIFY selectionChanged)
     Q_PROPERTY(double pixelsPerTick READ pixelsPerTick WRITE setPixelsPerTick NOTIFY viewChanged)
     Q_PROPERTY(int trackHeight READ trackHeight WRITE setTrackHeight NOTIFY viewChanged)
@@ -77,6 +81,14 @@ public:
     [[nodiscard]] QStringList selectedNotes() const { return selectedNotes_; }
     // The height of one key row in the piano roll, its vertical zoom.
     [[nodiscard]] int keyHeight() const { return keyHeight_; }
+    // Whether tracks show their automation lanes, and per track id the parameter its lane shows, gain by default.
+    [[nodiscard]] bool automationOpen() const { return automationOpen_; }
+    [[nodiscard]] QVariantMap automationLanes() const { return automationLanes_; }
+    [[nodiscard]] QString automationLane(const QString& trackId) const {
+        return automationLanes_.value(trackId, QStringLiteral("gain")).toString();
+    }
+    // Selected automation points, in any lane; selecting them deselects the clips and the marker.
+    [[nodiscard]] QStringList selectedPoints() const { return selectedPoints_; }
     [[nodiscard]] QStringList selectedClips() const { return selectedClips_; }
     [[nodiscard]] double pixelsPerTick() const { return pixelsPerTick_; }
     [[nodiscard]] int trackHeight() const { return trackHeight_; }
@@ -91,6 +103,7 @@ public:
     void setSelectedMarker(const QString& value) {
         if (!value.isEmpty()) {
             assign(selectedClips_, {}, &Nav::selectionChanged);
+            assign(selectedPoints_, {}, &Nav::selectionChanged);
         }
         assign(selectedMarker_, value, &Nav::selectionChanged);
     }
@@ -115,9 +128,19 @@ public:
     void setKeyHeight(int value) {
         assign(keyHeight_, std::clamp(value, kMinKeyHeight, kMaxKeyHeight), &Nav::viewChanged);
     }
+    void setAutomationOpen(bool value) { assign(automationOpen_, value, &Nav::changed); }
+    void setAutomationLanes(const QVariantMap& value) { assign(automationLanes_, value, &Nav::changed); }
+    void setSelectedPoints(const QStringList& value) {
+        if (!value.isEmpty()) {
+            assign(selectedClips_, {}, &Nav::selectionChanged);
+            assign(selectedMarker_, {}, &Nav::selectionChanged);
+        }
+        assign(selectedPoints_, value, &Nav::selectionChanged);
+    }
     void setSelectedClips(const QStringList& value) {
         if (!value.isEmpty()) {
             assign(selectedMarker_, {}, &Nav::selectionChanged);
+            assign(selectedPoints_, {}, &Nav::selectionChanged);
         }
         assign(selectedClips_, value, &Nav::selectionChanged);
     }
@@ -157,7 +180,10 @@ public:
                 {"pianoRollOpen", pianoRollOpen_},
                 {"pianoRollClip", pianoRollClip_.toStdString()},
                 {"selectedNotes", strings(selectedNotes_)},
-                {"keyHeight", keyHeight_}};
+                {"keyHeight", keyHeight_},
+                {"automationOpen", automationOpen_},
+                {"automationLanes", lanes()},
+                {"selectedPoints", strings(selectedPoints_)}};
     }
 
 signals:
@@ -167,6 +193,14 @@ signals:
     void scrollChanged();
 
 private:
+    [[nodiscard]] nlohmann::json lanes() const {
+        nlohmann::json lanes = nlohmann::json::object();
+        for (auto entry = automationLanes_.cbegin(); entry != automationLanes_.cend(); ++entry) {
+            lanes[entry.key().toStdString()] = entry.value().toString().toStdString();
+        }
+        return lanes;
+    }
+
     template <class T>
     void assign(T& field, const T& value, void (Nav::*signal)()) {
         if (field != value) {
@@ -194,6 +228,9 @@ private:
     QString pianoRollClip_;
     QStringList selectedNotes_;
     int keyHeight_ = kDefaultKeyHeight;
+    bool automationOpen_ = false;
+    QVariantMap automationLanes_;
+    QStringList selectedPoints_;
     QStringList selectedClips_;
     double pixelsPerTick_ = kDefaultPixelsPerTick;
     int trackHeight_ = kDefaultTrackHeight;

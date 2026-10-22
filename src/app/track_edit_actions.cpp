@@ -279,8 +279,10 @@ void registerTrackEditActions(Registry& registry, ProjectController& controller,
                         .run = [&controller](const Json& params) {
                             const auto id = trackParam(controller.project(), params);
                             const auto db = param<double>(params, "db");
-                            Json result = editTrack(controller, id, "set track gain",
-                                                    [&](model::Track& track) { track.gainDb = db; });
+                            const bool written = controller.writeAutomation(id, "gain", db);
+                            Json result = written ? trackResult(controller, id)
+                                                  : editTrack(controller, id, "set track gain",
+                                                              [&](model::Track& track) { track.gainDb = db; });
                             controller.setLiveGain(id, db);
                             return result;
                         }});
@@ -296,8 +298,10 @@ void registerTrackEditActions(Registry& registry, ProjectController& controller,
                             if (value < -1.0 || value > 1.0) {
                                 throw AppError("value must be from -1 (hard left) to 1 (hard right)");
                             }
-                            Json result = editTrack(controller, id, "set track pan",
-                                                    [&](model::Track& track) { track.pan = value; });
+                            const bool written = controller.writeAutomation(id, "pan", value);
+                            Json result = written ? trackResult(controller, id)
+                                                  : editTrack(controller, id, "set track pan",
+                                                              [&](model::Track& track) { track.pan = value; });
                             controller.setLivePan(id, value);
                             return result;
                         }});

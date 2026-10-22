@@ -24,6 +24,7 @@ The engine never sees the model. `emerick_app` turns the document into an engine
 - **Registry.** Every action, setting, track type, MIDI device profile and plugin QML component is registered once in `app::Registry`. Menus, shortcuts, the Cmd+K palette, MCP tools and Lua all read the registry. A control's QML `objectName` is its registry id.
 - **Gestures.** A drag runs its registry actions live through `Registry::updateGesture`, at most once a frame. Each run reverts the last one first, so every view and the engine follow the drag, and `endGesture` leaves one undo step and one action log line with the final values. Escape cancels a drag and reverts it.
 - **Notes.** A MIDI clip keeps each note (id, pitch, velocity, start, length, channel) in its notes and every other message in its events. Playback, export and the piano roll read the notes; the engine session gets them as note-ons and note-offs merged with the events, and a recorded take becomes notes when it lands.
+- **Automation.** A track keeps one lane of points per parameter id (`gain`, `pan`, `mute`, `send.<busId>.level`) and an automation mode. The app resolves each id to an engine target, and the engine evaluates the lanes every 32 samples and ramps the track's gain, pan and sends between those values.
 - **Locations.** Each registry entry can name a UI location (`settings.audio.bufferSize`). Revealing a location changes the `Nav` state object only; QML binds to `Nav`, so the same call works for a click, the palette, an agent and a test.
 
 ## Projects

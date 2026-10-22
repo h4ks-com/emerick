@@ -12,6 +12,7 @@
 #include <optional>
 #include <set>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include "emerick/app/registry.hpp"
@@ -95,6 +96,13 @@ public:
     void setLiveGain(const model::TrackId& id, double db);
     void setLivePan(const model::TrackId& id, double pan);
 
+    // While the transport runs and the track is in Touch or Latch, a control move writes value into the param's lane
+    // and returns true, and the caller leaves the track's own setting alone. The engine plays the written value until
+    // the pass ends: in Touch when the gesture ends, in Latch when the transport stops. Each pass is one undo step.
+    bool writeAutomation(const model::TrackId& id, const std::string& param, double value);
+    // The value the param plays now: the value being written, or the lane's value at the playhead.
+    [[nodiscard]] std::optional<double> automatedValue(const model::Track& track, std::string_view param) const;
+
     // The metronome plays from these settings once the next flush publishes them.
     void setMetronome(const engine::Metronome& metronome);
     // Playback and exports read the pan law from the registry; a new law reaches playback at the next flush.
@@ -159,6 +167,18 @@ signals:
     void fileChanged();
 
 private:
+    struct AutomationPass {
+        model::TrackId track;
+        std::string param;
+        core::Ticks start = 0;
+        std::vector<model::AutomationPoint> points;
+        double lastValue = 0.0;
+    };
+
+    void releaseAutomation();
+    // Writes the passes into their lanes as one undo step and ends them.
+    void commitPasses(std::vector<AutomationPass> passes, core::Ticks end);
+    void applyPasses(engine::Session& session) const;
     void createUntitled();
     void leave();
     void discardIfEmpty();
@@ -211,6 +231,7 @@ private:
     bool warm_ = false;
     bool warmWhileActive_ = true;
     QString streamSummary_;
+    std::vector<AutomationPass> passes_;
     QTimer timer_;
 };
 

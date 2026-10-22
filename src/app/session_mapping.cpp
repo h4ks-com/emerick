@@ -9,6 +9,7 @@
 #include <variant>
 #include <vector>
 
+#include "emerick/app/automation_params.hpp"
 #include "emerick/core/overloaded.hpp"
 #include "emerick/model/midi_notes.hpp"
 
@@ -57,7 +58,8 @@ engine::Track commonFields(const model::Track& track, engine::TrackKind kind) {
             .outputBus = {},
             .sends = {},
             .audioClips = {},
-            .midiClips = {}};
+            .midiClips = {},
+            .automation = {}};
 }
 
 // Disabled sends stay in the model so they keep their level, and play nothing.
@@ -131,6 +133,7 @@ engine::Session toSession(const model::Document& document, const Registry& regis
         const TrackType* type = registry.trackType(track.kind);
         if (type != nullptr && type->toEngine) {
             session.tracks.push_back(type->toEngine(track, context));
+            session.tracks.back().automation = engineLanes(registry, document, track);
         }
     }
     return session;

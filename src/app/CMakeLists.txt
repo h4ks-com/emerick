@@ -1,6 +1,9 @@
 qt_add_library(emerick_app STATIC
     action_params.cpp
     audio_file.cpp
+    automation_actions.cpp
+    automation_params.cpp
+    automation_writing.cpp
     backends.cpp
     clip_actions.cpp
     clip_edit_actions.cpp
@@ -14,6 +17,7 @@ qt_add_library(emerick_app STATIC
     export_actions.cpp
     include/emerick/app/action_params.hpp
     include/emerick/app/audio_file.hpp
+    include/emerick/app/automation_params.hpp
     include/emerick/app/backends.hpp
     include/emerick/app/clip_notes.hpp
     include/emerick/app/code_highlighter.hpp
@@ -99,6 +103,7 @@ emerick_target(emerick_app)
 
 if(EMERICK_BUILD_TESTS)
     emerick_test(emerick_app_tests
+        tests/automation_test.cpp
         tests/code_highlighter_test.cpp
         tests/console_test.cpp
         tests/devices_test.cpp

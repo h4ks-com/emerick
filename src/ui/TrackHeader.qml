@@ -21,6 +21,11 @@ Rectangle {
     property bool records: true
     // The row a drag would move this track to, or -1 while no drag runs.
     property int dropIndex: -1
+    property string automationMode
+    property var automationParams: []
+    property string automationParam
+    readonly property bool showsAutomation: Nav.automationOpen && automationParams.length > 0
+    readonly property var automationModes: Registry.actionInfo("automation.setMode").choices
 
     signal contextRequested()
 
@@ -191,7 +196,31 @@ Rectangle {
         }
 
         RowLayout {
-            visible: header.roomy
+            visible: header.roomy && header.showsAutomation
+            spacing: Theme.space1
+            Layout.fillWidth: true
+            Layout.leftMargin: Theme.iconSize + Theme.space2
+
+            AutomationPicker {
+                actionId: "automation.setMode"
+                trackId: header.trackId
+                current: header.automationModes.find(mode => mode.id === header.automationMode)?.title ?? ""
+                choices: header.automationModes
+                active: header.automationMode !== "off" && header.automationMode !== "read"
+                activeColor: Theme.tape
+            }
+            AutomationPicker {
+                actionId: "automation.showLane"
+                trackId: header.trackId
+                current: header.automationParams.find(param => param.id === header.automationParam)?.title ?? ""
+                choices: header.automationParams.map(param => ({id: param.id, title: param.title,
+                                                               params: {param: param.id}}))
+                Layout.fillWidth: true
+            }
+        }
+
+        RowLayout {
+            visible: header.roomy && !header.showsAutomation
             spacing: Theme.space2
             Layout.fillWidth: true
             Layout.leftMargin: Theme.iconSize + Theme.space2

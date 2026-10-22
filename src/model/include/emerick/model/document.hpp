@@ -7,6 +7,7 @@
 #include <variant>
 #include <vector>
 
+#include "emerick/core/automation.hpp"
 #include "emerick/core/fade.hpp"
 #include "emerick/core/id.hpp"
 #include "emerick/core/time.hpp"
@@ -19,10 +20,12 @@ struct TrackTag {};
 struct ClipTag {};
 struct MarkerTag {};
 struct NoteTag {};
+struct AutomationPointTag {};
 using TrackId = core::Id<TrackTag>;
 using ClipId = core::Id<ClipTag>;
 using MarkerId = core::Id<MarkerTag>;
 using NoteId = core::Id<NoteTag>;
+using AutomationPointId = core::Id<AutomationPointTag>;
 
 // Channels are 1-based.
 struct AudioRoute {
@@ -103,6 +106,29 @@ struct Send {
     bool operator==(const Send&) const = default;
 };
 
+// The curve shapes the segment from this point to the next.
+struct AutomationPoint {
+    AutomationPointId id = AutomationPointId::make();
+    Ticks tick = 0;
+    double value = 0.0;
+    core::AutomationCurve curve = core::AutomationCurve::linear;
+
+    bool operator==(const AutomationPoint&) const = default;
+};
+
+// A lane automates one parameter, such as "gain", "pan", "mute", "send.<busId>.level" or "<insertId>.<param>". The
+// app resolves the parameter id; the model keeps any id. Points stay sorted by tick.
+struct AutomationLane {
+    std::string param;
+    std::vector<AutomationPoint> points;
+
+    bool operator==(const AutomationLane&) const = default;
+};
+
+// As in Logic: Off ignores the lanes, Read plays them, Touch writes while a control is held and Latch keeps writing
+// its last value until the transport stops.
+enum class AutomationMode : std::uint8_t { off, read, touch, latch };
+
 struct Track {
     TrackId id = TrackId::make();
     std::string name;
@@ -123,6 +149,8 @@ struct Track {
     TrackId outputBus;
     std::vector<Send> sends;
     std::vector<Clip> clips;
+    AutomationMode automationMode = AutomationMode::read;
+    std::vector<AutomationLane> automation;
     nlohmann::json data;  // plugin-owned, the model never interprets it
 
     bool operator==(const Track&) const = default;

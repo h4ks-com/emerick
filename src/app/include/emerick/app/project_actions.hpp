@@ -29,6 +29,12 @@ Json editTrack(ProjectController& controller, const model::TrackId& id, std::str
 void registerClipActions(Registry& registry, ProjectController& controller, Nav& nav);
 // Copy, cut, paste, select all and clip neighbors, and the Delete key's action.
 void registerClipEditActions(Registry& registry, ProjectController& controller, Nav& nav);
+// Fade lengths, shapes and curves, and crossfades between overlapping audio clips.
+void registerFadeActions(Registry& registry, ProjectController& controller, Nav& nav);
+// The clip named by params, or the selected clips when params names none.
+std::vector<model::ClipId> targetClips(const ProjectController& controller, const Nav& nav, const Json& params);
+Json clipResult(const ProjectController& controller, const model::ClipId& id);
+Json clipResults(const ProjectController& controller, const std::vector<model::ClipId>& ids);
 
 // The kind of clip a track type holds; a plugin lane holds none.
 enum class ClipType : std::uint8_t { none, audio, midi };

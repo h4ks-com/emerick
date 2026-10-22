@@ -23,6 +23,10 @@ Item {
     readonly property real end: clip.start + clip.length
     readonly property real fadeIn: audio ? clip.fadeIn : 0
     readonly property real fadeOut: audio ? clip.fadeOut : 0
+    readonly property string fadeInShape: audio ? clip.fadeInShape : "linear"
+    readonly property string fadeOutShape: audio ? clip.fadeOutShape : "linear"
+    readonly property real fadeInCurve: audio ? clip.fadeInCurve : 0
+    readonly property real fadeOutCurve: audio ? clip.fadeOutCurve : 0
     readonly property bool selected: Nav.selectedClips.indexOf(clipId) >= 0
     readonly property bool inView: end > viewFrom && start < viewTo
 

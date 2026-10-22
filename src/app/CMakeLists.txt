@@ -10,6 +10,7 @@ qt_add_library(emerick_app STATIC
     console_actions.cpp
     console_completion.cpp
     core_actions.cpp
+    fade_actions.cpp
     export_actions.cpp
     include/emerick/app/action_params.hpp
     include/emerick/app/audio_file.hpp
@@ -92,6 +93,7 @@ if(EMERICK_BUILD_TESTS)
         tests/code_highlighter_test.cpp
         tests/console_test.cpp
         tests/devices_test.cpp
+        tests/fade_test.cpp
         tests/gesture_test.cpp
         tests/introspector_test.cpp
         tests/lua_host_test.cpp

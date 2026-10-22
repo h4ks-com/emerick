@@ -116,3 +116,28 @@ TEST_CASE("splitting an audio clip continues the source and drops the fades at t
     CHECK(right.fadeOut == 100);
     CHECK(right.sourceOffset == 24000);
 }
+
+TEST_CASE("a crossfade fades both clips over their overlap with equal power, from either clip") {
+    Track track;
+    const AudioClip first{.start = 0, .length = 1920, .fadeIn = 1800};
+    const AudioClip second{.start = 1440, .length = 1920};
+    track.clips = {first, second, MidiClip{.start = 0, .length = 4000}};
+    for (const ClipId& id : {first.id, second.id}) {
+        Track edited = track;
+        REQUIRE(crossfade(edited, id));
+        const auto& out = std::get<AudioClip>(edited.clips[0]);
+        const auto& in = std::get<AudioClip>(edited.clips[1]);
+        CHECK(out.fadeOut == 480);
+        CHECK(out.fadeOutShape == core::FadeShape::equalPower);
+        CHECK(out.fadeIn == 1440);
+        CHECK(in.fadeIn == 480);
+        CHECK(in.fadeInShape == core::FadeShape::equalPower);
+    }
+
+    Track apart;
+    apart.clips = {first, AudioClip{.start = 1920, .length = 960}};
+    CHECK_FALSE(crossfade(apart, first.id));
+    Track inside;
+    inside.clips = {first, AudioClip{.start = 480, .length = 480}};
+    CHECK_FALSE(crossfade(inside, first.id));
+}

@@ -60,6 +60,31 @@ Rectangle {
         Layout.fillWidth: true
     }
 
+    // The shape choices of a fade, which apply to every selected clip. Fade out icons mirror the fade in ones.
+    component FadeShapes: RowLayout {
+        id: shapes
+        required property string actionId
+        required property string current
+        property bool mirrored: false
+        spacing: 0
+        Repeater {
+            model: Registry.actionInfo(shapes.actionId).choices
+            ChromeButton {
+                required property var modelData
+                objectName: shapes.actionId + ":" + modelData.id
+                actionId: shapes.actionId
+                params: modelData.params
+                iconName: "fade-" + modelData.id
+                hint: modelData.title
+                active: shapes.current === modelData.id
+                transform: Scale {
+                    origin.x: Theme.buttonHeight / 2
+                    xScale: shapes.mirrored ? -1 : 1
+                }
+            }
+        }
+    }
+
     component PositionNumber: ClipNumber {
         property bool duration: false
         step: Project.ticksPerBeat / 4
@@ -214,6 +239,24 @@ Rectangle {
                     unit: "ticks"
                     value: panel.audioClip ? panel.clip.fadeIn : 0
                 }
+                RouteLabel { text: "In shape"; visible: panel.audioClip }
+                FadeShapes {
+                    visible: panel.audioClip
+                    actionId: "clip.setFadeInShape"
+                    current: panel.audioClip ? panel.clip.fadeInShape : ""
+                }
+                RouteLabel { text: "In curve"; visible: panel.audioClip }
+                ClipNumber {
+                    visible: panel.audioClip
+                    clipPanel: panel
+                    actionId: "clip.setFade"
+                    param: "fadeInCurve"
+                    from: -1
+                    to: 1
+                    step: 0.05
+                    decimals: 2
+                    value: panel.audioClip ? panel.clip.fadeInCurve : 0
+                }
                 RouteLabel { text: "Out"; visible: panel.audioClip }
                 ClipNumber {
                     visible: panel.audioClip
@@ -225,6 +268,25 @@ Rectangle {
                     step: Project.ticksPerBeat / 16
                     unit: "ticks"
                     value: panel.audioClip ? panel.clip.fadeOut : 0
+                }
+                RouteLabel { text: "Out shape"; visible: panel.audioClip }
+                FadeShapes {
+                    visible: panel.audioClip
+                    actionId: "clip.setFadeOutShape"
+                    current: panel.audioClip ? panel.clip.fadeOutShape : ""
+                    mirrored: true
+                }
+                RouteLabel { text: "Out curve"; visible: panel.audioClip }
+                ClipNumber {
+                    visible: panel.audioClip
+                    clipPanel: panel
+                    actionId: "clip.setFade"
+                    param: "fadeOutCurve"
+                    from: -1
+                    to: 1
+                    step: 0.05
+                    decimals: 2
+                    value: panel.audioClip ? panel.clip.fadeOutCurve : 0
                 }
                 RouteLabel { text: "Gain"; visible: panel.audioClip }
                 ClipNumber {

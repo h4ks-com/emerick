@@ -27,17 +27,50 @@ Item {
             objectName: "clip.setFade:" + handle.clipItem.clipId + (handle.fadeOut ? ":out" : ":in")
             anchors.fill: parent
             anchors.margins: -Theme.space1
-            cursorShape: Qt.SizeHorCursor
-            property real pressX
+            acceptedButtons: Qt.LeftButton | Qt.RightButton
+            cursorShape: axis === "y" ? Qt.SizeVerCursor : Qt.SizeHorCursor
+            readonly property string edge: handle.fadeOut ? "fadeOut" : "fadeIn"
+            property point pressAt
             property real pressFade
+            property real pressMidpoint
+            property string axis: ""
             onPressed: mouse => {
-                pressX = handle.clipItem.sceneX(grab, mouse)
-                pressFade = handle.fadeOut ? handle.clipItem.fadeOut : handle.clipItem.fadeIn
+                const item = handle.clipItem
+                if (Theme.isContextClick(mouse)) {
+                    if (!item.selected) {
+                        Registry.runAction("selection.set", {clips: [item.clipId]})
+                    }
+                    item.timeline.openClipMenu()
+                    axis = "menu"
+                    return
+                }
+                pressAt = grab.mapToItem(null, mouse.x, mouse.y)
+                pressFade = item[edge]
+                const points = Project.fadeCurve(item[edge + "Shape"], item[edge + "Curve"])
+                pressMidpoint = points[points.length >> 1].y
+                axis = ""
             }
             onCanceled: handle.clipItem.cancelDrag()
             onPositionChanged: mouse => {
                 const item = handle.clipItem
-                const ticks = (item.sceneX(grab, mouse) - pressX) / item.pixelsPerTick
+                if (axis === "menu") {
+                    return
+                }
+                const at = grab.mapToItem(null, mouse.x, mouse.y)
+                const dx = at.x - pressAt.x
+                const dy = at.y - pressAt.y
+                if (axis === "") {
+                    if (Math.max(Math.abs(dx), Math.abs(dy)) < Theme.dragThreshold) {
+                        return
+                    }
+                    axis = Math.abs(dy) > Math.abs(dx) ? "y" : "x"
+                }
+                if (axis === "y") {
+                    const gain = pressMidpoint - dy / content.height
+                    item.drag("clip.setFade", {[edge + "Curve"]: Project.curveThroughMidpoint(item[edge + "Shape"], gain)})
+                    return
+                }
+                const ticks = dx / item.pixelsPerTick
                 if (handle.fadeOut) {
                     const fade = item.end - item.place(item.end - pressFade + ticks, mouse.modifiers)
                     item.drag("clip.setFade", {fadeOut: Math.max(0, Math.min(fade, item.clip.length - item.fadeIn))})
@@ -133,25 +166,25 @@ Item {
             anchors.fill: parent
             active: content.clipItem.fadeIn > 0 || content.clipItem.fadeOut > 0
             sourceComponent: Shape {
-                readonly property real inX: content.clipItem.fadeIn * content.clipItem.pixelsPerTick
-                readonly property real outX: width - content.clipItem.fadeOut * content.clipItem.pixelsPerTick
+                readonly property real inWidth: content.clipItem.fadeIn * content.clipItem.pixelsPerTick
+                readonly property real outWidth: content.clipItem.fadeOut * content.clipItem.pixelsPerTick
                 ShapePath {
                     fillColor: Theme.fadeShade
                     strokeColor: Theme.fadeLine
                     strokeWidth: Theme.hairline
-                    startX: 0
-                    startY: body.height
-                    PathLine { x: inX; y: 0 }
-                    PathLine { x: 0; y: 0 }
+                    PathPolyline {
+                        path: [Qt.point(0, 0)].concat(Project.fadeCurve(content.clipItem.fadeInShape, content.clipItem.fadeInCurve)
+                                                      .map(p => Qt.point(p.x * inWidth, (1 - p.y) * body.height)))
+                    }
                 }
                 ShapePath {
                     fillColor: Theme.fadeShade
                     strokeColor: Theme.fadeLine
                     strokeWidth: Theme.hairline
-                    startX: body.width
-                    startY: body.height
-                    PathLine { x: outX; y: 0 }
-                    PathLine { x: body.width; y: 0 }
+                    PathPolyline {
+                        path: [Qt.point(body.width, 0)].concat(Project.fadeCurve(content.clipItem.fadeOutShape, content.clipItem.fadeOutCurve)
+                                                               .map(p => Qt.point(body.width - p.x * outWidth, (1 - p.y) * body.height)))
+                    }
                 }
             }
         }

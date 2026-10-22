@@ -7,6 +7,7 @@
 #include <string>
 #include <vector>
 
+#include "emerick/core/fade.hpp"
 #include "emerick/core/time.hpp"
 
 namespace emerick::engine {
@@ -36,6 +37,8 @@ struct AudioClip {
     float gain = 1.0F;
     Ticks fadeIn = 0;
     Ticks fadeOut = 0;
+    core::FadeCurve fadeInCurve;
+    core::FadeCurve fadeOutCurve;
 };
 
 struct MidiEvent {

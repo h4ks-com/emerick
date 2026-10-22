@@ -1,5 +1,8 @@
 #pragma once
 
+#include <sndfile.h>
+
+#include <catch2/catch_test_macros.hpp>
 #include <chrono>
 #include <cmath>
 #include <filesystem>
@@ -7,6 +10,7 @@
 #include <random>
 #include <string>
 #include <thread>
+#include <vector>
 
 #include "emerick/engine/engine.hpp"
 
@@ -51,6 +55,21 @@ bool waitFor(Predicate predicate) {
 
 inline Frames frameOf(const SentMidi& message) {
     return std::llround(static_cast<double>(message.timestampNs) * kRate / 1e9);
+}
+
+inline void writeWav(const std::filesystem::path& path, const std::vector<float>& samples, double rate = kRate) {
+    SF_INFO info{.samplerate = static_cast<int>(rate), .channels = 1, .format = SF_FORMAT_WAV | SF_FORMAT_FLOAT};
+    SNDFILE* file = sf_open(path.c_str(), SFM_WRITE, &info);
+    REQUIRE(file != nullptr);
+    sf_writef_float(file, samples.data(), static_cast<sf_count_t>(samples.size()));
+    sf_close(file);
+}
+
+inline void playOnceReadAhead(Rig& rig) {
+    rig.engine.locate(0);
+    rig.audio.process(kBlock);
+    REQUIRE(waitFor([&] { return rig.engine.readAheadReady(); }));
+    rig.engine.play();
 }
 
 struct TempFolder {

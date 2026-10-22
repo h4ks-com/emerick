@@ -30,6 +30,8 @@ struct ClipPlayback {
     float gain = 1.0F;
     Frames fadeIn = 0;
     Frames fadeOut = 0;
+    core::FadeCurve fadeInCurve;
+    core::FadeCurve fadeOutCurve;
 };
 
 struct ScheduledMidi {

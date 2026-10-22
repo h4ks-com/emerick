@@ -27,21 +27,6 @@ std::vector<float> readWav(const std::filesystem::path& path) {
     return samples;
 }
 
-void writeWav(const std::filesystem::path& path, const std::vector<float>& samples, double rate = kRate) {
-    SF_INFO info{.samplerate = static_cast<int>(rate), .channels = 1, .format = SF_FORMAT_WAV | SF_FORMAT_FLOAT};
-    SNDFILE* file = sf_open(path.c_str(), SFM_WRITE, &info);
-    REQUIRE(file != nullptr);
-    sf_writef_float(file, samples.data(), static_cast<sf_count_t>(samples.size()));
-    sf_close(file);
-}
-
-void playFromStart(Rig& rig) {
-    rig.engine.locate(0);
-    rig.audio.process(kBlock);
-    REQUIRE(waitFor([&] { return rig.engine.readAheadReady(); }));
-    rig.engine.play();
-}
-
 Track recordingTrack() {
     Track track{.id = "vox", .kind = TrackKind::audio, .armed = true};
     track.audioIn = {"interface", {2}};
@@ -84,7 +69,7 @@ TEST_CASE("audio clips play with track gain, clip gain and fades on the output c
     track.audioClips.push_back(
         {.path = path, .start = 0, .length = 960, .sourceOffset = 0, .gain = 0.5F, .fadeIn = 240, .fadeOut = 240});
     rig.engine.setSession({.tempo = kTempo, .tracks = {track}});
-    playFromStart(rig);
+    playOnceReadAhead(rig);
     const Frames start = rig.audio.processedFrames();
     rig.audio.process(30000);
 
@@ -187,7 +172,7 @@ TEST_CASE("an armed audio track records its input to WAV, and the take plays bac
     track.audioClips.push_back({.path = takes[0].audioFile, .start = 0, .length = 384});
     rig.engine.setRecording(false);
     rig.engine.setSession({.tempo = kTempo, .tracks = {track}, .takeFolder = folder.path});
-    playFromStart(rig);
+    playOnceReadAhead(rig);
     const Frames start = rig.audio.processedFrames();
     rig.audio.process(kLength + kBlock);
     const auto output = rig.audio.output("interface", 1);
@@ -213,7 +198,7 @@ TEST_CASE("a missing or wrong rate clip is skipped and reported while the other 
     CHECK(errors[0].trackId == "pad");
     CHECK(errors[0].message.contains("missing.wav"));
     CHECK(errors[1].message.contains("slow.wav"));
-    playFromStart(rig);
+    playOnceReadAhead(rig);
     const Frames start = rig.audio.processedFrames();
     rig.audio.process(kBlock);
     CHECK(rig.audio.output("keyboard", 1)[static_cast<std::size_t>(start)] == 1.0F);
@@ -229,7 +214,7 @@ TEST_CASE("a playing clip meters its track's post-fader output per channel and l
     Track quiet{.id = "quiet", .kind = TrackKind::audio};
     quiet.audioOut = {"interface", {1}};
     rig.engine.setSession({.tempo = kTempo, .tracks = {pad, quiet}});
-    playFromStart(rig);
+    playOnceReadAhead(rig);
     rig.engine.takeOutputLevels();
     rig.audio.process(kBlock);
 
@@ -321,7 +306,7 @@ TEST_CASE("switching a playing track's output keeps its sound in time on the pic
     loud.audioClips.push_back({.path = folder.path / "ramp.wav", .start = 0, .length = 38400, .sourceOffset = 0});
     rig.engine.keepWarm(true);
     rig.engine.setSession({.tempo = kTempo, .tracks = {empty, loud}});
-    playFromStart(rig);
+    playOnceReadAhead(rig);
     rig.audio.process(4800);
 
     for (const std::string device : {"interface", "keyboard", "interface", "keyboard"}) {

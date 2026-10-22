@@ -7,8 +7,9 @@
 
 namespace emerick::model {
 
-// Format 2 added markers, so a format 1 project loads with none.
-inline constexpr int kFormatVersion = 2;
+// Format 2 added markers, so a format 1 project loads with none. Format 3 added fade shapes and curves, so clips of
+// older projects keep linear fades.
+inline constexpr int kFormatVersion = 3;
 
 nlohmann::json toJson(const Document& document);
 

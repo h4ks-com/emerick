@@ -126,6 +126,9 @@ public:
     Q_INVOKABLE QString ticksText(qint64 ticks, bool duration) const;
     // Reads text in the same form, or plain ticks; returns -1 for text it cannot read.
     Q_INVOKABLE qint64 parseTicks(const QString& text, bool duration) const;
+    // Points (progress, gain) along a fade in of the shape and curve, from 0 to 1, for a clip to draw.
+    Q_INVOKABLE static QVariantList fadeCurve(const QString& shape, double curve);
+    Q_INVOKABLE static double curveThroughMidpoint(const QString& shape, double gain);
     [[nodiscard]] TrackMeters& meters() { return meters_; }
     [[nodiscard]] const TrackMeters& meters() const { return meters_; }
     // Per track id, the reasons its routes do not play, one per line.

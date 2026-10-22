@@ -47,6 +47,8 @@ The mixer (X) docks at the bottom of the window above the console. Each track ge
 
 A marker lane under the bar ruler shows each marker as a named flag, and the inspector lists the markers under the track routes; clicking one moves the playhead there. Drags snap to the beat grid while snap is on, and holding Command (Ctrl on Linux and Windows) snaps them the other way, as Control does in Logic.
 
+An audio clip draws each fade with its shape: linear, equal power, exponential, logarithmic or S-curve. Dragging a fade handle sideways sets the fade's length and dragging it up or down bends its curve, as in Logic. Where clips on a track overlap, the newer clip plays over the older one outside its fades, and "Create crossfade" fades both over the overlap with equal power.
+
 A level meter shows a track's post-fader output, or its input while the track is armed or monitoring: one 2 px bar per channel rising from green through yellow to `rec` at full scale, a held peak tick, and a clip light on top that stays lit until clicked or until "Reset clip indicators" runs. Single keys such as Space and X run their actions anywhere except while a text field has focus. Cmd+C, Cmd+X, Cmd+V and Cmd+A edit the focused text, such as a selection in the console log, and edit clips everywhere else.
 
 ## Principles

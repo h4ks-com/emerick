@@ -27,7 +27,9 @@ engine::AudioClip toEngine(const model::AudioClip& clip, const std::filesystem::
             .sourceOffset = clip.sourceOffset,
             .gain = gainFromDb(clip.gainDb),
             .fadeIn = clip.fadeIn,
-            .fadeOut = clip.fadeOut};
+            .fadeOut = clip.fadeOut,
+            .fadeInCurve = core::fadeCurve(clip.fadeInShape, clip.fadeInCurve),
+            .fadeOutCurve = core::fadeCurve(clip.fadeOutShape, clip.fadeOutCurve)};
 }
 
 engine::MidiClip toEngine(const model::MidiClip& clip) {

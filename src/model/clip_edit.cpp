@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <map>
 #include <optional>
+#include <ranges>
 #include <set>
 #include <variant>
 #include <vector>
@@ -172,6 +173,45 @@ std::expected<std::pair<Clip, Clip>, std::string> split(const Clip& clip, Ticks 
     std::visit(core::Overloaded{[](AudioClip& audio) { audio.fadeOut = 0; }, [](MidiClip&) {}}, *left);
     std::visit(core::Overloaded{[](AudioClip& audio) { audio.fadeIn = 0; }, [](MidiClip&) {}}, *right);
     return std::pair{std::move(*left), std::move(*right)};
+}
+
+std::expected<void, std::string> crossfade(Track& track, const ClipId& id) {
+    auto audioClips = track.clips | std::views::transform([](Clip& clip) { return std::get_if<AudioClip>(&clip); }) |
+                      std::views::filter([](const AudioClip* audio) { return audio != nullptr; });
+    const auto found = std::ranges::find(audioClips, id, &AudioClip::id);
+    if (found == audioClips.end()) {
+        return std::unexpected("a crossfade needs an audio clip");
+    }
+    AudioClip& clip = **found;
+    const auto overlapsStart = [&](const AudioClip* other) {
+        return other->start < clip.start && other->start + other->length > clip.start;
+    };
+    const auto overlapsEnd = [&](const AudioClip* other) {
+        return other->start > clip.start && other->start < clip.start + clip.length;
+    };
+    AudioClip* earlier = &clip;
+    AudioClip* later = &clip;
+    if (const auto left = std::ranges::find_if(audioClips, overlapsStart); left != audioClips.end()) {
+        earlier = *left;
+    } else if (const auto right = std::ranges::find_if(audioClips, overlapsEnd); right != audioClips.end()) {
+        later = *right;
+    } else {
+        return std::unexpected("overlap the clip with another clip on its track first");
+    }
+    const Ticks earlierEnd = earlier->start + earlier->length;
+    if (earlierEnd > later->start + later->length) {
+        return std::unexpected("the clip lies inside another clip, so shorten the longer clip first");
+    }
+    const Ticks overlap = earlierEnd - later->start;
+    earlier->fadeOut = overlap;
+    earlier->fadeOutShape = core::FadeShape::equalPower;
+    earlier->fadeOutCurve = 0.0;
+    earlier->fadeIn = std::min(earlier->fadeIn, earlier->length - overlap);
+    later->fadeIn = overlap;
+    later->fadeInShape = core::FadeShape::equalPower;
+    later->fadeInCurve = 0.0;
+    later->fadeOut = std::min(later->fadeOut, later->length - overlap);
+    return {};
 }
 
 }  // namespace emerick::model

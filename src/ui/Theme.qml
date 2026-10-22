@@ -133,8 +133,8 @@ QtObject {
     readonly property color barLine: Qt.rgba(1, 1, 1, 0.07)
     readonly property color beatLine: Qt.rgba(1, 1, 1, 0.03)
 
-    // Track icons are Phosphor names; an icon we do not bundle shows as a note.
-    readonly property var icons: ["broom", "circle", "copy", "dots-three", "file", "gear-six", "guitar", "magnet", "magnifying-glass", "metronome", "music-note", "music-notes", "pause", "piano-keys", "play", "sidebar-simple", "skip-back", "sliders", "squares-four", "stop", "waveform", "x"]
+    // Track icons are Phosphor names and fade icons are our own; an icon we do not bundle shows as a note.
+    readonly property var icons: ["broom", "circle", "copy", "dots-three", "fade-equalPower", "fade-exponential", "fade-linear", "fade-logarithmic", "fade-sCurve", "file", "gear-six", "guitar", "magnet", "magnifying-glass", "metronome", "music-note", "music-notes", "pause", "piano-keys", "play", "sidebar-simple", "skip-back", "sliders", "squares-four", "stop", "waveform", "x"]
     function iconSource(name) {
         return "icons/" + (icons.indexOf(name) >= 0 ? name : "music-note") + ".svg"
     }

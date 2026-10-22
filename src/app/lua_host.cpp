@@ -1,5 +1,6 @@
 #include "emerick/app/lua_host.hpp"
 
+#include <QString>
 #include <array>
 #include <cstdint>
 #include <cstdlib>
@@ -109,6 +110,12 @@ std::size_t rawLength(const sol::table& table) {
     return length;
 }
 
+// Lua strings are any bytes, and JSON text must be UTF-8, so we replace the bytes that are not.
+std::string utf8Text(const sol::object& value) {
+    const auto bytes = value.as<std::string_view>();
+    return QString::fromUtf8(bytes.data(), static_cast<qsizetype>(bytes.size())).toStdString();
+}
+
 // Only raw access, so no metamethod runs while we convert a result.
 Json fromLua(const sol::object& value, int depth = 0) {
     if (depth > kMaxDepth) {
@@ -124,7 +131,7 @@ Json fromLua(const sol::object& value, int depth = 0) {
             return integer ? Json(value.as<std::int64_t>()) : Json(value.as<double>());
         }
         case sol::type::string:
-            return value.as<std::string>();
+            return utf8Text(value);
         case sol::type::table: {
             const auto table = value.as<sol::table>();
             const std::size_t length = rawLength(table);
@@ -140,7 +147,7 @@ Json fromLua(const sol::object& value, int depth = 0) {
             Json object = Json::object();
             table.for_each([&](const sol::object& key, const sol::object& item) {
                 const std::string name =
-                    key.get_type() == sol::type::string ? key.as<std::string>() : fromLua(key, depth + 1).dump();
+                    key.get_type() == sol::type::string ? utf8Text(key) : fromLua(key, depth + 1).dump();
                 object[name] = fromLua(item, depth + 1);
             });
             return object;
@@ -187,6 +194,9 @@ bool sameValue(const sol::object& a, const sol::object& b) {
 
 constexpr std::array kLuaMembers{
     LuaMember{"run", "run(id, params?)", "Run an action by id with a params table and return its result."},
+    LuaMember{"batch", "batch(calls, keepGoing?)",
+              "Run up to 1000 {id = ..., params = ...} calls in order and return each result or error; stop at the "
+              "first error unless keepGoing."},
     LuaMember{"actions", "actions(query?)", "List actions with their params, ranked by an optional fuzzy query."},
     LuaMember{"setting", "setting(id, value?)", "Read a setting, or set it when value is given."},
     LuaMember{"state", "state(name)", "Read a state provider: project, transport, devices, nav or app."},
@@ -238,7 +248,7 @@ struct LuaHost::State {
     }
 };
 
-LuaHost::LuaHost(Registry& registry, const UiApi& ui) : state_(std::make_unique<State>()) {
+LuaHost::LuaHost(Registry& registry, const UiApi& ui) : registry_(&registry), state_(std::make_unique<State>()) {
     sol::state& lua = state_->lua;
     lua.open_libraries(sol::lib::base, sol::lib::string, sol::lib::table, sol::lib::math, sol::lib::utf8);
     for (const char* name : kRemovedGlobals) {
@@ -267,6 +277,12 @@ LuaHost::LuaHost(Registry& registry, const UiApi& ui) : state_(std::make_unique<
     emerick["run"] = [&registry](const std::string& id, const sol::optional<sol::object>& params,
                                  sol::this_state current) {
         return toLua(current, registry.run(id, fromLuaArgument(params), ActionSource::Lua));
+    };
+    emerick["batch"] = [&registry](const sol::table& calls, const sol::optional<bool>& keepGoing,
+                                   sol::this_state current) {
+        const Json given = fromLua(calls);
+        return toLua(current, registry.runBatch(given.empty() ? Json::array() : given, keepGoing.value_or(false),
+                                                ActionSource::Lua));
     };
     emerick["actions"] = [&registry](const sol::optional<std::string>& query, sol::this_state current) {
         return toLua(current, registry.describeActions(query.value_or("")));
@@ -332,7 +348,7 @@ Json LuaHost::eval(const LuaChunk& chunk) {
         }
         ++state.depth;
         try {
-            result.update(state.run(chunk));
+            result.update(registry_->runFrom(ActionSource::Lua, [&] { return state.run(chunk); }));
         } catch (const std::exception& error) {
             result["error"] = error.what();
         }

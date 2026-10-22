@@ -30,6 +30,7 @@ qt_add_library(emerick_app STATIC
     include/emerick/app/midi_export.hpp
     include/emerick/app/nav.hpp
     include/emerick/app/params.hpp
+    include/emerick/app/path_access.hpp
     include/emerick/app/peak_cache.hpp
     include/emerick/app/project_actions.hpp
     include/emerick/app/project_bundle.hpp
@@ -54,6 +55,7 @@ qt_add_library(emerick_app STATIC
     mcp_tools.cpp
     metronome_actions.cpp
     midi_export.cpp
+    path_access.cpp
     peak_cache.cpp
     project_actions.cpp
     project_bundle.cpp
@@ -93,14 +95,17 @@ if(EMERICK_BUILD_TESTS)
         tests/console_test.cpp
         tests/devices_test.cpp
         tests/gesture_test.cpp
+        tests/hostile_params_test.cpp
         tests/introspector_test.cpp
         tests/lua_host_test.cpp
         tests/marker_test.cpp
         tests/mcp_server_test.cpp
         tests/metronome_test.cpp
+        tests/path_access_test.cpp
         tests/peak_cache_test.cpp
         tests/project_file_test.cpp
         tests/project_test.cpp
+        tests/random_edits_test.cpp
         tests/recording_test.cpp
         tests/registry_test.cpp
         tests/script_library_test.cpp

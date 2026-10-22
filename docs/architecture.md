@@ -57,7 +57,7 @@ A plugin calls `registerWith(Registry&, ProjectController&, Nav&)` and can add t
 
 ## Agent interface
 
-The app serves MCP over streamable HTTP on loopback (`--mcp-port`). Tools: `ui.tree`, `ui.find`, `ui.reveal`, `ui.invoke`, `ui.set`, `actions.list`, `actions.run`, `settings.get`, `settings.set`, `state.get`, `lua.eval`, `console.log`, `screenshot`. Every tool returns the state after the change. Lua (5.4 through sol2) sees the same document and registry, and its `ui` functions and the `ui.*` tools both go through `UiApi`, so a script and an agent can do anything a click can.
+The app serves MCP over streamable HTTP on loopback (`--mcp-port`). Tools: `ui.tree`, `ui.find`, `ui.reveal`, `ui.invoke`, `ui.set`, `actions.list`, `actions.run`, `actions.batch`, `settings.get`, `settings.set`, `state.get`, `lua.eval`, `console.log`, `screenshot`. Every tool returns the state after the change. An action that fails leaves the document and its undo history as they were. `actions.batch` and `emerick.batch` run up to 1000 calls, each as its own undo step. With `--agent-read-root` and `--agent-write-root`, every path an MCP or Lua request names goes through one check that resolves symlinks and `..` and refuses a path outside the root; paths from the person using the UI stay open. Lua (5.4 through sol2) sees the same document and registry, and its `ui` functions and the `ui.*` tools both go through `UiApi`, so a script and an agent can do anything a click can.
 
 ## Console and scripts
 

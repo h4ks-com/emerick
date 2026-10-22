@@ -2,6 +2,7 @@
 
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
+#include <cmath>
 #include <filesystem>
 #include <map>
 #include <string>
@@ -280,6 +281,35 @@ TEST_CASE("track actions without a track param act on the selected track") {
     CHECK(rig.controller->project().track(model::TrackId{vox}) == nullptr);
     rig.run("project.undo");
     CHECK(rig.controller->project().track(model::TrackId{vox}) != nullptr);
+}
+
+TEST_CASE("an action that edits and then fails leaves the document and the undo history as they were") {
+    ProjectRig rig;
+    rig.run("track.addAudio", {{"name", "Vox"}});
+    const model::Document before = rig.controller->project().document();
+    rig.registry.addAction({.id = "test.editThenFail", .run = [&rig](const Json&) -> Json {
+                                rig.run("track.addMidi");
+                                rig.run("track.rename", {{"track", "Vox"}, {"name", "Lead"}});
+                                throw AppError("failed after two edits");
+                            }});
+
+    CHECK_THROWS_AS(rig.run("test.editThenFail"), AppError);
+    CHECK(rig.controller->project().document() == before);
+    CHECK(rig.controller->project().undoName() == "add track Vox");
+}
+
+TEST_CASE("a tempo of NaN is refused") {
+    ProjectRig rig;
+    const core::TempoMap before = rig.controller->project().document().tempo;
+    CHECK_THROWS_AS(rig.run("project.setTempo", {{"bpm", std::nan("")}}), AppError);
+    CHECK(rig.controller->project().document().tempo == before);
+}
+
+TEST_CASE("a path the file system refuses fails the action with an AppError") {
+    ProjectRig rig;
+    const std::string tooLong = rig.path(std::string(5000, 'x')).string();
+    CHECK_THROWS_AS(rig.run("project.saveAs", {{"path", tooLong}}), AppError);
+    CHECK_THROWS_AS(rig.run("export.stems", {{"folder", tooLong}}), AppError);
 }
 
 TEST_CASE("copy and paste put clips at the playhead on the selected track, and bar keys step on bar lines") {

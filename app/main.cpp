@@ -8,6 +8,7 @@
 #include <QtSystemDetection>
 #include <exception>
 #include <filesystem>
+#include <optional>
 #include <utility>
 
 #include "emerick/app/backends.hpp"
@@ -74,11 +75,20 @@ int run(int argc, char** argv) {
     const QCommandLineOption midi("midi", "MIDI backend: virtual or default.", "backend", "default");
     const QCommandLineOption profile(
         "profile", "Keep settings, scripts and new projects in this folder (for test runs).", "folder");
-    parser.addOptions({mcpPort, mcpBindAny, noLuaMcp, audio, midi, profile});
+    const QCommandLineOption agentReadRoot("agent-read-root",
+                                           "Let MCP and Lua requests read files only inside this folder.", "folder");
+    const QCommandLineOption agentWriteRoot("agent-write-root",
+                                            "Let MCP and Lua requests write files only inside this folder.", "folder");
+    parser.addOptions({mcpPort, mcpBindAny, noLuaMcp, audio, midi, profile, agentReadRoot, agentWriteRoot});
     parser.process(application);
 
     const QString profileFolder = parser.value(profile);
     Registry registry(profileFolder.isEmpty() ? QString{} : profileFolder + "/settings.ini");
+    const auto optionalFolder = [&parser](const QCommandLineOption& option) {
+        return parser.isSet(option) ? std::optional{std::filesystem::path{parser.value(option).toStdString()}}
+                                    : std::nullopt;
+    };
+    registry.setAgentRoots({.read = optionalFolder(agentReadRoot), .write = optionalFolder(agentWriteRoot)});
     Nav nav;
     const Backends backends{parser.value(audio).toStdString(), parser.value(midi).toStdString()};
     registerCoreActions(registry, nav, backends);

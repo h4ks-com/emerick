@@ -75,8 +75,8 @@ void registerProjectFileActions(Registry& registry, ProjectController& controlle
         controller.newProject();
         return projectState(controller);
     };
-    const auto openPath = [&controller](const Json& params) {
-        controller.open(param<std::string>(params, "path"));
+    const auto openPath = [&registry, &controller](const Json& params) {
+        controller.open(registry.checkedPath(param<std::string>(params, "path"), PathAccess::Read));
         return projectState(controller);
     };
 
@@ -129,8 +129,9 @@ void registerProjectFileActions(Registry& registry, ProjectController& controlle
                         .shortcut = "Ctrl+Shift+S",
                         .schema = {{"required", {"path"}}},
                         .run =
-                            [&controller](const Json& params) {
-                                controller.saveAs(param<std::string>(params, "path"));
+                            [&registry, &controller](const Json& params) {
+                                controller.saveAs(
+                                    registry.checkedPath(param<std::string>(params, "path"), PathAccess::Write));
                                 return projectState(controller);
                             },
                         .menus = {kFileMenu, kProjectMenu},

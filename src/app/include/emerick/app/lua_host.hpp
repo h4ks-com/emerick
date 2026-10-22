@@ -45,6 +45,7 @@ public:
     void setPrintSink(std::function<void(const std::string& line)> sink);
 
 private:
+    Registry* registry_;
     struct State;
     std::unique_ptr<State> state_;
 };

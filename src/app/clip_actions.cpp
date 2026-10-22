@@ -97,7 +97,7 @@ Json importClip(const Registry& registry, ProjectController& controller, const J
     if (type == nullptr || !type->routes.audio) {
         throw AppError("track " + track.name + " is not an audio track");
     }
-    const std::filesystem::path source{param<std::string>(params, "path")};
+    const std::filesystem::path source = registry.checkedPath(param<std::string>(params, "path"), PathAccess::Read);
     const core::TempoMap& tempo = controller.project().document().tempo;
     model::AudioClip clip = clipFromFile(source, controller.folder(), optionalPosition(params, "at", tempo).value_or(0),
                                          tempo, controller.sampleRate());

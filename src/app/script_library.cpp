@@ -214,7 +214,7 @@ void registerScriptActions(Registry& registry, ScriptLibrary& library) {
          .category = "Scripts",
          .schema = {{"properties", {{"name", {{"type", "string"}}}, {"path", {{"type", "string"}}}}}},
          .run =
-             [&library](const Json& params) {
+             [&registry, &library](const Json& params) {
                  const auto name = optionalParam<std::string>(params, "name");
                  const auto path = optionalParam<std::string>(params, "path");
                  if (!name && !path) {
@@ -223,9 +223,12 @@ void registerScriptActions(Registry& registry, ScriptLibrary& library) {
                  if (const Script* script = library.find(name ? *name : *path)) {
                      return library.run(*script);
                  }
-                 std::error_code error;
-                 if (path && std::filesystem::is_regular_file(*path, error)) {
-                     return library.run({.id = *path, .path = *path, .scope = ScriptScope::User, .header = {}});
+                 if (path) {
+                     const std::filesystem::path file = registry.checkedPath(*path, PathAccess::Read);
+                     std::error_code error;
+                     if (std::filesystem::is_regular_file(file, error)) {
+                         return library.run({.id = *path, .path = file, .scope = ScriptScope::User, .header = {}});
+                     }
                  }
                  throw AppError("no script " + (name ? *name : *path) + "; script.list lists the scripts");
              },

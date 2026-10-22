@@ -163,10 +163,11 @@ void registerVoiceActions(app::Registry& registry, app::ProjectController& contr
                         .category = "Yamaha",
                         .schema = {{"required", {"path"}}, {"properties", {{"path", {{"type", "string"}}}}}},
                         .run =
-                            [&controller](const Json& params) {
+                            [&registry, &controller](const Json& params) {
                                 std::vector<Voice> voices;
                                 try {
-                                    voices = loadVoices(app::param<std::string>(params, "path"));
+                                    voices = loadVoices(registry.checkedPath(app::param<std::string>(params, "path"),
+                                                                             app::PathAccess::Read));
                                 } catch (const std::invalid_argument& error) {
                                     throw AppError(error.what());
                                 } catch (const std::runtime_error& error) {
@@ -262,7 +263,8 @@ void registerArrangerActions(app::Registry& registry, app::ProjectController& co
                     {"properties", {{"path", {{"type", "string"}}}, {"shiftBars", {{"type", "integer"}}}}}},
          .run =
              [&registry, &controller](const Json& params) {
-                 const std::filesystem::path path{app::param<std::string>(params, "path")};
+                 const std::filesystem::path path =
+                     registry.checkedPath(app::param<std::string>(params, "path"), app::PathAccess::Read);
                  const int shiftBars = app::optionalParam<int>(params, "shiftBars").value_or(0);
                  const Chart chart = chartFromTake(sysexOfMidiFile(path), controller.project().document().tempo,
                                                    chartOptions(registry, shiftBars));

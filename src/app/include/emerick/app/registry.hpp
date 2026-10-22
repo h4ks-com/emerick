@@ -18,6 +18,7 @@
 #include <vector>
 
 #include "emerick/app/enums.hpp"
+#include "emerick/app/path_access.hpp"
 #include "emerick/core/fuzzy.hpp"
 #include "emerick/core/time.hpp"
 #include "emerick/engine/session.hpp"
@@ -30,6 +31,8 @@ using Json = nlohmann::json;
 struct AppError : std::runtime_error {
     using std::runtime_error::runtime_error;
 };
+
+inline constexpr std::size_t kMaxBatchCalls = 1000;
 
 // The menu bar lists these menus in this order. A menu path such as "Plugins/Yamaha Arranger" shows as a submenu.
 inline constexpr const char* kFileMenu = "File";
@@ -138,6 +141,8 @@ struct UndoSteps {
     // Returns whether the gesture left an undo step, which it does unless the document is back where it started.
     std::function<bool()> endGesture = {};
     std::function<void()> cancelGesture = {};
+    // Runs edits and, when they throw, leaves the document and its undo history as they were.
+    std::function<void(const std::function<void()>& edits)> atomic = {};
 };
 
 struct RouteSections {
@@ -234,6 +239,15 @@ public:
     // Emits actionRan after an action that no other action ran, so the log shows what a person or agent asked for.
     Json run(const std::string& id, const Json& params = Json::object(),
              ActionSource source = ActionSource::Code) const;
+    // Runs each {id, params} call in order as its own run, and stops at the first failure unless keepGoing. Each
+    // entry of the result holds the call's result or its error.
+    Json runBatch(const Json& calls, bool keepGoing, ActionSource source) const;
+    // Runs call as a request from origin; inside an outer request, the outer origin stays.
+    Json runFrom(ActionSource origin, const std::function<Json()>& call) const;
+    // Canonicalizes both roots, so a missing folder throws std::filesystem::filesystem_error.
+    void setAgentRoots(AgentRoots roots);
+    // A request from MCP or Lua may only name a path inside the agent root for that access; others name any path.
+    [[nodiscard]] std::filesystem::path checkedPath(const std::string& path, PathAccess access) const;
     [[nodiscard]] Json settingValue(const std::string& id) const;
     Json setSetting(const std::string& id, const Json& given);
     // Saves the shortcut in the settings store and takes it from any action that had it; an empty sequence clears it.
@@ -305,6 +319,8 @@ private:
 
     UndoSteps undoSteps_;
     mutable int runDepth_ = 0;
+    mutable std::optional<ActionSource> origin_;
+    AgentRoots agentRoots_;
     struct Call {
         std::string id;
         Json params;

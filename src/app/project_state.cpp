@@ -124,6 +124,11 @@ Json positionState(core::Ticks ticks, const core::TempoMap& tempo) {
     return {{"ticks", ticks}, {"bbt", tempo.toBarBeatTick(ticks).format()}, {"seconds", tempo.ticksToSeconds(ticks)}};
 }
 
+Json noteState(const model::Note& note) {
+    return {{"id", note.id.value}, {"pitch", note.pitch},   {"velocity", note.velocity},
+            {"start", note.start}, {"length", note.length}, {"channel", note.channel}};
+}
+
 Json clipState(const model::Clip& clip, const core::TempoMap& tempo, bool includeEvents) {
     return std::visit(
         core::Overloaded{[&](const model::AudioClip& audio) {
@@ -143,8 +148,11 @@ Json clipState(const model::Clip& clip, const core::TempoMap& tempo, bool includ
                          [&](const model::MidiClip& midi) {
                              Json result{{"id", midi.id.value}, {"type", "midi"}};
                              result.update(timing(midi.start, midi.length, tempo));
+                             result["noteCount"] = midi.notes.size();
                              result["eventCount"] = midi.events.size();
                              if (includeEvents) {
+                                 result["notes"] =
+                                     midi.notes | std::views::transform(noteState) | std::ranges::to<Json::array_t>();
                                  result["events"] = Json::array();
                                  for (const model::MidiEvent& event : midi.events) {
                                      result["events"].push_back({{"at", event.at}, {"bytes", event.bytes}});

@@ -39,56 +39,76 @@ const char* clipTypeName(ClipType type) {
 }
 
 QVariantList noteList(const model::MidiClip& clip) {
-    QVariantList notes;
-    for (const model::NoteSpan& note : model::noteSpans(clip)) {
-        notes.append(QVariantMap{
-            {"at", QVariant::fromValue(note.at)}, {"length", QVariant::fromValue(note.length)}, {"key", note.key}});
-    }
-    return notes;
+    return clip.notes | std::views::transform([](const model::Note& note) {
+               return QVariant{QVariantMap{{"id", qs(note.id.value)},
+                                           {"pitch", note.pitch},
+                                           {"velocity", note.velocity},
+                                           {"start", QVariant::fromValue(note.start)},
+                                           {"length", QVariant::fromValue(note.length)},
+                                           {"channel", note.channel}}};
+           }) |
+           std::ranges::to<QVariantList>();
 }
 
 }  // namespace
 
-QVariantList TrackListModel::clipList(const model::Track& track) const {
+QVariantMap TrackListModel::clipEntry(const model::Clip& clip, int take) const {
     const core::TempoMap& tempo = project_.document().tempo;
     const double rate = controller_.sampleRate();
+    const core::Ticks start = model::clipStart(clip);
+    const core::Ticks end = model::clipEnd(clip);
+    QVariantMap entry{{"id", qs(model::clipId(clip).value)},
+                      {"take", take},
+                      {"start", QVariant::fromValue(start)},
+                      {"length", QVariant::fromValue(end - start)},
+                      {"startText", qs(tempo.toBarBeatTick(start).format())},
+                      {"endText", qs(tempo.toBarBeatTick(end).format())},
+                      {"lengthText", qs(durationText(end - start, tempo))}};
+    std::visit(core::Overloaded{
+                   [&](const model::AudioClip& audio) {
+                       const std::filesystem::path file{audio.file};
+                       const core::Frames frames = tempo.ticksToFrames(end, rate) - tempo.ticksToFrames(start, rate);
+                       entry.insert(
+                           QVariantMap{{"type", "audio"},
+                                       {"fadeIn", QVariant::fromValue(audio.fadeIn)},
+                                       {"fadeOut", QVariant::fromValue(audio.fadeOut)},
+                                       {"fadeInShape", qs(std::string{core::fadeShapeId(audio.fadeInShape)})},
+                                       {"fadeOutShape", qs(std::string{core::fadeShapeId(audio.fadeOutShape)})},
+                                       {"fadeInCurve", audio.fadeInCurve},
+                                       {"fadeOutCurve", audio.fadeOutCurve},
+                                       {"gainDb", audio.gainDb},
+                                       {"file", qs((file.is_absolute() ? file : controller_.folder() / file).string())},
+                                       {"sourceOffset", QVariant::fromValue(audio.sourceOffset)},
+                                       {"frames", QVariant::fromValue(frames)}});
+                   },
+                   [&](const model::MidiClip& midi) {
+                       entry.insert(QVariantMap{{"type", "midi"}, {"notes", noteList(midi)}});
+                   }},
+               clip);
+    return entry;
+}
+
+QVariantList TrackListModel::clipList(const model::Track& track) const {
     QVariantList clips;
     int take = 0;
     for (const model::Clip& clip : track.clips) {
-        const core::Ticks start = model::clipStart(clip);
-        const core::Ticks end = model::clipEnd(clip);
-        QVariantMap entry{{"id", qs(model::clipId(clip).value)},
-                          {"take", ++take},
-                          {"start", QVariant::fromValue(start)},
-                          {"length", QVariant::fromValue(end - start)},
-                          {"startText", qs(tempo.toBarBeatTick(start).format())},
-                          {"endText", qs(tempo.toBarBeatTick(end).format())},
-                          {"lengthText", qs(durationText(end - start, tempo))}};
-        std::visit(
-            core::Overloaded{[&](const model::AudioClip& audio) {
-                                 const std::filesystem::path file{audio.file};
-                                 const core::Frames frames =
-                                     tempo.ticksToFrames(end, rate) - tempo.ticksToFrames(start, rate);
-                                 entry.insert(QVariantMap{
-                                     {"type", "audio"},
-                                     {"fadeIn", QVariant::fromValue(audio.fadeIn)},
-                                     {"fadeOut", QVariant::fromValue(audio.fadeOut)},
-                                     {"fadeInShape", qs(std::string{core::fadeShapeId(audio.fadeInShape)})},
-                                     {"fadeOutShape", qs(std::string{core::fadeShapeId(audio.fadeOutShape)})},
-                                     {"fadeInCurve", audio.fadeInCurve},
-                                     {"fadeOutCurve", audio.fadeOutCurve},
-                                     {"gainDb", audio.gainDb},
-                                     {"file", qs((file.is_absolute() ? file : controller_.folder() / file).string())},
-                                     {"sourceOffset", QVariant::fromValue(audio.sourceOffset)},
-                                     {"frames", QVariant::fromValue(frames)}});
-                             },
-                             [&](const model::MidiClip& midi) {
-                                 entry.insert(QVariantMap{{"type", "midi"}, {"notes", noteList(midi)}});
-                             }},
-            clip);
-        clips.append(entry);
+        clips.append(clipEntry(clip, ++take));
     }
     return clips;
+}
+
+QVariantMap TrackListModel::clip(const QString& id) const {
+    const auto found = project_.findClip(model::ClipId{id.toStdString()});
+    if (!found) {
+        return {};
+    }
+    const auto& clips = found->track->clips;
+    const auto take = std::ranges::find(clips, found->clip, [](const model::Clip& clip) { return &clip; });
+    QVariantMap entry = clipEntry(*found->clip, static_cast<int>(take - clips.begin()) + 1);
+    entry.insert({{"trackId", qs(found->track->id.value)},
+                  {"trackName", qs(found->track->name)},
+                  {"colorIndex", found->track->color}});
+    return entry;
 }
 
 QString TrackListModel::trackName(const model::TrackId& id) const {
@@ -225,6 +245,8 @@ QHash<int, QByteArray> TrackListModel::roleNames() const {
 }
 
 void TrackListModel::changed(const model::Change& change) {
+    ++revision_;
+    emit revisionChanged();
     const auto row = change.track ? std::ranges::find(rows_, *change.track) : rows_.end();
     // Other rows show a bus's name beside their sends, so a bus edit refreshes every row.
     if (row != rows_.end() && project_.track(*row) != nullptr && !isBus(*row)) {

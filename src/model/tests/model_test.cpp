@@ -40,7 +40,11 @@ Document sampleDocument() {
     track.data = {{"voices", {1, 2, 3}}};
     track.clips.emplace_back(AudioClip{ClipId::make(), 960, 3840, 44100, "audio/take1.wav", -3.5, 10, 20,
                                        FadeShape::sCurve, FadeShape::equalPower, 0.25, -0.5});
-    track.clips.emplace_back(MidiClip{ClipId::make(), 0, 1920, {{0, {0x90, 60, 100}}, {480, {0xF0, 0x43, 0xF7}}}});
+    track.clips.emplace_back(MidiClip{ClipId::make(),
+                                      0,
+                                      1920,
+                                      {{480, {0xF0, 0x43, 0xF7}}},
+                                      {{.pitch = 60, .velocity = 90, .start = 0, .length = 480, .channel = 3}}});
     document.tracks.push_back(track);
     document.tracks.push_back(named("Bass"));
     document.markers = {{.name = "Intro", .at = 0}, {.name = "Chorus", .at = 7680, .color = 3}};
@@ -57,7 +61,8 @@ TEST_CASE("document round trips through json") {
     CHECK(toJson(loaded) == toJson(document));
     CHECK(loaded.tempo.bpm == 96.0);
     CHECK(loaded.tracks[0].id == document.tracks[0].id);
-    CHECK(std::get<MidiClip>(loaded.tracks[0].clips[1]).events[1].bytes == std::vector<std::uint8_t>{0xF0, 0x43, 0xF7});
+    CHECK(std::get<MidiClip>(loaded.tracks[0].clips[1]).events[0].bytes == std::vector<std::uint8_t>{0xF0, 0x43, 0xF7});
+    CHECK(std::get<MidiClip>(loaded.tracks[0].clips[1]).notes == std::get<MidiClip>(document.tracks[0].clips[1]).notes);
     CHECK(loaded.tracks[0].midiIn.sysex);
     CHECK(loaded.tracks[0].data == document.tracks[0].data);
     CHECK(toJson(document)["format"] == kFormatVersion);

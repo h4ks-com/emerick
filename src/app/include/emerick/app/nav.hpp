@@ -16,6 +16,9 @@ inline constexpr double kDefaultPixelsPerTick = 0.05;
 inline constexpr int kMinTrackHeight = 36;
 inline constexpr int kMaxTrackHeight = 160;
 inline constexpr int kDefaultTrackHeight = 60;
+inline constexpr int kMinKeyHeight = 6;
+inline constexpr int kMaxKeyHeight = 32;
+inline constexpr int kDefaultKeyHeight = 12;
 
 // Zoom and selection change often, so each has its own signal and a zoom never re-evaluates selection bindings.
 class Nav : public QObject {
@@ -34,6 +37,10 @@ class Nav : public QObject {
     Q_PROPERTY(bool consoleOpen READ consoleOpen WRITE setConsoleOpen NOTIFY changed)
     Q_PROPERTY(bool mixerOpen READ mixerOpen WRITE setMixerOpen NOTIFY changed)
     Q_PROPERTY(bool metronomeMenuOpen READ metronomeMenuOpen WRITE setMetronomeMenuOpen NOTIFY changed)
+    Q_PROPERTY(bool pianoRollOpen READ pianoRollOpen WRITE setPianoRollOpen NOTIFY changed)
+    Q_PROPERTY(QString pianoRollClip READ pianoRollClip WRITE setPianoRollClip NOTIFY changed)
+    Q_PROPERTY(QStringList selectedNotes READ selectedNotes WRITE setSelectedNotes NOTIFY selectionChanged)
+    Q_PROPERTY(int keyHeight READ keyHeight WRITE setKeyHeight NOTIFY viewChanged)
     Q_PROPERTY(QStringList selectedClips READ selectedClips WRITE setSelectedClips NOTIFY selectionChanged)
     Q_PROPERTY(double pixelsPerTick READ pixelsPerTick WRITE setPixelsPerTick NOTIFY viewChanged)
     Q_PROPERTY(int trackHeight READ trackHeight WRITE setTrackHeight NOTIFY viewChanged)
@@ -62,6 +69,12 @@ public:
     [[nodiscard]] bool consoleOpen() const { return consoleOpen_; }
     [[nodiscard]] bool mixerOpen() const { return mixerOpen_; }
     [[nodiscard]] bool metronomeMenuOpen() const { return metronomeMenuOpen_; }
+    [[nodiscard]] bool pianoRollOpen() const { return pianoRollOpen_; }
+    // The MIDI clip the piano roll edits, and the ids of its selected notes.
+    [[nodiscard]] QString pianoRollClip() const { return pianoRollClip_; }
+    [[nodiscard]] QStringList selectedNotes() const { return selectedNotes_; }
+    // The height of one key row in the piano roll, its vertical zoom.
+    [[nodiscard]] int keyHeight() const { return keyHeight_; }
     [[nodiscard]] QStringList selectedClips() const { return selectedClips_; }
     [[nodiscard]] double pixelsPerTick() const { return pixelsPerTick_; }
     [[nodiscard]] int trackHeight() const { return trackHeight_; }
@@ -88,6 +101,17 @@ public:
     void setConsoleOpen(bool value) { assign(consoleOpen_, value, &Nav::changed); }
     void setMixerOpen(bool value) { assign(mixerOpen_, value, &Nav::changed); }
     void setMetronomeMenuOpen(bool value) { assign(metronomeMenuOpen_, value, &Nav::changed); }
+    void setPianoRollOpen(bool value) { assign(pianoRollOpen_, value, &Nav::changed); }
+    void setPianoRollClip(const QString& value) {
+        if (value != pianoRollClip_) {
+            assign(selectedNotes_, {}, &Nav::selectionChanged);
+        }
+        assign(pianoRollClip_, value, &Nav::changed);
+    }
+    void setSelectedNotes(const QStringList& value) { assign(selectedNotes_, value, &Nav::selectionChanged); }
+    void setKeyHeight(int value) {
+        assign(keyHeight_, std::clamp(value, kMinKeyHeight, kMaxKeyHeight), &Nav::viewChanged);
+    }
     void setSelectedClips(const QStringList& value) {
         if (!value.isEmpty()) {
             assign(selectedMarker_, {}, &Nav::selectionChanged);
@@ -104,14 +128,17 @@ public:
     void setLaneWidth(double value) { assign(laneWidth_, value, &Nav::scrollChanged); }
 
     [[nodiscard]] nlohmann::json toJson() const {
-        nlohmann::json clips = nlohmann::json::array();
-        for (const QString& clip : selectedClips_) {
-            clips.push_back(clip.toStdString());
-        }
+        const auto strings = [](const QStringList& values) {
+            nlohmann::json list = nlohmann::json::array();
+            for (const QString& value : values) {
+                list.push_back(value.toStdString());
+            }
+            return list;
+        };
         return {{"page", enumKey(page_)},
                 {"settingsTab", settingsTab_.toStdString()},
                 {"selectedTrack", selectedTrack_.toStdString()},
-                {"selectedClips", clips},
+                {"selectedClips", strings(selectedClips_)},
                 {"selectedMarker", selectedMarker_.toStdString()},
                 {"pixelsPerTick", pixelsPerTick_},
                 {"trackHeight", trackHeight_},
@@ -122,7 +149,11 @@ public:
                 {"projectMenuOpen", projectMenuOpen_},
                 {"consoleOpen", consoleOpen_},
                 {"mixerOpen", mixerOpen_},
-                {"metronomeMenuOpen", metronomeMenuOpen_}};
+                {"metronomeMenuOpen", metronomeMenuOpen_},
+                {"pianoRollOpen", pianoRollOpen_},
+                {"pianoRollClip", pianoRollClip_.toStdString()},
+                {"selectedNotes", strings(selectedNotes_)},
+                {"keyHeight", keyHeight_}};
     }
 
 signals:
@@ -154,6 +185,10 @@ private:
     bool consoleOpen_ = false;
     bool mixerOpen_ = false;
     bool metronomeMenuOpen_ = false;
+    bool pianoRollOpen_ = false;
+    QString pianoRollClip_;
+    QStringList selectedNotes_;
+    int keyHeight_ = kDefaultKeyHeight;
     QStringList selectedClips_;
     double pixelsPerTick_ = kDefaultPixelsPerTick;
     int trackHeight_ = kDefaultTrackHeight;

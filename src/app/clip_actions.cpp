@@ -395,7 +395,7 @@ void registerClipActions(Registry& registry, ProjectController& controller, Nav&
          .schema = {{"required", {"track", "path"}}, {"properties", {{"at", Json::object()}}}},
          .run = [&registry, &controller](const Json& params) { return importClip(registry, controller, params); }});
     registry.addAction({.id = "project.clipEvents",
-                        .title = "Show clip MIDI events",
+                        .title = "Show clip notes and MIDI events",
                         .category = "Clips",
                         .schema = {{"required", {"clip"}}, {"properties", {{"includeEvents", {{"type", "boolean"}}}}}},
                         .run = [&controller, tempo](const Json& params) {
@@ -405,6 +405,7 @@ void registerClipActions(Registry& registry, ProjectController& controller, Nav&
                         }});
     registerSelectionActions(registry, controller, nav);
     registerClipEditActions(registry, controller, nav);
+    registerNoteActions(registry, controller, nav);
 }
 
 }  // namespace emerick::app

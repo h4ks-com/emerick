@@ -239,6 +239,11 @@ Item {
             content.clipItem.cancelDrag()
             endDrag()
         }
+        onDoubleClicked: {
+            if (!content.clipItem.audio) {
+                Registry.runAction("midi.editClip", {clip: content.clipItem.clipId})
+            }
+        }
         onPositionChanged: mouse => {
             const item = content.clipItem
             const at = move.mapToItem(null, mouse.x, mouse.y)

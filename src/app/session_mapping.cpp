@@ -10,6 +10,7 @@
 #include <vector>
 
 #include "emerick/core/overloaded.hpp"
+#include "emerick/model/midi_notes.hpp"
 
 namespace emerick::app {
 
@@ -33,12 +34,9 @@ engine::AudioClip toEngine(const model::AudioClip& clip, const std::filesystem::
 }
 
 engine::MidiClip toEngine(const model::MidiClip& clip) {
-    // Older projects can hold events outside a trimmed clip, so we play only the ones inside it.
-    const auto inside = [&](const model::MidiEvent& event) { return event.at >= 0 && event.at < clip.length; };
     const auto toEvent = [](const model::MidiEvent& event) { return engine::MidiEvent{event.at, event.bytes}; };
     return {.start = clip.start,
-            .events = clip.events | std::views::filter(inside) | std::views::transform(toEvent) |
-                      std::ranges::to<std::vector>()};
+            .events = model::clipEvents(clip) | std::views::transform(toEvent) | std::ranges::to<std::vector>()};
 }
 
 engine::Track commonFields(const model::Track& track, engine::TrackKind kind) {

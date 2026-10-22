@@ -11,6 +11,7 @@
 #include <variant>
 
 #include "emerick/core/overloaded.hpp"
+#include "emerick/model/midi_notes.hpp"
 
 namespace emerick::model {
 
@@ -39,6 +40,28 @@ core::FadeShape fadeShapeFromJson(const nlohmann::json& json, const char* key) {
     return *shape;
 }
 
+nlohmann::json noteToJson(const Note& note) {
+    return {{"id", note.id.value}, {"pitch", note.pitch},   {"velocity", note.velocity},
+            {"start", note.start}, {"length", note.length}, {"channel", note.channel}};
+}
+
+Note noteFromJson(const nlohmann::json& json) {
+    return {NoteId{json.at("id")}, json.at("pitch"),  json.at("velocity"),
+            json.at("start"),      json.at("length"), json.at("channel")};
+}
+
+// Projects before format 4 keep their notes as note-ons and note-offs among the events.
+MidiClip midiClipFromJson(const nlohmann::json& json) {
+    MidiClip clip{ClipId{json.at("id")}, json.at("start"), json.at("length"), json.at("events"), {}};
+    const auto notes = json.find("notes");
+    if (notes == json.end()) {
+        gatherNotes(clip);
+    } else {
+        clip.notes = *notes | std::views::transform(noteFromJson) | std::ranges::to<std::vector>();
+    }
+    return clip;
+}
+
 struct ClipType {
     std::string_view name;
     Clip (*fromJson)(const nlohmann::json& json);
@@ -61,34 +84,35 @@ constexpr std::array kClipTypes{
                                   json.value("fadeInCurve", 0.0),
                                   json.value("fadeOutCurve", 0.0)};
              }},
-    ClipType{"midi",
-             [](const nlohmann::json& json) -> Clip {
-                 return MidiClip{ClipId{json.at("id")}, json.at("start"), json.at("length"), json.at("events")};
-             }},
+    ClipType{"midi", [](const nlohmann::json& json) -> Clip { return midiClipFromJson(json); }},
 };
 static_assert(kClipTypes.size() == std::variant_size_v<Clip>);
 
 nlohmann::json clipToJson(const Clip& clip) {
-    nlohmann::json json = std::visit(
-        core::Overloaded{
-            [](const AudioClip& audio) -> nlohmann::json {
-                return {{"id", audio.id.value},
-                        {"start", audio.start},
-                        {"length", audio.length},
-                        {"sourceOffset", audio.sourceOffset},
-                        {"file", audio.file},
-                        {"gainDb", audio.gainDb},
-                        {"fadeIn", audio.fadeIn},
-                        {"fadeOut", audio.fadeOut},
-                        {"fadeInShape", core::fadeShapeId(audio.fadeInShape)},
-                        {"fadeOutShape", core::fadeShapeId(audio.fadeOutShape)},
-                        {"fadeInCurve", audio.fadeInCurve},
-                        {"fadeOutCurve", audio.fadeOutCurve}};
-            },
-            [](const MidiClip& midi) -> nlohmann::json {
-                return {{"id", midi.id.value}, {"start", midi.start}, {"length", midi.length}, {"events", midi.events}};
-            }},
-        clip);
+    nlohmann::json json =
+        std::visit(core::Overloaded{[](const AudioClip& audio) -> nlohmann::json {
+                                        return {{"id", audio.id.value},
+                                                {"start", audio.start},
+                                                {"length", audio.length},
+                                                {"sourceOffset", audio.sourceOffset},
+                                                {"file", audio.file},
+                                                {"gainDb", audio.gainDb},
+                                                {"fadeIn", audio.fadeIn},
+                                                {"fadeOut", audio.fadeOut},
+                                                {"fadeInShape", core::fadeShapeId(audio.fadeInShape)},
+                                                {"fadeOutShape", core::fadeShapeId(audio.fadeOutShape)},
+                                                {"fadeInCurve", audio.fadeInCurve},
+                                                {"fadeOutCurve", audio.fadeOutCurve}};
+                                    },
+                                    [](const MidiClip& midi) -> nlohmann::json {
+                                        return {{"id", midi.id.value},
+                                                {"start", midi.start},
+                                                {"length", midi.length},
+                                                {"events", midi.events},
+                                                {"notes", midi.notes | std::views::transform(noteToJson) |
+                                                              std::ranges::to<nlohmann::json::array_t>()}};
+                                    }},
+                   clip);
     json["type"] = kClipTypes.at(clip.index()).name;
     return json;
 }

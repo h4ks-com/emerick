@@ -7,9 +7,10 @@
 
 namespace emerick::model {
 
-// Format 2 added markers, format 3 track pan, fade shapes and fade curves, and format 4 buses, sends and output buses,
-// so older projects load with no markers, centered tracks, linear fades and no sends.
-inline constexpr int kFormatVersion = 4;
+// Format 2 added markers, format 3 track pan, fade shapes and fade curves, format 4 buses, sends and output buses, and
+// format 5 MIDI notes apart from the other MIDI events, so older projects load with no markers, centered tracks, linear
+// fades, no sends and notes gathered from events.
+inline constexpr int kFormatVersion = 5;
 
 nlohmann::json toJson(const Document& document);
 

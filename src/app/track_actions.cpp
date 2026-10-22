@@ -13,6 +13,7 @@
 #include "emerick/app/project_actions.hpp"
 #include "emerick/app/project_state.hpp"
 #include "emerick/app/session_mapping.hpp"
+#include "emerick/model/midi_notes.hpp"
 
 namespace emerick::app {
 
@@ -287,6 +288,7 @@ model::MidiClip midiClipFromTake(const engine::RecordedTake& take, core::Ticks s
                   std::ranges::to<std::vector>();
     const core::Ticks lastEvent = clip.events.empty() ? 0 : clip.events.back().at + 1;
     clip.length = std::max(stopTicks - take.startTick, lastEvent);
+    model::gatherNotes(clip);
     return clip;
 }
 

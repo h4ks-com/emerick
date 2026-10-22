@@ -14,21 +14,13 @@ Ticks clipStart(const Clip& clip);
 Ticks clipLength(const Clip& clip);
 Ticks clipEnd(const Clip& clip);
 
-struct NoteSpan {
-    Ticks at = 0;  // relative to the clip start
-    Ticks length = 0;
-    int key = 0;
-};
-
-// Pairs each note-on with its note-off; a note still held at the clip end lasts until the end.
-std::vector<NoteSpan> noteSpans(const MidiClip& clip);
-
 Clip moveClip(Clip clip, Ticks start);
 // The copy gets a new id.
 Clip duplicateClip(Clip clip, Ticks start);
 
-// Each edit returns the edited clip or a message saying why the edit cannot happen. MIDI edits keep only the events
-// inside the clip, end a note held across a cut with a note-off at the cut and drop note-offs whose note-on was cut.
+// Each edit returns the edited clip or a message saying why the edit cannot happen. MIDI edits keep only the notes
+// and events that start inside the clip, end a note held across a cut at the cut and drop note-offs whose note-on was
+// cut.
 
 // Moves the left edge to start and keeps the end and the material where they were on the timeline.
 std::expected<Clip, std::string> trimStart(const Clip& clip, Ticks start, const core::TempoMap& tempo,

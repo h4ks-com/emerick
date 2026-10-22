@@ -137,8 +137,25 @@ QtObject {
     readonly property color barLine: Qt.rgba(1, 1, 1, 0.07)
     readonly property color beatLine: Qt.rgba(1, 1, 1, 0.03)
 
+    readonly property int pianoRollHeight: 320
+    readonly property int pianoRollMinHeight: 200
+    readonly property int velocityLaneHeight: 64
+    readonly property int velocityBar: 4
+    readonly property int noteGrip: 6
+    readonly property int minGridSpacing: 6
+    readonly property color whiteKey: "#D9DADD"
+    readonly property color blackKey: "#202125"
+    readonly property real blackKeyLength: 0.6
+    readonly property color blackKeyRow: Qt.rgba(0, 0, 0, 0.22)
+    readonly property color outsideClip: Qt.rgba(0, 0, 0, 0.35)
+    readonly property color bandFill: Qt.rgba(1, 1, 1, 0.08)
+    // Notes run from blue at the softest velocity through green and amber to red at the loudest, as in Logic.
+    function velocityColor(velocity) {
+        return Qt.hsla(0.62 * (1 - Math.max(0, velocity - 1) / 126), 0.55, 0.55, 1)
+    }
+
     // Track icons are Phosphor names and fade icons are our own; an icon we do not bundle shows as a note.
-    readonly property var icons: ["broom", "circle", "copy", "dots-three", "fade-equalPower", "fade-exponential", "fade-linear", "fade-logarithmic", "fade-sCurve", "file", "gear-six", "guitar", "magnet", "magnifying-glass", "metronome", "music-note", "music-notes", "pause", "piano-keys", "play", "sidebar-simple", "skip-back", "sliders", "squares-four", "stop", "waveform", "x"]
+    readonly property var icons: ["broom", "circle", "copy", "dots-three", "fade-equalPower", "fade-exponential", "fade-linear", "fade-logarithmic", "fade-sCurve", "file", "gear-six", "guitar", "magnet", "magnifying-glass", "metronome", "music-note", "music-notes", "pause", "pencil-simple", "piano-keys", "play", "sidebar-simple", "skip-back", "sliders", "squares-four", "stop", "waveform", "x"]
     function iconSource(name) {
         return "icons/" + (icons.indexOf(name) >= 0 ? name : "music-note") + ".svg"
     }

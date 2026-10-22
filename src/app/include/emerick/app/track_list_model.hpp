@@ -14,6 +14,7 @@ namespace emerick::app {
 
 class TrackListModel : public QAbstractListModel {
     Q_OBJECT
+    Q_PROPERTY(int revision READ revision NOTIFY revisionChanged)
 
 public:
     enum class Role : std::uint16_t {
@@ -51,11 +52,20 @@ public:
     [[nodiscard]] QVariant data(const QModelIndex& index, int role) const override;
     [[nodiscard]] QHash<int, QByteArray> roleNames() const override;
 
+    // Grows with every project change, so a binding that reads it with clip() follows the clip.
+    [[nodiscard]] int revision() const { return revision_; }
+    // The clip as a track row lists it, with its track's id, name and color, or an empty map when it is gone.
+    Q_INVOKABLE QVariantMap clip(const QString& id) const;
+
+signals:
+    void revisionChanged();
+
 private:
     void changed(const model::Change& change);
     // Removes, moves and inserts rows until they match the document's tracks, so views keep their other delegates.
     void syncRows();
 
+    [[nodiscard]] QVariantMap clipEntry(const model::Clip& clip, int take) const;
     [[nodiscard]] QVariantList clipList(const model::Track& track) const;
 
     ProjectController& controller_;
@@ -64,6 +74,7 @@ private:
     // The track ids the view holds rows for; data reads through them, so the rows stay right while we sync.
     std::vector<model::TrackId> rows_;
     std::size_t listener_;
+    int revision_ = 0;
 };
 
 }  // namespace emerick::app

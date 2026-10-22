@@ -94,9 +94,28 @@ QQuickItem* editArea(QQuickItem* focus) {
     return focus;
 }
 
+// A view such as the piano roll that takes the arrow, Delete and edit keys while focused marks itself with editKeys.
+QQuickItem* keyArea(QQuickItem* focus) {
+    for (QQuickItem* item = focus; item != nullptr; item = item->parentItem()) {
+        if (item->property("editKeys").toBool()) {
+            return item;
+        }
+    }
+    return nullptr;
+}
+
 void endTextEditing(QQuickWindow& window, QPointF scenePosition) {
     QQuickItem* focus = window.activeFocusItem();
-    if (focus == nullptr || !typesText(focus)) {
+    if (focus == nullptr) {
+        return;
+    }
+    if (QQuickItem* keys = keyArea(focus); keys != nullptr && !typesText(focus)) {
+        if (!keys->contains(keys->mapFromScene(scenePosition)) && !insidePopup(window, scenePosition)) {
+            keys->setFocus(false);
+        }
+        return;
+    }
+    if (!typesText(focus)) {
         return;
     }
     QQuickItem* area = editArea(focus);

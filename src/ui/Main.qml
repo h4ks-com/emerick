@@ -137,6 +137,12 @@ ApplicationWindow {
                 activeColor: Theme.ink
             }
             ChromeButton {
+                objectName: "view.togglePianoRoll"
+                iconName: "music-notes"
+                active: Nav.pianoRollOpen
+                activeColor: Theme.ink
+            }
+            ChromeButton {
                 id: projectButton
                 objectName: "project.showMenu"
                 iconName: "file"
@@ -209,7 +215,7 @@ ApplicationWindow {
         anchors.top: parent.top
         anchors.left: parent.left
         anchors.right: parent.right
-        anchors.bottom: mixerDock.top
+        anchors.bottom: pianoRollDock.top
         visible: Nav.page === App.Main
         spacing: 0
         Inspector {
@@ -230,6 +236,19 @@ ApplicationWindow {
     }
 
     // The panels load only while open, so their heights live here and survive closing them.
+    Loader {
+        id: pianoRollDock
+        property real panelHeight: Theme.pianoRollHeight
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.bottom: mixerDock.top
+        height: active ? Math.max(Theme.pianoRollMinHeight, Math.min(panelHeight, parent.height - mixerDock.height - consoleDock.height - Theme.consoleHeight)) : 0
+        active: Nav.pianoRollOpen && Nav.page === App.Main
+        sourceComponent: PianoRoll {
+            onResizeBy: delta => pianoRollDock.panelHeight = Math.max(Theme.pianoRollMinHeight, pianoRollDock.panelHeight + delta)
+        }
+    }
+
     Loader {
         id: mixerDock
         property real panelHeight: Theme.mixerHeight

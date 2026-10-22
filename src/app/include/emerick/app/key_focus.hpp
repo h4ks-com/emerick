@@ -7,7 +7,8 @@ namespace emerick::app {
 
 // Keeps single keys such as Space for the window's shortcuts. A press outside the focused text field ends its editing,
 // and a focused control that is no text field never takes a plain key from a shortcut. The focused text gets the
-// standard editing keys such as Cmd+C, so they reach the window's clip actions only away from text.
+// standard editing keys such as Cmd+C, so they reach the window's clip actions only away from text. A press outside a
+// focused view that marks itself editKeys, such as the piano roll, hands its keys back to the window.
 class KeyFocusFilter final : public QObject {
 public:
     using QObject::QObject;

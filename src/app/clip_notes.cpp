@@ -46,7 +46,7 @@ void ClipNotes::paint(QPainter* painter) {
     int low = std::numeric_limits<int>::max();
     int high = std::numeric_limits<int>::min();
     for (const QVariant& note : notes_) {
-        const int key = note.toMap().value("key").toInt();
+        const int key = note.toMap().value("pitch").toInt();
         low = std::min(low, key);
         high = std::max(high, key);
     }
@@ -57,9 +57,9 @@ void ClipNotes::paint(QPainter* painter) {
     const double scale = width() / static_cast<double>(length_);
     for (const QVariant& note : notes_) {
         const QVariantMap fields = note.toMap();
-        const double x = fields.value("at").toDouble() * scale;
+        const double x = fields.value("start").toDouble() * scale;
         const double barWidth = std::max(1.0, fields.value("length").toDouble() * scale);
-        const double y = (high - fields.value("key").toInt()) * rowHeight;
+        const double y = (high - fields.value("pitch").toInt()) * rowHeight;
         painter->fillRect(QRectF{x, y, barWidth, std::max(kMinBarHeight, rowHeight * 0.8)}, color_);
     }
 }

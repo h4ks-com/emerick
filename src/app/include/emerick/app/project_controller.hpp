@@ -33,6 +33,7 @@ class ProjectController : public QObject {
     Q_PROPERTY(QString tempoText READ tempoText NOTIFY projectChanged)
     Q_PROPERTY(qint64 ticksPerBeat READ ticksPerBeat NOTIFY projectChanged)
     Q_PROPERTY(qint64 ticksPerBar READ ticksPerBar NOTIFY projectChanged)
+    Q_PROPERTY(qint64 ticksPerQuarter READ ticksPerQuarter CONSTANT)
     Q_PROPERTY(qint64 endTicks READ endTicks NOTIFY projectChanged)
     Q_PROPERTY(QVariantList markers READ markers NOTIFY projectChanged)
     Q_PROPERTY(QVariantMap routeDevices READ routeDevices NOTIFY devicesChanged)
@@ -116,12 +117,15 @@ public:
     [[nodiscard]] QString tempoText() const;
     [[nodiscard]] qint64 ticksPerBeat() const { return project_.document().tempo.ticksPerBeat(); }
     [[nodiscard]] qint64 ticksPerBar() const { return project_.document().tempo.ticksPerBar(); }
+    [[nodiscard]] static qint64 ticksPerQuarter() { return core::kTicksPerQuarter; }
     [[nodiscard]] qint64 endTicks() const;
     // The nearest beat when the edit.snap setting is on, else ticks unchanged; never before bar 1.
     [[nodiscard]] qint64 snapped(qint64 ticks) const;
     // Where a drag or click puts ticks: snapped as edit.snap says, or the other way while Ctrl (Command on macOS) is
     // held, as Logic does with Control.
     Q_INVOKABLE qint64 placed(qint64 ticks, int modifiers) const;
+    // The same on a grid of step ticks, such as the piano roll's.
+    Q_INVOKABLE qint64 placedOn(qint64 ticks, int modifiers, qint64 step) const;
     // Each marker's state in position order.
     [[nodiscard]] QVariantList markers() const;
     [[nodiscard]] QVariantMap routeDevices() const;
@@ -169,7 +173,7 @@ private:
     void readLevels();
     void addTake(const engine::RecordedTake& take);
     void moveTo(const std::filesystem::path& folder, model::Document document);
-    [[nodiscard]] qint64 snappedIf(bool snap, qint64 ticks) const;
+    [[nodiscard]] static qint64 snappedIf(bool snap, qint64 ticks, qint64 step);
 
     const Registry& registry_;
     engine::Engine::Options options_;

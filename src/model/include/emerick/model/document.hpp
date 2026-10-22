@@ -18,9 +18,11 @@ using core::Ticks;
 struct TrackTag {};
 struct ClipTag {};
 struct MarkerTag {};
+struct NoteTag {};
 using TrackId = core::Id<TrackTag>;
 using ClipId = core::Id<ClipTag>;
 using MarkerId = core::Id<MarkerTag>;
+using NoteId = core::Id<NoteTag>;
 
 // Channels are 1-based.
 struct AudioRoute {
@@ -64,11 +66,25 @@ struct MidiEvent {
     bool operator==(const MidiEvent&) const = default;
 };
 
+// A note's channel counts from 1, as on the track routes.
+struct Note {
+    NoteId id = NoteId::make();
+    int pitch = 60;
+    int velocity = 100;
+    Ticks start = 0;  // relative to the clip start
+    Ticks length = 0;
+    int channel = 1;
+
+    bool operator==(const Note&) const = default;
+};
+
+// Notes hold every note-on with its note-off, and events every other message, so each message has one home.
 struct MidiClip {
     ClipId id = ClipId::make();
     Ticks start = 0;
     Ticks length = 0;
     std::vector<MidiEvent> events;
+    std::vector<Note> notes;
 
     bool operator==(const MidiClip&) const = default;
 };

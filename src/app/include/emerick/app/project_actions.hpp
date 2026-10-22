@@ -32,6 +32,9 @@ void registerClipActions(Registry& registry, ProjectController& controller, Nav&
 void registerClipEditActions(Registry& registry, ProjectController& controller, Nav& nav);
 // Fade lengths, shapes and curves, and crossfades between overlapping audio clips.
 void registerFadeActions(Registry& registry, ProjectController& controller, Nav& nav);
+// The piano roll and every note action. Without a clip param they act on the piano roll's clip, and without notes on
+// its selected notes.
+void registerNoteActions(Registry& registry, ProjectController& controller, Nav& nav);
 // The clip named by params, or the selected clips when params names none.
 std::vector<model::ClipId> targetClips(const ProjectController& controller, const Nav& nav, const Json& params);
 Json clipResult(const ProjectController& controller, const model::ClipId& id);

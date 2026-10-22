@@ -6,6 +6,8 @@
 #include <variant>
 #include <vector>
 
+#include "emerick/model/midi_notes.hpp"
+
 using namespace emerick;
 using namespace emerick::model;
 
@@ -31,7 +33,7 @@ MidiClip heldNotes() {
 
 std::vector<Event> events(const Clip& clip) {
     std::vector<Event> result;
-    for (const MidiEvent& event : std::get<MidiClip>(clip).events) {
+    for (const MidiEvent& event : clipEvents(std::get<MidiClip>(clip))) {
         result.emplace_back(event.at, event.bytes);
     }
     return result;
@@ -50,14 +52,6 @@ TEST_CASE("clip start, length and end read every clip kind") {
     const Clip copy = duplicateClip(audio, 1440);
     CHECK(clipId(copy) != audio.id);
     CHECK(clipStart(copy) == 1440);
-}
-
-TEST_CASE("note spans pair each note-on with its note-off and hold to the clip end") {
-    const auto spans = noteSpans(heldNotes());
-    REQUIRE(spans.size() == 3);
-    CHECK((spans[0].at == 0 && spans[0].length == 1000 && spans[0].key == 60));
-    CHECK((spans[1].at == 100 && spans[1].length == 1700 && spans[1].key == 64));
-    CHECK((spans[2].at == 600 && spans[2].length == 1320 && spans[2].key == 67));
 }
 
 TEST_CASE("trimming an audio clip's start moves its source offset and keeps its end") {
@@ -79,12 +73,12 @@ TEST_CASE("cutting through a held note ends it at the cut and drops its orphan n
     const auto trimmed = trimStart(heldNotes(), 960 + 500, kTempo, kRate);
     REQUIRE(trimmed);
     CHECK(clipLength(*trimmed) == 1420);
-    CHECK(events(*trimmed) == std::vector{on(100, 67), off(1419, 67)});
+    CHECK(events(*trimmed) == std::vector{on(100, 67), off(1420, 67)});
 
     const auto shortened = setLength(heldNotes(), 500);
     REQUIRE(shortened);
-    CHECK(events(*shortened) == std::vector{on(0, 60), on(100, 64), off(499, 60), off(499, 64)});
-    CHECK(events(*setLength(heldNotes(), 3000)).back() == off(2999, 67));
+    CHECK(events(*shortened) == std::vector{on(0, 60), on(100, 64), off(500, 60), off(500, 64)});
+    CHECK(events(*setLength(heldNotes(), 3000)).back() == off(1920, 67));
 }
 
 TEST_CASE("splitting a MIDI clip leaves no hanging note on either side") {
@@ -93,7 +87,7 @@ TEST_CASE("splitting a MIDI clip leaves no hanging note on either side") {
     const auto& [left, right] = *parts;
     CHECK(clipLength(left) == 1200);
     CHECK(events(left) ==
-          std::vector{on(0, 60), on(100, 64), on(600, 67), off(1000, 60), off(1199, 64), off(1199, 67)});
+          std::vector{on(0, 60), on(100, 64), on(600, 67), off(1000, 60), off(1200, 64), off(1200, 67)});
     CHECK(clipStart(right) == 2160);
     CHECK(clipLength(right) == 720);
     CHECK(events(right).empty());

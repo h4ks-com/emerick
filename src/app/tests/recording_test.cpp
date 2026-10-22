@@ -38,13 +38,15 @@ TEST_CASE("a virtual MIDI take becomes a MIDI clip, takes stack and undo removes
     REQUIRE(rig.waitForTakes(1) == 1);
     Json clip = projectState(*rig.controller).at("tracks").at(0).at("clips").at(0);
     CHECK(clip.at("type") == "midi");
-    CHECK(clip.at("eventCount") == 2);
+    CHECK(clip.at("noteCount") == 1);
+    CHECK(clip.at("eventCount") == 0);
     CHECK(clip.at("start") == 0);
     CHECK(clip.at("length") >= 1920);
-    CHECK_FALSE(clip.contains("events"));
-    const Json events = rig.run("project.clipEvents", {{"clip", clip.at("id")}}).at("events");
-    CHECK(events.at(0).at("bytes") == Json::array({0x90, 60, 100}));
-    CHECK(events.at(1).at("at").get<int>() >= 900);
+    CHECK_FALSE(clip.contains("notes"));
+    const Json notes = rig.run("project.clipEvents", {{"clip", clip.at("id")}}).at("notes");
+    CHECK(notes.at(0).at("pitch") == 60);
+    CHECK(notes.at(0).at("velocity") == 100);
+    CHECK(notes.at(0).at("length").get<int>() >= 900);
 
     rig.run("transport.locate", {{"position", "1.1.0"}});
     recordWhile(rig, playNote);

@@ -169,29 +169,34 @@ Rectangle {
         onActiveScaleChanged: area.zoomAround(startZoom * activeScale / Nav.pixelsPerTick, centroid.position.x)
     }
 
-    Repeater {
-        objectName: "grid"
-        model: Math.ceil(area.visibleTicks / (area.barStep * Project.ticksPerBar)) + 1
-        delegate: Item {
-            required property int index
-            readonly property int bar: (Math.floor(area.scrollTicks / (area.barStep * Project.ticksPerBar)) + index) * area.barStep
-            x: area.xOf(bar * Project.ticksPerBar)
-            y: area.lanesTop
-            width: area.barStep * Project.ticksPerBar * area.pixelsPerTick
-            height: area.height - area.lanesTop
-            Rectangle {
-                width: Theme.hairline
-                height: parent.height
-                color: Theme.barLine
-            }
-            Repeater {
-                model: area.showBeats ? Project.ticksPerBar / Project.ticksPerBeat - 1 : 0
-                delegate: Rectangle {
-                    required property int index
-                    x: (index + 1) * Project.ticksPerBeat * area.pixelsPerTick
+    Item {
+        anchors.fill: parent
+        anchors.leftMargin: Theme.trackHeaderWidth
+        clip: true
+        Repeater {
+            objectName: "grid"
+            model: Math.ceil(area.visibleTicks / (area.barStep * Project.ticksPerBar)) + 1
+            delegate: Item {
+                required property int index
+                readonly property int bar: (Math.floor(area.scrollTicks / (area.barStep * Project.ticksPerBar)) + index) * area.barStep
+                x: area.xOf(bar * Project.ticksPerBar) - Theme.trackHeaderWidth
+                y: area.lanesTop
+                width: area.barStep * Project.ticksPerBar * area.pixelsPerTick
+                height: area.height - area.lanesTop
+                Rectangle {
                     width: Theme.hairline
                     height: parent.height
-                    color: Theme.beatLine
+                    color: Theme.barLine
+                }
+                Repeater {
+                    model: area.showBeats ? Project.ticksPerBar / Project.ticksPerBeat - 1 : 0
+                    delegate: Rectangle {
+                        required property int index
+                        x: (index + 1) * Project.ticksPerBeat * area.pixelsPerTick
+                        width: Theme.hairline
+                        height: parent.height
+                        color: Theme.beatLine
+                    }
                 }
             }
         }

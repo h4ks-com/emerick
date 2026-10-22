@@ -15,7 +15,8 @@ namespace emerick::engine {
 using core::Frames;
 using core::Ticks;
 
-enum class TrackKind : std::uint8_t { audio, midi };
+// A bus plays the sum of the sends and tracks routed into it.
+enum class TrackKind : std::uint8_t { audio, midi, bus };
 
 struct AudioRoute {
     std::string deviceId;
@@ -52,6 +53,14 @@ struct MidiClip {
     std::vector<MidiEvent> events;  // ticks relative to start
 };
 
+// A pre-fader send taps the track before its fader and pan, a post-fader send after them.
+struct Send {
+    std::string bus;
+    float gain = 1.0F;
+    bool pre = false;
+    bool operator==(const Send&) const = default;
+};
+
 struct Track {
     std::string id;
     TrackKind kind = TrackKind::audio;
@@ -67,6 +76,9 @@ struct Track {
     MidiRoute midiOut;
     bool midiThru = false;
     bool claimsSysex = false;
+    // A track with an output bus plays into that bus in place of audioOut.
+    std::string outputBus;
+    std::vector<Send> sends;
     std::vector<AudioClip> audioClips;
     std::vector<MidiClip> midiClips;
 };

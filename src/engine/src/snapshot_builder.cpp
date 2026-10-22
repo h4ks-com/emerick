@@ -40,6 +40,69 @@ std::vector<int> channelIndices(const std::string& owner, const AudioRoute& rout
     return indices;
 }
 
+// A track has one channel per output. One that plays into a bus is stereo, and so is a bus or a sending track
+// without outputs, so its sends still play.
+std::size_t mixChannels(const Track& track, const TrackState& state) {
+    constexpr std::size_t kBusChannels = 2;
+    if (!track.outputBus.empty()) {
+        return kBusChannels;
+    }
+    if (!state.outputs.empty()) {
+        return state.outputs.size();
+    }
+    return track.kind == TrackKind::bus || !track.sends.empty() ? kBusChannels : 0;
+}
+
+// Resolves sends and output buses to bus indices and orders the tracks so every bus mixes after its sources. A loop
+// the model let through loses its routes into buses, so no bus waits on itself.
+void connectBuses(Snapshot& snapshot, const Session& session, std::vector<SessionError>& errors) {
+    const std::size_t count = session.tracks.size();
+    const auto busIndex = [&](const std::string& id, std::size_t from) -> std::optional<std::size_t> {
+        const auto found = std::ranges::find(session.tracks, id, &Track::id);
+        const auto index = static_cast<std::size_t>(found - session.tracks.begin());
+        if (found == session.tracks.end() || found->kind != TrackKind::bus || index == from) {
+            return std::nullopt;
+        }
+        return index;
+    };
+    for (std::size_t index = 0; index < count; ++index) {
+        const Track& track = session.tracks[index];
+        TrackState& state = snapshot.tracks[index];
+        if (state.mix.empty()) {
+            continue;
+        }
+        state.outputBus = busIndex(track.outputBus, index);
+        for (const Send& send : track.sends) {
+            if (const auto bus = busIndex(send.bus, index)) {
+                state.sends.push_back({.bus = *bus, .gain = send.gain, .pre = send.pre, .rampFrom = send.gain});
+            }
+        }
+    }
+    std::vector<std::size_t> sources(count);
+    for (const TrackState& state : snapshot.tracks) {
+        forEachBusFed(state, [&](std::size_t bus) { ++sources[bus]; });
+    }
+    snapshot.mixOrder = std::views::iota(std::size_t{0}, count) |
+                        std::views::filter([&](std::size_t index) { return sources[index] == 0; }) |
+                        std::ranges::to<std::vector>();
+    for (std::size_t position = 0; position < snapshot.mixOrder.size(); ++position) {
+        forEachBusFed(snapshot.tracks[snapshot.mixOrder[position]], [&](std::size_t bus) {
+            if (--sources[bus] == 0) {
+                snapshot.mixOrder.push_back(bus);
+            }
+        });
+    }
+    for (std::size_t index = 0; index < count; ++index) {
+        if (sources[index] > 0) {
+            TrackState& state = snapshot.tracks[index];
+            state.sends.clear();
+            state.outputBus.reset();
+            snapshot.mixOrder.push_back(index);
+            errors.push_back({state.id, "its sends feed back into it, so they stay silent"});
+        }
+    }
+}
+
 }  // namespace
 
 SnapshotBuilder::SnapshotBuilder(MidiBackend& midi, TakeInbox& inbox, PollingSet<ClipStream>& reader,
@@ -66,7 +129,9 @@ BuiltSnapshot SnapshotBuilder::build(const Session& session, const StreamLayout&
         state.gain = track.gain;
         state.pan = track.pan;
         state.inputs = channelIndices("track " + track.id, track.audioIn, layout, true);
-        state.outputs = channelIndices("track " + track.id, track.audioOut, layout, false);
+        if (track.outputBus.empty()) {
+            state.outputs = channelIndices("track " + track.id, track.audioOut, layout, false);
+        }
         state.inputPointers.resize(state.inputs.size());
         state.inChannel = track.midiIn.channel;
         state.outChannel = track.midiOut.channel;
@@ -81,19 +146,21 @@ BuiltSnapshot SnapshotBuilder::build(const Session& session, const StreamLayout&
         if (!track.midiOut.portId.empty()) {
             state.midiOut = outputPort(track.midiOut.portId);
         }
-        if (!state.outputs.empty()) {
-            state.outputMeter = meter(outputMeters_, track.id, state.outputs.size());
-            state.mix.assign(state.outputs.size(), std::vector<float>(static_cast<std::size_t>(layout.maxFrames)));
-            state.outputGains =
-                std::views::iota(std::size_t{0}, state.outputs.size()) |
-                std::views::transform([&](std::size_t output) { return outputGain(state, output, snapshot.panLaw); }) |
-                std::ranges::to<std::vector>();
+        if (const std::size_t channels = mixChannels(track, state); channels > 0) {
+            state.outputMeter = meter(outputMeters_, track.id, channels);
+            state.mix.assign(channels, std::vector<float>(static_cast<std::size_t>(layout.maxFrames)));
+            state.outputGains = std::views::iota(std::size_t{0}, channels) |
+                                std::views::transform(
+                                    [&](std::size_t channel) { return outputGain(state, channel, snapshot.panLaw); }) |
+                                std::ranges::to<std::vector>();
         }
         addClips(state, track, session.tempo, layout, built.errors);
         addMidiEvents(state, track, session.tempo, layout.sampleRate);
         addRecorder(state, track, session, layout, captureOffset);
         snapshot.tracks.push_back(std::move(state));
     }
+    connectBuses(snapshot, session, built.errors);
+    updateSoloPaths(snapshot);
     addMetronome(snapshot, session, layout, built.errors);
     snapshot.tailOutputs.resize(static_cast<std::size_t>(layout.outputChannels));
     return built;

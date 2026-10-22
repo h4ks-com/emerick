@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <functional>
 #include <numbers>
 #include <span>
 
@@ -23,6 +24,11 @@ void keepOutputGains(const Snapshot& from, Snapshot& to) {
         const auto old = std::ranges::find(from.tracks, track.id, &TrackState::id);
         if (old != from.tracks.end() && old->outputGains.size() == track.outputGains.size()) {
             std::ranges::copy(old->outputGains, track.outputGains.begin());
+        }
+        if (old != from.tracks.end() && old->sends.size() == track.sends.size()) {
+            for (std::size_t index = 0; index < track.sends.size(); ++index) {
+                track.sends[index].rampFrom = old->sends[index].rampFrom;
+            }
         }
     }
 }
@@ -133,6 +139,7 @@ void apply(RealtimeState& state, Snapshot& snapshot, const Command& command, con
         case Command::Type::solo:
             if (track != nullptr) {
                 track->solo = command.on;
+                updateSoloPaths(snapshot);
                 releaseInaudibleNotes(snapshot, block.hostTimeNs);
             }
             break;
@@ -175,7 +182,7 @@ void playAudioClips(Snapshot& snapshot, Frames frame, Frames offset, Frames fram
     const bool soloActive = anySolo(snapshot);
     const Frames blockEnd = frame + frames;
     for (TrackState& track : snapshot.tracks) {
-        if (track.outputs.empty() || !audible(track, soloActive)) {
+        if (track.mix.empty() || !audible(track, soloActive)) {
             continue;
         }
         const std::span<const ClipPlayback> clips = track.clips;
@@ -200,9 +207,9 @@ void playAudioClips(Snapshot& snapshot, Frames frame, Frames offset, Frames fram
                 const float gain = clip.gain * fadeGain(local + at, clip.length, clip.fadeIn, clip.fadeOut,
                                                         clip.fadeInCurve, clip.fadeOutCurve);
                 const auto frameIndex = static_cast<std::size_t>(at);
-                for (std::size_t out = 0; out < track.outputs.size(); ++out) {
-                    track.mix[out][first + frameIndex] +=
-                        samples[frameIndex * channels + std::min(out, channels - 1)] * gain;
+                for (std::size_t channel = 0; channel < track.mix.size(); ++channel) {
+                    track.mix[channel][first + frameIndex] +=
+                        samples[frameIndex * channels + std::min(channel, channels - 1)] * gain;
                 }
             }
         }
@@ -235,21 +242,59 @@ void rampGain(float* samples, Frames frames, float& from, float to) {
     from = to;
 }
 
-// Applies each track's fader and pan to its mix, meters it, adds it to its outputs and clears it for the next block.
+void addRamped(float* destination, const float* source, Frames frames, float from, float to) {
+    const float step = (to - from) / static_cast<float>(frames);
+    for (Frames index = 0; index < frames; ++index) {
+        destination[index] += source[index] * (from + (step * static_cast<float>(index + 1)));
+    }
+}
+
+// A track with fewer channels than the bus feeds its last channel to the rest, so a mono track reaches both sides.
+void feedBus(TrackState& bus, const TrackState& track, Frames frames, float from, float to) {
+    for (std::size_t channel = 0; channel < bus.mix.size(); ++channel) {
+        addRamped(bus.mix[channel].data(), track.mix[std::min(channel, track.mix.size() - 1)].data(), frames, from, to);
+    }
+}
+
+void playSends(Snapshot& snapshot, TrackState& track, bool pre, Frames frames) {
+    for (SendState& send : track.sends) {
+        if (send.pre == pre) {
+            feedBus(snapshot.tracks[send.bus], track, frames, send.rampFrom, send.gain);
+            send.rampFrom = send.gain;
+        }
+    }
+}
+
+// In mix order, so each bus has every source in its mix before its turn: applies each track's fader and pan, feeds
+// its sends, meters it, adds it to its outputs or its output bus and clears it for the next block.
 void mixTracks(Snapshot& snapshot, const AudioBlock& block) {
     if (block.frames == 0) {
         return;
     }
-    for (TrackState& track : snapshot.tracks) {
-        for (std::size_t out = 0; out < track.mix.size(); ++out) {
-            float* mixed = track.mix[out].data();
-            rampGain(mixed, block.frames, track.outputGains[out], outputGain(track, out, snapshot.panLaw));
-            float* destination = block.outputs[static_cast<std::size_t>(track.outputs[out])];
-            for (Frames index = 0; index < block.frames; ++index) {
-                destination[index] += mixed[index];
+    const bool soloActive = anySolo(snapshot);
+    for (const std::size_t index : snapshot.mixOrder) {
+        TrackState& track = snapshot.tracks[index];
+        if (!track.mix.empty() && audible(track, soloActive)) {
+            playSends(snapshot, track, true, block.frames);
+            for (std::size_t channel = 0; channel < track.mix.size(); ++channel) {
+                rampGain(track.mix[channel].data(), block.frames, track.outputGains[channel],
+                         outputGain(track, channel, snapshot.panLaw));
             }
-            raise(*track.outputMeter, out, peakOf(mixed, block.frames));
-            std::fill_n(mixed, block.frames, 0.0F);
+            playSends(snapshot, track, false, block.frames);
+            for (std::size_t channel = 0; channel < track.mix.size(); ++channel) {
+                const float* mixed = track.mix[channel].data();
+                raise(*track.outputMeter, channel, peakOf(mixed, block.frames));
+                if (channel < track.outputs.size()) {
+                    float* destination = block.outputs[static_cast<std::size_t>(track.outputs[channel])];
+                    std::transform(mixed, mixed + block.frames, destination, destination, std::plus{});
+                }
+            }
+            if (track.outputBus) {
+                feedBus(snapshot.tracks[*track.outputBus], track, block.frames, 1.0F, 1.0F);
+            }
+        }
+        for (std::vector<float>& channel : track.mix) {
+            std::fill_n(channel.data(), block.frames, 0.0F);
         }
     }
 }

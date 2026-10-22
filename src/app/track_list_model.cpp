@@ -91,6 +91,29 @@ QVariantList TrackListModel::clipList(const model::Track& track) const {
     return clips;
 }
 
+QString TrackListModel::trackName(const model::TrackId& id) const {
+    const model::Track* track = project_.track(id);
+    return track != nullptr ? qs(track->name) : QString{};
+}
+
+QVariantList TrackListModel::sendList(const model::Track& track) const {
+    QVariantList sends;
+    for (const model::Send& send : track.sends) {
+        sends.append(QVariantMap{{"bus", qs(send.bus.value)},
+                                 {"busName", trackName(send.bus)},
+                                 {"db", send.levelDb},
+                                 {"pre", send.pre},
+                                 {"enabled", send.enabled}});
+    }
+    return sends;
+}
+
+bool TrackListModel::isBus(const model::TrackId& id) const {
+    const model::Track* track = project_.track(id);
+    const TrackType* type = track != nullptr ? registry_.trackType(track->kind) : nullptr;
+    return type != nullptr && type->routes.bus;
+}
+
 TrackListModel::TrackListModel(ProjectController& controller, const Registry& registry, QObject* parent)
     : QAbstractListModel(parent),
       controller_(controller),
@@ -151,6 +174,12 @@ QVariant TrackListModel::data(const QModelIndex& index, int role) const {
             return routes.audio;
         case Role::midiRoutes:
             return routes.midi;
+        case Role::busRoutes:
+            return routes.bus;
+        case Role::sends:
+            return sendList(track);
+        case Role::outputBusName:
+            return trackName(track.outputBus);
         case Role::clips:
             return clipList(track);
         case Role::trackData:
@@ -164,7 +193,7 @@ QVariant TrackListModel::data(const QModelIndex& index, int role) const {
 }
 
 QHash<int, QByteArray> TrackListModel::roleNames() const {
-    static constexpr std::array<std::pair<Role, const char*>, 21> kNames{{{Role::id, "trackId"},
+    static constexpr std::array<std::pair<Role, const char*>, 24> kNames{{{Role::id, "trackId"},
                                                                           {Role::name, "name"},
                                                                           {Role::kind, "kind"},
                                                                           {Role::icon, "icon"},
@@ -181,6 +210,9 @@ QHash<int, QByteArray> TrackListModel::roleNames() const {
                                                                           {Role::midiOut, "midiOut"},
                                                                           {Role::audioRoutes, "audioRoutes"},
                                                                           {Role::midiRoutes, "midiRoutes"},
+                                                                          {Role::busRoutes, "busRoutes"},
+                                                                          {Role::sends, "sends"},
+                                                                          {Role::outputBusName, "outputBusName"},
                                                                           {Role::clips, "clips"},
                                                                           {Role::trackData, "trackData"},
                                                                           {Role::laneComponent, "laneComponent"},
@@ -194,7 +226,8 @@ QHash<int, QByteArray> TrackListModel::roleNames() const {
 
 void TrackListModel::changed(const model::Change& change) {
     const auto row = change.track ? std::ranges::find(rows_, *change.track) : rows_.end();
-    if (row != rows_.end() && project_.track(*row) != nullptr) {
+    // Other rows show a bus's name beside their sends, so a bus edit refreshes every row.
+    if (row != rows_.end() && project_.track(*row) != nullptr && !isBus(*row)) {
         const QModelIndex at = index(static_cast<int>(row - rows_.begin()));
         emit dataChanged(at, at);
         return;

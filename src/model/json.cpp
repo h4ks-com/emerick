@@ -22,6 +22,14 @@ NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(MidiEvent, at, bytes)
 
 namespace {
 
+nlohmann::json sendToJson(const Send& send) {
+    return {{"bus", send.bus.value}, {"levelDb", send.levelDb}, {"pre", send.pre}, {"enabled", send.enabled}};
+}
+
+Send sendFromJson(const nlohmann::json& json) {
+    return {TrackId{json.at("bus")}, json.at("levelDb"), json.at("pre"), json.at("enabled")};
+}
+
 core::FadeShape fadeShapeFromJson(const nlohmann::json& json, const char* key) {
     const std::string id = json.value(key, std::string{core::fadeShapeId(core::FadeShape::linear)});
     const auto shape = core::fadeShapeFromId(id);
@@ -99,19 +107,47 @@ nlohmann::json trackToJson(const Track& track) {
     for (const Clip& clip : track.clips) {
         clips.push_back(clipToJson(clip));
     }
-    return {{"id", track.id.value},       {"name", track.name},     {"kind", track.kind},
-            {"icon", track.icon},         {"color", track.color},   {"mute", track.mute},
-            {"solo", track.solo},         {"armed", track.armed},   {"monitor", track.monitor},
-            {"gainDb", track.gainDb},     {"pan", track.pan},       {"audioIn", track.audioIn},
-            {"audioOut", track.audioOut}, {"midiIn", track.midiIn}, {"midiOut", track.midiOut},
-            {"clips", std::move(clips)},  {"data", track.data}};
+    return {{"id", track.id.value},
+            {"name", track.name},
+            {"kind", track.kind},
+            {"icon", track.icon},
+            {"color", track.color},
+            {"mute", track.mute},
+            {"solo", track.solo},
+            {"armed", track.armed},
+            {"monitor", track.monitor},
+            {"gainDb", track.gainDb},
+            {"pan", track.pan},
+            {"audioIn", track.audioIn},
+            {"audioOut", track.audioOut},
+            {"midiIn", track.midiIn},
+            {"midiOut", track.midiOut},
+            {"outputBus", track.outputBus.value},
+            {"sends", track.sends | std::views::transform(sendToJson) | std::ranges::to<nlohmann::json::array_t>()},
+            {"clips", std::move(clips)},
+            {"data", track.data}};
 }
 
 Track trackFromJson(const nlohmann::json& json) {
-    Track track{TrackId{json.at("id")}, json.at("name"),           json.at("kind"),        json.at("icon"),
-                json.at("color"),       json.at("mute"),           json.at("solo"),        json.at("armed"),
-                json.at("monitor"),     json.value("gainDb", 0.0), json.value("pan", 0.0), json.at("audioIn"),
-                json.at("audioOut"),    json.at("midiIn"),         json.at("midiOut"),     {},
+    Track track{TrackId{json.at("id")},
+                json.at("name"),
+                json.at("kind"),
+                json.at("icon"),
+                json.at("color"),
+                json.at("mute"),
+                json.at("solo"),
+                json.at("armed"),
+                json.at("monitor"),
+                json.value("gainDb", 0.0),
+                json.value("pan", 0.0),
+                json.at("audioIn"),
+                json.at("audioOut"),
+                json.at("midiIn"),
+                json.at("midiOut"),
+                TrackId{json.value("outputBus", std::string{})},
+                json.value("sends", nlohmann::json::array()) | std::views::transform(sendFromJson) |
+                    std::ranges::to<std::vector>(),
+                {},
                 json.at("data")};
     for (const auto& clip : json.at("clips")) {
         track.clips.push_back(clipFromJson(clip));

@@ -30,10 +30,38 @@ std::string fileStem(const std::string& name) {
     return stem;
 }
 
+bool playsAudio(const engine::Track& track) {
+    return track.kind == engine::TrackKind::audio || track.kind == engine::TrackKind::bus;
+}
+
 std::vector<engine::Track> audioTracks(const engine::Session& session) {
-    return session.tracks |
-           std::views::filter([](const engine::Track& track) { return track.kind == engine::TrackKind::audio; }) |
+    return session.tracks | std::views::filter(playsAudio) | std::ranges::to<std::vector>();
+}
+
+engine::AudioRoute renderRoute() { return {kRenderDevice, {1, 2}}; }
+
+// A bus stem plays the bus alone with every track and bus feeding it, so only the bus reaches the render output.
+std::vector<engine::Track> busStemTracks(const std::vector<engine::Track>& tracks, const engine::Track& bus) {
+    return tracks | std::views::transform([&](engine::Track track) {
+               track.mute = false;
+               track.solo = false;
+               track.audioOut = track.id == bus.id ? renderRoute() : engine::AudioRoute{};
+               if (track.id == bus.id) {
+                   track.outputBus.clear();
+               }
+               return track;
+           }) |
            std::ranges::to<std::vector>();
+}
+
+// A track stem plays the track dry and straight to the render output.
+std::vector<engine::Track> trackStemTracks(engine::Track track) {
+    track.mute = false;
+    track.solo = false;
+    track.audioOut = renderRoute();
+    track.outputBus.clear();
+    track.sends.clear();
+    return {std::move(track)};
 }
 
 // We sleep between chunks so the clip reader can refill its 2 s read-ahead.
@@ -42,7 +70,6 @@ std::vector<std::vector<float>> render(engine::Session session, engine::Frames f
         track.armed = false;
         track.monitor = false;
         track.audioIn = {};
-        track.audioOut = {kRenderDevice, {1, 2}};
     }
     session.clockPorts.clear();
     auto backend =
@@ -112,14 +139,14 @@ core::Ticks projectEnd(const model::Document& document) {
 std::vector<std::filesystem::path> exportStems(const engine::Session& session, const model::Document& document,
                                                const std::filesystem::path& folder, double sampleRate, bool numbered) {
     const engine::Frames frames = renderFrames(document, sampleRate);
-    std::vector<engine::Track> tracks = audioTracks(session);
+    const std::vector<engine::Track> tracks = audioTracks(session);
     if (tracks.empty()) {
         throw AppError("there are no audio tracks to export");
     }
     std::filesystem::create_directories(folder);
     std::vector<std::filesystem::path> files;
     std::set<std::string> used;
-    for (engine::Track& track : tracks) {
+    for (const engine::Track& track : tracks) {
         const auto source = std::ranges::find(document.tracks, model::TrackId{track.id}, &model::Track::id);
         std::string stem = fileStem(source != document.tracks.end() ? source->name : track.id);
         if (numbered) {
@@ -131,14 +158,13 @@ std::vector<std::filesystem::path> exportStems(const engine::Session& session, c
         if (!used.insert(stem).second) {
             stem += "-" + track.id;
         }
-        track.mute = false;
-        track.solo = false;
-        engine::Session single{.tempo = session.tempo,
-                               .tracks = {track},
-                               .clockPorts = {},
-                               .takeFolder = {},
-                               .metronome = {},
-                               .panLaw = session.panLaw};
+        engine::Session single{
+            .tempo = session.tempo,
+            .tracks = track.kind == engine::TrackKind::bus ? busStemTracks(tracks, track) : trackStemTracks(track),
+            .clockPorts = {},
+            .takeFolder = {},
+            .metronome = {},
+            .panLaw = session.panLaw};
         files.push_back(folder / (stem + ".wav"));
         writeWav(files.back(), render(std::move(single), frames, sampleRate), sampleRate);
     }
@@ -148,8 +174,12 @@ std::vector<std::filesystem::path> exportStems(const engine::Session& session, c
 void exportMix(const engine::Session& session, const model::Document& document, const std::filesystem::path& file,
                double sampleRate) {
     const engine::Frames frames = renderFrames(document, sampleRate);
+    std::vector<engine::Track> tracks = audioTracks(session);
+    for (engine::Track& track : tracks) {
+        track.audioOut = renderRoute();
+    }
     engine::Session mix{.tempo = session.tempo,
-                        .tracks = audioTracks(session),
+                        .tracks = std::move(tracks),
                         .clockPorts = {},
                         .takeFolder = {},
                         .metronome = {},

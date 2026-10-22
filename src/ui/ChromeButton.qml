@@ -13,12 +13,22 @@ Button {
     property color iconColor: Theme.ink
     // A second tooltip line, such as a modifier that changes what a drag does.
     property string hint
+    // A button with a menu opens it below itself, and the menu's items run the action.
+    property Menu menu
     // A delegate binds its objectName after this first evaluates, while actionId is still empty.
     readonly property var info: actionId ? Registry.actionInfo(actionId) : ({})
     readonly property string shortcutText: info.shortcut ? Theme.shortcutText(info.shortcut) : ""
 
     text: info.title
-    onClicked: params === undefined ? Registry.activate(actionId) : Registry.runAction(actionId, params)
+    onClicked: {
+        if (menu) {
+            menu.popup(button, 0, height)
+        } else if (params === undefined) {
+            Registry.activate(actionId)
+        } else {
+            Registry.runAction(actionId, params)
+        }
+    }
     padding: iconName ? 0 : Theme.space2
     display: iconName ? AbstractButton.IconOnly : AbstractButton.TextOnly
     icon.source: iconName ? Theme.iconSource(iconName) : ""

@@ -253,6 +253,31 @@ void registerAudioKind(Registry& registry, ProjectController& controller, Nav& n
     registry.addAction(std::move(add));
 }
 
+void registerBusKind(Registry& registry, ProjectController& controller, Nav& nav) {
+    registry.addTrackType(
+        {.kind = "bus",
+         .title = "Bus",
+         .icon = "arrows-merge",
+         .routes = {.bus = true},
+         .toEngine = [](const model::Track& track, const PlaybackContext&) { return busEngineTrack(track); }});
+    registry.addAction(
+        {.id = "track.addBus",
+         .title = "Add bus",
+         .aliases = {"new bus", "add aux", "create aux track"},
+         .category = "Tracks",
+         .schema = {{"type", "object"},
+                    {"properties", {{"name", {{"type", "string"}}}, {"audioOut", {{"type", "object"}}}}}},
+         .run =
+             [&registry, &controller, &nav](const Json& params) {
+                 model::Track track;
+                 const auto* output = std::ranges::find(kAudioDefaults, Direction::output, &AudioDefault::direction);
+                 track.audioOut = mergeAudioRoute(controller, newTrackRoute(registry, controller, *output),
+                                                  routeParams(params, "audioOut"), Direction::output);
+                 return addTrack(controller, nav, *registry.trackType("bus"), std::move(track), params);
+             },
+         .menus = {kTrackMenu, kLaneContextMenu}});
+}
+
 model::MidiClip midiClipFromTake(const engine::RecordedTake& take, core::Ticks stopTicks) {
     model::MidiClip clip;
     clip.start = take.startTick;
@@ -357,7 +382,9 @@ Json editTrack(ProjectController& controller, const model::TrackId& id, std::str
 void registerTrackActions(Registry& registry, ProjectController& controller, Nav& nav) {
     registerAudioKind(registry, controller, nav);
     registerMidiKind(registry, controller, nav);
+    registerBusKind(registry, controller, nav);
     registerTrackEditActions(registry, controller, nav);
+    registerSendActions(registry, controller, nav);
     registerRouteActions(registry, controller);
 }
 

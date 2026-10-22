@@ -45,6 +45,8 @@ Left aligned everywhere. Track header holds arm, mute, solo, name and an instrum
 
 The mixer (X) docks at the bottom of the window above the console. Each track gets a channel strip with its output, a pan knob, a vertical gain fader beside the level meter, mute, solo and arm, and its name on its color. The track header holds the same pan knob beside its gain. Drag a knob to pan, and double-click or Alt-click it to center; its tooltip reads L 23, C or R 40. The pan law (Settings / Audio) sets how much a centered track drops on each side, the same in playback, exports and meters.
 
+A bus mixes the sends and the tracks routed into it and plays on its own output, and its strip follows the track strips. Each strip lists its sends, one level per bus with a pre-fader switch, and its plus button sends to a bus or to a new one. Soloing a track keeps the buses it feeds audible, and soloing a bus keeps the tracks that feed it, as in Logic. Exports render the buses: the mix plays their returns, and each bus becomes its own stem.
+
 A marker lane under the bar ruler shows each marker as a named flag, and the inspector lists the markers under the track routes; clicking one moves the playhead there. Drags snap to the beat grid while snap is on, and holding Command (Ctrl on Linux and Windows) snaps them the other way, as Control does in Logic.
 
 An audio clip draws each fade with its shape: linear, equal power, exponential, logarithmic or S-curve. Dragging a fade handle sideways sets the fade's length and dragging it up or down bends its curve, as in Logic. Where clips on a track overlap, the newer clip plays over the older one outside its fades, and "Create crossfade" fades both over the overlap with equal power.

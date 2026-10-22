@@ -145,9 +145,12 @@ struct UndoSteps {
     std::function<void(const std::function<void()>& edits)> atomic = {};
 };
 
+// Audio routes an input and an output and holds audio clips; bus routes only an output, holds no clips and takes
+// sends.
 struct RouteSections {
     bool audio = false;
     bool midi = false;
+    bool bus = false;
 };
 
 struct PlaybackContext {

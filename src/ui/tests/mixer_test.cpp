@@ -37,6 +37,7 @@ TEST_CASE("X opens the mixer, whose strips mute, solo, arm and set gain through 
     QTest::keyClick(main.window, Qt::Key_X);
     REQUIRE(processUntil([&] { return main.rig.nav.mixerOpen(); }));
 
+    MainWindow::settle();
     main.click(inMixer(main, "track.setMute:" + qid(vox)));
     CHECK(trackOf(main, vox).mute);
     main.click(inMixer(main, "track.setSolo:" + qid(vox)));
@@ -63,6 +64,43 @@ TEST_CASE("X opens the mixer, whose strips mute, solo, arm and set gain through 
 
     main.click(main.item("view.toggleMixer"));
     CHECK(processUntil([&] { return !main.rig.nav.mixerOpen(); }));
+    MainWindow::settle();
+}
+
+TEST_CASE("a mixer strip adds a send from its bus picker, and a send level drag runs live and undoes in one step") {
+    MainWindow& main = MainWindow::instance();
+    const std::string vox = main.rig.run("track.addAudio").at("id");
+    const std::string verb = main.rig.run("track.addBus", {{"name", "Verb"}}).at("id");
+    main.rig.nav.setMixerOpen(true);
+    MainWindow::settle();
+
+    QQuickItem* add = inMixer(main, "send.add:" + qid(vox));
+    main.click(add);
+    auto* picker = add->property("menu").value<QObject*>();
+    REQUIRE(picker != nullptr);
+    REQUIRE(processUntil([&] { return picker->property("opened").toBool(); }));
+    QMetaObject::invokeMethod(menuItem(picker, "Verb")->property("action").value<QObject*>(), "trigger");
+    REQUIRE(processUntil([&] { return !picker->property("visible").toBool(); }));
+    REQUIRE(trackOf(main, vox).sends.size() == 1);
+    CHECK(trackOf(main, vox).sends.front().bus == model::TrackId{verb});
+    const auto undoBefore = main.rig.controller->project().undoName();
+    MainWindow::settle();
+
+    QQuickItem* level = inMixer(main, "send.setLevel:" + qid(vox) + ":" + qid(verb));
+    const QPointF press = level->mapToScene({level->width() / 2, level->height() / 2});
+    main.send(QEvent::MouseButtonPress, press, Qt::LeftButton, Qt::NoModifier);
+    for (int step = 1; step <= 5; ++step) {
+        main.send(QEvent::MouseMove, press - QPointF{8.0 * step, 0}, Qt::LeftButton, Qt::NoModifier);
+    }
+    CHECK(processUntil([&] { return trackOf(main, vox).sends.front().levelDb < 0.0; }));
+    main.send(QEvent::MouseButtonRelease, press - QPointF{40, 0}, Qt::NoButton, Qt::NoModifier);
+    MainWindow::settle();
+    CHECK(main.rig.controller->project().undoName() == "set send level");
+    main.rig.run("project.undo");
+    CHECK(trackOf(main, vox).sends.front().levelDb == 0.0);
+    CHECK(main.rig.controller->project().undoName() == undoBefore);
+
+    main.rig.nav.setMixerOpen(false);
     MainWindow::settle();
 }
 

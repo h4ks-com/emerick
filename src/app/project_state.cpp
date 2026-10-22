@@ -161,23 +161,29 @@ Json trackState(const model::Track& track, const core::TempoMap& tempo,
     for (const model::Clip& clip : track.clips) {
         clips.push_back(clipState(clip, tempo));
     }
-    return {{"id", track.id.value},
-            {"name", track.name},
-            {"kind", track.kind},
-            {"icon", track.icon},
-            {"color", track.color},
-            {"mute", track.mute},
-            {"solo", track.solo},
-            {"armed", track.armed},
-            {"monitor", track.monitor},
-            {"gainDb", track.gainDb},
-            {"pan", track.pan},
-            {"audioIn", audioRoute(track.audioIn, devices)},
-            {"audioOut", audioRoute(track.audioOut, devices)},
-            {"midiIn", midiRoute(track.midiIn)},
-            {"midiOut", midiRoute(track.midiOut)},
-            {"clips", std::move(clips)},
-            {"data", track.data}};
+    return {
+        {"id", track.id.value},
+        {"name", track.name},
+        {"kind", track.kind},
+        {"icon", track.icon},
+        {"color", track.color},
+        {"mute", track.mute},
+        {"solo", track.solo},
+        {"armed", track.armed},
+        {"monitor", track.monitor},
+        {"gainDb", track.gainDb},
+        {"pan", track.pan},
+        {"audioIn", audioRoute(track.audioIn, devices)},
+        {"audioOut", audioRoute(track.audioOut, devices)},
+        {"midiIn", midiRoute(track.midiIn)},
+        {"midiOut", midiRoute(track.midiOut)},
+        {"outputBus", track.outputBus.value},
+        {"sends", track.sends | std::views::transform([](const model::Send& send) {
+                      return Json{
+                          {"bus", send.bus.value}, {"db", send.levelDb}, {"pre", send.pre}, {"enabled", send.enabled}};
+                  }) | std::ranges::to<Json::array_t>()},
+        {"clips", std::move(clips)},
+        {"data", track.data}};
 }
 
 Json tempoState(const core::TempoMap& tempo) {

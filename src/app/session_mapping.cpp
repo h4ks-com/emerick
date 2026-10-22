@@ -56,8 +56,21 @@ engine::Track commonFields(const model::Track& track, engine::TrackKind kind) {
             .midiOut = {},
             .midiThru = false,
             .claimsSysex = false,
+            .outputBus = {},
+            .sends = {},
             .audioClips = {},
             .midiClips = {}};
+}
+
+// Disabled sends stay in the model so they keep their level, and play nothing.
+void addBusRoutes(engine::Track& result, const model::Track& track) {
+    result.audioOut = toEngine(track.audioOut);
+    result.outputBus = track.outputBus.value;
+    result.sends = track.sends | std::views::filter(&model::Send::enabled) |
+                   std::views::transform([](const model::Send& send) {
+                       return engine::Send{.bus = send.bus.value, .gain = gainFromDb(send.levelDb), .pre = send.pre};
+                   }) |
+                   std::ranges::to<std::vector>();
 }
 
 }  // namespace
@@ -77,13 +90,19 @@ engine::PanLaw panLawFromSettings(const Registry& registry) {
 engine::Track audioEngineTrack(const model::Track& track, const std::filesystem::path& folder) {
     engine::Track result = commonFields(track, engine::TrackKind::audio);
     result.audioIn = toEngine(track.audioIn);
-    result.audioOut = toEngine(track.audioOut);
+    addBusRoutes(result, track);
     for (const model::Clip& clip : track.clips) {
         std::visit(core::Overloaded{
                        [&](const model::AudioClip& audio) { result.audioClips.push_back(toEngine(audio, folder)); },
                        [](const model::MidiClip&) {}},
                    clip);
     }
+    return result;
+}
+
+engine::Track busEngineTrack(const model::Track& track) {
+    engine::Track result = commonFields(track, engine::TrackKind::bus);
+    addBusRoutes(result, track);
     return result;
 }
 

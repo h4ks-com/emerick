@@ -2,35 +2,48 @@ import QtQuick
 import QtQuick.Controls.Basic
 import Emerick.App
 
-// A channel strip per track, left to right in track order.
+// A channel strip per track, left to right in track order, then a strip per bus.
 DockPanel {
     id: panel
     objectName: "mixer"
 
-    ListView {
+    component Strips: Repeater {
         id: strips
+        property bool buses
+        model: Tracks
+        delegate: MixerStrip {
+            visible: busRoutes === strips.buses
+            height: flick.height
+        }
+    }
+
+    Flickable {
+        id: flick
         objectName: "mixer.strips"
         anchors.fill: parent
         anchors.topMargin: Theme.hairline
-        orientation: ListView.Horizontal
+        contentWidth: row.width
         interactive: false
         clip: true
-        model: Tracks
         ScrollBar.horizontal: ScrollBar {}
-        delegate: MixerStrip {
-            height: ListView.view.height
+
+        Row {
+            id: row
+            height: flick.height
+            Strips { buses: false }
+            Strips { buses: true }
         }
     }
 
     ToggleSweep {
         objectName: "mixer.toggleSweep"
-        anchors.fill: strips
-        target: strips
+        anchors.fill: flick
+        target: flick
     }
 
     Label {
         anchors.centerIn: parent
-        visible: strips.count === 0
+        visible: row.width === 0
         text: "Add a track to mix it"
         color: Theme.inkDim
         font.pixelSize: Theme.textTitle

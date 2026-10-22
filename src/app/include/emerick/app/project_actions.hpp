@@ -21,6 +21,10 @@ void registerTrackActions(Registry& registry, ProjectController& controller, Nav
 // Rename, duplicate, delete, select, flags, gain, pan, color and icon. They act on the selected track without a track
 // param.
 void registerTrackEditActions(Registry& registry, ProjectController& controller, Nav& nav);
+// Add, remove and edit sends, set a track's output bus, and create a bus that the selected tracks send to.
+void registerSendActions(Registry& registry, ProjectController& controller, Nav& nav);
+// Deletes the track with every send and output bus that names it as one undo step.
+void removeTrack(ProjectController& controller, const model::TrackId& id);
 // The track named by params, or the selected track when params names none.
 model::TrackId targetTrack(const ProjectController& controller, const Nav& nav, const Json& params);
 Json trackResult(const ProjectController& controller, const model::TrackId& id);

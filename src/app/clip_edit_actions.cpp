@@ -209,7 +209,7 @@ void registerClipEditActions(Registry& registry, ProjectController& controller, 
                                 } else if (const auto marker = selectedMarker(controller, nav)) {
                                     deleteMarker(controller, *marker);
                                 } else {
-                                    controller.project().removeTrack(targetTrack(controller, nav, Json::object()));
+                                    removeTrack(controller, targetTrack(controller, nav, Json::object()));
                                 }
                                 return projectState(controller);
                             },

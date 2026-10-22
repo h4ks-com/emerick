@@ -1,6 +1,9 @@
 #include "emerick/model/document.hpp"
 
 #include <algorithm>
+#include <iterator>
+#include <ranges>
+#include <set>
 
 namespace emerick::model {
 
@@ -26,6 +29,31 @@ std::optional<ClipRef> findClip(const Document& document, const ClipId& id) {
         }
     }
     return std::nullopt;
+}
+
+std::vector<TrackId> busesFedBy(const Track& track) {
+    std::vector<TrackId> buses = track.sends | std::views::transform(&Send::bus) | std::ranges::to<std::vector>();
+    if (!track.outputBus.empty()) {
+        buses.push_back(track.outputBus);
+    }
+    return buses;
+}
+
+bool reaches(const Document& document, const TrackId& from, const TrackId& to) {
+    std::vector<TrackId> pending{from};
+    std::set<TrackId> seen;
+    while (!pending.empty()) {
+        const TrackId at = pending.back();
+        pending.pop_back();
+        if (at == to) {
+            return true;
+        }
+        const Track* track = findTrack(document, at);
+        if (track != nullptr && seen.insert(at).second) {
+            std::ranges::copy(busesFedBy(*track), std::back_inserter(pending));
+        }
+    }
+    return false;
 }
 
 const Marker* findMarker(const Document& document, const MarkerId& id) {

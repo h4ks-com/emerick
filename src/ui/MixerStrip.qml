@@ -3,7 +3,8 @@ import QtQuick.Controls.Basic
 import QtQuick.Layouts
 import Emerick.App
 
-// One track's channel strip: its output, pan knob, gain fader with level meter, mute, solo and arm, and its name.
+// One track's channel strip: its output, sends, pan knob, gain fader with level meter, mute, solo and arm, and its
+// name.
 Rectangle {
     id: strip
     required property string trackId
@@ -17,11 +18,18 @@ Rectangle {
     required property real pan
     required property bool audioRoutes
     required property bool midiRoutes
+    required property bool busRoutes
     required property var audioOut
     required property var midiOut
+    required property var sends
+    required property string outputBusName
     readonly property bool selected: Nav.selectedTrack === trackId
+    readonly property bool playsAudio: audioRoutes || busRoutes
     readonly property string outputText: {
-        if (audioRoutes) {
+        if (outputBusName !== "") {
+            return outputBusName
+        }
+        if (playsAudio) {
             const device = Project.routeDevices.audioOut.find(entry => entry.id === audioOut.device)
             const deviceName = device !== undefined ? device.name : audioOut.device
             return audioOut.channels.length > 0 ? deviceName + " " + audioOut.channels.join("-") : deviceName
@@ -65,6 +73,14 @@ Rectangle {
                 radius: Theme.radiusClip
                 color: Theme.graphite
             }
+        }
+
+        SendList {
+            visible: strip.playsAudio
+            trackId: strip.trackId
+            sends: strip.sends
+            compact: true
+            Layout.fillWidth: true
         }
 
         PanKnob {
@@ -115,6 +131,7 @@ Rectangle {
                 text: "S"
             }
             FlagButton {
+                visible: !strip.busRoutes
                 trackId: strip.trackId
                 flag: "track.setArm"
                 value: strip.armed

@@ -35,6 +35,7 @@ qt_add_qml_module(emerick_ui
         RouteCombo.qml
         Ruler.qml
         SearchCombo.qml
+        SendList.qml
         SettingsPage.qml
         Theme.qml
         ToggleSweep.qml
@@ -43,6 +44,7 @@ qt_add_qml_module(emerick_ui
         TransportBar.qml
         TransportDisplay.qml
     RESOURCES
+        icons/arrows-merge.svg
         icons/broom.svg
         icons/circle.svg
         icons/copy.svg
@@ -63,6 +65,7 @@ qt_add_qml_module(emerick_ui
         icons/pause.svg
         icons/piano-keys.svg
         icons/play.svg
+        icons/plus.svg
         icons/sidebar-simple.svg
         icons/skip-back.svg
         icons/sliders.svg

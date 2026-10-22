@@ -58,6 +58,18 @@ struct SendState {
     float rampFrom = 1.0F;
 };
 
+struct LanePoint {
+    Frames frame = 0;
+    float value = 0.0F;
+    core::AutomationCurve curve = core::AutomationCurve::linear;
+};
+
+struct LaneState {
+    AutomationTarget target = AutomationTarget::gain;
+    std::size_t send = 0;  // the send's index in the track's sends
+    std::vector<LanePoint> points;
+};
+
 struct TrackState {
     std::string id;
     TrackKind kind = TrackKind::audio;
@@ -67,6 +79,8 @@ struct TrackState {
     bool monitor = false;
     float gain = 1.0F;
     float pan = 0.0F;
+    // An automated mute ramps the track to silence, so it never clicks.
+    float muteGain = 1.0F;
     std::vector<int> inputs;
     std::vector<int> outputs;
     std::vector<const float*> inputPointers;
@@ -89,6 +103,7 @@ struct TrackState {
     // The gain per channel that the last block ended on, so we ramp from it and a fader move never clicks.
     std::vector<float> outputGains;
     std::vector<SendState> sends;
+    std::vector<LaneState> lanes;
     // The index of the bus the track plays into in place of its outputs.
     std::optional<std::size_t> outputBus;
     // While any track is soloed, a track stays audible when it is soloed, a soloed track plays into it, or it plays
@@ -125,11 +140,12 @@ inline bool anySolo(const Snapshot& snapshot) { return std::ranges::any_of(snaps
 
 // Pan applies to a stereo pair; a track on one channel or on more than two plays at its gain on each.
 inline float outputGain(const TrackState& track, std::size_t channel, PanLaw law) {
+    const float gain = track.gain * track.muteGain;
     if (track.mix.size() != 2) {
-        return track.gain;
+        return gain;
     }
     const StereoGains pan = panGains(track.pan, law);
-    return track.gain * (channel == 0 ? pan.left : pan.right);
+    return gain * (channel == 0 ? pan.left : pan.right);
 }
 
 template <class Visit>

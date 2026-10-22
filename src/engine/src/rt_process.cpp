@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <cmath>
 #include <functional>
+#include <iterator>
 #include <numbers>
 #include <span>
 
@@ -17,6 +18,18 @@
 namespace emerick::engine {
 
 namespace {
+
+// The timeline frame at an offset into the block, which moves only while the transport runs, from where a count-in
+// ended.
+struct BlockTime {
+    Frames frame = 0;
+    Frames rollFrom = 0;
+    bool playing = false;
+
+    [[nodiscard]] Frames at(Frames offset) const {
+        return playing ? frame + std::max<Frames>(offset - rollFrom, 0) : frame;
+    }
+};
 
 // A rebuilt snapshot starts each track from the gains the old one played, so an edit ramps to its new gain.
 void keepOutputGains(const Snapshot& from, Snapshot& to) {
@@ -250,24 +263,75 @@ void addRamped(float* destination, const float* source, Frames frames, float fro
 }
 
 // A track with fewer channels than the bus feeds its last channel to the rest, so a mono track reaches both sides.
-void feedBus(TrackState& bus, const TrackState& track, Frames frames, float from, float to) {
+void feedBus(TrackState& bus, const TrackState& track, Frames offset, Frames frames, float from, float to) {
+    const auto first = static_cast<std::size_t>(offset);
     for (std::size_t channel = 0; channel < bus.mix.size(); ++channel) {
-        addRamped(bus.mix[channel].data(), track.mix[std::min(channel, track.mix.size() - 1)].data(), frames, from, to);
+        addRamped(bus.mix[channel].data() + first, track.mix[std::min(channel, track.mix.size() - 1)].data() + first,
+                  frames, from, to);
     }
 }
 
-void playSends(Snapshot& snapshot, TrackState& track, bool pre, Frames frames) {
+void playSends(Snapshot& snapshot, TrackState& track, bool pre, Frames offset, Frames frames) {
     for (SendState& send : track.sends) {
         if (send.pre == pre) {
-            feedBus(snapshot.tracks[send.bus], track, frames, send.rampFrom, send.gain);
-            send.rampFrom = send.gain;
+            const float gain = send.gain * track.muteGain;
+            feedBus(snapshot.tracks[send.bus], track, offset, frames, send.rampFrom, gain);
+            send.rampFrom = gain;
         }
     }
 }
 
+float laneValue(const LaneState& lane, Frames frame) {
+    const auto& points = lane.points;
+    const auto next = std::ranges::upper_bound(points, frame, {}, &LanePoint::frame);
+    if (next == points.begin()) {
+        return points.front().value;
+    }
+    if (next == points.end()) {
+        return points.back().value;
+    }
+    const LanePoint& from = *std::prev(next);
+    const double t = static_cast<double>(frame - from.frame) / static_cast<double>(next->frame - from.frame);
+    return static_cast<float>(core::automationBetween(from.value, next->value, t, from.curve));
+}
+
+float gainOfDb(float db) { return std::pow(10.0F, db / 20.0F); }
+
+void applyLanes(TrackState& track, Frames frame) {
+    for (const LaneState& lane : track.lanes) {
+        const float value = laneValue(lane, frame);
+        switch (lane.target) {
+            case AutomationTarget::gain:
+                track.gain = gainOfDb(value);
+                break;
+            case AutomationTarget::pan:
+                track.pan = value;
+                break;
+            case AutomationTarget::mute:
+                track.muteGain = value >= 0.5F ? 0.0F : 1.0F;
+                break;
+            case AutomationTarget::send:
+                track.sends[lane.send].gain = gainOfDb(value);
+                break;
+        }
+    }
+}
+
+void mixPart(Snapshot& snapshot, TrackState& track, Frames offset, Frames frames) {
+    playSends(snapshot, track, true, offset, frames);
+    for (std::size_t channel = 0; channel < track.mix.size(); ++channel) {
+        rampGain(track.mix[channel].data() + offset, frames, track.outputGains[channel],
+                 outputGain(track, channel, snapshot.panLaw));
+    }
+    playSends(snapshot, track, false, offset, frames);
+}
+
+// An automated track mixes in parts this long, each ramping to the lanes' values at its end.
+constexpr Frames kAutomationStep = 32;
+
 // In mix order, so each bus has every source in its mix before its turn: applies each track's fader and pan, feeds
 // its sends, meters it, adds it to its outputs or its output bus and clears it for the next block.
-void mixTracks(Snapshot& snapshot, const AudioBlock& block) {
+void mixTracks(Snapshot& snapshot, const AudioBlock& block, const BlockTime& time) {
     if (block.frames == 0) {
         return;
     }
@@ -275,12 +339,12 @@ void mixTracks(Snapshot& snapshot, const AudioBlock& block) {
     for (const std::size_t index : snapshot.mixOrder) {
         TrackState& track = snapshot.tracks[index];
         if (!track.mix.empty() && audible(track, soloActive)) {
-            playSends(snapshot, track, true, block.frames);
-            for (std::size_t channel = 0; channel < track.mix.size(); ++channel) {
-                rampGain(track.mix[channel].data(), block.frames, track.outputGains[channel],
-                         outputGain(track, channel, snapshot.panLaw));
+            const Frames step = track.lanes.empty() ? block.frames : kAutomationStep;
+            for (Frames offset = 0; offset < block.frames; offset += step) {
+                const Frames frames = std::min(step, block.frames - offset);
+                applyLanes(track, time.at(offset + frames));
+                mixPart(snapshot, track, offset, frames);
             }
-            playSends(snapshot, track, false, block.frames);
             for (std::size_t channel = 0; channel < track.mix.size(); ++channel) {
                 const float* mixed = track.mix[channel].data();
                 raise(*track.outputMeter, channel, peakOf(mixed, block.frames));
@@ -290,7 +354,7 @@ void mixTracks(Snapshot& snapshot, const AudioBlock& block) {
                 }
             }
             if (track.outputBus) {
-                feedBus(snapshot.tracks[*track.outputBus], track, block.frames, 1.0F, 1.0F);
+                feedBus(snapshot.tracks[*track.outputBus], track, 0, block.frames, 1.0F, 1.0F);
             }
         }
         for (std::vector<float>& channel : track.mix) {
@@ -422,7 +486,7 @@ void processBlock(RealtimeState& state, const AudioBlock& block) {
     }
     renderMetronome(state, snapshot, block);
     monitorAndRecordAudio(snapshot, block, rollFrom);
-    mixTracks(snapshot, block);
+    mixTracks(snapshot, block, {.frame = state.frame, .rollFrom = rollFrom, .playing = state.transportPlaying});
     if (state.transportPlaying) {
         state.frame += block.frames - rollFrom;
     }

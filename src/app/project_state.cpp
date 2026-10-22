@@ -9,6 +9,7 @@
 #include <variant>
 
 #include "emerick/core/overloaded.hpp"
+#include "emerick/model/automation.hpp"
 
 namespace emerick::app {
 
@@ -191,6 +192,10 @@ Json trackState(const model::Track& track, const core::TempoMap& tempo,
                           {"bus", send.bus.value}, {"db", send.levelDb}, {"pre", send.pre}, {"enabled", send.enabled}};
                   }) | std::ranges::to<Json::array_t>()},
         {"clips", std::move(clips)},
+        {"automationMode", model::automationModeId(track.automationMode)},
+        {"automation", track.automation | std::views::transform([](const model::AutomationLane& lane) {
+                           return Json{{"param", lane.param}, {"pointCount", lane.points.size()}};
+                       }) | std::ranges::to<Json::array_t>()},
         {"data", track.data}};
 }
 

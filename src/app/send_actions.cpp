@@ -5,6 +5,7 @@
 #include <vector>
 
 #include "emerick/app/action_params.hpp"
+#include "emerick/app/automation_params.hpp"
 #include "emerick/app/project_actions.hpp"
 #include "emerick/app/project_state.hpp"
 
@@ -116,6 +117,9 @@ void registerSendEdits(Registry& registry, ProjectController& controller, const 
              const auto track = sourceParam(registry, controller, nav, params);
              const auto bus = trackParam(controller.project(), params, "bus");
              const auto db = param<double>(params, "db");
+             if (controller.writeAutomation(track, sendParamId(bus), db)) {
+                 return trackResult(controller, track);
+             }
              return editTrack(controller, track, "set send level",
                               [&](model::Track& edited) { sendTo(edited, bus).levelDb = db; });
          }});
@@ -154,6 +158,8 @@ void removeTrack(ProjectController& controller, const model::TrackId& id) {
         for (const model::TrackId& track : feeding) {
             project.editTrack(track, name, [&](model::Track& edited) {
                 std::erase_if(edited.sends, [&](const model::Send& send) { return send.bus == id; });
+                std::erase_if(edited.automation,
+                              [&](const model::AutomationLane& lane) { return lane.param == sendParamId(id); });
                 if (edited.outputBus == id) {
                     edited.outputBus = {};
                 }

@@ -11,6 +11,7 @@
 #include <variant>
 
 #include "emerick/core/overloaded.hpp"
+#include "emerick/model/automation.hpp"
 #include "emerick/model/midi_notes.hpp"
 
 namespace emerick::model {
@@ -29,6 +30,41 @@ nlohmann::json sendToJson(const Send& send) {
 
 Send sendFromJson(const nlohmann::json& json) {
     return {TrackId{json.at("bus")}, json.at("levelDb"), json.at("pre"), json.at("enabled")};
+}
+
+nlohmann::json laneToJson(const AutomationLane& lane) {
+    return {{"param", lane.param}, {"points", lane.points | std::views::transform([](const AutomationPoint& point) {
+                                                  return nlohmann::json{
+                                                      {"id", point.id.value},
+                                                      {"tick", point.tick},
+                                                      {"value", point.value},
+                                                      {"curve", core::automationCurveId(point.curve)}};
+                                              }) | std::ranges::to<nlohmann::json::array_t>()}};
+}
+
+AutomationPoint pointFromJson(const nlohmann::json& json) {
+    const auto& id = json.at("curve").get_ref<const std::string&>();
+    const auto curve = core::automationCurveFromId(id);
+    if (!curve) {
+        throw std::runtime_error("unknown automation curve: " + id);
+    }
+    return {AutomationPointId{json.at("id")}, json.at("tick"), json.at("value"), *curve};
+}
+
+AutomationLane laneFromJson(const nlohmann::json& json) {
+    AutomationLane lane{json.at("param"),
+                        json.at("points") | std::views::transform(pointFromJson) | std::ranges::to<std::vector>()};
+    sortPoints(lane);
+    return lane;
+}
+
+AutomationMode automationModeFromJson(const nlohmann::json& json) {
+    const std::string id = json.value("automationMode", std::string{automationModeId(AutomationMode::read)});
+    const auto mode = automationModeFromId(id);
+    if (!mode) {
+        throw std::runtime_error("unknown automation mode: " + id);
+    }
+    return *mode;
 }
 
 core::FadeShape fadeShapeFromJson(const nlohmann::json& json, const char* key) {
@@ -149,6 +185,9 @@ nlohmann::json trackToJson(const Track& track) {
             {"outputBus", track.outputBus.value},
             {"sends", track.sends | std::views::transform(sendToJson) | std::ranges::to<nlohmann::json::array_t>()},
             {"clips", std::move(clips)},
+            {"automationMode", automationModeId(track.automationMode)},
+            {"automation",
+             track.automation | std::views::transform(laneToJson) | std::ranges::to<nlohmann::json::array_t>()},
             {"data", track.data}};
 }
 
@@ -172,6 +211,9 @@ Track trackFromJson(const nlohmann::json& json) {
                 json.value("sends", nlohmann::json::array()) | std::views::transform(sendFromJson) |
                     std::ranges::to<std::vector>(),
                 {},
+                automationModeFromJson(json),
+                json.value("automation", nlohmann::json::array()) | std::views::transform(laneFromJson) |
+                    std::ranges::to<std::vector>(),
                 json.at("data")};
     for (const auto& clip : json.at("clips")) {
         track.clips.push_back(clipFromJson(clip));

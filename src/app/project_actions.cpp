@@ -276,6 +276,7 @@ void registerProjectActions(Registry& registry, ProjectController& controller, N
     registerProjectEditActions(registry, controller);
     registerTransportActions(registry, controller);
     registerTrackActions(registry, controller, nav);
+    registerAutomationActions(registry, controller, nav);
     registerClipActions(registry, controller, nav);
     registerMarkerActions(registry, controller, nav);
     registerExportActions(registry, controller);

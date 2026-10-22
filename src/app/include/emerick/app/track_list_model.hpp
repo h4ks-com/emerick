@@ -42,6 +42,9 @@ public:
         trackData,
         laneComponent,
         clipType,
+        automationMode,
+        automation,
+        automationParams,
     };
 
     TrackListModel(ProjectController& controller, const Registry& registry, QObject* parent = nullptr);
@@ -65,12 +68,15 @@ signals:
 
 private:
     void changed(const model::Change& change);
+    // Rows whose controls follow automation update as the playhead moves.
+    void transportMoved();
     // Removes, moves and inserts rows until they match the document's tracks, so views keep their other delegates.
     void syncRows();
 
     [[nodiscard]] QVariantMap clipEntry(const model::Clip& clip, int take) const;
     [[nodiscard]] QVariantList clipList(const model::Track& track) const;
     [[nodiscard]] QVariantList sendList(const model::Track& track) const;
+    [[nodiscard]] QVariantList paramList(const model::Track& track) const;
     [[nodiscard]] QString trackName(const model::TrackId& id) const;
     [[nodiscard]] bool isBus(const model::TrackId& id) const;
 

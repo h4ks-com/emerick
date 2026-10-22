@@ -99,6 +99,11 @@ ProjectController::ProjectController(const Registry& registry, std::unique_ptr<e
             qWarning("cannot save %s: %s", folder_.c_str(), error.what());
         }
     });
+    connect(&registry, &Registry::gesturingChanged, this, [this] {
+        if (!registry_.gesturing()) {
+            releaseAutomation();
+        }
+    });
     createUntitled();
     publish();
     connect(&timer_, &QTimer::timeout, this, &ProjectController::poll);
@@ -319,6 +324,7 @@ void ProjectController::stop() {
     timer_.stop();
     waitForEngine([this] { return !engine_.playing(); });
     stopTicks_ = engine_.position().ticks;
+    commitPasses(std::exchange(passes_, {}), stopTicks_);
     timer_.start(kPollPeriod);
 }
 
@@ -404,6 +410,7 @@ void ProjectController::setMetronome(const engine::Metronome& metronome) {
 void ProjectController::publish() {
     engine::Session session = toSession(project_.document(), registry_, folder_);
     session.metronome = metronome_;
+    applyPasses(session);
     routeErrors_ = dropUnusableDevices(session, engine_.audioDevices(), options_.sampleRate);
     std::set<std::string> ids;
     std::set<std::string> audioIds;

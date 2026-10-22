@@ -230,6 +230,11 @@ Rectangle {
             required property var trackData
             required property string laneComponent
             required property string clipType
+            required property string automationMode
+            required property var automation
+            required property var automationParams
+            readonly property string automationParam: Nav.automationLanes[trackId] ?? "gain"
+            readonly property var shownParam: automationParams.find(param => param.id === automationParam) ?? null
             readonly property bool dropTarget: area.dragRows !== 0 && index === area.dragFrom + area.dragRows
             readonly property color trackColor: Theme.trackColors[colorIndex % Project.trackColorCount]
             width: ListView.view.width
@@ -299,6 +304,18 @@ Rectangle {
                         }
                     }
                 }
+
+                AutomationLane {
+                    anchors.fill: parent
+                    visible: Nav.automationOpen && row.shownParam !== null
+                    trackId: row.trackId
+                    trackColor: row.trackColor
+                    param: row.shownParam ?? {id: "", title: "", minimum: 0, maximum: 1, value: 0, toggle: false}
+                    points: row.automation.find(lane => lane.param === row.automationParam)?.points ?? []
+                    reads: row.automationMode !== "off"
+                    scrollTicks: area.scrollTicks
+                    pixelsPerTick: area.pixelsPerTick
+                }
             }
 
             TrackHeader {
@@ -316,6 +333,9 @@ Rectangle {
                 gainDb: row.gainDb
                 pan: row.pan
                 records: !row.busRoutes
+                automationMode: row.automationMode
+                automationParams: row.automationParams
+                automationParam: row.automationParam
                 onDropIndexChanged: area.dropIndex = dropIndex
                 onContextRequested: area.menuAtCursor = true
             }
@@ -361,6 +381,18 @@ Rectangle {
             active: Registry.settings["edit.snap"] === true
             activeColor: Theme.ink
             hint: "Hold " + (Qt.platform.os === "osx" ? "⌘" : "Ctrl") + " while dragging to snap the other way"
+        }
+        ChromeButton {
+            objectName: "view.toggleAutomation"
+            y: (Theme.rulerHeight - height) / 2
+            anchors.right: parent.right
+            anchors.rightMargin: Theme.space2 * 2 + Theme.headerButton
+            implicitWidth: Theme.headerButton
+            implicitHeight: Theme.headerButton
+            iconName: "automation"
+            iconColor: Theme.inkDim
+            active: Nav.automationOpen
+            activeColor: Theme.ink
         }
         Text {
             y: Theme.rulerHeight

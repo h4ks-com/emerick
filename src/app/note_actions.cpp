@@ -14,6 +14,7 @@ namespace emerick::app {
 namespace {
 
 constexpr int kMaxChannel = 16;
+constexpr int kOctave = 12;
 
 Json noteSchema() {
     return {{"clip", {{"type", "string"}}}, {"notes", {{"type", "array"}, {"items", {{"type", "string"}}}}}};
@@ -227,7 +228,17 @@ void registerNoteEdits(Registry& registry, ProjectController& controller, Nav& n
          .category = "MIDI",
          .schema = {{"required", {"semitones"}},
                     {"properties", withNoteSchema({{"semitones", {{"type", "integer"}}}})}},
-         .run = [&controller, &nav](const Json& params) { return transpose(controller, nav, params); }});
+         .run = [&controller, &nav](const Json& params) { return transpose(controller, nav, params); },
+         .menus = {kEditMenu},
+         .submenu =
+             [] {
+                 return std::vector<MenuChoice>{
+                     {.id = "octaveUp", .title = "Octave up", .params = {{"semitones", kOctave}}},
+                     {.id = "semitoneUp", .title = "Semitone up", .params = {{"semitones", 1}}},
+                     {.id = "semitoneDown", .title = "Semitone down", .params = {{"semitones", -1}}},
+                     {.id = "octaveDown", .title = "Octave down", .params = {{"semitones", -kOctave}}},
+                 };
+             }});
 }
 
 }  // namespace

@@ -108,31 +108,23 @@ void registerTrackFlags(Registry& registry, ProjectController& controller, const
 }
 
 void registerTrackLooks(Registry& registry, ProjectController& controller, const Nav& nav) {
-    registry.addAction(
-        {.id = "track.setColor",
-         .title = "Set track color",
-         .category = "Tracks",
-         .schema = {{"required", {"color"}},
-                    {"properties", {{"track", {{"type", "string"}}}, {"color", {{"type", "integer"}}}}}},
-         .run =
-             [&controller, &nav](const Json& params) {
-                 const auto id = targetTrack(controller, nav, params);
-                 const auto color = param<int>(params, "color");
-                 if (color < 0 || color >= kTrackColors) {
-                     throw AppError("color must be 0 to " + std::to_string(kTrackColors - 1));
-                 }
-                 return editTrack(controller, id, "set track color", [&](model::Track& track) { track.color = color; });
-             },
-         .menus = trackMenus(),
-         .submenu =
-             [] {
-                 return std::views::iota(0, kTrackColors) | std::views::transform([](int color) {
-                            return MenuChoice{.id = std::to_string(color),
-                                              .title = std::string{kColorNames[static_cast<std::size_t>(color)]},
-                                              .params = {{"color", color}}};
-                        }) |
-                        std::ranges::to<std::vector>();
-             }});
+    registry.addAction({.id = "track.setColor",
+                        .title = "Set track color",
+                        .category = "Tracks",
+                        .schema = {{"required", {"color"}},
+                                   {"properties", {{"track", {{"type", "string"}}}, {"color", {{"type", "integer"}}}}}},
+                        .run =
+                            [&controller, &nav](const Json& params) {
+                                const auto id = targetTrack(controller, nav, params);
+                                const auto color = param<int>(params, "color");
+                                if (color < 0 || color >= kTrackColors) {
+                                    throw AppError("color must be 0 to " + std::to_string(kTrackColors - 1));
+                                }
+                                return editTrack(controller, id, "set track color",
+                                                 [&](model::Track& track) { track.color = color; });
+                            },
+                        .menus = trackMenus(),
+                        .submenu = colorChoices});
     registry.addAction({.id = "track.setIcon",
                         .title = "Set track icon",
                         .category = "Tracks",
@@ -204,6 +196,15 @@ model::TrackId targetTrack(const ProjectController& controller, const Nav& nav, 
         throw AppError("select a track first, or pass track");
     }
     return selected;
+}
+
+std::vector<MenuChoice> colorChoices() {
+    return std::views::iota(0, kTrackColors) | std::views::transform([](int color) {
+               return MenuChoice{.id = std::to_string(color),
+                                 .title = std::string{kColorNames[static_cast<std::size_t>(color)]},
+                                 .params = {{"color", color}}};
+           }) |
+           std::ranges::to<std::vector>();
 }
 
 void registerTrackEditActions(Registry& registry, ProjectController& controller, Nav& nav) {

@@ -69,6 +69,7 @@ The console (Cmd+\`) runs Lua in the same sandboxed host on the UI thread. `Regi
 - Catch2 unit tests per target. The engine runs on `OfflineBackend`, faster than realtime, with golden renders.
 - `NullAudioBackend` and an in-process virtual MIDI port, selected with `--audio=null --midi=virtual`, let the app run anywhere. With the virtual port, `midi.inject` feeds it and `midi.sent` lists what the app sent to it.
 - `docker/` runs the app headless (`QT_QPA_PLATFORM=offscreen`) in Ubuntu 24.04 with Qt 6.11, exposes the MCP port, and `e2e/` drives it over MCP.
+- CI runs `make quality` on macOS and Ubuntu and the Docker e2e on every pull request and push to main. An action test fails when a registry action has no menu entry, shortcut or control.
 
 ## Libraries
 

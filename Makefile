@@ -4,11 +4,13 @@ SOURCES := $(shell git ls-files --cached --others --exclude-standard '*.cpp' '*.
 ifeq ($(shell uname),Darwin)
 QT_PREFIX := $(shell brew --prefix qt 2>/dev/null)
 export CMAKE_PREFIX_PATH := $(QT_PREFIX)
+CLANG_TIDY ?= $(firstword $(wildcard $(shell brew --prefix llvm@22 2>/dev/null)/bin/clang-tidy) clang-tidy)
 TIDY_ARGS := --extra-arg=-isystem$(shell xcrun --show-sdk-path)/usr/include/c++/v1 --extra-arg=-isysroot$(shell xcrun --show-sdk-path)
 OTHER_PLATFORM_SOURCES := src/engine/src/miniaudio_backend.cpp
 else
 OTHER_PLATFORM_SOURCES := %_apple.cpp
 endif
+CLANG_TIDY ?= clang-tidy
 
 configure:
 	cmake --preset dev
@@ -29,7 +31,7 @@ format-check:
 	clang-format --dry-run --Werror $(SOURCES)
 
 lint: build
-	clang-tidy -p build/dev --quiet $(TIDY_ARGS) $(filter-out %_test.cpp $(OTHER_PLATFORM_SOURCES),$(filter %.cpp,$(SOURCES)))
+	$(CLANG_TIDY) -p build/dev --quiet $(TIDY_ARGS) $(filter-out %_test.cpp $(OTHER_PLATFORM_SOURCES),$(filter %.cpp,$(SOURCES)))
 
 quality: format-check lint test
 

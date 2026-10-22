@@ -264,7 +264,7 @@ void registerProjectActions(Registry& registry, ProjectController& controller, N
          .aliases = {"pan curve", "center attenuation"},
          .category = "Settings / Audio",
          .type = SettingType::Choice,
-         .defaultValue = "-3 dB constant power",
+         .defaultValue = "-3 dB compensated",
          .choices = kPanLaws | std::views::transform(&NamedPanLaw::name) | std::ranges::to<Json::array_t>(),
          .hint = "How much a centered track drops on each side, in playback, exports and meters",
          .location = "settings.audio"});

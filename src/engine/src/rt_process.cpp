@@ -154,6 +154,22 @@ void apply(RealtimeState& state, Snapshot& snapshot, const Command& command, con
     }
 }
 
+Frames solidStart(const ClipPlayback& clip) { return clip.start + clip.fadeIn; }
+
+Frames solidEnd(const ClipPlayback& clip) { return clip.start + clip.length - clip.fadeOut; }
+
+// A later clip silences earlier ones wherever it plays at full gain, so the newest take wins and fades crossfade.
+// ponytail: scans every later clip per frame of an overlap, an interval list if tracks stack hundreds of takes.
+bool covered(std::span<const ClipPlayback> later, Frames at) {
+    return std::ranges::any_of(
+        later, [at](const ClipPlayback& clip) { return at >= solidStart(clip) && at < solidEnd(clip); });
+}
+
+bool anyCovers(std::span<const ClipPlayback> later, Frames from, Frames to) {
+    return std::ranges::any_of(
+        later, [&](const ClipPlayback& clip) { return solidStart(clip) < to && solidEnd(clip) > from; });
+}
+
 // Plays frames from frame on into each track's mix, starting offset frames into the block.
 void playAudioClips(Snapshot& snapshot, Frames frame, Frames offset, Frames frames) {
     const bool soloActive = anySolo(snapshot);
@@ -162,22 +178,31 @@ void playAudioClips(Snapshot& snapshot, Frames frame, Frames offset, Frames fram
         if (track.outputs.empty() || !audible(track, soloActive)) {
             continue;
         }
-        for (const ClipPlayback& clip : track.clips) {
+        const std::span<const ClipPlayback> clips = track.clips;
+        for (std::size_t index = 0; index < clips.size(); ++index) {
+            const ClipPlayback& clip = clips[index];
             const Frames from = std::max(frame, clip.start);
             const Frames to = std::min(blockEnd, clip.start + clip.length);
             if (from >= to) {
                 continue;
             }
+            const std::span<const ClipPlayback> later = clips.subspan(index + 1);
+            const bool overlapped = anyCovers(later, from, to);
             const Frames local = from - clip.start;
             const Frames count = to - from;
             const std::span<const float> samples = clip.stream->read(local, count);
             const auto channels = static_cast<std::size_t>(clip.stream->channels());
-            for (std::size_t out = 0; out < track.outputs.size(); ++out) {
-                float* destination = track.mix[out].data() + offset + (from - frame);
-                const std::size_t source = std::min(out, channels - 1);
-                for (Frames index = 0; index < count; ++index) {
-                    const float gain = clip.gain * fadeGain(local + index, clip.length, clip.fadeIn, clip.fadeOut);
-                    destination[index] += samples[static_cast<std::size_t>(index) * channels + source] * gain;
+            const auto first = static_cast<std::size_t>(offset + (from - frame));
+            for (Frames at = 0; at < count; ++at) {
+                if (overlapped && covered(later, from + at)) {
+                    continue;
+                }
+                const float gain = clip.gain * fadeGain(local + at, clip.length, clip.fadeIn, clip.fadeOut,
+                                                        clip.fadeInCurve, clip.fadeOutCurve);
+                const auto frameIndex = static_cast<std::size_t>(at);
+                for (std::size_t out = 0; out < track.outputs.size(); ++out) {
+                    track.mix[out][first + frameIndex] +=
+                        samples[frameIndex * channels + std::min(out, channels - 1)] * gain;
                 }
             }
         }
@@ -290,13 +315,15 @@ AudioBlock tailOf(Snapshot& snapshot, const AudioBlock& block, Frames offset) {
 
 }  // namespace
 
-float fadeGain(Frames local, Frames length, Frames fadeIn, Frames fadeOut) {
+float fadeGain(Frames local, Frames length, Frames fadeIn, Frames fadeOut, core::FadeCurve inCurve,
+               core::FadeCurve outCurve) {
     float gain = 1.0F;
     if (fadeIn > 0 && local < fadeIn) {
-        gain = static_cast<float>(local) / static_cast<float>(fadeIn);
+        gain = core::fadeCurveGain(inCurve, static_cast<float>(local) / static_cast<float>(fadeIn));
     }
     if (fadeOut > 0 && local >= length - fadeOut) {
-        gain = std::min(gain, static_cast<float>(length - local) / static_cast<float>(fadeOut));
+        gain = std::min(
+            gain, core::fadeCurveGain(outCurve, static_cast<float>(length - local) / static_cast<float>(fadeOut)));
     }
     return std::clamp(gain, 0.0F, 1.0F);
 }
@@ -307,6 +334,9 @@ StereoGains panGains(float pan, PanLaw law) {
     const StereoGains power{.left = std::cos(angle), .right = std::sin(angle)};
     const StereoGains linear{.left = (1.0F - pan) / 2.0F, .right = (1.0F + pan) / 2.0F};
     switch (law) {
+        case PanLaw::compensated:
+            return {.left = static_cast<float>(std::numbers::sqrt2 * std::cos(static_cast<double>(angle))),
+                    .right = static_cast<float>(std::numbers::sqrt2 * std::sin(static_cast<double>(angle)))};
         case PanLaw::zeroDb:
             return {.left = std::min(1.0F - pan, 1.0F), .right = std::min(1.0F + pan, 1.0F)};
         case PanLaw::constantPower:

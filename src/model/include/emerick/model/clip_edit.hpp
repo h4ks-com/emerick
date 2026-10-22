@@ -38,4 +38,8 @@ std::expected<Clip, std::string> setLength(const Clip& clip, Ticks length);
 std::expected<std::pair<Clip, Clip>, std::string> split(const Clip& clip, Ticks at, const core::TempoMap& tempo,
                                                         double sampleRate);
 
+// Crossfades the audio clip with the clip on its track that overlaps its start, or else its end: the earlier clip
+// fades out and the later one fades in over the overlap, both with equal power.
+std::expected<void, std::string> crossfade(Track& track, const ClipId& id);
+
 }  // namespace emerick::model

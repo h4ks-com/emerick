@@ -7,6 +7,7 @@
 #include "emerick/model/project.hpp"
 
 using namespace emerick::model;
+using emerick::core::FadeShape;
 
 namespace {
 
@@ -37,7 +38,8 @@ Document sampleDocument() {
     track.audioIn = {"genos", {1, 2}};
     track.midiIn = {"Digital Keyboard Port 1", 3, true, true};
     track.data = {{"voices", {1, 2, 3}}};
-    track.clips.emplace_back(AudioClip{ClipId::make(), 960, 3840, 44100, "audio/take1.wav", -3.5, 10, 20});
+    track.clips.emplace_back(AudioClip{ClipId::make(), 960, 3840, 44100, "audio/take1.wav", -3.5, 10, 20,
+                                       FadeShape::sCurve, FadeShape::equalPower, 0.25, -0.5});
     track.clips.emplace_back(MidiClip{ClipId::make(), 0, 1920, {{0, {0x90, 60, 100}}, {480, {0xF0, 0x43, 0xF7}}}});
     document.tracks.push_back(track);
     document.tracks.push_back(named("Bass"));
@@ -87,6 +89,27 @@ TEST_CASE("a format 2 project loads with every track centered and saves its pan"
         CHECK(track.pan == 0.0);
     }
     CHECK(documentFromJson(toJson(sampleDocument())).tracks[0].pan == -0.25);
+}
+
+TEST_CASE("fade shapes and curves round trip, and a format 2 project keeps linear fades") {
+    const Document document = sampleDocument();
+    const auto& saved = std::get<AudioClip>(document.tracks[0].clips[0]);
+    CHECK(std::get<AudioClip>(documentFromJson(toJson(document)).tracks[0].clips[0]) == saved);
+
+    auto json = toJson(document);
+    json["format"] = 2;
+    for (const char* key : {"fadeInShape", "fadeOutShape", "fadeInCurve", "fadeOutCurve"}) {
+        json["tracks"][0]["clips"][0].erase(key);
+    }
+    const auto old = std::get<AudioClip>(documentFromJson(json).tracks[0].clips[0]);
+    CHECK(old.fadeIn == 10);
+    CHECK(old.fadeInShape == FadeShape::linear);
+    CHECK(old.fadeOutShape == FadeShape::linear);
+    CHECK(old.fadeInCurve == 0.0);
+    CHECK(old.fadeOutCurve == 0.0);
+
+    json["tracks"][0]["clips"][0]["fadeInShape"] = "wobbly";
+    CHECK_THROWS_AS(documentFromJson(json), std::runtime_error);
 }
 
 TEST_CASE("markers stay sorted by position and undo and redo as one step each") {

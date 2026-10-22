@@ -159,6 +159,20 @@ TEST_CASE("dragging a fade handle snaps the fade's edge to the beat grid, and Ct
     CHECK(timeline.clip(id).fadeIn == 960);
 }
 
+TEST_CASE("dragging a fade handle up bends the fade's curve and keeps its length, in one undo step") {
+    Timeline& timeline = Timeline::instance();
+    const std::string id = timeline.addClip();
+    timeline.rig.run("clip.setFade", {{"clip", id}, {"fadeOut", 480}});
+    timeline.rig.run("selection.set", {{"clips", {id}}});
+
+    timeline.drag(QString::fromStdString("clip.setFade:" + id + ":out"), 2, Qt::NoModifier, -20);
+    CHECK(timeline.clip(id).fadeOutCurve > 0.0);
+    CHECK(timeline.clip(id).fadeOut == 480);
+    CHECK(timeline.rig.controller->project().undoName() == "set clip fades");
+    timeline.rig.controller->project().undo();
+    CHECK(timeline.clip(id).fadeOutCurve == 0.0);
+}
+
 TEST_CASE("a ten minute clip draws only the pixel columns in view at any zoom and scroll") {
     Timeline& timeline = Timeline::instance();
     const std::string id = timeline.addClip(48000 * 600);

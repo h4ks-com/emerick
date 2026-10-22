@@ -30,6 +30,8 @@ struct ClipPlayback {
     float gain = 1.0F;
     Frames fadeIn = 0;
     Frames fadeOut = 0;
+    core::FadeCurve fadeInCurve;
+    core::FadeCurve fadeOutCurve;
 };
 
 struct ScheduledMidi {
@@ -90,7 +92,7 @@ struct MetronomeState {
 struct Snapshot {
     core::TempoMap tempo;
     double sampleRate = 48000.0;
-    PanLaw panLaw = PanLaw::constantPower;
+    PanLaw panLaw = PanLaw::compensated;
     std::vector<TrackState> tracks;
     std::vector<std::shared_ptr<MidiOutputPort>> clockPorts;
     std::vector<std::shared_ptr<MidiInputPort>> inputs;

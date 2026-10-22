@@ -133,7 +133,11 @@ Json clipState(const model::Clip& clip, const core::TempoMap& tempo, bool includ
                                             {"sourceOffset", audio.sourceOffset},
                                             {"gainDb", audio.gainDb},
                                             {"fadeIn", audio.fadeIn},
-                                            {"fadeOut", audio.fadeOut}});
+                                            {"fadeOut", audio.fadeOut},
+                                            {"fadeInShape", core::fadeShapeId(audio.fadeInShape)},
+                                            {"fadeOutShape", core::fadeShapeId(audio.fadeOutShape)},
+                                            {"fadeInCurve", audio.fadeInCurve},
+                                            {"fadeOutCurve", audio.fadeOutCurve}});
                              return result;
                          },
                          [&](const model::MidiClip& midi) {

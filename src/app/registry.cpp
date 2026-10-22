@@ -200,6 +200,19 @@ QVariant toVariant(const Json& value) {
     return wrapped.array().at(0).toVariant();
 }
 
+namespace {
+
+QVariantList menuChoices(const Action& action) {
+    QVariantList choices;
+    for (const MenuChoice& choice : action.submenu()) {
+        choices.append(
+            QVariantMap{{"id", qs(choice.id)}, {"title", qs(choice.title)}, {"params", toVariant(choice.params)}});
+    }
+    return choices;
+}
+
+}  // namespace
+
 Json toJson(const QVariant& value) {
     const QJsonDocument wrapped{QJsonArray{QJsonValue::fromVariant(value)}};
     return Json::parse(wrapped.toJson(QJsonDocument::Compact).toStdString()).at(0);
@@ -608,12 +621,7 @@ QVariantMap Registry::menus() const {
                          {"enabled", isEnabled(entry)},
                          {"row", static_cast<int>(entry.submenu ? MenuRow::Submenu : MenuRow::Command)}};
         if (entry.submenu) {
-            QVariantList choices;
-            for (const MenuChoice& choice : entry.submenu()) {
-                choices.append(QVariantMap{
-                    {"id", qs(choice.id)}, {"title", qs(choice.title)}, {"params", toVariant(choice.params)}});
-            }
-            item.insert("choices", choices);
+            item.insert("choices", menuChoices(entry));
         }
         for (const std::string& menu : entry.menus) {
             item.insert("bindsShortcut", inMenuBar(menu) && menuBindsShortcut(entry));
@@ -653,7 +661,11 @@ QVariantMap Registry::actionInfo(const QString& id) const {
         qWarning() << "no action" << id;
         return {};
     }
-    return {{"title", qs(found->title)}, {"shortcut", qs(found->shortcut)}};
+    QVariantMap info{{"title", qs(found->title)}, {"shortcut", qs(found->shortcut)}};
+    if (found->submenu) {
+        info.insert("choices", menuChoices(*found));
+    }
+    return info;
 }
 
 QVariantList Registry::sections(const QString& parent) const {

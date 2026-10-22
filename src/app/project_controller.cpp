@@ -2,6 +2,7 @@
 
 #include <QCoreApplication>
 #include <QGuiApplication>
+#include <QPointF>
 #include <QStringList>
 #include <QtLogging>
 #include <algorithm>
@@ -9,6 +10,7 @@
 #include <cmath>
 #include <cstdint>
 #include <format>
+#include <ranges>
 #include <stdexcept>
 #include <string>
 #include <system_error>
@@ -19,6 +21,7 @@
 #include "emerick/app/project_state.hpp"
 #include "emerick/app/session_mapping.hpp"
 #include "emerick/app/stem_export.hpp"
+#include "emerick/core/fade.hpp"
 #include "emerick/model/json.hpp"
 
 namespace emerick::app {
@@ -607,6 +610,22 @@ qint64 ProjectController::parseTicks(const QString& text, bool duration) const {
     } catch (const std::invalid_argument&) {
         return -1;
     }
+}
+
+QVariantList ProjectController::fadeCurve(const QString& shape, double curve) {
+    constexpr int kSteps = 32;
+    const core::FadeCurve fade =
+        core::fadeCurve(core::fadeShapeFromId(shape.toStdString()).value_or(core::FadeShape::linear), curve);
+    return std::views::iota(0, kSteps + 1) | std::views::transform([&](int step) {
+               const float t = static_cast<float>(step) / kSteps;
+               return QVariant{QPointF{t, core::fadeCurveGain(fade, t)}};
+           }) |
+           std::ranges::to<QVariantList>();
+}
+
+double ProjectController::curveThroughMidpoint(const QString& shape, double gain) {
+    return core::curveThroughMidpoint(core::fadeShapeFromId(shape.toStdString()).value_or(core::FadeShape::linear),
+                                      gain);
 }
 
 QVariantMap ProjectController::routeDevices() const {

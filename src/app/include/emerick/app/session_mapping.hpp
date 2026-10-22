@@ -22,7 +22,8 @@ struct NamedPanLaw {
 };
 
 inline constexpr std::array kPanLaws{
-    NamedPanLaw{engine::PanLaw::zeroDb, "0 dB"}, NamedPanLaw{engine::PanLaw::constantPower, "-3 dB constant power"},
+    NamedPanLaw{engine::PanLaw::compensated, "-3 dB compensated"}, NamedPanLaw{engine::PanLaw::zeroDb, "0 dB"},
+    NamedPanLaw{engine::PanLaw::constantPower, "-3 dB constant power"},
     NamedPanLaw{engine::PanLaw::compromise, "-4.5 dB"}, NamedPanLaw{engine::PanLaw::linear, "-6 dB linear"}};
 
 // A registry without the setting plays the default law.

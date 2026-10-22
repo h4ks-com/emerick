@@ -22,6 +22,15 @@ NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(MidiEvent, at, bytes)
 
 namespace {
 
+core::FadeShape fadeShapeFromJson(const nlohmann::json& json, const char* key) {
+    const std::string id = json.value(key, std::string{core::fadeShapeId(core::FadeShape::linear)});
+    const auto shape = core::fadeShapeFromId(id);
+    if (!shape) {
+        throw std::runtime_error("unknown fade shape: " + id);
+    }
+    return *shape;
+}
+
 struct ClipType {
     std::string_view name;
     Clip (*fromJson)(const nlohmann::json& json);
@@ -31,8 +40,18 @@ struct ClipType {
 constexpr std::array kClipTypes{
     ClipType{"audio",
              [](const nlohmann::json& json) -> Clip {
-                 return AudioClip{ClipId{json.at("id")}, json.at("start"),  json.at("length"), json.at("sourceOffset"),
-                                  json.at("file"),       json.at("gainDb"), json.at("fadeIn"), json.at("fadeOut")};
+                 return AudioClip{ClipId{json.at("id")},
+                                  json.at("start"),
+                                  json.at("length"),
+                                  json.at("sourceOffset"),
+                                  json.at("file"),
+                                  json.at("gainDb"),
+                                  json.at("fadeIn"),
+                                  json.at("fadeOut"),
+                                  fadeShapeFromJson(json, "fadeInShape"),
+                                  fadeShapeFromJson(json, "fadeOutShape"),
+                                  json.value("fadeInCurve", 0.0),
+                                  json.value("fadeOutCurve", 0.0)};
              }},
     ClipType{"midi",
              [](const nlohmann::json& json) -> Clip {
@@ -45,10 +64,18 @@ nlohmann::json clipToJson(const Clip& clip) {
     nlohmann::json json = std::visit(
         core::Overloaded{
             [](const AudioClip& audio) -> nlohmann::json {
-                return {{"id", audio.id.value},   {"start", audio.start},
-                        {"length", audio.length}, {"sourceOffset", audio.sourceOffset},
-                        {"file", audio.file},     {"gainDb", audio.gainDb},
-                        {"fadeIn", audio.fadeIn}, {"fadeOut", audio.fadeOut}};
+                return {{"id", audio.id.value},
+                        {"start", audio.start},
+                        {"length", audio.length},
+                        {"sourceOffset", audio.sourceOffset},
+                        {"file", audio.file},
+                        {"gainDb", audio.gainDb},
+                        {"fadeIn", audio.fadeIn},
+                        {"fadeOut", audio.fadeOut},
+                        {"fadeInShape", core::fadeShapeId(audio.fadeInShape)},
+                        {"fadeOutShape", core::fadeShapeId(audio.fadeOutShape)},
+                        {"fadeInCurve", audio.fadeInCurve},
+                        {"fadeOutCurve", audio.fadeOutCurve}};
             },
             [](const MidiClip& midi) -> nlohmann::json {
                 return {{"id", midi.id.value}, {"start", midi.start}, {"length", midi.length}, {"events", midi.events}};

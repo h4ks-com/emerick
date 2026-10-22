@@ -122,6 +122,33 @@ TEST_CASE("with several clips selected an Inspector field sets them all") {
     MainWindow::settle();
 }
 
+TEST_CASE("an Inspector fade shape button shapes every selected clip in one undo step") {
+    MainWindow& main = MainWindow::instance();
+    const std::string vox = main.rig.run("track.addAudio").at("id");
+    writeConstant(main.rig.path("ones.wav"), 48000, 1.0F);
+    const std::string first =
+        main.rig.run("clip.import", {{"track", vox}, {"path", main.rig.path("ones.wav").string()}}).at("id");
+    const std::string second =
+        main.rig.run("clip.import", {{"track", vox}, {"path", main.rig.path("ones.wav").string()}, {"at", "3.1.0"}})
+            .at("id");
+    main.rig.run("selection.set", {{"clips", {first, second}}});
+    MainWindow::settle();
+    QQuickItem* button = main.item("clip.setFadeOutShape:equalPower");
+
+    main.click(button);
+    MainWindow::settle();
+    CHECK(audioClip(main, first).fadeOutShape == core::FadeShape::equalPower);
+    CHECK(audioClip(main, second).fadeOutShape == core::FadeShape::equalPower);
+    CHECK(audioClip(main, first).fadeInShape == core::FadeShape::linear);
+    CHECK(button->property("active").toBool());
+    CHECK(main.rig.controller->project().undoName() == "set fade shape");
+    main.rig.run("project.undo");
+    CHECK(audioClip(main, first).fadeOutShape == core::FadeShape::linear);
+    CHECK(audioClip(main, second).fadeOutShape == core::FadeShape::linear);
+    main.rig.run("selection.clear");
+    MainWindow::settle();
+}
+
 TEST_CASE("dragging down across Inspector fields gathers them, and a sideways drag moves them all in one undo step") {
     MainWindow& main = MainWindow::instance();
     const std::string vox = main.rig.run("track.addAudio").at("id");
@@ -140,6 +167,7 @@ TEST_CASE("dragging down across Inspector fields gathers them, and a sideways dr
     const QPointF sideways{kSteps * 4, 0};
     const double fadeStep = fadeIn->property("step").toDouble();
     const double gainStep = gain->property("step").toDouble();
+    const double curveStep = main.item("clip.setFade:" + qid(clip) + ":fadeInCurve")->property("step").toDouble();
 
     const QPointF press = fadeIn->mapToScene(center);
     main.send(QEvent::MouseButtonPress, press, Qt::LeftButton, Qt::NoModifier);
@@ -147,6 +175,7 @@ TEST_CASE("dragging down across Inspector fields gathers them, and a sideways dr
         main.send(QEvent::MouseMove, press + toFadeOut * step / 5, Qt::LeftButton, Qt::NoModifier);
     }
     CHECK(fadeIn->property("gathered").toBool());
+    CHECK(main.item("clip.setFade:" + qid(clip) + ":fadeInCurve")->property("gathered").toBool());
     CHECK(fadeOut->property("gathered").toBool());
     CHECK_FALSE(gain->property("gathered").toBool());
     main.send(QEvent::MouseButtonRelease, press + toFadeOut, Qt::NoButton, Qt::NoModifier);
@@ -156,6 +185,7 @@ TEST_CASE("dragging down across Inspector fields gathers them, and a sideways dr
 
     main.drag(fadeIn, {toFadeOut, toFadeOut + sideways});
     CHECK(audioClip(main, clip).fadeIn == Catch::Approx(kSteps * fadeStep));
+    CHECK(audioClip(main, clip).fadeInCurve == Catch::Approx(kSteps * curveStep));
     CHECK(audioClip(main, clip).fadeOut == Catch::Approx(kSteps * fadeStep));
     CHECK(main.rig.controller->project().undoName() == "set clip fades");
     main.rig.run("project.undo");
@@ -166,9 +196,11 @@ TEST_CASE("dragging down across Inspector fields gathers them, and a sideways dr
     CHECK(audioClip(main, clip).fadeIn == Catch::Approx(kSteps * fadeStep));
     CHECK(audioClip(main, clip).fadeOut == Catch::Approx(kSteps * fadeStep));
     CHECK(audioClip(main, clip).gainDb == Catch::Approx(kSteps * gainStep));
+    CHECK(audioClip(main, clip).fadeOutCurve == Catch::Approx(kSteps * curveStep));
     main.rig.run("project.undo");
     CHECK(audioClip(main, clip).fadeIn == 0);
     CHECK(audioClip(main, clip).fadeOut == 0);
+    CHECK(audioClip(main, clip).fadeOutCurve == 0.0);
     CHECK(audioClip(main, clip).gainDb == Catch::Approx(0.0));
     main.rig.run("selection.clear");
     MainWindow::settle();

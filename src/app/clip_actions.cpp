@@ -17,8 +17,6 @@
 
 namespace emerick::app {
 
-namespace {
-
 Json clipResult(const ProjectController& controller, const model::ClipId& id) {
     const auto found = controller.project().findClip(id);
     return found ? clipState(*found->clip, controller.project().document().tempo) : Json::object();
@@ -29,6 +27,19 @@ Json clipResults(const ProjectController& controller, const std::vector<model::C
                               return clipResult(controller, id);
                           }) | std::ranges::to<Json::array_t>()}};
 }
+
+std::vector<model::ClipId> targetClips(const ProjectController& controller, const Nav& nav, const Json& params) {
+    if (params.contains("clip")) {
+        return {clipParam(controller.project(), params)};
+    }
+    auto selected = selectedClips(controller, nav);
+    if (selected.empty()) {
+        throw AppError("select a clip first, or pass clip");
+    }
+    return selected;
+}
+
+namespace {
 
 template <class T>
 T edited(std::expected<T, std::string> result) {
@@ -64,21 +75,9 @@ model::AudioClip audioOnly(const model::Clip& clip) {
     return std::visit(
         core::Overloaded{[](const model::AudioClip& audio) { return audio; },
                          [](const model::MidiClip& midi) -> model::AudioClip {
-                             throw AppError("clip " + midi.id.value + " is a MIDI clip, which has no fades or gain");
+                             throw AppError("clip " + midi.id.value + " is a MIDI clip, which has no gain");
                          }},
         clip);
-}
-
-// The clip named by params, or the selected clips when params names none.
-std::vector<model::ClipId> targetClips(const ProjectController& controller, const Nav& nav, const Json& params) {
-    if (params.contains("clip")) {
-        return {clipParam(controller.project(), params)};
-    }
-    auto selected = selectedClips(controller, nav);
-    if (selected.empty()) {
-        throw AppError("select a clip first, or pass clip");
-    }
-    return selected;
 }
 
 // Selecting clips also selects the first clip's track, so the inspector shows both.
@@ -355,21 +354,6 @@ void registerClipActions(Registry& registry, ProjectController& controller, Nav&
                         .schema = {{"properties", {{"clip", {{"type", "string"}}}, {"at", Json::object()}}}},
                         .run = [&controller, &nav](const Json& params) { return splitClips(controller, nav, params); },
                         .menus = {kEditMenu, kClipContextMenu}});
-    registry.addAction({.id = "clip.setFade",
-                        .title = "Set clip fades",
-                        .aliases = {"fade in", "fade out"},
-                        .category = "Clips",
-                        .schema = {{"required", {"clip"}}},
-                        .run = [&controller](const Json& params) {
-                            const auto id = clipParam(controller.project(), params);
-                            const auto fadeIn = optionalParam<core::Ticks>(params, "fadeIn");
-                            const auto fadeOut = optionalParam<core::Ticks>(params, "fadeOut");
-                            model::AudioClip audio = audioOnly(clipOf(controller, id));
-                            audio.fadeIn = std::clamp<core::Ticks>(fadeIn.value_or(audio.fadeIn), 0, audio.length);
-                            audio.fadeOut = std::clamp<core::Ticks>(fadeOut.value_or(audio.fadeOut), 0, audio.length);
-                            replaceClip(controller, id, "set clip fades", std::move(audio));
-                            return clipResult(controller, id);
-                        }});
     registry.addAction({.id = "clip.setGain",
                         .title = "Set clip gain",
                         .aliases = {"clip volume"},
@@ -393,28 +377,7 @@ void registerClipActions(Registry& registry, ProjectController& controller, Nav&
                                 return projectState(controller);
                             },
                         .menus = {kClipContextMenu}});
-    registry.addAction({.id = "clip.resetFades",
-                        .title = "Reset clip fades",
-                        .aliases = {"remove fades", "clear fade in", "clear fade out"},
-                        .category = "Clips",
-                        .schema = {{"properties", {{"clip", {{"type", "string"}}}}}},
-                        .run =
-                            [&controller, &nav](const Json& params) {
-                                const auto ids = targetClips(controller, nav, params);
-                                controller.project().group("reset clip fades", [&] {
-                                    for (const model::ClipId& id : ids) {
-                                        if (const auto* audio =
-                                                std::get_if<model::AudioClip>(clipRef(controller, id).clip)) {
-                                            model::AudioClip reset = *audio;
-                                            reset.fadeIn = 0;
-                                            reset.fadeOut = 0;
-                                            replaceClip(controller, id, "reset clip fades", std::move(reset));
-                                        }
-                                    }
-                                });
-                                return clipResults(controller, ids);
-                            },
-                        .menus = {kClipContextMenu}});
+    registerFadeActions(registry, controller, nav);
     registry.addAction(
         {.id = "clip.duplicate",
          .title = "Duplicate clip",

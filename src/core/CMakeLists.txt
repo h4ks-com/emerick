@@ -1,4 +1,5 @@
 add_library(emerick_core
+    fade.cpp
     fuzzy.cpp
     id.cpp
     time.cpp)

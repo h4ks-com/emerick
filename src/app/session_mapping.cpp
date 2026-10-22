@@ -27,7 +27,9 @@ engine::AudioClip toEngine(const model::AudioClip& clip, const std::filesystem::
             .sourceOffset = clip.sourceOffset,
             .gain = gainFromDb(clip.gainDb),
             .fadeIn = clip.fadeIn,
-            .fadeOut = clip.fadeOut};
+            .fadeOut = clip.fadeOut,
+            .fadeInCurve = core::fadeCurve(clip.fadeInShape, clip.fadeInCurve),
+            .fadeOutCurve = core::fadeCurve(clip.fadeOutShape, clip.fadeOutCurve)};
 }
 
 engine::MidiClip toEngine(const model::MidiClip& clip) {
@@ -64,12 +66,12 @@ float gainFromDb(double db) { return static_cast<float>(std::pow(10.0, db / 20.0
 
 engine::PanLaw panLawFromSettings(const Registry& registry) {
     if (registry.setting(kPanLawSetting) == nullptr) {
-        return engine::PanLaw::constantPower;
+        return engine::PanLaw::compensated;
     }
     const Json value = registry.settingValue(kPanLawSetting);
     const auto* const found =
         std::ranges::find(kPanLaws, value, [](const NamedPanLaw& entry) { return Json(entry.name); });
-    return found == kPanLaws.end() ? engine::PanLaw::constantPower : found->law;
+    return found == kPanLaws.end() ? engine::PanLaw::compensated : found->law;
 }
 
 engine::Track audioEngineTrack(const model::Track& track, const std::filesystem::path& folder) {

@@ -47,6 +47,11 @@ qt_add_qml_module(emerick_ui
         icons/circle.svg
         icons/copy.svg
         icons/dots-three.svg
+        icons/fade-equalPower.svg
+        icons/fade-exponential.svg
+        icons/fade-linear.svg
+        icons/fade-logarithmic.svg
+        icons/fade-sCurve.svg
         icons/file.svg
         icons/gear-six.svg
         icons/guitar.svg

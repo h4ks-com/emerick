@@ -201,7 +201,7 @@ TEST_CASE("the session mapping turns the document into engine tracks") {
     CHECK(pad.kind == engine::TrackKind::audio);
     CHECK(pad.gain == Approx(0.1F));
     CHECK(pad.pan == 0.25F);
-    CHECK(session.panLaw == engine::PanLaw::constantPower);
+    CHECK(session.panLaw == engine::PanLaw::compensated);
     rig.registry.setSetting(kPanLawSetting, "-6 dB linear");
     CHECK(toSession(document, rig.registry, "/projects/song").panLaw == engine::PanLaw::linear);
     CHECK(pad.audioClips.at(0).path == "/projects/song/audio/pad.wav");
@@ -343,6 +343,7 @@ TEST_CASE("copy and paste put clips at the playhead on the selected track, and b
 
 TEST_CASE("export stems renders each audio track from bar 1 to the project end") {
     ProjectRig rig;
+    rig.registry.setSetting(kPanLawSetting, "-3 dB constant power");
     const std::string pad = rig.run("track.addAudio", {{"name", "Pad"}}).at("id");
     const std::string bass = rig.run("track.addAudio", {{"name", "Bass"}}).at("id");
     writeConstant(rig.path("ones.wav"), 48000, 1.0F);

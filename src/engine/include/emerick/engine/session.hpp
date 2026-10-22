@@ -7,6 +7,7 @@
 #include <string>
 #include <vector>
 
+#include "emerick/core/fade.hpp"
 #include "emerick/core/time.hpp"
 
 namespace emerick::engine {
@@ -36,6 +37,8 @@ struct AudioClip {
     float gain = 1.0F;
     Ticks fadeIn = 0;
     Ticks fadeOut = 0;
+    core::FadeCurve fadeInCurve;
+    core::FadeCurve fadeOutCurve;
 };
 
 struct MidiEvent {
@@ -96,9 +99,9 @@ struct Metronome {
     bool operator==(const Metronome&) const = default;
 };
 
-// How loud a centered track plays on each side of a stereo output pair. Each law plays a hard-panned track at full
-// level on its side.
-enum class PanLaw : std::uint8_t { zeroDb, constantPower, compromise, linear };
+// How loud a centered track plays on each side of a stereo output pair. Compensated keeps a centered track at full
+// level and raises a hard-panned one by 3 dB on its side; every other law plays a hard-panned track at full level.
+enum class PanLaw : std::uint8_t { compensated, zeroDb, constantPower, compromise, linear };
 
 struct Session {
     core::TempoMap tempo;
@@ -106,7 +109,7 @@ struct Session {
     std::vector<std::string> clockPorts;  // MIDI outputs that get clock, Start and Stop
     std::filesystem::path takeFolder;     // recorded audio takes are written here
     Metronome metronome;
-    PanLaw panLaw = PanLaw::constantPower;
+    PanLaw panLaw = PanLaw::compensated;
 };
 
 // A clip we skipped because its file is missing or at another sample rate.

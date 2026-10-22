@@ -27,7 +27,8 @@ struct LevelReading {
     bool clipped = false;      // a sample reached full scale since the last reading
 };
 
-float fadeGain(Frames local, Frames length, Frames fadeIn, Frames fadeOut);
+float fadeGain(Frames local, Frames length, Frames fadeIn, Frames fadeOut, core::FadeCurve inCurve = {},
+               core::FadeCurve outCurve = {});
 
 struct StereoGains {
     float left = 1.0F;

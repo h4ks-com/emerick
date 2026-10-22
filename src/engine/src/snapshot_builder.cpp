@@ -172,9 +172,9 @@ void SnapshotBuilder::addClips(TrackState& state, const Track& track, const core
             clips_[key] = stream;
             reader_.add(stream);
         }
-        state.clips.push_back({std::move(stream), start, length, clip.gain,
-                               tempo.ticksToFrames(clip.fadeIn, layout.sampleRate),
-                               tempo.ticksToFrames(clip.fadeOut, layout.sampleRate)});
+        state.clips.push_back(
+            {std::move(stream), start, length, clip.gain, tempo.ticksToFrames(clip.fadeIn, layout.sampleRate),
+             tempo.ticksToFrames(clip.fadeOut, layout.sampleRate), clip.fadeInCurve, clip.fadeOutCurve});
     }
 }
 

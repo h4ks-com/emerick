@@ -7,6 +7,7 @@
 #include <variant>
 #include <vector>
 
+#include "emerick/core/fade.hpp"
 #include "emerick/core/id.hpp"
 #include "emerick/core/time.hpp"
 
@@ -48,6 +49,10 @@ struct AudioClip {
     double gainDb = 0.0;
     Ticks fadeIn = 0;
     Ticks fadeOut = 0;
+    core::FadeShape fadeInShape = core::FadeShape::linear;
+    core::FadeShape fadeOutShape = core::FadeShape::linear;
+    double fadeInCurve = 0.0;
+    double fadeOutCurve = 0.0;
 
     bool operator==(const AudioClip&) const = default;
 };
@@ -68,7 +73,8 @@ struct MidiClip {
     bool operator==(const MidiClip&) const = default;
 };
 
-// Clips may overlap; overlapping clips stack as takes and nothing is overwritten.
+// Clips may overlap; overlapping clips stack as takes and nothing is overwritten. A later clip in the list plays over
+// earlier ones wherever it plays at full gain, so its fades crossfade with the clips beneath it.
 using Clip = std::variant<AudioClip, MidiClip>;
 
 struct Track {

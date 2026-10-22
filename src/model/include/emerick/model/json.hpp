@@ -7,7 +7,8 @@
 
 namespace emerick::model {
 
-// Format 2 added markers and format 3 track pan, so older projects load with no markers and centered tracks.
+// Format 2 added markers and format 3 track pan, fade shapes and fade curves, so older projects load with no markers,
+// centered tracks and linear fades.
 inline constexpr int kFormatVersion = 3;
 
 nlohmann::json toJson(const Document& document);

@@ -137,6 +137,25 @@ QtObject {
     readonly property color barLine: Qt.rgba(1, 1, 1, 0.07)
     readonly property color beatLine: Qt.rgba(1, 1, 1, 0.03)
 
+    readonly property real paramStep: 0.004
+    readonly property int effectKnob: 36
+    readonly property int knobRing: 3
+    readonly property int effectKnobWidth: 76
+    readonly property int effectKnobHeight: 80
+    readonly property int eqBands: 7
+    readonly property int eqBandParams: 4
+    readonly property int eqBandWidth: 84
+    readonly property int eqGraphHeight: 220
+    readonly property int eqPoint: 12
+    readonly property int eqCurveSpacing: 2
+    readonly property real eqCurveWidth: 1.5
+    readonly property real eqRangeDb: 24
+    readonly property real eqMinHz: 20
+    readonly property real eqMaxHz: 20000
+    readonly property real eqWheelQ: 1.15
+    readonly property color eqFill: Qt.rgba(1, 1, 1, 0.08)
+    readonly property real reductionRangeDb: 20
+
     readonly property int pianoRollHeight: 320
     readonly property int pianoRollMinHeight: 200
     readonly property int velocityLaneHeight: 64
@@ -155,7 +174,7 @@ QtObject {
     }
 
     // Track icons are Phosphor names and fade icons are our own; an icon we do not bundle shows as a note.
-    readonly property var icons: ["broom", "circle", "copy", "dots-three", "fade-equalPower", "fade-exponential", "fade-linear", "fade-logarithmic", "fade-sCurve", "file", "gear-six", "guitar", "magnet", "magnifying-glass", "metronome", "music-note", "music-notes", "pause", "pencil-simple", "piano-keys", "play", "sidebar-simple", "skip-back", "sliders", "squares-four", "stop", "waveform", "x"]
+    readonly property var icons: ["arrows-merge", "broom", "circle", "copy", "dots-three", "fade-equalPower", "fade-exponential", "fade-linear", "fade-logarithmic", "fade-sCurve", "file", "gear-six", "guitar", "magnet", "magnifying-glass", "metronome", "music-note", "music-notes", "pause", "pencil-simple", "piano-keys", "play", "plus", "sidebar-simple", "skip-back", "sliders", "squares-four", "stop", "waveform", "x"]
     function iconSource(name) {
         return "icons/" + (icons.indexOf(name) >= 0 ? name : "music-note") + ".svg"
     }

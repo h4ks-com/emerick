@@ -39,6 +39,7 @@ class Nav : public QObject {
     Q_PROPERTY(bool metronomeMenuOpen READ metronomeMenuOpen WRITE setMetronomeMenuOpen NOTIFY changed)
     Q_PROPERTY(bool pianoRollOpen READ pianoRollOpen WRITE setPianoRollOpen NOTIFY changed)
     Q_PROPERTY(QString pianoRollClip READ pianoRollClip WRITE setPianoRollClip NOTIFY changed)
+    Q_PROPERTY(QString editingInsert READ editingInsert WRITE setEditingInsert NOTIFY changed)
     Q_PROPERTY(QStringList selectedNotes READ selectedNotes WRITE setSelectedNotes NOTIFY selectionChanged)
     Q_PROPERTY(int keyHeight READ keyHeight WRITE setKeyHeight NOTIFY viewChanged)
     Q_PROPERTY(QStringList selectedClips READ selectedClips WRITE setSelectedClips NOTIFY selectionChanged)
@@ -73,6 +74,8 @@ public:
     // The MIDI clip the piano roll edits, and the ids of its selected notes.
     [[nodiscard]] QString pianoRollClip() const { return pianoRollClip_; }
     [[nodiscard]] QStringList selectedNotes() const { return selectedNotes_; }
+    // The insert whose effect editor is open.
+    [[nodiscard]] QString editingInsert() const { return editingInsert_; }
     // The height of one key row in the piano roll, its vertical zoom.
     [[nodiscard]] int keyHeight() const { return keyHeight_; }
     [[nodiscard]] QStringList selectedClips() const { return selectedClips_; }
@@ -108,6 +111,7 @@ public:
         }
         assign(pianoRollClip_, value, &Nav::changed);
     }
+    void setEditingInsert(const QString& value) { assign(editingInsert_, value, &Nav::changed); }
     void setSelectedNotes(const QStringList& value) { assign(selectedNotes_, value, &Nav::selectionChanged); }
     void setKeyHeight(int value) {
         assign(keyHeight_, std::clamp(value, kMinKeyHeight, kMaxKeyHeight), &Nav::viewChanged);
@@ -153,6 +157,7 @@ public:
                 {"pianoRollOpen", pianoRollOpen_},
                 {"pianoRollClip", pianoRollClip_.toStdString()},
                 {"selectedNotes", strings(selectedNotes_)},
+                {"editingInsert", editingInsert_.toStdString()},
                 {"keyHeight", keyHeight_}};
     }
 
@@ -188,6 +193,7 @@ private:
     bool pianoRollOpen_ = false;
     QString pianoRollClip_;
     QStringList selectedNotes_;
+    QString editingInsert_;
     int keyHeight_ = kDefaultKeyHeight;
     QStringList selectedClips_;
     double pixelsPerTick_ = kDefaultPixelsPerTick;

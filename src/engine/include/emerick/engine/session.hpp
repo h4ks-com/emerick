@@ -9,6 +9,7 @@
 
 #include "emerick/core/fade.hpp"
 #include "emerick/core/time.hpp"
+#include "emerick/engine/effects.hpp"
 
 namespace emerick::engine {
 
@@ -61,6 +62,15 @@ struct Send {
     bool operator==(const Send&) const = default;
 };
 
+// An insert effect on a track's signal before its fader, pan and sends. Its id stays the same across sessions, so the
+// effect keeps its state while the insert lives.
+struct Insert {
+    std::string id;
+    EffectType type = EffectType::eq;
+    bool bypass = false;
+    EffectParams params{};
+};
+
 struct Track {
     std::string id;
     TrackKind kind = TrackKind::audio;
@@ -79,6 +89,7 @@ struct Track {
     // A track with an output bus plays into that bus in place of audioOut.
     std::string outputBus;
     std::vector<Send> sends;
+    std::vector<Insert> inserts;
     std::vector<AudioClip> audioClips;
     std::vector<MidiClip> midiClips;
 };

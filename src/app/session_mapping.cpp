@@ -56,8 +56,25 @@ engine::Track commonFields(const model::Track& track, engine::TrackKind kind) {
             .claimsSysex = false,
             .outputBus = {},
             .sends = {},
+            .inserts = {},
             .audioClips = {},
             .midiClips = {}};
+}
+
+// An insert of a type this build does not know stays silent, and a param it does not know is ignored.
+std::optional<engine::Insert> toEngine(const model::Insert& insert) {
+    const engine::EffectSpec* spec = engine::findEffect(insert.type);
+    if (spec == nullptr) {
+        return std::nullopt;
+    }
+    engine::EffectParams params = engine::defaultParams(*spec);
+    for (const auto& [id, value] : insert.params) {
+        if (const auto index = engine::paramIndex(*spec, id)) {
+            const engine::EffectParam& described = spec->params[*index];
+            params.at(*index) = std::clamp(static_cast<float>(value), described.minimum, described.maximum);
+        }
+    }
+    return engine::Insert{.id = insert.id.value, .type = spec->type, .bypass = insert.bypass, .params = params};
 }
 
 // Disabled sends stay in the model so they keep their level, and play nothing.
@@ -69,6 +86,11 @@ void addBusRoutes(engine::Track& result, const model::Track& track) {
                        return engine::Send{.bus = send.bus.value, .gain = gainFromDb(send.levelDb), .pre = send.pre};
                    }) |
                    std::ranges::to<std::vector>();
+    for (const model::Insert& insert : track.inserts) {
+        if (auto mapped = toEngine(insert)) {
+            result.inserts.push_back(std::move(*mapped));
+        }
+    }
 }
 
 }  // namespace

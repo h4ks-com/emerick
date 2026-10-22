@@ -139,6 +139,17 @@ void TrackMeters::update(const std::vector<engine::LevelReading>& inputs,
     update(outputs_, outputs, seconds);
 }
 
+void TrackMeters::updateReductions(const std::vector<engine::GainReduction>& readings) {
+    QVariantMap next;
+    for (const engine::GainReduction& reading : readings) {
+        next.insert(qs(reading.insertId), reading.db);
+    }
+    if (next != reductions_) {
+        reductions_ = std::move(next);
+        emit reductionsChanged();
+    }
+}
+
 void TrackMeters::resetClips() {
     for (Meters* meters : {&inputs_, &outputs_}) {
         for (auto& entry : *meters) {

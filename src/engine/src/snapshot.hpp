@@ -17,6 +17,7 @@
 #include "emerick/engine/session.hpp"
 #include "metronome_sounds.hpp"
 #include "midi_ports.hpp"
+#include "rt_effects.hpp"
 #include "take_recorder.hpp"
 
 namespace emerick::engine {
@@ -58,6 +59,12 @@ struct SendState {
     float rampFrom = 1.0F;
 };
 
+struct InsertState {
+    std::shared_ptr<Effect> effect;
+    EffectParams params{};
+    bool bypass = false;
+};
+
 struct TrackState {
     std::string id;
     TrackKind kind = TrackKind::audio;
@@ -86,6 +93,8 @@ struct TrackState {
     // The track's signal per channel for the current block, so we apply its fader and pan and meter it before it joins
     // the mix. A bus's sources add into its mix before we process the bus.
     std::vector<std::vector<float>> mix;
+    std::vector<float*> mixPointers;
+    std::vector<InsertState> inserts;
     // The gain per channel that the last block ended on, so we ramp from it and a fader move never clicks.
     std::vector<float> outputGains;
     std::vector<SendState> sends;

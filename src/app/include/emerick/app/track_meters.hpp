@@ -3,6 +3,7 @@
 #include <QList>
 #include <QObject>
 #include <QString>
+#include <QVariantMap>
 #include <functional>
 #include <map>
 #include <memory>
@@ -78,6 +79,7 @@ private:
 class TrackMeters : public QObject {
     Q_OBJECT
     Q_PROPERTY(double floorDb READ floorDb CONSTANT)
+    Q_PROPERTY(QVariantMap reductions READ reductions NOTIFY reductionsChanged)
 
 public:
     using QObject::QObject;
@@ -87,6 +89,9 @@ public:
     Q_INVOKABLE QObject* output(const QString& trackId);
     Q_INVOKABLE static double fraction(double db) { return meterFraction(db); }
     [[nodiscard]] static double floorDb() { return kMeterFloorDb; }
+    // The deepest gain reduction of each compressor insert over the last poll, in dB by insert id.
+    [[nodiscard]] QVariantMap reductions() const { return reductions_; }
+    void updateReductions(const std::vector<engine::GainReduction>& readings);
 
     void update(const std::vector<engine::LevelReading>& inputs, const std::vector<engine::LevelReading>& outputs,
                 double seconds);
@@ -95,6 +100,9 @@ public:
     // Per track id with a visible meter: the held peak in dB and whether it clipped, for input and output.
     [[nodiscard]] Json state() const;
 
+signals:
+    void reductionsChanged();
+
 private:
     using Meters = std::map<std::string, std::unique_ptr<TrackMeter>, std::less<>>;
     static TrackMeter& meter(Meters& meters, const std::string& trackId);
@@ -102,6 +110,7 @@ private:
 
     Meters inputs_;
     Meters outputs_;
+    QVariantMap reductions_;
 };
 
 }  // namespace emerick::app

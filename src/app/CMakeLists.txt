@@ -10,6 +10,7 @@ qt_add_library(emerick_app STATIC
     console_actions.cpp
     console_completion.cpp
     core_actions.cpp
+    effect_catalog.cpp
     fade_actions.cpp
     export_actions.cpp
     include/emerick/app/action_params.hpp
@@ -20,6 +21,7 @@ qt_add_library(emerick_app STATIC
     include/emerick/app/console.hpp
     include/emerick/app/console_completion.hpp
     include/emerick/app/core_actions.hpp
+    include/emerick/app/effect_catalog.hpp
     include/emerick/app/enums.hpp
     include/emerick/app/event_wait.hpp
     include/emerick/app/introspector.hpp
@@ -48,6 +50,7 @@ qt_add_library(emerick_app STATIC
     include/emerick/app/transport_clock.hpp
     include/emerick/app/ui_api.hpp
     include/emerick/app/waveform.hpp
+    insert_actions.cpp
     introspector.cpp
     key_focus.cpp
     lua_host.cpp
@@ -103,6 +106,7 @@ if(EMERICK_BUILD_TESTS)
         tests/fade_test.cpp
         tests/gesture_test.cpp
         tests/hostile_params_test.cpp
+        tests/insert_test.cpp
         tests/introspector_test.cpp
         tests/lua_host_test.cpp
         tests/marker_test.cpp

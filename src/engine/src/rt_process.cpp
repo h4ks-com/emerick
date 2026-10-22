@@ -265,7 +265,8 @@ void playSends(Snapshot& snapshot, TrackState& track, bool pre, Frames frames) {
     }
 }
 
-// In mix order, so each bus has every source in its mix before its turn: applies each track's fader and pan, feeds
+// In mix order, so each bus has every source in its mix before its turn: runs each track's inserts, applies its fader
+// and pan, feeds
 // its sends, meters it, adds it to its outputs or its output bus and clears it for the next block.
 void mixTracks(Snapshot& snapshot, const AudioBlock& block) {
     if (block.frames == 0) {
@@ -275,6 +276,10 @@ void mixTracks(Snapshot& snapshot, const AudioBlock& block) {
     for (const std::size_t index : snapshot.mixOrder) {
         TrackState& track = snapshot.tracks[index];
         if (!track.mix.empty() && audible(track, soloActive)) {
+            for (InsertState& insert : track.inserts) {
+                insert.effect->process(track.mixPointers, block.frames, insert.params, insert.bypass,
+                                       snapshot.tempo.bpm);
+            }
             playSends(snapshot, track, true, block.frames);
             for (std::size_t channel = 0; channel < track.mix.size(); ++channel) {
                 rampGain(track.mix[channel].data(), block.frames, track.outputGains[channel],

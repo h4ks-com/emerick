@@ -128,6 +128,18 @@ QVariantList TrackListModel::sendList(const model::Track& track) const {
     return sends;
 }
 
+QVariantMap TrackListModel::insert(const QString& id) const {
+    const model::InsertId insertId{id.toStdString()};
+    const model::Track* track = model::trackWithInsert(project_.document(), insertId);
+    if (track == nullptr) {
+        return {};
+    }
+    Json state = insertState(*std::ranges::find(track->inserts, insertId, &model::Insert::id));
+    state["track"] = track->id.value;
+    state["trackName"] = track->name;
+    return toVariant(state).toMap();
+}
+
 bool TrackListModel::isBus(const model::TrackId& id) const {
     const model::Track* track = project_.track(id);
     const TrackType* type = track != nullptr ? registry_.trackType(track->kind) : nullptr;
@@ -198,6 +210,8 @@ QVariant TrackListModel::data(const QModelIndex& index, int role) const {
             return routes.bus;
         case Role::sends:
             return sendList(track);
+        case Role::inserts:
+            return toVariant(track.inserts | std::views::transform(insertState) | std::ranges::to<Json::array_t>());
         case Role::outputBusName:
             return trackName(track.outputBus);
         case Role::clips:
@@ -213,7 +227,7 @@ QVariant TrackListModel::data(const QModelIndex& index, int role) const {
 }
 
 QHash<int, QByteArray> TrackListModel::roleNames() const {
-    static constexpr std::array<std::pair<Role, const char*>, 24> kNames{{{Role::id, "trackId"},
+    static constexpr std::array<std::pair<Role, const char*>, 25> kNames{{{Role::id, "trackId"},
                                                                           {Role::name, "name"},
                                                                           {Role::kind, "kind"},
                                                                           {Role::icon, "icon"},
@@ -232,6 +246,7 @@ QHash<int, QByteArray> TrackListModel::roleNames() const {
                                                                           {Role::midiRoutes, "midiRoutes"},
                                                                           {Role::busRoutes, "busRoutes"},
                                                                           {Role::sends, "sends"},
+                                                                          {Role::inserts, "inserts"},
                                                                           {Role::outputBusName, "outputBusName"},
                                                                           {Role::clips, "clips"},
                                                                           {Role::trackData, "trackData"},

@@ -4,6 +4,7 @@
 
 #include "emerick/app/clip_notes.hpp"
 #include "emerick/app/code_highlighter.hpp"
+#include "emerick/app/effect_catalog.hpp"
 #include "emerick/app/enums.hpp"
 #include "emerick/app/transport_clock.hpp"
 #include "emerick/app/waveform.hpp"
@@ -21,6 +22,7 @@ void exposeToQml(QQmlEngine& engine, Registry& registry, Nav& nav, ProjectContro
     // The engine owns the clock as its Qt parent.
     qmlRegisterSingletonInstance("Emerick.App", 1, 0, "Clock",
                                  std::make_unique<TransportClock>(controller, &engine).release());
+    qmlRegisterSingletonInstance("Emerick.App", 1, 0, "Effects", std::make_unique<EffectCatalog>(&engine).release());
     qmlRegisterSingletonInstance("Emerick.App", 1, 0, "Peaks", &peaks);
     qmlRegisterSingletonInstance("Emerick.App", 1, 0, "Meters", &controller.meters());
     if (console != nullptr) {

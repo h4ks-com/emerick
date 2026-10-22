@@ -3,7 +3,7 @@ import QtQuick.Controls.Basic
 import QtQuick.Layouts
 import Emerick.App
 
-// One track's channel strip: its output, sends, pan knob, gain fader with level meter, mute, solo and arm, and its
+// One track's channel strip: its output, inserts, sends, pan knob, gain fader with level meter, mute, solo and arm, and its
 // name.
 Rectangle {
     id: strip
@@ -22,6 +22,7 @@ Rectangle {
     required property var audioOut
     required property var midiOut
     required property var sends
+    required property var inserts
     required property string outputBusName
     readonly property bool selected: Nav.selectedTrack === trackId
     readonly property bool playsAudio: audioRoutes || busRoutes
@@ -73,6 +74,13 @@ Rectangle {
                 radius: Theme.radiusClip
                 color: Theme.graphite
             }
+        }
+
+        InsertList {
+            visible: strip.playsAudio
+            trackId: strip.trackId
+            inserts: strip.inserts
+            Layout.fillWidth: true
         }
 
         SendList {

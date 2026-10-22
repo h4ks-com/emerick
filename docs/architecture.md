@@ -46,6 +46,10 @@ The engine never sees the model. `emerick_app` turns the document into an engine
 
 The engine plays the metronome on the tempo map's beat grid to the sample: a synthesized click, the user's samples, or a drum groove synthesized from kick, snare and hat voices, or it sends the same hits as MIDI notes. Its settings live in the registry's Metronome section, and the controller copies them into the session it publishes. A count-in holds the transport at the record position until its bars end, so the take starts there. Takes record only inputs, and exports build their sessions without the metronome.
 
+## Inserts
+
+The engine plays each track's insert effects on its mix before the fader. The snapshot builder makes an effect's state once per insert id at the stream's sample rate, with its delay lines at full length, and later snapshots share it, so an edit keeps reverb tails and delay lines and the params glide to their new values. Effects report no latency, and exports play them through the same engine. A param's id is `<insert id>.<param id>`, and `insert.setParam` takes it in place of the insert param.
+
 ## Devices
 
 Each track names its own audio input and output (device id plus channels) and MIDI input and output (port id plus channel). The engine opens the devices that track outputs and the metronome route to, and the inputs of armed and monitored tracks only. It opens them while the transport runs or a track listens live (armed, monitored or with a MIDI input), and closes them once stopped, so other apps keep their devices undisturbed. A route to a device that is gone or cannot run at the engine's rate is dropped and reported, and the other routes still play. With no audio route at all, the engine runs on the default output device at the rate and buffer size it already has. On macOS several devices become one hidden private aggregate device with drift compensation, so the user never builds one by hand. On Linux the devices are PipeWire or JACK ports. On Windows each WASAPI device runs its own stream and the engine resamples the others to the clock device.

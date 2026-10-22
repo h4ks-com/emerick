@@ -522,6 +522,7 @@ void ProjectController::readLevels() {
     const std::chrono::duration<double> elapsed = now - lastLevels_;
     lastLevels_ = now;
     meters_.update(engine_.takeInputLevels(), engine_.takeOutputLevels(), elapsed.count());
+    meters_.updateReductions(engine_.takeGainReductions());
 }
 
 int ProjectController::collectTakes() {

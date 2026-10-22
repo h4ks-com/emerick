@@ -387,6 +387,7 @@ void registerTrackActions(Registry& registry, ProjectController& controller, Nav
     registerBusKind(registry, controller, nav);
     registerTrackEditActions(registry, controller, nav);
     registerSendActions(registry, controller, nav);
+    registerInsertActions(registry, controller, nav);
     registerRouteActions(registry, controller);
 }
 

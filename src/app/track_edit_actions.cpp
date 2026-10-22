@@ -61,6 +61,9 @@ model::Track duplicateTrack(const model::Track& track) {
                      return model::duplicateClip(clip, model::clipStart(clip));
                  }) |
                  std::ranges::to<std::vector>();
+    for (model::Insert& insert : copy.inserts) {
+        insert.id = model::InsertId::make();
+    }
     return copy;
 }
 

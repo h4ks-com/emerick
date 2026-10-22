@@ -23,6 +23,8 @@ void registerTrackActions(Registry& registry, ProjectController& controller, Nav
 void registerTrackEditActions(Registry& registry, ProjectController& controller, Nav& nav);
 // Add, remove and edit sends, set a track's output bus, and create a bus that the selected tracks send to.
 void registerSendActions(Registry& registry, ProjectController& controller, Nav& nav);
+// Add, remove, move, bypass and edit insert effects on audio tracks and buses, and open their editor.
+void registerInsertActions(Registry& registry, ProjectController& controller, Nav& nav);
 // Deletes the track with every send and output bus that names it as one undo step.
 void removeTrack(ProjectController& controller, const model::TrackId& id);
 // The track named by params, or the selected track when params names none.

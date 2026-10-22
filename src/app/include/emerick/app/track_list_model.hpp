@@ -37,6 +37,7 @@ public:
         midiRoutes,
         busRoutes,
         sends,
+        inserts,
         outputBusName,
         clips,
         trackData,
@@ -59,6 +60,8 @@ public:
     [[nodiscard]] int revision() const { return revision_; }
     // The clip as a track row lists it, with its track's id, name and color, or an empty map when it is gone.
     Q_INVOKABLE QVariantMap clip(const QString& id) const;
+    // The insert as project state lists it, with its track's id and name, or an empty map when it is gone.
+    Q_INVOKABLE QVariantMap insert(const QString& id) const;
 
 signals:
     void revisionChanged();

@@ -110,7 +110,6 @@ TEST_CASE("the voice table loads into the project, saves, reopens and undoes") {
     CHECK(rig.controller->project().document().pluginData.at("yamaha").at("voices") == loaded.at("voices"));
 
     rig.run("yamaha.voices.load", {{"path", dataPath("voices.txt")}});
-    rig.run("project.undo");
     CHECK(rig.controller->project().document().pluginData.at("yamaha").at("voices").size() == 3);
     CHECK_FALSE(rig.controller->project().undoName());
     CHECK_THROWS_AS(rig.run("yamaha.voices.load", {{"path", dataPath("take-shift1.txt")}}), app::AppError);

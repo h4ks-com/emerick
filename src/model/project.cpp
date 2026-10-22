@@ -1,6 +1,8 @@
 #include "emerick/model/project.hpp"
 
 #include <algorithm>
+#include <exception>
+#include <iterator>
 #include <utility>
 
 namespace emerick::model {
@@ -33,37 +35,81 @@ bool Project::moveTrack(const TrackId& id, std::size_t index) {
         return false;
     }
     const auto from = static_cast<std::size_t>(found - document_.tracks.begin());
-    execute({"move track " + found->name, MoveTrack{from, index}});
+    if (from != index) {
+        execute({"move track " + found->name, MoveTrack{from, index}});
+    }
     return true;
 }
 
-void Project::setTempo(const core::TempoMap& tempo) { execute({"set tempo", SetTempo{document_.tempo, tempo}}); }
+void Project::setTempo(const core::TempoMap& tempo) {
+    if (tempo != document_.tempo) {
+        execute({"set tempo", SetTempo{document_.tempo, tempo}});
+    }
+}
 
 void Project::setClockPorts(std::vector<std::string> ports) {
-    execute({"set clock out", SetClockPorts{document_.clockPorts, std::move(ports)}});
+    if (ports != document_.clockPorts) {
+        execute({"set clock out", SetClockPorts{document_.clockPorts, std::move(ports)}});
+    }
 }
 
 void Project::setPluginData(const std::string& plugin, nlohmann::json value, std::string name) {
     nlohmann::json before = document_.pluginData.contains(plugin) ? document_.pluginData.at(plugin) : nlohmann::json{};
-    execute({std::move(name), SetPluginData{plugin, std::move(before), std::move(value)}});
+    if (value != before) {
+        execute({std::move(name), SetPluginData{plugin, std::move(before), std::move(value)}});
+    }
 }
 
 void Project::setMarkers(std::vector<Marker> markers, std::string name) {
     std::ranges::stable_sort(markers, {}, &Marker::at);
-    execute({std::move(name), SetMarkers{document_.markers, std::move(markers)}});
+    if (markers != document_.markers) {
+        execute({std::move(name), SetMarkers{document_.markers, std::move(markers)}});
+    }
 }
 
 void Project::group(std::string name, const std::function<void()>& edits) {
     leaveGesture();
     const std::size_t first = next_;
-    {
+    atomic([&] {
         const DepthScope scope(groupDepth_);
         edits();
-    }
+    });
     if (next_ != first) {
         collapseSince(first, std::move(name));
     }
     if (groupDepth_ == 0 && std::exchange(groupChanged_, false)) {
+        notify(Change{});
+    }
+}
+
+void Project::atomic(const std::function<void()>& edits) {
+    Checkpoint checkpoint{.first = next_,
+                          .redo = {history_.begin() + static_cast<std::ptrdiff_t>(next_), history_.end()},
+                          .gestureStep = gestureStep_,
+                          .resets = resets_};
+    try {
+        edits();
+    } catch (const std::exception&) {
+        rollBack(std::move(checkpoint));
+        throw;
+    }
+}
+
+void Project::rollBack(Checkpoint checkpoint) {
+    if (resets_ != checkpoint.resets || next_ < checkpoint.first) {
+        return;
+    }
+    const bool reverted = next_ > checkpoint.first;
+    while (next_ > checkpoint.first) {
+        revert(document_, history_[--next_]);
+    }
+    history_.resize(checkpoint.first);
+    history_.insert(history_.end(), std::make_move_iterator(checkpoint.redo.begin()),
+                    std::make_move_iterator(checkpoint.redo.end()));
+    gestureStep_ = checkpoint.gestureStep;
+    if (groupDepth_ > 0) {
+        groupChanged_ = groupChanged_ || reverted;
+    } else if (std::exchange(groupChanged_, false) || reverted) {
         notify(Change{});
     }
 }
@@ -143,7 +189,9 @@ bool Project::editTrack(const TrackId& id, std::string name, const std::function
     Track edited = *current;
     edit(edited);
     edited.id = id;
-    execute({std::move(name), ReplaceTrack{*current, std::move(edited)}});
+    if (edited != *current) {
+        execute({std::move(name), ReplaceTrack{*current, std::move(edited)}});
+    }
     return true;
 }
 
@@ -179,6 +227,7 @@ std::optional<std::string> Project::redoName() const {
 
 void Project::reset(Document document) {
     gestureStep_ = false;
+    ++resets_;
     document_ = std::move(document);
     history_.clear();
     next_ = 0;
@@ -203,7 +252,7 @@ void Project::execute(Command command) {
         groupChanged_ = true;
         return;
     }
-    // A group whose edits threw never notified, so we report its edits along with this one.
+    // A gesture update whose edits threw never notified, so we report its edits along with this one.
     notify(std::exchange(groupChanged_, false) ? Change{} : change);
 }
 

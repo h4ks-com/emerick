@@ -34,6 +34,9 @@ public:
     void setMarkers(std::vector<Marker> markers, std::string name);
     // Every edit made inside edits becomes one undo step named name, and listeners hear one change at the end.
     void group(std::string name, const std::function<void()>& edits);
+    // When edits throw, we revert the edits they made and restore the redo steps, so the document and the history
+    // are as they were before.
+    void atomic(const std::function<void()>& edits);
     // The one path for property and clip edits: we edit a copy of the track and store it as one undo step.
     bool editTrack(const TrackId& id, std::string name, const std::function<void(Track&)>& edit);
     // A gesture such as a drag is one undo step that each update replaces: we revert the last update's edits and run
@@ -68,6 +71,15 @@ private:
         int& depth_;
     };
 
+    struct Checkpoint {
+        std::size_t first;
+        std::vector<Command> redo;
+        bool gestureStep;
+        std::size_t resets;
+    };
+
+    // Reverts the edits made since the checkpoint; after a reset or an undo past it there is nothing to revert to.
+    void rollBack(Checkpoint checkpoint);
     void execute(Command command);
     // Folds the commands from first on into one step named name.
     void collapseSince(std::size_t first, std::string name);
@@ -85,6 +97,7 @@ private:
     // history_[next_ - 1] is the open gesture's step.
     bool gestureStep_ = false;
     int gestureDepth_ = 0;
+    std::size_t resets_ = 0;
 };
 
 }  // namespace emerick::model

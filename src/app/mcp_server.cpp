@@ -141,7 +141,9 @@ Json McpServer::callTool(const Json& params) const {
     }
     Json result;
     try {
-        result = tool->call(arguments != nullptr && arguments->is_object() ? *arguments : Json::object());
+        result = registry_->runFrom(ActionSource::Mcp, [&] {
+            return tool->call(arguments != nullptr && arguments->is_object() ? *arguments : Json::object());
+        });
     } catch (const AppError& error) {
         result = {{"error", error.what()}};
     } catch (const Json::exception& error) {

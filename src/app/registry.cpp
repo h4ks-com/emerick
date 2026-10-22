@@ -11,7 +11,10 @@
 #include <limits>
 #include <optional>
 #include <ranges>
+#include <string>
 #include <utility>
+
+#include "emerick/app/params.hpp"
 
 namespace emerick::app {
 
@@ -97,6 +100,49 @@ private:
     int& depth_;
     int step_;
 };
+
+class RequestOrigin {
+public:
+    RequestOrigin(std::optional<ActionSource>& origin, ActionSource source)
+        : origin_(origin), outer_(origin.has_value()) {
+        if (!outer_) {
+            origin_ = source;
+        }
+    }
+    ~RequestOrigin() {
+        if (!outer_) {
+            origin_.reset();
+        }
+    }
+    RequestOrigin(const RequestOrigin&) = delete;
+    RequestOrigin& operator=(const RequestOrigin&) = delete;
+    RequestOrigin(RequestOrigin&&) = delete;
+    RequestOrigin& operator=(RequestOrigin&&) = delete;
+
+private:
+    std::optional<ActionSource>& origin_;
+    bool outer_;
+};
+
+struct BatchCall {
+    std::string id;
+    Json params;
+};
+
+std::vector<BatchCall> batchCalls(const Json& calls) {
+    if (!calls.is_array()) {
+        throw AppError("calls must be an array of {id, params}, got " + calls.dump());
+    }
+    if (calls.size() > kMaxBatchCalls) {
+        throw AppError("a batch takes at most " + std::to_string(kMaxBatchCalls) + " calls, got " +
+                       std::to_string(calls.size()) + "; split it into several batches");
+    }
+    return calls | std::views::transform([](const Json& call) {
+               return BatchCall{param<std::string>(call, "id"),
+                                optionalParam<Json>(call, "params").value_or(Json::object())};
+           }) |
+           std::ranges::to<std::vector>();
+}
 
 Json actionToJson(const Action& entry) {
     Json result{{"id", entry.id},
@@ -301,18 +347,77 @@ Json Registry::run(const std::string& id, const Json& params, ActionSource sourc
         throw AppError("action " + id + " is disabled");
     }
     const Json given = params.is_null() ? Json::object() : params;
+    const RequestOrigin origin{origin_, source};
     const bool logged = runDepth_ == 0 && !found->quiet;
     // We copy the handler, because a script action can add or remove actions while it runs.
     const auto handler = found->run;
     Json result;
     {
         const NestedRun nested{runDepth_, found->quiet ? 0 : 1};
-        result = handler(given);
+        const auto runHandler = [&] { result = handler(given); };
+        try {
+            if (undoSteps_.atomic) {
+                undoSteps_.atomic(runHandler);
+            } else {
+                runHandler();
+            }
+        } catch (const std::filesystem::filesystem_error& error) {
+            throw AppError(error.what());
+        }
     }
     if (logged) {
         emit actionRan(id, given, source);
     }
     return result.is_null() ? Json::object() : result;
+}
+
+Json Registry::runBatch(const Json& calls, bool keepGoing, ActionSource source) const {
+    Json results = Json::array();
+    for (const BatchCall& call : batchCalls(calls)) {
+        std::optional<std::string> error;
+        try {
+            results.push_back({{"id", call.id}, {"result", run(call.id, call.params, source)}});
+        } catch (const AppError& failure) {
+            error = failure.what();
+        } catch (const Json::exception& failure) {
+            error = failure.what();
+        }
+        if (error) {
+            results.push_back({{"id", call.id}, {"error", *error}});
+            if (!keepGoing) {
+                break;
+            }
+        }
+    }
+    return {{"results", results}};
+}
+
+Json Registry::runFrom(ActionSource origin, const std::function<Json()>& call) const {
+    const RequestOrigin scope{origin_, origin};
+    return call();
+}
+
+void Registry::setAgentRoots(AgentRoots roots) {
+    for (std::optional<std::filesystem::path>* root : {&roots.read, &roots.write}) {
+        if (*root) {
+            *root = std::filesystem::canonical(**root);
+        }
+    }
+    agentRoots_ = std::move(roots);
+}
+
+std::filesystem::path Registry::checkedPath(const std::string& path, PathAccess access) const {
+    const bool fromAgent = origin_ == ActionSource::Mcp || origin_ == ActionSource::Lua;
+    const std::optional<std::filesystem::path>& root =
+        access == PathAccess::Read ? agentRoots_.read : agentRoots_.write;
+    if (!fromAgent || !root) {
+        return path;
+    }
+    if (auto inside = pathInside(path, *root)) {
+        return *std::move(inside);
+    }
+    throw AppError(path + " is outside " + root->string() + ", the folder agents may " +
+                   (access == PathAccess::Read ? "read" : "write"));
 }
 
 Json Registry::settingValue(const std::string& id) const {

@@ -225,6 +225,46 @@ TEST_CASE("a group of edits undoes and redoes as one step") {
     CHECK(project.document().tracks.empty());
 }
 
+TEST_CASE("edits that throw leave the document, the history and the redo steps as they were") {
+    Project project;
+    project.addTrack(named("kept"));
+    project.addTrack(named("undone"));
+    project.undo();
+    const Document before = project.document();
+    int changes = 0;
+    project.addListener([&](const Change&) { ++changes; });
+    const auto editThenThrow = [&] {
+        project.addTrack(named("half"));
+        project.editTrack(project.document().tracks.front().id, "rename", [](Track& track) { track.name = "x"; });
+        throw std::runtime_error("failed halfway");
+    };
+
+    CHECK_THROWS_AS(project.atomic(editThenThrow), std::runtime_error);
+    CHECK(project.document() == before);
+    CHECK(project.undoName() == "add track kept");
+    CHECK(project.redoName() == "add track undone");
+    CHECK(changes == 3);
+
+    CHECK_THROWS_AS(project.group("set up", editThenThrow), std::runtime_error);
+    CHECK(project.document() == before);
+    CHECK(project.redoName() == "add track undone");
+    CHECK(project.redo());
+    CHECK(names(project) == std::vector<std::string>{"kept", "undone"});
+}
+
+TEST_CASE("an edit that changes nothing leaves no undo step") {
+    Project project;
+    project.addTrack(named("a"));
+    const TrackId id = project.document().tracks.front().id;
+    CHECK(project.editTrack(id, "rename", [](Track& track) { track.name = "a"; }));
+    CHECK(project.moveTrack(id, 0));
+    project.setTempo(project.document().tempo);
+    project.setClockPorts({});
+    project.setPluginData("plugin", nullptr, "clear");
+    project.setMarkers(project.document().markers, "move marker");
+    CHECK(project.undoName() == "add track a");
+}
+
 TEST_CASE("a new edit clears the redo stack") {
     Project project;
     project.addTrack(named("a"));

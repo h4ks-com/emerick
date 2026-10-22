@@ -80,7 +80,8 @@ void registerExportActions(Registry& registry, ProjectController& controller) {
                         .schema = {{"required", {"folder"}}, {"properties", tracksSchema}},
                         .run =
                             [&controller, &registry](const Json& params) {
-                                const std::filesystem::path folder{param<std::string>(params, "folder")};
+                                const std::filesystem::path folder =
+                                    registry.checkedPath(param<std::string>(params, "folder"), PathAccess::Write);
                                 const auto files =
                                     exportStems(exportSession(controller, registry, params, false),
                                                 controller.project().document(), folder, controller.sampleRate());
@@ -98,7 +99,8 @@ void registerExportActions(Registry& registry, ProjectController& controller) {
          .schema = {{"required", {"path"}}},
          .run =
              [&controller, &registry](const Json& params) {
-                 const std::filesystem::path file{param<std::string>(params, "path")};
+                 const std::filesystem::path file =
+                     registry.checkedPath(param<std::string>(params, "path"), PathAccess::Write);
                  exportMix(toSession(controller.project().document(), registry, controller.folder()),
                            controller.project().document(), file, controller.sampleRate());
                  return Json{{"file", file.string()}};
@@ -115,8 +117,10 @@ void registerExportActions(Registry& registry, ProjectController& controller) {
                         .run =
                             [&controller, &registry](const Json& params) {
                                 const std::filesystem::path folder =
-                                    std::filesystem::path{param<std::string>(params, "folder")} /
-                                    (controller.name().toStdString() + " for Logic");
+                                    registry.checkedPath((std::filesystem::path{param<std::string>(params, "folder")} /
+                                                          (controller.name().toStdString() + " for Logic"))
+                                                             .string(),
+                                                         PathAccess::Write);
                                 const auto files = exportForLogic(
                                     controller, registry, exportSession(controller, registry, params, true), folder);
                                 return Json{{"folder", folder.string()}, {"files", fileList(files)}};
@@ -131,7 +135,8 @@ void registerExportActions(Registry& registry, ProjectController& controller) {
          .schema = {{"required", {"path"}}, {"properties", tracksSchema}},
          .run =
              [&controller, &registry](const Json& params) {
-                 const std::filesystem::path file{param<std::string>(params, "path")};
+                 const std::filesystem::path file =
+                     registry.checkedPath(param<std::string>(params, "path"), PathAccess::Write);
                  exportMidi(exportSession(controller, registry, params, true), controller.project().document(),
                             registry, controller.name().toStdString(), file);
                  return Json{{"file", file.string()}};

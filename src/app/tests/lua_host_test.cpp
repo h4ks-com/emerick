@@ -78,6 +78,12 @@ TEST_CASE("JSON and Lua tables convert both ways") {
     CHECK(fixture.lua.eval("local t = {} t.self = t return t").at("ok") == false);
 }
 
+TEST_CASE("Lua text that is not UTF-8 reaches actions with the bad bytes replaced") {
+    Fixture fixture;
+    const Json result = fixture.lua.eval(R"(return emerick.run('test.echo', {name = "a\255b", ["k\254"] = 1}))");
+    CHECK(result.at("result") == Json{{"name", "a�b"}, {"k�", 1}});
+}
+
 TEST_CASE("emerick functions reach the registry") {
     Fixture fixture;
     CHECK(fixture.lua.eval("return emerick.setting('audio.bufferSize')").at("result") == 256);

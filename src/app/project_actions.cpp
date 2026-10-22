@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <string>
 #include <utility>
 #include <vector>
@@ -55,7 +56,7 @@ void registerProjectEditActions(Registry& registry, ProjectController& controlle
                                 optionalParam<int>(params, "numerator").value_or(tempo.meter.numerator);
                             tempo.meter.denominator =
                                 optionalParam<int>(params, "denominator").value_or(tempo.meter.denominator);
-                            if (tempo.bpm < kMinBpm || tempo.bpm > kMaxBpm) {
+                            if (std::isnan(tempo.bpm) || tempo.bpm < kMinBpm || tempo.bpm > kMaxBpm) {
                                 throw AppError("bpm must be 20 to 400");
                             }
                             if (tempo.meter.numerator < 1 ||
@@ -243,7 +244,8 @@ void registerProjectActions(Registry& registry, ProjectController& controller, N
          .updateGesture = [&project](const std::string& name,
                                      const std::function<void()>& edits) { project.updateGesture(name, edits); },
          .endGesture = [&project] { return project.endGesture(); },
-         .cancelGesture = [&project] { project.cancelGesture(); }});
+         .cancelGesture = [&project] { project.cancelGesture(); },
+         .atomic = [&project](const std::function<void()>& edits) { project.atomic(edits); }});
     registry.addSetting({.id = "audio.latency",
                          .title = "Resulting latency",
                          .aliases = {"round trip", "delay"},

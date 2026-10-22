@@ -72,6 +72,20 @@ std::vector<McpTool> mcpTools(Registry& registry, const UiApi& ui, LuaHost* lua,
                                                  optionalParam<Json>(arguments, "params").value_or(Json::object()),
                                                  ActionSource::Mcp)}};
          }},
+        {"actions.batch",
+         "Run up to 1000 {id, params} calls in order, each as its own undo step, and return each call's result or "
+         "error. The batch stops at the first error unless keepGoing is true.",
+         objectSchema({{"calls", "array"}, {"keepGoing", "boolean"}}, {"calls"}),
+         [&registry, allowed](const Json& arguments) {
+             const auto calls = param<Json>(arguments, "calls");
+             if (calls.is_array() && calls.size() <= kMaxBatchCalls) {
+                 for (const Json& call : calls) {
+                     allowed(param<std::string>(call, "id"));
+                 }
+             }
+             return registry.runBatch(calls, optionalParam<bool>(arguments, "keepGoing").value_or(false),
+                                      ActionSource::Mcp);
+         }},
         {"settings.get", "Read one setting by id, or every setting.", objectSchema({{"id", "string"}}),
          [&registry](const Json& arguments) {
              if (const auto id = optionalParam<std::string>(arguments, "id")) {
@@ -92,7 +106,10 @@ std::vector<McpTool> mcpTools(Registry& registry, const UiApi& ui, LuaHost* lua,
          }},
         {"screenshot", "Save a PNG of the main window to path, or to a temporary file.",
          objectSchema({{"path", "string"}}),
-         [](const Json& arguments) { return UiApi::screenshot(text(arguments, "path")); }},
+         [&registry](const Json& arguments) {
+             const std::string path = text(arguments, "path");
+             return UiApi::screenshot(path.empty() ? path : registry.checkedPath(path, PathAccess::Write).string());
+         }},
     };
     if (lua != nullptr) {
         tools.insert(tools.end() - 1,

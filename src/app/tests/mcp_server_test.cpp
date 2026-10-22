@@ -95,8 +95,34 @@ TEST_CASE("tools/list names every tool") {
         CHECK(tool.at("inputSchema").at("type") == "object");
     }
     CHECK(names == std::vector<std::string>{"ui.tree", "ui.find", "ui.reveal", "ui.invoke", "ui.set", "actions.list",
-                                            "actions.run", "settings.get", "settings.set", "state.get", "lua.eval",
-                                            "screenshot"});
+                                            "actions.run", "actions.batch", "settings.get", "settings.set", "state.get",
+                                            "lua.eval", "screenshot"});
+}
+
+TEST_CASE("actions.batch runs calls in order, stops at the first error unless asked to keep going") {
+    Fixture fixture;
+    const Json calls{{{"id", "settings.show.audio"}},
+                     {{"id", "nothing.here"}},
+                     {{"id", "settings.show.general"}, {"params", Json::object()}}};
+    const Json stopped = fixture.tool("actions.batch", {{"calls", calls}}).at("structuredContent").at("results");
+    REQUIRE(stopped.size() == 2);
+    CHECK(stopped.at(0).contains("result"));
+    CHECK(stopped.at(1).at("error") == "no action nothing.here");
+
+    const Json all = fixture.tool("actions.batch", {{"calls", calls}, {"keepGoing", true}});
+    CHECK(all.at("structuredContent").at("results").size() == 3);
+    CHECK(all.at("structuredContent").at("state").at("nav").at("settingsTab") == "general");
+
+    fixture.tool("actions.run", {{"id", "settings.show.audio"}});
+    const Json tooMany = fixture.tool(
+        "actions.batch", {{"calls", Json(std::vector<Json>(kMaxBatchCalls + 1, {{"id", "settings.show.general"}}))}});
+    CHECK(tooMany.at("isError") == true);
+    CHECK(tooMany.at("structuredContent").at("state").at("nav").at("settingsTab") == "audio");
+    CHECK(fixture.tool("actions.batch", {{"calls", {{{"params", Json::object()}}}}}).at("isError") == true);
+
+    const Json lua =
+        fixture.tool("lua.eval", {{"code", "return emerick.batch({{id = 'settings.show.audio'}, {id = 'x'}}, true)"}});
+    CHECK(lua.at("structuredContent").at("result").at("results").at(1).at("error") == "no action x");
 }
 
 TEST_CASE("tools return the resulting state") {

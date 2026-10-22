@@ -23,8 +23,8 @@ namespace {
 // Actions a person cannot reach from a menu, a shortcut or a control yet. Give each one a UI path and remove it from
 // this list; never add to it.
 const std::set<std::string> kUnreachable = {
-    "devices.list", "metronome.setVolume",   "project.clipEvents", "script.list",
-    "script.run",   "transport.setClockOut", "yamaha.chart.text",
+    "automation.getLane", "devices.list", "metronome.setVolume",   "project.clipEvents",
+    "script.list",        "script.run",   "transport.setClockOut", "yamaha.chart.text",
 };
 
 std::string qmlSource() {

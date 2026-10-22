@@ -40,7 +40,7 @@ if(EMERICK_BUILD_TESTS)
     target_link_libraries(emerick_yamaha_codec_tests PRIVATE emerick_yamaha_codec libremidi)
     target_compile_definitions(emerick_yamaha_codec_tests PRIVATE TEST_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}/tests/data")
 
-    emerick_test(emerick_yamaha_plugin_tests tests/plugin_test.cpp tests/arranger_test.cpp)
+    emerick_test(emerick_yamaha_plugin_tests tests/plugin_test.cpp tests/arranger_test.cpp tests/hostile_params_test.cpp)
     target_include_directories(emerick_yamaha_plugin_tests PRIVATE ${PROJECT_SOURCE_DIR}/src/app/tests)
     target_link_libraries(emerick_yamaha_plugin_tests PRIVATE emerick_yamaha_plugin libremidi)
     target_compile_definitions(emerick_yamaha_plugin_tests PRIVATE TEST_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}/tests/data")

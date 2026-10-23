@@ -112,10 +112,9 @@ Rectangle {
         anchors.topMargin: area.lanesTop
         acceptedButtons: Qt.LeftButton | Qt.RightButton
         onPressed: mouse => {
+            Registry.runAction("selection.clear", {})
             if (Theme.isContextClick(mouse)) {
                 area.openLaneMenu()
-            } else {
-                mouse.accepted = false
             }
         }
     }
@@ -134,7 +133,8 @@ Rectangle {
         target: Project
         function onPositionTicksChanged() {
             const x = (Project.positionTicks - area.scrollTicks) * area.pixelsPerTick
-            if (Project.playing && (x < 0 || x > area.laneWidth * Theme.followEdge)) {
+            const edge = Project.playing ? area.laneWidth * Theme.followEdge : area.laneWidth
+            if (x < 0 || x > edge) {
                 area.scrollTo(Project.positionTicks - area.visibleTicks * Theme.followLead)
             }
         }

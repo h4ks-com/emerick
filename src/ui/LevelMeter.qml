@@ -10,8 +10,10 @@ Item {
     property bool input: false
     readonly property var level: input ? Meters.input(trackId) : Meters.output(trackId)
 
-    visible: level.channels.length > 0
-    implicitWidth: level.channels.length * (Theme.meterBar + Theme.meterGap) + Theme.meterGap
+    readonly property bool metered: level.channels.length > 0
+
+    // A track without audio keeps the meter's room, so its controls line up with the other tracks'.
+    implicitWidth: 2 * (Theme.meterBar + Theme.meterGap) + Theme.meterGap
 
     Gradient {
         id: heat
@@ -23,11 +25,13 @@ Item {
 
     Rectangle {
         anchors.fill: parent
+        visible: meter.metered
         color: Theme.graphite
     }
 
     Rectangle {
         id: clipLight
+        visible: meter.metered
         x: Theme.meterGap
         y: Theme.meterGap
         width: parent.width - 2 * Theme.meterGap
@@ -70,6 +74,7 @@ Item {
         id: area
         objectName: "meters.resetClips:" + meter.trackId
         anchors.fill: parent
+        visible: meter.metered
         hoverEnabled: true
         onClicked: Registry.runAction("meters.resetClips", {track: meter.trackId})
         ToolTip.visible: containsMouse

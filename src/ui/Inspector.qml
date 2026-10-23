@@ -149,6 +149,7 @@ Rectangle {
                 PanNumber {
                     trackId: panel.trackId
                     pan: panel.pan
+                    Layout.fillWidth: true
                 }
 
                 RouteLabel { text: "Audio input"; visible: panel.audioRoutes }
@@ -334,6 +335,14 @@ Rectangle {
                 }
             }
         }
+    }
+
+    Rectangle {
+        anchors.bottom: markers.top
+        anchors.bottomMargin: Theme.space2
+        width: parent.width
+        height: Theme.hairline
+        color: Theme.rule
     }
 
     ColumnLayout {

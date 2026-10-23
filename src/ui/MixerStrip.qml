@@ -71,14 +71,22 @@ Rectangle {
             horizontalAlignment: Text.AlignHCenter
             padding: Theme.space1
             Layout.fillWidth: true
+            ToolTip.text: text
+            ToolTip.visible: outputHover.hovered && truncated
+            ToolTip.delay: Theme.tooltipDelay
+            HoverHandler {
+                id: outputHover
+            }
             background: Rectangle {
                 radius: Theme.radiusClip
                 color: Theme.graphite
             }
         }
 
+        // A strip without audio keeps the sends' room, so its pan knob and fader line up with the other strips'.
         SendList {
-            visible: strip.playsAudio
+            opacity: strip.playsAudio ? 1 : 0
+            enabled: strip.playsAudio
             trackId: strip.trackId
             sends: strip.sends
             compact: true
@@ -126,6 +134,7 @@ Rectangle {
                 flag: "track.setMute"
                 value: strip.mute
                 text: "M"
+                activeColor: Theme.mute
             }
             FlagButton {
                 trackId: strip.trackId

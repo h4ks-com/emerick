@@ -44,7 +44,7 @@ Rectangle {
                 height: Math.max(Theme.hairline, bars.height * note.velocity / 127)
                 visible: x + width > 0 && x < bars.width
                 radius: Theme.hairline
-                color: lane.roll.selected(note.id) ? Theme.tape : Theme.velocityColor(note.velocity)
+                color: lane.roll.selected(note.id) ? Theme.selectedNote(note.velocity) : Theme.velocityColor(note.velocity)
             }
         }
 

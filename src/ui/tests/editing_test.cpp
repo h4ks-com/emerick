@@ -124,6 +124,31 @@ TEST_CASE("the track context menu lists registry actions and its Delete track re
     MainWindow::settle();
 }
 
+TEST_CASE("a right click on a clip selects it and opens the clip menu, and a click below the tracks deselects it") {
+    MainWindow& main = MainWindow::instance();
+    const std::string vox = main.rig.run("track.addAudio").at("id");
+    writeConstant(main.rig.path("ones.wav"), 48000, 1.0F);
+    const std::string clip =
+        main.rig.run("clip.import", {{"track", vox}, {"path", main.rig.path("ones.wav").string()}}).at("id");
+    main.rig.run("selection.clear");
+    processUntil([] { return false; }, 50);
+
+    main.click(main.item("clip.move:" + qid(clip)), Qt::RightButton);
+    QObject* clipMenu = main.menu("menu.clipContext");
+    CHECK(processUntil([&] { return clipMenu->property("opened").toBool(); }));
+    CHECK_FALSE(main.menu("menu.laneContext")->property("visible").toBool());
+    CHECK(main.rig.nav.selectedClips() == QStringList{qid(clip)});
+    QMetaObject::invokeMethod(clipMenu, "close");
+    REQUIRE(processUntil([&] { return !clipMenu->property("visible").toBool(); }));
+
+    constexpr qreal kInset = 40;
+    QQuickItem* tracks = main.item("tracks");
+    const QPointF below = tracks->mapToScene({tracks->width() - kInset, tracks->height() - kInset});
+    QTest::mouseClick(main.window, Qt::LeftButton, Qt::NoModifier, below.toPoint());
+    CHECK(main.rig.nav.selectedClips().isEmpty());
+    MainWindow::settle();
+}
+
 TEST_CASE("Backspace and Delete remove the selected clips, or the selected track when no clip is selected") {
     MainWindow& main = MainWindow::instance();
     const std::string vox = main.rig.run("track.addAudio").at("id");

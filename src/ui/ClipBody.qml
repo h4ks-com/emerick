@@ -102,16 +102,18 @@ Item {
         color: content.clipItem.trackColor
         clip: true
 
+        // We tint the label opaque, because its square bottom half overlaps its rounded top and would darken twice.
         Rectangle {
+            id: label
             width: parent.width
             height: Theme.clipLabelHeight
             radius: Theme.radiusClip
-            color: Theme.clipLabel
+            color: Qt.tint(content.clipItem.trackColor, Theme.clipLabel)
             Rectangle {
                 anchors.bottom: parent.bottom
                 width: parent.width
                 height: parent.radius
-                color: Theme.clipLabel
+                color: label.color
             }
             Text {
                 anchors.fill: parent
@@ -226,7 +228,6 @@ Item {
                     Registry.runAction("selection.set", {clips: [item.clipId]})
                 }
                 item.timeline.openClipMenu()
-                mouse.accepted = false
                 return
             }
             pressAt = move.mapToItem(null, mouse.x, mouse.y)

@@ -87,7 +87,7 @@ Rectangle {
     ColumnLayout {
         anchors.fill: parent
         anchors.leftMargin: Theme.colorStripe + Theme.space2
-        anchors.rightMargin: Theme.space2 + (meter.visible ? meter.width : 0)
+        anchors.rightMargin: Theme.space2 + meter.width
         anchors.topMargin: Theme.space1
         anchors.bottomMargin: Theme.space1
         spacing: Theme.space1
@@ -171,6 +171,7 @@ Rectangle {
                 flag: "track.setMute"
                 value: header.mute
                 text: "M"
+                activeColor: Theme.mute
             }
             FlagButton {
                 trackId: header.trackId

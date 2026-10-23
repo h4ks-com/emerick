@@ -49,6 +49,9 @@ Button {
         implicitWidth: button.iconName ? Theme.buttonHeight : 0
         implicitHeight: Theme.buttonHeight
         radius: Theme.radiusClip
-        color: button.iconName ? (button.active ? Theme.glow(button.activeColor) : button.down ? Theme.rule : button.hovered ? Theme.lift : Theme.clear) : button.active ? button.activeColor : button.down || button.hovered ? Theme.rule : Theme.lift
+        color: button.active ? (button.iconName ? Theme.glow(button.activeColor) : button.activeColor)
+                             : button.down ? Theme.buttonDown
+                             : button.hovered ? Theme.buttonHover
+                             : button.iconName ? Theme.clear : Theme.buttonFill
     }
 }

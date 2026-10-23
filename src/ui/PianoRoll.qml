@@ -193,9 +193,10 @@ DockPanel {
                 height: roll.keyHeight
                 visible: x + width > 0 && x < grid.width && y + height > 0 && y < grid.height
                 radius: Math.min(Theme.radiusClip / 2, height / 2)
-                color: Theme.velocityColor(note.velocity)
-                border.width: roll.selected(note.id) ? Theme.selectionWidth : Theme.hairline
-                border.color: roll.selected(note.id) ? Theme.tape : Theme.clipInk
+                readonly property bool chosen: roll.selected(note.id)
+                color: chosen ? Theme.selectedNote(note.velocity) : Theme.velocityColor(note.velocity)
+                border.width: chosen ? Theme.selectionWidth : Theme.hairline
+                border.color: chosen ? Theme.ink : Theme.clipInk
                 Item {
                     objectName: "midi.resizeNotes:" + parent.note.id
                     anchors.right: parent.right

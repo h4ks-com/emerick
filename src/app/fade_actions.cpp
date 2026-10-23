@@ -146,8 +146,8 @@ void registerFadeActions(Registry& registry, ProjectController& controller, Nav&
                             .menus = {kClipContextMenu},
                             .submenu = shapeChoices});
     };
-    shapeAction("clip.setFadeInShape", "Fade in shape", "fadeInShape", "fade in curve");
-    shapeAction("clip.setFadeOutShape", "Fade out shape", "fadeOutShape", "fade out curve");
+    shapeAction("clip.setFadeInShape", "Set fade in shape", "fadeInShape", "fade in curve");
+    shapeAction("clip.setFadeOutShape", "Set fade out shape", "fadeOutShape", "fade out curve");
     registry.addAction({.id = "clip.crossfade",
                         .title = "Create crossfade",
                         .description = "Crossfades the clip with the clip that overlaps its start or its end on the "

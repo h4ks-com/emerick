@@ -93,7 +93,7 @@ void addSettingsSection(Registry& registry, Nav& nav, const SettingsSection& sec
                           .group = section.group,
                           .reveal = [&nav, key] { nav.setSettingsTab(qs(*key)); }});
     registry.addAction({.id = "settings.show." + section.key,
-                        .title = section.menus.empty() ? "Show " + section.title + " settings" : section.title,
+                        .title = "Show " + section.title + (section.menus.empty() ? " settings" : ""),
                         .aliases = {section.key + " preferences", section.title + " settings"},
                         .category = "Settings",
                         .shortcut = section.shortcut,

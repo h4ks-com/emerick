@@ -117,7 +117,9 @@ Item {
             }
             Text {
                 anchors.fill: parent
+                // The name stays at the left edge of the view while the clip starts before it, as in Logic.
                 anchors.leftMargin: Theme.fadeHandle + Theme.space1
+                                    + Math.max(0, (content.clipItem.viewFrom - content.clipItem.start) * content.clipItem.pixelsPerTick)
                 anchors.rightMargin: Theme.space1
                 verticalAlignment: Text.AlignVCenter
                 text: content.clipItem.trackName + "   Take " + content.clipItem.clip.take

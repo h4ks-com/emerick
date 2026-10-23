@@ -33,7 +33,7 @@ Rectangle {
                 color: Theme.inkDim
             }
             Text {
-                x: Theme.space1
+                x: Theme.space2
                 y: Theme.space1
                 text: mark.bar + 1
                 color: Theme.inkDim

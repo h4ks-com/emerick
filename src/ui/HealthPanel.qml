@@ -8,6 +8,7 @@ Popup {
     width: Theme.paletteWidth
     padding: Theme.space4
     modal: true
+    focus: true
     visible: Nav.healthOpen
     onClosed: Nav.healthOpen = false
     background: GlassPanel {}

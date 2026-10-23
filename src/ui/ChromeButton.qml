@@ -36,7 +36,11 @@ Button {
     icon.height: Theme.iconSize
     icon.color: active ? activeColor : iconColor
     ToolTip.text: (shortcutText ? info.title + "   " + shortcutText : info.title) + (hint ? "\n" + hint : "")
-    ToolTip.visible: hovered
+    // A press dismisses the tooltip until the pointer leaves, so it never covers the menu or panel the button opens.
+    property bool tipDismissed: false
+    onPressed: tipDismissed = true
+    onHoveredChanged: if (!hovered) tipDismissed = false
+    ToolTip.visible: hovered && !tipDismissed
     ToolTip.delay: Theme.tooltipDelay
     contentItem: IconLabel {
         icon: button.icon

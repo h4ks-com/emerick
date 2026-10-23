@@ -6,9 +6,20 @@ import Emerick.App
 MenuItem {
     id: row
     property string shortcut
+    // A picker's menu marks its current choice with a check.
+    property bool marked: false
 
     implicitHeight: Theme.buttonHeight
     hoverEnabled: true
+    leftPadding: menu && menu.marks ? Theme.space2 + Theme.space4 : undefined
+    indicator: Text {
+        x: Theme.space2
+        y: (row.height - height) / 2
+        visible: row.marked
+        text: "✓"
+        color: Theme.ink
+        font.pixelSize: Theme.textLabel
+    }
     contentItem: Item {
         implicitWidth: label.implicitWidth + keys.implicitWidth + Theme.space5
         implicitHeight: label.implicitHeight

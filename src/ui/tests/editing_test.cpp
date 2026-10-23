@@ -124,7 +124,9 @@ TEST_CASE("the track context menu lists registry actions and its Delete track re
     MainWindow::settle();
 }
 
-TEST_CASE("a right click on a clip selects it and its track and opens the clip menu, and a click below the tracks deselects it") {
+TEST_CASE(
+    "a right click on a clip selects it and its track and opens the clip menu, and a click below the tracks deselects "
+    "it") {
     MainWindow& main = MainWindow::instance();
     const std::string vox = main.rig.run("track.addAudio").at("id");
     writeConstant(main.rig.path("ones.wav"), 48000, 1.0F);

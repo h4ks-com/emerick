@@ -49,6 +49,20 @@ TEST_CASE("opening a project with a missing file offers its issues, and an issue
     MainWindow::settle();
 }
 
+TEST_CASE("Escape closes the project health panel and the About panel") {
+    MainWindow& main = MainWindow::instance();
+    main.rig.run("project.health");
+    REQUIRE(processUntil([&] { return main.item("health")->isVisible(); }));
+    QTest::keyClick(main.window, Qt::Key_Escape);
+    CHECK(processUntil([&] { return !main.rig.nav.healthOpen(); }));
+
+    main.rig.run("app.about");
+    REQUIRE(processUntil([&] { return main.item("about")->isVisible(); }));
+    QTest::keyClick(main.window, Qt::Key_Escape);
+    CHECK(processUntil([&] { return !main.rig.nav.aboutOpen(); }));
+    MainWindow::settle();
+}
+
 TEST_CASE("the File menu's shortcut saves the project and the title drops the edited dot") {
     MainWindow& main = MainWindow::instance();
     main.rig.run("track.addMidi");

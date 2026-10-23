@@ -367,3 +367,38 @@ TEST_CASE("dragging a marker moves it live on the grid as one undo step, and Ctr
     timeline.drag(flag, 1000 * nav.pixelsPerTick(), Qt::ControlModifier);
     CHECK(markerOf(timeline, id).at == 1000);
 }
+
+TEST_CASE("dragging over empty lanes selects the clips the band touches, and Shift adds to the selection") {
+    Timeline& timeline = Timeline::instance();
+    while (!timeline.rig.controller->project().document().tracks.empty()) {
+        timeline.rig.run("track.remove",
+                         {{"track", timeline.rig.controller->project().document().tracks.front().id.value}});
+    }
+    timeline.rig.run("transport.locate", {{"position", 0}});
+    const std::string first = timeline.addClip();
+    const std::string second = timeline.addClip();
+    const std::string third = timeline.addClip();
+    timeline.rig.run("selection.clear");
+    Timeline::settle();
+
+    const double pixelsPerTick = timeline.rig.nav.pixelsPerTick();
+    const double rowHeight = timeline.rig.nav.trackHeight();
+    const QPointF topLeft =
+        timeline.item(QString::fromStdString("lane:" + trackOf(timeline, first)))->mapToScene({0, 0});
+    const QPointF from = topLeft + QPointF{3000 * pixelsPerTick, rowHeight / 2};
+    const QPointF across{-2000 * pixelsPerTick, rowHeight};
+    timeline.send(QEvent::MouseButtonPress, from, Qt::LeftButton, Qt::NoModifier);
+    timeline.moveBy(from, across);
+    CHECK(timeline.item("tracks.band")->isVisible());
+    timeline.send(QEvent::MouseButtonRelease, from + across, Qt::NoButton, Qt::NoModifier);
+    CHECK(timeline.rig.nav.selectedClips() ==
+          QStringList{QString::fromStdString(first), QString::fromStdString(second)});
+
+    const QPointF below = from + QPointF{0, 2 * rowHeight};
+    const QPointF left{-2000 * pixelsPerTick, 0};
+    timeline.send(QEvent::MouseButtonPress, below, Qt::LeftButton, Qt::ShiftModifier);
+    timeline.moveBy(below, left, Qt::ShiftModifier);
+    timeline.send(QEvent::MouseButtonRelease, below + left, Qt::NoButton, Qt::ShiftModifier);
+    CHECK(timeline.rig.nav.selectedClips().size() == 3);
+    CHECK(timeline.rig.nav.selectedClips().contains(QString::fromStdString(third)));
+}

@@ -252,12 +252,20 @@ Rectangle {
                     anchors.fill: parent
                     acceptedButtons: Qt.LeftButton | Qt.RightButton
                     onPressed: mouse => {
-                        Registry.runAction("selection.clear", {})
+                        const keep = mouse.modifiers & Qt.ShiftModifier ? Array.from(Nav.selectedClips) : []
+                        if (keep.length === 0) {
+                            Registry.runAction("selection.clear", {})
+                        }
                         Registry.runAction("track.select", {track: row.trackId})
                         if (Theme.isContextClick(mouse)) {
                             area.openLaneMenu()
+                            return
                         }
+                        band.begin(mapToItem(area, mouse.x, mouse.y), keep)
                     }
+                    onPositionChanged: mouse => band.reach(mapToItem(area, mouse.x, mouse.y))
+                    onReleased: band.end()
+                    onCanceled: band.visible = false
                 }
 
                 Rectangle {
@@ -346,6 +354,51 @@ Rectangle {
                 height: Theme.hairline
                 color: Theme.rule
             }
+        }
+    }
+
+    // A drag over empty lanes selects the clips it touches, as Logic's rubber band does; Shift adds to the selection.
+    Rectangle {
+        id: band
+        objectName: "tracks.band"
+        property point from
+        property var kept: []
+        visible: false
+        color: Theme.bandFill
+        border.width: Theme.hairline
+        border.color: Theme.tape
+        z: 1
+
+        function begin(at, keep) {
+            from = at
+            kept = keep
+        }
+        function reach(at) {
+            x = Math.max(Theme.trackHeaderWidth, Math.min(from.x, at.x))
+            y = Math.max(area.lanesTop, Math.min(from.y, at.y))
+            width = Math.min(area.width, Math.max(from.x, at.x)) - x
+            height = Math.min(area.height, Math.max(from.y, at.y)) - y
+            visible = visible || Math.abs(at.x - from.x) >= Theme.dragThreshold || Math.abs(at.y - from.y) >= Theme.dragThreshold
+        }
+        function end() {
+            if (!visible) {
+                return
+            }
+            visible = false
+            const fromTicks = area.scrollTicks + (x - Theme.trackHeaderWidth) / area.pixelsPerTick
+            const toTicks = fromTicks + width / area.pixelsPerTick
+            const firstRow = Math.floor((y - area.lanesTop + list.contentY) / Nav.trackHeight)
+            const lastRow = Math.floor((y + height - area.lanesTop + list.contentY) / Nav.trackHeight)
+            const ids = Array.from(kept)
+            for (let row = Math.max(0, firstRow); row <= Math.min(list.count - 1, lastRow); ++row) {
+                const item = list.itemAtIndex(row)
+                for (const clip of item ? item.clips : []) {
+                    if (clip.start < toTicks && clip.start + clip.length > fromTicks && ids.indexOf(clip.id) < 0) {
+                        ids.push(clip.id)
+                    }
+                }
+            }
+            Registry.runAction("selection.set", {clips: ids})
         }
     }
 

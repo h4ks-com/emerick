@@ -235,6 +235,7 @@ void registerPointEdits(Registry& registry, ProjectController& controller, Nav& 
                                        }
                                    });
              },
+         .menus = {kEditMenu},
          .submenu =
              [] {
                  return core::kAutomationCurves | std::views::transform([](const core::AutomationCurveName& curve) {

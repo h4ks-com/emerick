@@ -1,4 +1,5 @@
 #include <QTest>
+#include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 #include <cmath>
 #include <string>
@@ -165,4 +166,22 @@ TEST_CASE("the piano roll fits and centers its keys on the notes of the clip it 
     const double middle = (empty.call("yOf", 60) + empty.call("yOf", 84) + empty.keyHeight()) / 2;
     CHECK(std::abs(middle - grid->height() / 2) <= empty.keyHeight());
     empty.main.rig.nav.setKeyHeight(kDefaultKeyHeight);
+}
+
+TEST_CASE("the piano keys are shaped like a keyboard and a press plays the key under the pointer") {
+    const Roll roll;
+    QQuickItem* keyboard = roll.main.item("midi.audition")->parentItem();
+    const double row = roll.keyHeight();
+    const double middle = roll.call("yOf", 61) + row / 2;
+    const auto keyAt = [&](double x) {
+        QVariant result;
+        QMetaObject::invokeMethod(keyboard, "keyAt", Q_RETURN_ARG(QVariant, result), Q_ARG(QVariant, x),
+                                  Q_ARG(QVariant, middle));
+        return result.toInt();
+    };
+    CHECK(keyAt(2) == 61);
+    CHECK(keyAt(keyboard->width() - 2) == 60);
+    CHECK(roll.main.item("midi.audition:62")->height() == Catch::Approx(row * 5 / 3));
+    CHECK(roll.main.item("midi.audition:65")->height() == Catch::Approx(row * 7 / 4));
+    CHECK(roll.main.item("midi.audition:61")->width() < roll.main.item("midi.audition:60")->width());
 }

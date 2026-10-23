@@ -17,7 +17,7 @@ Rectangle {
     property bool monitor
     property real gainDb
     property real pan
-    // A bus has no input, so it shows no arm or monitor button.
+    // A bus has no input, so it hides its arm and monitor buttons but keeps their room to line up with the tracks.
     property bool records: true
     // The row a drag would move this track to, or -1 while no drag runs.
     property int dropIndex: -1
@@ -32,7 +32,7 @@ Rectangle {
     readonly property bool selected: Nav.selectedTrack === trackId
     readonly property bool roomy: height >= Theme.headerButton * 2 + Theme.space3
 
-    color: selected ? Theme.lift : Theme.slate
+    color: selected ? Theme.rule : Theme.slate
 
     HoverHandler {
         id: hover
@@ -161,7 +161,7 @@ Rectangle {
                 params: ({track: header.trackId})
                 iconName: "dots-three"
                 iconColor: Theme.inkDim
-                opacity: hover.hovered || Nav.trackMenu === header.trackId ? 1 : 0
+                visible: hover.hovered || Nav.trackMenu === header.trackId
                 implicitWidth: Theme.headerButton
                 implicitHeight: Theme.headerButton
                 Layout.preferredWidth: Theme.headerButton
@@ -180,7 +180,8 @@ Rectangle {
                 text: "S"
             }
             FlagButton {
-                visible: header.records
+                opacity: header.records ? 1 : 0
+                enabled: header.records
                 trackId: header.trackId
                 flag: "track.setArm"
                 value: header.armed
@@ -188,7 +189,8 @@ Rectangle {
                 activeColor: Theme.rec
             }
             FlagButton {
-                visible: header.records
+                opacity: header.records ? 1 : 0
+                enabled: header.records
                 trackId: header.trackId
                 flag: "track.setMonitor"
                 value: header.monitor

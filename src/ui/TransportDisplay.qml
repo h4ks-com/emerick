@@ -97,6 +97,7 @@ Rectangle {
                 anchors.fill: parent
                 actionId: "project.setTempo"
                 framed: false
+                dragsVertically: true
                 value: Number(Clock.bpm)
                 from: Theme.minBpm
                 to: Theme.maxBpm

@@ -36,7 +36,7 @@ Item {
         y: Theme.meterGap
         width: parent.width - 2 * Theme.meterGap
         height: Theme.meterClipLight
-        color: meter.level.clipped ? Theme.rec : Theme.lift
+        color: meter.level.clipped ? Theme.rec : Theme.clear
     }
 
     Row {

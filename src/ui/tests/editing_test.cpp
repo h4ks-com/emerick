@@ -124,16 +124,18 @@ TEST_CASE("the track context menu lists registry actions and its Delete track re
     MainWindow::settle();
 }
 
-TEST_CASE("a right click on a clip selects it and opens the clip menu, and a click below the tracks deselects it") {
+TEST_CASE("a right click on a clip selects it and its track and opens the clip menu, and a click below the tracks deselects it") {
     MainWindow& main = MainWindow::instance();
     const std::string vox = main.rig.run("track.addAudio").at("id");
     writeConstant(main.rig.path("ones.wav"), 48000, 1.0F);
     const std::string clip =
         main.rig.run("clip.import", {{"track", vox}, {"path", main.rig.path("ones.wav").string()}}).at("id");
     main.rig.run("selection.clear");
+    main.rig.run("track.addAudio");
     processUntil([] { return false; }, 50);
 
     main.click(main.item("clip.move:" + qid(clip)), Qt::RightButton);
+    CHECK(main.rig.nav.selectedTrack() == qid(vox));
     QObject* clipMenu = main.menu("menu.clipContext");
     CHECK(processUntil([&] { return clipMenu->property("opened").toBool(); }));
     CHECK_FALSE(main.menu("menu.laneContext")->property("visible").toBool());

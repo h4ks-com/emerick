@@ -143,7 +143,8 @@ Rectangle {
                 text: "S"
             }
             FlagButton {
-                visible: !strip.busRoutes
+                opacity: strip.busRoutes ? 0 : 1
+                enabled: !strip.busRoutes
                 trackId: strip.trackId
                 flag: "track.setArm"
                 value: strip.armed

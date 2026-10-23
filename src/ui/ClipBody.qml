@@ -38,7 +38,7 @@ Item {
                 const item = handle.clipItem
                 if (Theme.isContextClick(mouse)) {
                     if (!item.selected) {
-                        Registry.runAction("selection.set", {clips: [item.clipId]})
+                        item.selectOnPress(Qt.NoModifier)
                     }
                     item.timeline.openClipMenu()
                     axis = "menu"
@@ -225,7 +225,7 @@ Item {
             const item = content.clipItem
             if (Theme.isContextClick(mouse)) {
                 if (!item.selected) {
-                    Registry.runAction("selection.set", {clips: [item.clipId]})
+                    item.selectOnPress(Qt.NoModifier)
                 }
                 item.timeline.openClipMenu()
                 return
@@ -275,6 +275,9 @@ Item {
                 item.drag("clip.move", {start: target, selection: true, track: track})
             }
             Registry.endGesture()
+            if (accepted && track !== "") {
+                Registry.runAction("track.select", {track: track})
+            }
         }
     }
 

@@ -26,6 +26,19 @@ Rectangle {
         const band = whiteBands[pitch % 12]
         return (band[1] - band[0]) * roll.keyHeight
     }
+    // Lights the key and plays it on the track's MIDI output, releasing the one before; -1 releases it.
+    function play(pitch) {
+        if (pitch === playing) {
+            return
+        }
+        if (playing >= 0) {
+            keys.send(playing, false)
+        }
+        playing = pitch
+        if (pitch >= 0) {
+            keys.send(pitch, true)
+        }
+    }
     function keyAt(x, y) {
         const pitch = roll.pitchAt(y)
         if (roll.isBlack(pitch) && x <= blackWidth) {
@@ -102,25 +115,13 @@ Rectangle {
             Registry.runAction("midi.audition", {track: keyboard.roll.clip.trackId, pitch: pitch, on: on})
         }
 
-        onPressed: mouse => {
-            keyboard.playing = keyboard.keyAt(mouse.x, mouse.y)
-            send(keyboard.playing, true)
-        }
+        onPressed: mouse => keyboard.play(keyboard.keyAt(mouse.x, mouse.y))
         onPositionChanged: mouse => {
-            const pitch = keyboard.keyAt(mouse.x, mouse.y)
-            if (pressed && pitch !== keyboard.playing) {
-                send(keyboard.playing, false)
-                keyboard.playing = pitch
-                send(pitch, true)
+            if (pressed) {
+                keyboard.play(keyboard.keyAt(mouse.x, mouse.y))
             }
         }
-        onReleased: {
-            send(keyboard.playing, false)
-            keyboard.playing = -1
-        }
-        onCanceled: {
-            send(keyboard.playing, false)
-            keyboard.playing = -1
-        }
+        onReleased: keyboard.play(-1)
+        onCanceled: keyboard.play(-1)
     }
 }

@@ -185,3 +185,24 @@ TEST_CASE("the piano keys are shaped like a keyboard and a press plays the key u
     CHECK(roll.main.item("midi.audition:65")->height() == Catch::Approx(row * 7 / 4));
     CHECK(roll.main.item("midi.audition:61")->width() < roll.main.item("midi.audition:60")->width());
 }
+
+TEST_CASE("dragging a note lights and plays the key it moves to and lets it go on release") {
+    const Roll roll;
+    const std::string id = roll.add(60, 0);
+    MainWindow::settle();
+    QQuickItem* keyboard = roll.main.item("midi.audition")->parentItem();
+    QQuickItem* note = roll.main.item("note:" + qid(id));
+    const QPointF from = note->mapToScene({note->width() / 2, note->height() / 2});
+    roll.main.send(QEvent::MouseButtonPress, from, Qt::LeftButton, Qt::NoModifier);
+    CHECK(keyboard->property("playing").toInt() == 60);
+    for (int step = 1; step <= 4; ++step) {
+        roll.main.send(QEvent::MouseMove, from - QPointF{0, roll.keyHeight() * 2 * step / 4}, Qt::LeftButton,
+                       Qt::NoModifier);
+    }
+    CHECK(keyboard->property("playing").toInt() == 62);
+    CHECK(note->height() == roll.keyHeight());
+    roll.main.send(QEvent::MouseButtonRelease, from - QPointF{0, roll.keyHeight() * 2}, Qt::NoButton, Qt::NoModifier);
+    MainWindow::settle();
+    CHECK(keyboard->property("playing").toInt() == -1);
+    CHECK(roll.note(id).pitch == 62);
+}

@@ -188,9 +188,9 @@ DockPanel {
                 readonly property var note: roll.notes[index] ?? {id: "", pitch: 0, velocity: 1, start: 0, length: 0}
                 objectName: "note:" + note.id
                 x: roll.xOf(note.start)
-                y: roll.yOf(note.pitch) + Theme.hairline
+                y: roll.yOf(note.pitch)
                 width: Math.max(Theme.velocityBar, note.length * roll.pixelsPerTick)
-                height: roll.keyHeight - Theme.hairline
+                height: roll.keyHeight
                 visible: x + width > 0 && x < grid.width && y + height > 0 && y < grid.height
                 radius: Math.min(Theme.radiusClip / 2, height / 2)
                 color: Theme.velocityColor(note.velocity)
@@ -253,6 +253,7 @@ DockPanel {
                 pressNote = roll.noteAt(mouse.x, mouse.y)
                 if (pressNote) {
                     roll.selectOnPress(pressNote, mouse.modifiers)
+                    keys.play(pressNote.pitch)
                     mode = mouse.x >= roll.xOf(pressNote.start + pressNote.length) - Theme.noteGrip ? "resize" : "move"
                     return
                 }
@@ -282,8 +283,10 @@ DockPanel {
                         return
                     }
                     const by = roll.place(pressNote.start + dx / roll.pixelsPerTick, mouse.modifiers) - pressNote.start
+                    const pitch = roll.pitchAt(mouse.y) - roll.pitchAt(pressAt.y)
                     Registry.updateGesture(Registry.actionInfo("midi.moveNotes").title, [{id: "midi.moveNotes",
-                        params: {by: by, pitch: roll.pitchAt(mouse.y) - roll.pitchAt(pressAt.y)}}])
+                        params: {by: by, pitch: pitch}}])
+                    keys.play(Math.max(0, Math.min(127, pressNote.pitch + pitch)))
                     return
                 }
                 const end = pressNote.start + pressNote.length
@@ -306,6 +309,7 @@ DockPanel {
                 } else if (mode !== "") {
                     Registry.endGesture()
                 }
+                keys.play(-1)
                 mode = ""
             }
             onCanceled: {
@@ -314,12 +318,14 @@ DockPanel {
                     Registry.cancelGesture()
                     Registry.endGesture()
                 }
+                keys.play(-1)
                 mode = ""
             }
         }
     }
 
     PianoKeyboard {
+        id: keys
         y: roll.keysTop
         width: Theme.trackHeaderWidth
         height: roll.gridHeight

@@ -26,6 +26,9 @@ struct AutomationParam {
     std::string bus;
     // How the lane writes values: "dB", "pan" as L, C and R, or plain numbers.
     std::string unit;
+    // An insert param names its insert and its index in the effect's table.
+    std::string insert;
+    std::size_t insertParam = 0;
 };
 
 std::string sendParamId(const model::TrackId& bus);

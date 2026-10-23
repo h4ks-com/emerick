@@ -140,6 +140,25 @@ QtObject {
     readonly property color barLine: Qt.rgba(1, 1, 1, 0.07)
     readonly property color beatLine: Qt.rgba(1, 1, 1, 0.03)
 
+    readonly property real paramStep: 0.004
+    readonly property int effectKnob: 36
+    readonly property int knobRing: 3
+    readonly property int effectKnobWidth: 76
+    readonly property int effectKnobHeight: 80
+    readonly property int eqBands: 7
+    readonly property int eqBandParams: 4
+    readonly property int eqBandWidth: 84
+    readonly property int eqGraphHeight: 220
+    readonly property int eqPoint: 12
+    readonly property int eqCurveSpacing: 2
+    readonly property real eqCurveWidth: 1.5
+    readonly property real eqRangeDb: 24
+    readonly property real eqMinHz: 20
+    readonly property real eqMaxHz: 20000
+    readonly property real eqWheelQ: 1.15
+    readonly property color eqFill: Qt.rgba(1, 1, 1, 0.08)
+    readonly property real reductionRangeDb: 20
+
     readonly property int pianoRollHeight: 320
     readonly property int pianoRollMinHeight: 200
     readonly property int velocityLaneHeight: 64

@@ -143,7 +143,8 @@ void ProjectController::applyPasses(engine::Session& session) const {
             continue;
         }
         std::erase_if(engineTrack->automation, [&](const engine::AutomationLane& lane) {
-            return lane.target == param->target && lane.bus == param->bus;
+            return lane.target == param->target && lane.bus == param->bus && lane.insert == param->insert &&
+                   lane.param == param->insertParam;
         });
         switch (param->target) {
             case engine::AutomationTarget::gain:
@@ -159,6 +160,13 @@ void ProjectController::applyPasses(engine::Session& session) const {
                 for (engine::Send& send : engineTrack->sends) {
                     if (send.bus == param->bus) {
                         send.gain = gainFromDb(pass.lastValue);
+                    }
+                }
+                break;
+            case engine::AutomationTarget::insert:
+                for (engine::Insert& insert : engineTrack->inserts) {
+                    if (insert.id == param->insert) {
+                        insert.params.at(param->insertParam) = static_cast<float>(pass.lastValue);
                     }
                 }
                 break;

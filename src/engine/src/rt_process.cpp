@@ -313,6 +313,9 @@ void applyLanes(TrackState& track, Frames frame) {
             case AutomationTarget::send:
                 track.sends[lane.send].gain = gainOfDb(value);
                 break;
+            case AutomationTarget::insert:
+                track.inserts[lane.insert].params.at(lane.param) = value;
+                break;
         }
     }
 }
@@ -329,7 +332,8 @@ void mixPart(Snapshot& snapshot, TrackState& track, Frames offset, Frames frames
 // An automated track mixes in parts this long, each ramping to the lanes' values at its end.
 constexpr Frames kAutomationStep = 32;
 
-// In mix order, so each bus has every source in its mix before its turn: applies each track's fader and pan, feeds
+// In mix order, so each bus has every source in its mix before its turn: runs each track's inserts, applies its
+// fader and pan, feeds
 // its sends, meters it, adds it to its outputs or its output bus and clears it for the next block.
 void mixTracks(Snapshot& snapshot, const AudioBlock& block, const BlockTime& time) {
     if (block.frames == 0) {
@@ -339,6 +343,13 @@ void mixTracks(Snapshot& snapshot, const AudioBlock& block, const BlockTime& tim
     for (const std::size_t index : snapshot.mixOrder) {
         TrackState& track = snapshot.tracks[index];
         if (!track.mix.empty() && audible(track, soloActive)) {
+            if (!track.lanes.empty()) {
+                applyLanes(track, time.at(block.frames));
+            }
+            for (InsertState& insert : track.inserts) {
+                insert.effect->process(track.mixPointers, block.frames, insert.params, insert.bypass,
+                                       snapshot.tempo.bpm);
+            }
             const Frames step = track.lanes.empty() ? block.frames : kAutomationStep;
             for (Frames offset = 0; offset < block.frames; offset += step) {
                 const Frames frames = std::min(step, block.frames - offset);

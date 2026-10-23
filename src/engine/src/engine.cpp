@@ -423,6 +423,16 @@ std::vector<LevelReading> Engine::takeInputLevels() { return takeLevels(impl_->b
 
 std::vector<LevelReading> Engine::takeOutputLevels() { return takeLevels(impl_->builder.outputMeters()); }
 
+std::vector<GainReduction> Engine::takeGainReductions() {
+    std::vector<GainReduction> readings;
+    for (const auto& [insertId, effect] : impl_->builder.compressors()) {
+        if (const std::shared_ptr<Effect> alive = effect.lock()) {
+            readings.push_back({insertId, alive->takeReductionDb()});
+        }
+    }
+    return readings;
+}
+
 AudioBackend& Engine::audio() { return *impl_->audio; }
 
 MidiBackend& Engine::midi() { return *impl_->midi; }

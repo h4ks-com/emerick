@@ -336,6 +336,8 @@ ApplicationWindow {
         }
     }
 
+    InsertEditor {}
+
     Popup {
         anchors.centerIn: parent
         padding: Theme.space5

@@ -37,6 +37,11 @@ struct StereoGains {
 
 StereoGains panGains(float pan, PanLaw law);
 
+struct GainReduction {
+    std::string insertId;
+    float db = 0.0F;  // zero or below
+};
+
 inline constexpr auto kStreamStall = std::chrono::seconds{2};
 
 // We call every method from the UI thread, and the audio thread runs only the backend callback.
@@ -101,6 +106,8 @@ public:
     std::vector<RecordedTake> takeRecordings();
     // Reads and resets the input level of every audio track with an input.
     std::vector<LevelReading> takeInputLevels();
+    // Reads and resets the deepest gain reduction of every compressor insert.
+    std::vector<GainReduction> takeGainReductions();
     // Reads and resets the post-fader output level of every track with an audio output.
     std::vector<LevelReading> takeOutputLevels();
 

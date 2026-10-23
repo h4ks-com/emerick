@@ -16,6 +16,8 @@ std::string durationText(core::Ticks ticks, const core::TempoMap& tempo);
 Json positionState(core::Ticks ticks, const core::TempoMap& tempo);
 Json noteState(const model::Note& note);
 Json clipState(const model::Clip& clip, const core::TempoMap& tempo, bool includeEvents = false);
+// The insert with its effect's title and every param by id; automation names a param as "<insert id>.<param id>".
+Json insertState(const model::Insert& insert);
 Json trackState(const model::Track& track, const core::TempoMap& tempo,
                 std::span<const engine::AudioDeviceInfo> devices = {});
 // The device name and channels, such as "MOTU M2 1-2", or the id of a device that is gone.

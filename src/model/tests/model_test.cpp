@@ -92,6 +92,24 @@ TEST_CASE("sends and output buses round trip, and a format 3 project loads with 
     }
 }
 
+TEST_CASE("inserts round trip in order, and a format 6 project loads with none") {
+    Document document = sampleDocument();
+    document.tracks[1].inserts = {{.type = "eq", .bypass = false, .params = {{"peak2Gain", 3.5}}},
+                                  {.type = "reverb", .bypass = true, .params = {}}};
+    const Document loaded = documentFromJson(toJson(document));
+    CHECK(loaded.tracks[1].inserts == document.tracks[1].inserts);
+    CHECK(trackWithInsert(loaded, document.tracks[1].inserts[1].id) == &loaded.tracks[1]);
+
+    auto json = toJson(document);
+    json["format"] = 6;
+    for (auto& track : json["tracks"]) {
+        track.erase("inserts");
+    }
+    for (const Track& track : documentFromJson(json).tracks) {
+        CHECK(track.inserts.empty());
+    }
+}
+
 TEST_CASE("reaches follows sends and output buses through a chain of buses") {
     Document document;
     Track vox = named("Vox");

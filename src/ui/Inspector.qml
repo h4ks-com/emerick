@@ -119,6 +119,7 @@ Rectangle {
                 required property bool midiRoutes
                 required property bool busRoutes
                 required property var sends
+                required property var inserts
                 required property var audioIn
                 required property var audioOut
                 required property var midiIn
@@ -166,6 +167,14 @@ Rectangle {
                     trackId: panel.trackId
                     devices: Project.routeDevices.audioOut
                     route: panel.audioOut
+                }
+
+                RouteLabel { text: "Inserts"; visible: panel.audioRoutes || panel.busRoutes }
+                InsertList {
+                    visible: panel.audioRoutes || panel.busRoutes
+                    trackId: panel.trackId
+                    inserts: panel.inserts
+                    Layout.fillWidth: true
                 }
 
                 RouteLabel { text: "Sends"; visible: panel.audioRoutes || panel.busRoutes }

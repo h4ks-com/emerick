@@ -13,6 +13,7 @@ Button {
     property color iconColor: Theme.ink
     // A second tooltip line, such as a modifier that changes what a drag does.
     property string hint
+    property int textSize: Theme.textLabel
     // A button with a menu opens it below itself, and the menu's items run the action.
     property Menu menu
     // A delegate binds its objectName after this first evaluates, while actionId is still empty.
@@ -43,7 +44,7 @@ Button {
         text: button.text
         display: button.display
         color: button.active ? Theme.graphite : Theme.ink
-        font.pixelSize: Theme.textLabel
+        font.pixelSize: button.textSize
     }
     background: Rectangle {
         implicitWidth: button.iconName ? Theme.buttonHeight : 0

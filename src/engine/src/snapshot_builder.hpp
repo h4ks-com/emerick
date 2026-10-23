@@ -39,6 +39,8 @@ public:
     using Meters = std::map<std::string, std::weak_ptr<LevelMeter>>;
     // The input meter of every audio track with an input, by track id.
     [[nodiscard]] const Meters& inputMeters() const { return inputMeters_; }
+    // The effect of every compressor insert, by insert id.
+    [[nodiscard]] const std::map<std::string, std::weak_ptr<Effect>>& compressors() const { return compressors_; }
     // The output meter of every track with an audio output, by track id.
     [[nodiscard]] const Meters& outputMeters() const { return outputMeters_; }
 
@@ -50,6 +52,7 @@ private:
     static void addMidiEvents(TrackState& state, const Track& track, const core::TempoMap& tempo, double sampleRate);
     void addRecorder(TrackState& state, const Track& track, const Session& session, const StreamLayout& layout,
                      Frames captureOffset);
+    void addInserts(TrackState& state, const Track& track, const StreamLayout& layout);
     void addMetronome(Snapshot& snapshot, const Session& session, const StreamLayout& layout,
                       std::vector<SessionError>& errors);
     std::shared_ptr<const DrumSounds> drumSounds(const Metronome& metronome, double sampleRate,
@@ -62,6 +65,8 @@ private:
     PollingSet<MidiOutputPort>& sender_;
     std::map<std::string, std::weak_ptr<ClipStream>> clips_;
     std::map<std::string, std::weak_ptr<TakeRecorder>> recorders_;
+    std::map<std::string, std::weak_ptr<Effect>> effects_;
+    std::map<std::string, std::weak_ptr<Effect>> compressors_;
     Meters inputMeters_;
     Meters outputMeters_;
     std::map<std::string, std::weak_ptr<MidiInputPort>> inputs_;

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <map>
 #include <nlohmann/json.hpp>
 #include <optional>
 #include <string>
@@ -20,11 +21,13 @@ struct TrackTag {};
 struct ClipTag {};
 struct MarkerTag {};
 struct NoteTag {};
+struct InsertTag {};
 struct AutomationPointTag {};
 using TrackId = core::Id<TrackTag>;
 using ClipId = core::Id<ClipTag>;
 using MarkerId = core::Id<MarkerTag>;
 using NoteId = core::Id<NoteTag>;
+using InsertId = core::Id<InsertTag>;
 using AutomationPointId = core::Id<AutomationPointTag>;
 
 // Channels are 1-based.
@@ -106,6 +109,17 @@ struct Send {
     bool operator==(const Send&) const = default;
 };
 
+// An effect on a track's signal before its fader. The app reads type and params against its effect table, so a file
+// from another build keeps what this one cannot play.
+struct Insert {
+    InsertId id = InsertId::make();
+    std::string type;
+    bool bypass = false;
+    std::map<std::string, double> params;
+
+    bool operator==(const Insert&) const = default;
+};
+
 // The curve shapes the segment from this point to the next.
 struct AutomationPoint {
     AutomationPointId id = AutomationPointId::make();
@@ -148,6 +162,7 @@ struct Track {
     // A track with an output bus plays into that bus in place of its audio output.
     TrackId outputBus;
     std::vector<Send> sends;
+    std::vector<Insert> inserts;  // in signal order
     std::vector<Clip> clips;
     AutomationMode automationMode = AutomationMode::read;
     std::vector<AutomationLane> automation;
@@ -187,6 +202,8 @@ const ClipId& clipId(const Clip& clip);
 Track* findTrack(Document& document, const TrackId& id);
 const Track* findTrack(const Document& document, const TrackId& id);
 std::optional<ClipRef> findClip(const Document& document, const ClipId& id);
+// The track whose inserts hold the insert.
+const Track* trackWithInsert(const Document& document, const InsertId& id);
 const Marker* findMarker(const Document& document, const MarkerId& id);
 // The buses a track plays into through its output bus and its sends. Disabled sends count too, so enabling one never
 // closes a loop.

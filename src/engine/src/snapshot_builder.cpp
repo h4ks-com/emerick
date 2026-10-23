@@ -122,13 +122,22 @@ void addLanes(Snapshot& snapshot, const Session& session) {
             if (lane.points.empty()) {
                 continue;
             }
-            LaneState added{.target = lane.target, .send = 0, .points = {}};
+            LaneState added{.target = lane.target, .send = 0, .insert = 0, .param = 0, .points = {}};
             if (lane.target == AutomationTarget::send) {
                 const auto send = sendIndex(session, state, lane.bus);
                 if (!send) {
                     continue;
                 }
                 added.send = *send;
+            }
+            if (lane.target == AutomationTarget::insert) {
+                const auto& inserts = session.tracks[index].inserts;
+                const auto insert = std::ranges::find(inserts, lane.insert, &Insert::id);
+                if (insert == inserts.end() || lane.param >= kMaxEffectParams) {
+                    continue;
+                }
+                added.insert = static_cast<std::size_t>(insert - inserts.begin());
+                added.param = lane.param;
             }
             added.points = lane.points | std::views::transform([&](const AutomationPoint& point) {
                                return LanePoint{.frame = session.tempo.ticksToFrames(point.tick, snapshot.sampleRate),
@@ -191,6 +200,10 @@ BuiltSnapshot SnapshotBuilder::build(const Session& session, const StreamLayout&
                                 std::views::transform(
                                     [&](std::size_t channel) { return outputGain(state, channel, snapshot.panLaw); }) |
                                 std::ranges::to<std::vector>();
+            state.mixPointers = state.mix |
+                                std::views::transform([](std::vector<float>& channel) { return channel.data(); }) |
+                                std::ranges::to<std::vector>();
+            addInserts(state, track, layout);
         }
         addClips(state, track, session.tempo, layout, built.errors);
         addMidiEvents(state, track, session.tempo, layout.sampleRate);
@@ -203,6 +216,21 @@ BuiltSnapshot SnapshotBuilder::build(const Session& session, const StreamLayout&
     addMetronome(snapshot, session, layout, built.errors);
     snapshot.tailOutputs.resize(static_cast<std::size_t>(layout.outputChannels));
     return built;
+}
+
+void SnapshotBuilder::addInserts(TrackState& state, const Track& track, const StreamLayout& layout) {
+    for (const Insert& insert : track.inserts) {
+        const std::string key = track.id + "/" + insert.id + "/" + std::to_string(static_cast<int>(insert.type)) + "/" +
+                                std::to_string(state.mix.size()) + "/" + std::to_string(layout.sampleRate) + "/" +
+                                std::to_string(layout.maxFrames);
+        std::shared_ptr<Effect> effect = cached(effects_, key, [&] {
+            return std::make_shared<Effect>(insert.type, state.mix.size(), layout.sampleRate, layout.maxFrames);
+        });
+        if (insert.type == EffectType::compressor) {
+            compressors_[insert.id] = effect;
+        }
+        state.inserts.push_back({.effect = std::move(effect), .params = insert.params, .bypass = insert.bypass});
+    }
 }
 
 void SnapshotBuilder::addMetronome(Snapshot& snapshot, const Session& session, const StreamLayout& layout,
@@ -335,6 +363,8 @@ std::shared_ptr<MidiOutputPort> SnapshotBuilder::outputPort(const std::string& i
 void SnapshotBuilder::prune() {
     const auto expired = [](const auto& entry) { return entry.second.expired(); };
     std::erase_if(clips_, expired);
+    std::erase_if(effects_, expired);
+    std::erase_if(compressors_, expired);
     std::erase_if(recorders_, expired);
     std::erase_if(inputMeters_, expired);
     std::erase_if(outputMeters_, expired);

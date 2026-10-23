@@ -9,6 +9,7 @@
 #include <variant>
 
 #include "emerick/core/overloaded.hpp"
+#include "emerick/engine/effects.hpp"
 #include "emerick/model/automation.hpp"
 
 namespace emerick::app {
@@ -164,6 +165,15 @@ Json clipState(const model::Clip& clip, const core::TempoMap& tempo, bool includ
         clip);
 }
 
+Json insertState(const model::Insert& insert) {
+    const engine::EffectSpec* spec = engine::findEffect(insert.type);
+    return {{"id", insert.id.value},
+            {"type", insert.type},
+            {"title", spec != nullptr ? std::string{spec->title} : insert.type},
+            {"bypass", insert.bypass},
+            {"params", insert.params}};
+}
+
 Json trackState(const model::Track& track, const core::TempoMap& tempo,
                 std::span<const engine::AudioDeviceInfo> devices) {
     Json clips = Json::array();
@@ -191,6 +201,7 @@ Json trackState(const model::Track& track, const core::TempoMap& tempo,
                       return Json{
                           {"bus", send.bus.value}, {"db", send.levelDb}, {"pre", send.pre}, {"enabled", send.enabled}};
                   }) | std::ranges::to<Json::array_t>()},
+        {"inserts", track.inserts | std::views::transform(insertState) | std::ranges::to<Json::array_t>()},
         {"clips", std::move(clips)},
         {"automationMode", model::automationModeId(track.automationMode)},
         {"automation", track.automation | std::views::transform([](const model::AutomationLane& lane) {

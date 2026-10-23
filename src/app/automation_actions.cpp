@@ -146,7 +146,9 @@ Json editPoints(const Registry& registry, ProjectController& controller, const s
                                                              .toggle = false,
                                                              .target = engine::AutomationTarget::gain,
                                                              .bus = {},
-                                                             .unit = {}}));
+                                                             .unit = {},
+                                                             .insert = {},
+                                                             .insertParam = 0}));
                     model::sortPoints(lane);
                 }
             });

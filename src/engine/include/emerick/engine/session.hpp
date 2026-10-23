@@ -10,6 +10,7 @@
 #include "emerick/core/automation.hpp"
 #include "emerick/core/fade.hpp"
 #include "emerick/core/time.hpp"
+#include "emerick/engine/effects.hpp"
 
 namespace emerick::engine {
 
@@ -62,8 +63,17 @@ struct Send {
     bool operator==(const Send&) const = default;
 };
 
+// An insert effect on a track's signal before its fader, pan and sends. Its id stays the same across sessions, so the
+// effect keeps its state while the insert lives.
+struct Insert {
+    std::string id;
+    EffectType type = EffectType::eq;
+    bool bypass = false;
+    EffectParams params{};
+};
+
 // The parameter a lane moves. Gain and send levels are in dB, pan runs from -1 to 1 and mute is on from 0.5.
-enum class AutomationTarget : std::uint8_t { gain, pan, mute, send };
+enum class AutomationTarget : std::uint8_t { gain, pan, mute, send, insert };
 
 struct AutomationPoint {
     Ticks tick = 0;
@@ -77,6 +87,9 @@ struct AutomationLane {
     AutomationTarget target = AutomationTarget::gain;
     std::string bus;
     std::vector<AutomationPoint> points;  // sorted by tick
+    // An insert lane names the insert and the index of the param it moves in the effect's table.
+    std::string insert;
+    std::size_t param = 0;
 };
 
 struct Track {
@@ -97,6 +110,7 @@ struct Track {
     // A track with an output bus plays into that bus in place of audioOut.
     std::string outputBus;
     std::vector<Send> sends;
+    std::vector<Insert> inserts;
     std::vector<AudioClip> audioClips;
     std::vector<MidiClip> midiClips;
     std::vector<AutomationLane> automation;

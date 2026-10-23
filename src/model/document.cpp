@@ -56,6 +56,12 @@ bool reaches(const Document& document, const TrackId& from, const TrackId& to) {
     return false;
 }
 
+const Track* trackWithInsert(const Document& document, const InsertId& id) {
+    const auto found = std::ranges::find_if(
+        document.tracks, [&](const Track& track) { return std::ranges::contains(track.inserts, id, &Insert::id); });
+    return found == document.tracks.end() ? nullptr : &*found;
+}
+
 const Marker* findMarker(const Document& document, const MarkerId& id) {
     const auto found = std::ranges::find(document.markers, id, &Marker::id);
     return found == document.markers.end() ? nullptr : &*found;

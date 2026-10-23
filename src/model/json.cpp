@@ -67,6 +67,14 @@ AutomationMode automationModeFromJson(const nlohmann::json& json) {
     return *mode;
 }
 
+nlohmann::json insertToJson(const Insert& insert) {
+    return {{"id", insert.id.value}, {"type", insert.type}, {"bypass", insert.bypass}, {"params", insert.params}};
+}
+
+Insert insertFromJson(const nlohmann::json& json) {
+    return {InsertId{json.at("id")}, json.at("type"), json.at("bypass"), json.at("params")};
+}
+
 core::FadeShape fadeShapeFromJson(const nlohmann::json& json, const char* key) {
     const std::string id = json.value(key, std::string{core::fadeShapeId(core::FadeShape::linear)});
     const auto shape = core::fadeShapeFromId(id);
@@ -167,28 +175,30 @@ nlohmann::json trackToJson(const Track& track) {
     for (const Clip& clip : track.clips) {
         clips.push_back(clipToJson(clip));
     }
-    return {{"id", track.id.value},
-            {"name", track.name},
-            {"kind", track.kind},
-            {"icon", track.icon},
-            {"color", track.color},
-            {"mute", track.mute},
-            {"solo", track.solo},
-            {"armed", track.armed},
-            {"monitor", track.monitor},
-            {"gainDb", track.gainDb},
-            {"pan", track.pan},
-            {"audioIn", track.audioIn},
-            {"audioOut", track.audioOut},
-            {"midiIn", track.midiIn},
-            {"midiOut", track.midiOut},
-            {"outputBus", track.outputBus.value},
-            {"sends", track.sends | std::views::transform(sendToJson) | std::ranges::to<nlohmann::json::array_t>()},
-            {"clips", std::move(clips)},
-            {"automationMode", automationModeId(track.automationMode)},
-            {"automation",
-             track.automation | std::views::transform(laneToJson) | std::ranges::to<nlohmann::json::array_t>()},
-            {"data", track.data}};
+    return {
+        {"id", track.id.value},
+        {"name", track.name},
+        {"kind", track.kind},
+        {"icon", track.icon},
+        {"color", track.color},
+        {"mute", track.mute},
+        {"solo", track.solo},
+        {"armed", track.armed},
+        {"monitor", track.monitor},
+        {"gainDb", track.gainDb},
+        {"pan", track.pan},
+        {"audioIn", track.audioIn},
+        {"audioOut", track.audioOut},
+        {"midiIn", track.midiIn},
+        {"midiOut", track.midiOut},
+        {"outputBus", track.outputBus.value},
+        {"sends", track.sends | std::views::transform(sendToJson) | std::ranges::to<nlohmann::json::array_t>()},
+        {"inserts", track.inserts | std::views::transform(insertToJson) | std::ranges::to<nlohmann::json::array_t>()},
+        {"clips", std::move(clips)},
+        {"automationMode", automationModeId(track.automationMode)},
+        {"automation",
+         track.automation | std::views::transform(laneToJson) | std::ranges::to<nlohmann::json::array_t>()},
+        {"data", track.data}};
 }
 
 Track trackFromJson(const nlohmann::json& json) {
@@ -209,6 +219,8 @@ Track trackFromJson(const nlohmann::json& json) {
                 json.at("midiOut"),
                 TrackId{json.value("outputBus", std::string{})},
                 json.value("sends", nlohmann::json::array()) | std::views::transform(sendFromJson) |
+                    std::ranges::to<std::vector>(),
+                json.value("inserts", nlohmann::json::array()) | std::views::transform(insertFromJson) |
                     std::ranges::to<std::vector>(),
                 {},
                 automationModeFromJson(json),

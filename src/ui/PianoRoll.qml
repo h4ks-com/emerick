@@ -231,6 +231,11 @@ DockPanel {
             property point pressAt
             property var pressNote: null
             property var pressSelection: []
+            readonly property var heldNote: (mode === "move" || mode === "resize") && pressNote
+                                            ? roll.notes.find(note => note.id === pressNote.id) ?? null : null
+            ToolTip.visible: heldNote !== null
+            ToolTip.text: heldNote ? roll.noteName(heldNote.pitch) + "   " + Project.ticksText(roll.clipStart + heldNote.start, false)
+                                     + "   " + Project.ticksText(heldNote.length, true) : ""
             cursorShape: mode === "resize" || (containsMouse && hoverResize) ? Qt.SizeHorCursor : Qt.ArrowCursor
             hoverEnabled: true
             readonly property bool hoverResize: {

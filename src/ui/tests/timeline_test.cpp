@@ -1,4 +1,6 @@
 #include <QMouseEvent>
+#include <QQmlContext>
+#include <QQmlProperty>
 #include <QQuickItem>
 #include <QQuickView>
 #include <QTest>
@@ -139,6 +141,25 @@ TEST_CASE("dragging a clip selects it and moves it to the nearest beat") {
     timeline.drag(QString::fromStdString("clip.move:" + id), 900 * pixelsPerTick, Qt::ControlModifier);
     CHECK(timeline.clip(id).start == 1920);
     timeline.rig.run("edit.toggleSnap");
+}
+
+TEST_CASE("dragging a clip shows where it lands until the drag ends") {
+    Timeline& timeline = Timeline::instance();
+    const std::string id = timeline.addClip();
+    QQuickItem* move = timeline.item(QString::fromStdString("clip.move:" + id));
+    const auto tip = [&](const char* property) {
+        return QQmlProperty(move->parentItem(), property, qmlContext(move)).read();
+    };
+
+    const QPointF from = timeline.press(QString::fromStdString("clip.move:" + id));
+    timeline.moveBy(from, {1000 * timeline.rig.nav.pixelsPerTick(), 0});
+    CHECK(processUntil([&] { return tip("ToolTip.visible").toBool(); }));
+    CHECK(tip("ToolTip.text").toString() == "Move clip   " + timeline.rig.controller->ticksText(960, false));
+    timeline.send(QEvent::MouseButtonRelease, from + QPointF{1000 * timeline.rig.nav.pixelsPerTick(), 0}, Qt::NoButton,
+                  Qt::NoModifier);
+    CHECK_FALSE(tip("ToolTip.visible").toBool());
+    timeline.rig.run("project.undo");
+    Timeline::settle();
 }
 
 TEST_CASE("dragging a fade handle snaps the fade's edge to the beat grid, and Ctrl places it freely") {

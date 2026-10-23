@@ -1,4 +1,5 @@
 import QtQuick
+import QtQuick.Controls.Basic
 import QtQuick.Shapes
 import Emerick.App
 
@@ -92,6 +93,12 @@ Item {
     HoverHandler {
         id: hover
     }
+
+    // A drag shows where the clip lands, as Logic's help tag does.
+    ToolTip.visible: move.dragging || startGrip.pressed || endGrip.pressed
+    ToolTip.text: move.dragging ? Registry.actionInfo("clip.move").title + "   " + Project.ticksText(clipItem.start, false)
+                : startGrip.pressed ? Registry.actionInfo("clip.resize").title + "   " + Project.ticksText(clipItem.start, false)
+                : Registry.actionInfo("clip.resize").title + "   " + Project.ticksText(clipItem.end, false)
 
     Rectangle {
         id: body

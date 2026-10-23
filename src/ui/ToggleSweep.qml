@@ -15,7 +15,7 @@ MouseArea {
     function toggleAt(item, point) {
         for (let index = 0; index < item.children.length; ++index) {
             const child = item.children[index]
-            if (!child.visible) {
+            if (!child.visible || !child.enabled) {
                 continue
             }
             const local = child.mapFromItem(sweep, point.x, point.y)

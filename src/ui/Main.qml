@@ -342,6 +342,7 @@ ApplicationWindow {
         anchors.centerIn: parent
         padding: Theme.space5
         modal: true
+        focus: true
         visible: Nav.aboutOpen
         onClosed: Nav.aboutOpen = false
         background: GlassPanel {}

@@ -1,4 +1,5 @@
 import QtQuick
+import QtQuick.Controls.Basic
 import Emerick.App
 
 // A bar per note as tall as its velocity. Dragging a bar up or down sets the velocity of its note, or of every selected
@@ -44,7 +45,7 @@ Rectangle {
                 height: Math.max(Theme.hairline, bars.height * note.velocity / 127)
                 visible: x + width > 0 && x < bars.width
                 radius: Theme.hairline
-                color: lane.roll.selected(note.id) ? Theme.tape : Theme.velocityColor(note.velocity)
+                color: lane.roll.selected(note.id) ? Theme.selectedNote(note.velocity) : Theme.velocityColor(note.velocity)
             }
         }
 
@@ -55,6 +56,9 @@ Rectangle {
             property var pressNote: null
             property var targets: []
             property real pressY
+            readonly property var heldNote: pressNote ? lane.roll.notes.find(note => note.id === pressNote.id) ?? null : null
+            ToolTip.visible: heldNote !== null
+            ToolTip.text: heldNote ? lane.roll.noteName(heldNote.pitch) + "   velocity " + heldNote.velocity : ""
 
             function noteNear(x) {
                 const ticks = lane.roll.ticksAt(x)

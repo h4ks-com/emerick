@@ -240,12 +240,14 @@ void Registry::addAction(Action entry) {
     }
     actions_.push_back(std::move(entry));
     emit shortcutsChanged();
+    emit menusChanged();
     emit settingsChanged();
 }
 
 void Registry::removeAction(const std::string& id) {
     if (std::erase_if(actions_, [&](const Action& entry) { return entry.id == id; }) > 0) {
         emit shortcutsChanged();
+        emit menusChanged();
         emit settingsChanged();
     }
 }
@@ -277,6 +279,7 @@ Json Registry::setShortcut(const std::string& id, const std::string& sequence) {
     found->shortcut = shortcut;
     store_->setValue(shortcutKey(id), qs(shortcut));
     emit shortcutsChanged();
+    emit menusChanged();
     emit settingsChanged();
     return {{"id", id}, {"shortcut", shortcut}, {"replaced", replaced}};
 }
@@ -661,7 +664,7 @@ QVariantMap Registry::actionInfo(const QString& id) const {
         qWarning() << "no action" << id;
         return {};
     }
-    QVariantMap info{{"title", qs(found->title)}, {"shortcut", qs(found->shortcut)}};
+    QVariantMap info{{"title", qs(found->title)}, {"shortcut", qs(found->shortcut)}, {"enabled", isEnabled(*found)}};
     if (found->submenu) {
         info.insert("choices", menuChoices(*found));
     }

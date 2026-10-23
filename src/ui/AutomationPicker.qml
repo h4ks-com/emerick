@@ -19,6 +19,7 @@ ChromeButton {
     GlassMenu {
         id: choiceMenu
         objectName: picker.objectName + ":menu"
+        marks: true
 
         Instantiator {
             model: picker.choices
@@ -27,10 +28,10 @@ ChromeButton {
                 objectName: picker.objectName + ":" + modelData.id
                 actionId: picker.actionId
                 title: modelData.title
+                marked: modelData.title === picker.current
                 params: Object.assign({track: picker.trackId}, modelData.params)
             }
             onObjectAdded: (index, object) => choiceMenu.insertItem(index, object)
-            onObjectRemoved: (index, object) => choiceMenu.removeItem(object)
         }
     }
 }

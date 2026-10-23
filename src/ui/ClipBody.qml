@@ -1,4 +1,5 @@
 import QtQuick
+import QtQuick.Controls.Basic
 import QtQuick.Shapes
 import Emerick.App
 
@@ -38,7 +39,7 @@ Item {
                 const item = handle.clipItem
                 if (Theme.isContextClick(mouse)) {
                     if (!item.selected) {
-                        Registry.runAction("selection.set", {clips: [item.clipId]})
+                        item.selectOnPress(Qt.NoModifier)
                     }
                     item.timeline.openClipMenu()
                     axis = "menu"
@@ -93,6 +94,12 @@ Item {
         id: hover
     }
 
+    // A drag shows where the clip lands, as Logic's help tag does.
+    ToolTip.visible: move.dragging || startGrip.pressed || endGrip.pressed
+    ToolTip.text: move.dragging ? Registry.actionInfo("clip.move").title + "   " + Project.ticksText(clipItem.start, false)
+                : startGrip.pressed ? Registry.actionInfo("clip.resize").title + "   " + Project.ticksText(clipItem.start, false)
+                : Registry.actionInfo("clip.resize").title + "   " + Project.ticksText(clipItem.end, false)
+
     Rectangle {
         id: body
         anchors.fill: parent
@@ -102,20 +109,24 @@ Item {
         color: content.clipItem.trackColor
         clip: true
 
+        // We tint the label opaque, because its square bottom half overlaps its rounded top and would darken twice.
         Rectangle {
+            id: label
             width: parent.width
             height: Theme.clipLabelHeight
             radius: Theme.radiusClip
-            color: Theme.clipLabel
+            color: Qt.tint(content.clipItem.trackColor, Theme.clipLabel)
             Rectangle {
                 anchors.bottom: parent.bottom
                 width: parent.width
                 height: parent.radius
-                color: Theme.clipLabel
+                color: label.color
             }
             Text {
                 anchors.fill: parent
+                // The name stays at the left edge of the view while the clip starts before it, as in Logic.
                 anchors.leftMargin: Theme.fadeHandle + Theme.space1
+                                    + Math.max(0, (content.clipItem.viewFrom - content.clipItem.start) * content.clipItem.pixelsPerTick)
                 anchors.rightMargin: Theme.space1
                 verticalAlignment: Text.AlignVCenter
                 text: content.clipItem.trackName + "   Take " + content.clipItem.clip.take
@@ -223,10 +234,9 @@ Item {
             const item = content.clipItem
             if (Theme.isContextClick(mouse)) {
                 if (!item.selected) {
-                    Registry.runAction("selection.set", {clips: [item.clipId]})
+                    item.selectOnPress(Qt.NoModifier)
                 }
                 item.timeline.openClipMenu()
-                mouse.accepted = false
                 return
             }
             pressAt = move.mapToItem(null, mouse.x, mouse.y)
@@ -274,6 +284,9 @@ Item {
                 item.drag("clip.move", {start: target, selection: true, track: track})
             }
             Registry.endGesture()
+            if (accepted && track !== "") {
+                Registry.runAction("track.select", {track: track})
+            }
         }
     }
 

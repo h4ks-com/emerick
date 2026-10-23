@@ -107,6 +107,8 @@ Item {
             lane.run("set", params)
         }
         onActiveFocusChanged: if (!activeFocus) lane.editing = false
+        // A hidden field keeps the focus it had, which would turn the window's shortcuts off.
+        onVisibleChanged: if (!visible) focus = false
         Keys.onEscapePressed: lane.editing = false
     }
 }

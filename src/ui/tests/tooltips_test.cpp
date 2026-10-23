@@ -62,3 +62,13 @@ TEST_CASE("every visible control in the main window and on every settings page s
     main.rig.run("settings.close");
     MainWindow::settle();
 }
+
+TEST_CASE("a button's tooltip hides once it is pressed, so it never covers the menu the button opens") {
+    MainWindow& main = MainWindow::instance();
+    QQuickItem* button = main.item("project.showMenu");
+    main.click(button);
+    CHECK(button->property("tipDismissed").toBool());
+    CHECK_FALSE(QQmlProperty(button, "ToolTip.visible", qmlContext(button)).read().toBool());
+    main.rig.run("project.showMenu");
+    MainWindow::settle();
+}

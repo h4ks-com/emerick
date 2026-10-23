@@ -31,6 +31,8 @@ Rectangle {
             text: parent.modelData.hint
             color: Theme.inkDim
             font.pixelSize: Theme.textSmall
+            wrapMode: Text.WordWrap
+            Layout.fillWidth: true
         }
     }
 
@@ -93,12 +95,27 @@ Rectangle {
                     id: plainText
                     TextField {
                         objectName: stringRow.modelData.id
-                        enabled: !stringRow.modelData.readOnly
+                        readOnly: stringRow.modelData.readOnly
                         text: Registry.settings[objectName]
+                        implicitWidth: Theme.menuWidth
+                        implicitHeight: Theme.buttonHeight
+                        leftPadding: Theme.space2
+                        rightPadding: Theme.space2
+                        topPadding: 0
+                        bottomPadding: 0
+                        verticalAlignment: TextInput.AlignVCenter
+                        color: readOnly ? Theme.inkDim : Theme.ink
+                        font.pixelSize: Theme.textLabel
                         ToolTip.text: stringRow.modelData.title
                         ToolTip.visible: hovered && !activeFocus
                         ToolTip.delay: Theme.tooltipDelay
                         onEditingFinished: Registry.setSettingValue(objectName, text)
+                        background: Rectangle {
+                            radius: Theme.radiusClip
+                            color: parent.readOnly ? Theme.clear : Theme.lift
+                            border.width: parent.activeFocus ? Theme.hairline : 0
+                            border.color: Theme.inkDim
+                        }
                     }
                 }
                 Component {
@@ -122,13 +139,34 @@ Rectangle {
             SettingRow {
                 id: booleanRow
                 Switch {
+                    id: toggle
                     objectName: booleanRow.modelData.id
                     enabled: !booleanRow.modelData.readOnly
                     checked: Registry.settings[objectName]
+                    padding: 0
                     ToolTip.text: booleanRow.modelData.title
                     ToolTip.visible: hovered
                     ToolTip.delay: Theme.tooltipDelay
                     onToggled: Registry.setSettingValue(objectName, checked)
+                    indicator: Rectangle {
+                        implicitWidth: Theme.switchWidth
+                        implicitHeight: Theme.headerButton
+                        radius: height / 2
+                        color: toggle.checked ? Theme.ink : Theme.lift
+                        border.width: Theme.hairline
+                        border.color: toggle.checked ? Theme.ink : Theme.rule
+                        Rectangle {
+                            x: toggle.checked ? parent.width - width - Theme.hairline * 2 : Theme.hairline * 2
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: parent.height - Theme.hairline * 4
+                            height: width
+                            radius: width / 2
+                            color: toggle.checked ? Theme.graphite : (toggle.down ? Theme.ink : Theme.inkDim)
+                            Behavior on x {
+                                NumberAnimation { duration: Theme.snapDuration }
+                            }
+                        }
+                    }
                 }
             }
         }

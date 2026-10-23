@@ -14,10 +14,11 @@ The player's hands are often on the instrument, so the screen reads at a glance 
 | `ink-dim` | `#9599A3` | secondary text, inactive icons |
 | `tape` | `#F2B544` | playhead, selection outline, transport counter |
 | `rec` | `#EF5350` | record arm, recording clips, record button |
+| `mute` | `#4A86C8` | mute buttons, so mute and solo differ at a glance as in Logic |
 
 Track colors are a muted eight-color set (teal, blue, violet, rose, amber, green, sand, steel) at 70% saturation, so clips read as color while text on them stays legible. One shape language: 6 px radius on clips and buttons, 10 px on windows and popovers, 0 on lanes and rulers, which are measuring tools.
 
-Glass: the control bar and popovers use a translucent `slate` at 88% with a 1 px top highlight at 6% white, the Mojave vibrancy look. Panels stay opaque, because text over a moving blur tires the eye.
+Glass: the control bar and popovers use `slate` at 96% with a 1 px top highlight at 6% white, the Mojave vibrancy look. We keep it nearly opaque, because Qt draws no blur and clips or the playhead showing through a menu read as clutter. Panels stay opaque, because text over a moving blur tires the eye.
 
 ## Type
 

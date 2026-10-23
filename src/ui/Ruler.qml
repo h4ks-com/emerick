@@ -33,7 +33,7 @@ Rectangle {
                 color: Theme.inkDim
             }
             Text {
-                x: Theme.space1
+                x: Theme.space2
                 y: Theme.space1
                 text: mark.bar + 1
                 color: Theme.inkDim
@@ -64,10 +64,11 @@ Rectangle {
     MouseArea {
         objectName: "transport.locate"
         anchors.fill: parent
-        onPressed: mouse => {
-            Registry.runAction("transport.locate", {
-                position: Project.placed(Math.round(ruler.scrollTicks + mouse.x / ruler.pixelsPerTick), mouse.modifiers)
-            })
+        function locate(mouse) {
+            const ticks = Math.max(0, Math.round(ruler.scrollTicks + Math.min(Math.max(mouse.x, 0), width) / ruler.pixelsPerTick))
+            Registry.runAction("transport.locate", {position: Project.placed(ticks, mouse.modifiers)})
         }
+        onPressed: mouse => locate(mouse)
+        onPositionChanged: mouse => locate(mouse)
     }
 }

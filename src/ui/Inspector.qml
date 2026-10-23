@@ -150,6 +150,7 @@ Rectangle {
                 PanNumber {
                     trackId: panel.trackId
                     pan: panel.pan
+                    Layout.fillWidth: true
                 }
 
                 RouteLabel { text: "Audio input"; visible: panel.audioRoutes }
@@ -227,7 +228,7 @@ Rectangle {
                     rowSpacing: Theme.space1
 
                     Label {
-                        text: panel.severalClips ? Nav.selectedClips.length + " clips" : panel.clip ? "Clip, take " + panel.clip.take : ""
+                        text: panel.severalClips ? Nav.selectedClips.length + " clips" : panel.clip ? panel.name + "   Take " + panel.clip.take : ""
                         color: Theme.ink
                         font.pixelSize: Theme.textBody
                         font.weight: Font.Medium
@@ -343,6 +344,14 @@ Rectangle {
                 }
             }
         }
+    }
+
+    Rectangle {
+        anchors.bottom: markers.top
+        anchors.bottomMargin: Theme.space2
+        width: parent.width
+        height: Theme.hairline
+        color: Theme.rule
     }
 
     ColumnLayout {

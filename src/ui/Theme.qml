@@ -11,8 +11,13 @@ QtObject {
     readonly property color inkDim: "#9599A3"
     readonly property color tape: "#F2B544"
     readonly property color rec: "#EF5350"
-    readonly property color glass: Qt.rgba(slate.r, slate.g, slate.b, 0.88)
+    readonly property color mute: "#4A86C8"
+    readonly property color glass: Qt.rgba(slate.r, slate.g, slate.b, 0.96)
     readonly property color highlight: Qt.rgba(1, 1, 1, 0.06)
+    // Text buttons lighten whatever row they sit on, so they stay visible on a selected row too.
+    readonly property color buttonFill: Qt.rgba(1, 1, 1, 0.07)
+    readonly property color buttonHover: Qt.rgba(1, 1, 1, 0.13)
+    readonly property color buttonDown: Qt.rgba(1, 1, 1, 0.2)
     readonly property color clear: "transparent"
 
     readonly property var trackColors: ["#3FA59A", "#4A86C8", "#8A6CC9", "#C8607E", "#D59A3C", "#5FA35A", "#B59B76", "#7A8796"]
@@ -37,6 +42,8 @@ QtObject {
     readonly property int headerHeight: 56
     readonly property int listRowHeight: 36
     readonly property int swatchSize: 24
+    readonly property int switchWidth: 36
+    readonly property int snapDuration: 120
     readonly property int inspectorWidth: 260
     readonly property int trackHeaderWidth: 240
     readonly property int sidebarWidth: 200
@@ -176,6 +183,10 @@ QtObject {
     function velocityColor(velocity) {
         return Qt.hsla(0.62 * (1 - Math.max(0, velocity - 1) / 126), 0.55, 0.55, 1)
     }
+    // A selected note keeps its velocity hue but turns pale, because an amber outline vanishes on the loud notes.
+    function selectedNote(velocity) {
+        return Qt.hsla(0.62 * (1 - Math.max(0, velocity - 1) / 126), 0.55, 0.82, 1)
+    }
 
     // Track icons are Phosphor names and fade icons are our own; an icon we do not bundle shows as a note.
     readonly property var icons: ["arrows-merge", "automation", "broom", "circle", "copy", "dots-three", "fade-equalPower", "fade-exponential", "fade-linear", "fade-logarithmic", "fade-sCurve", "file", "gear-six", "guitar", "magnet", "magnifying-glass", "metronome", "music-note", "music-notes", "pause", "pencil-simple", "piano-keys", "play", "plus", "sidebar-simple", "skip-back", "sliders", "squares-four", "stop", "waveform", "x"]
@@ -210,7 +221,11 @@ QtObject {
             return sequence
         }
         const keys = sequence.split("+")
-        const key = keys.pop()
-        return (keys.includes("Alt") ? "⌥" : "") + (keys.includes("Shift") ? "⇧" : "") + (keys.includes("Ctrl") ? "⌘" : "") + key
+        const key = keys.pop() || "+"
+        return (keys.includes("Meta") ? "⌃" : "") + (keys.includes("Alt") ? "⌥" : "") + (keys.includes("Shift") ? "⇧" : "")
+            + (keys.includes("Ctrl") ? "⌘" : "") + (macKeys[key] ?? key)
     }
+    readonly property var macKeys: ({Left: "←", Right: "→", Up: "↑", Down: "↓", Return: "↩", Enter: "⌅", Backspace: "⌫",
+                                     Del: "⌦", Delete: "⌦", Esc: "⎋", Escape: "⎋", Tab: "⇥", Home: "↖", End: "↘",
+                                     PgUp: "⇞", PgDown: "⇟"})
 }

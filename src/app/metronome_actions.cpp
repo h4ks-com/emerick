@@ -318,7 +318,7 @@ void registerActions(Registry& registry, const ProjectController& controller, Na
          .menus = {kTransportMenu, kMetronomeMenu}});
     registry.addAction(
         {.id = "metronome.setMode",
-         .title = "Metronome sound",
+         .title = "Set metronome sound",
          .aliases = {"click sound", "drum groove", "midi click"},
          .category = "Metronome",
          .schema = {{"required", {"mode"}}, {"properties", {{"mode", {{"type", "string"}, {"enum", ids(kModes)}}}}}},
@@ -327,7 +327,7 @@ void registerActions(Registry& registry, const ProjectController& controller, Na
          .submenu = [] { return choices(kModes, "mode"); }});
     registry.addAction(
         {.id = "metronome.setPattern",
-         .title = "Groove pattern",
+         .title = "Set groove pattern",
          .aliases = {"drum beat", "drum pattern"},
          .category = "Metronome",
          .schema = {{"required", {"pattern"}},
@@ -337,7 +337,7 @@ void registerActions(Registry& registry, const ProjectController& controller, Na
          .submenu = [] { return choices(kPatterns, "pattern"); }});
     registry.addAction(
         {.id = "metronome.setCountIn",
-         .title = "Count-in",
+         .title = "Set count-in",
          .aliases = {"count in bars", "pre-roll"},
          .category = "Metronome",
          .schema = {{"required", {"bars"}},

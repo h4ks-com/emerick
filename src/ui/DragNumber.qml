@@ -292,6 +292,8 @@ Item {
             field.commit(field.valueFromText(text))
         }
         onActiveFocusChanged: if (!activeFocus) visible = false
+        // A hidden field keeps the focus it had, which would turn the window's shortcuts off.
+        onVisibleChanged: if (!visible) focus = false
         Keys.onEscapePressed: visible = false
     }
 
@@ -299,7 +301,9 @@ Item {
         required property int direction
         y: (field.height - height) / 2
         width: Theme.space4
+        // The arrows show only where they fit beside the number, so they never cover a large one such as the tempo.
         visible: (hover.hovered || field.editing) && !field.held && field.showsText
+                 && (field.editing || field.width - label.contentWidth >= width)
         text: direction < 0 ? "‹" : "›"
         color: Theme.inkDim
         font.pixelSize: Theme.textTitle

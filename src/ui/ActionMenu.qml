@@ -10,6 +10,16 @@ GlassMenu {
     required property string menuName
     property var params
 
+    // We refresh what changes with the project when the menu opens, because rebuilding a native menu loses its items.
+    onAboutToShow: {
+        for (let at = 0; at < count; ++at) {
+            const item = itemAt(at)
+            if (item instanceof ActionMenuItem) {
+                item.available = Registry.actionInfo(item.actionId).enabled
+            }
+        }
+    }
+
     function paramsWith(extra) {
         return actionMenu.params === undefined && extra === undefined ? undefined : Object.assign({}, actionMenu.params, extra)
     }
@@ -36,10 +46,17 @@ GlassMenu {
                 GlassMenu {
                     id: submenu
                     required property var modelData
+                    property var choices: modelData.choices
                     objectName: modelData.id
                     title: modelData.title
+                    onAboutToShow: {
+                        const fresh = Registry.actionInfo(modelData.id).choices
+                        if (JSON.stringify(fresh) !== JSON.stringify(choices)) {
+                            choices = fresh
+                        }
+                    }
                     Instantiator {
-                        model: submenu.modelData.choices
+                        model: submenu.choices
                         delegate: ActionMenuItem {
                             required property var modelData
                             objectName: submenu.modelData.id + ":" + modelData.id
@@ -48,7 +65,6 @@ GlassMenu {
                             params: actionMenu.paramsWith(modelData.params)
                         }
                         onObjectAdded: (index, object) => submenu.insertItem(index, object)
-                        onObjectRemoved: (index, object) => submenu.removeItem(object)
                     }
                 }
             }
@@ -71,7 +87,15 @@ GlassMenu {
                 actionMenu.insertItem(index, object)
             }
         }
-        onObjectRemoved: (index, object) => object instanceof Loader ? actionMenu.removeMenu(object.item)
-                                          : object instanceof Menu ? actionMenu.removeMenu(object) : actionMenu.removeItem(object)
+        // A menu drops a destroyed item by itself, and removing it here as well empties a native menu.
+        onObjectRemoved: (index, object) => {
+            const menu = object instanceof Loader ? object.item : object
+            for (let at = 0; menu instanceof Menu && at < actionMenu.count; ++at) {
+                if (actionMenu.menuAt(at) === menu) {
+                    actionMenu.takeMenu(at)
+                    return
+                }
+            }
+        }
     }
 }

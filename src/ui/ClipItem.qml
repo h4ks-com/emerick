@@ -46,6 +46,7 @@ Item {
     }
 
     function selectOnPress(modifiers) {
+        Registry.runAction("track.select", {track: timeline.trackIdAt(rowIndex)})
         if (modifiers & Qt.ShiftModifier) {
             const ids = Array.from(Nav.selectedClips)
             const at = ids.indexOf(clipId)

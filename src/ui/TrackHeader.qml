@@ -137,11 +137,14 @@ Rectangle {
                         radius: Theme.radiusClip / 2
                         border.color: Theme.rule
                     }
+                    // A hidden field keeps the focus it had, which would turn the window's shortcuts off.
                     onVisibleChanged: {
                         if (visible) {
                             text = header.name
                             forceActiveFocus()
                             selectAll()
+                        } else {
+                            focus = false
                         }
                     }
                     onAccepted: {

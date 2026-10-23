@@ -301,6 +301,26 @@ TEST_CASE("dragging the tempo up raises it, and its step arrows stay hidden besi
     CHECK(main.rig.controller->project().document().tempo.bpm == 100.0);
 }
 
+TEST_CASE("closing a number field with Escape or Return gives the single key shortcuts back") {
+    MainWindow& main = MainWindow::instance();
+    const std::string vox = main.rig.run("track.addAudio").at("id");
+    const QString gain = "track.setGain:" + qid(vox) + ":db";
+    MainWindow::settle();
+    const bool mixer = main.rig.nav.mixerOpen();
+
+    for (const Qt::Key close : {Qt::Key_Escape, Qt::Key_Return}) {
+        main.click(main.item(gain));
+        REQUIRE(processUntil([&] { return main.item(gain)->property("editing").toBool(); }));
+        QTest::keyClick(main.window, close);
+        REQUIRE(processUntil([&] { return !main.item(gain)->property("editing").toBool(); }));
+        QTest::keyClick(main.window, Qt::Key_X);
+        CHECK(processUntil([&] { return main.rig.nav.mixerOpen() != mixer; }));
+        QTest::keyClick(main.window, Qt::Key_X);
+        CHECK(processUntil([&] { return main.rig.nav.mixerOpen() == mixer; }));
+    }
+    MainWindow::settle();
+}
+
 TEST_CASE("the step arrows step the value without opening the editor, and stay while typing") {
     MainWindow& main = MainWindow::instance();
     const std::string vox = main.rig.run("track.addAudio").at("id");

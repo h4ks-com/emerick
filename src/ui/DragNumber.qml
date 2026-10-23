@@ -292,6 +292,8 @@ Item {
             field.commit(field.valueFromText(text))
         }
         onActiveFocusChanged: if (!activeFocus) visible = false
+        // A hidden field keeps the focus it had, which would turn the window's shortcuts off.
+        onVisibleChanged: if (!visible) focus = false
         Keys.onEscapePressed: visible = false
     }
 

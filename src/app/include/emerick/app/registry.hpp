@@ -214,8 +214,8 @@ class Registry : public QObject {
     Q_PROPERTY(QVariantMap settings READ settingsMap NOTIFY settingsChanged)
     Q_PROPERTY(QVariantList shortcuts READ shortcuts NOTIFY shortcutsChanged)
     Q_PROPERTY(QVariantList keyCommands READ keyCommands NOTIFY shortcutsChanged)
-    Q_PROPERTY(QVariantMap menus READ menus NOTIFY settingsChanged)
-    Q_PROPERTY(QStringList menuBar READ menuBar NOTIFY settingsChanged)
+    Q_PROPERTY(QVariantMap menus READ menus NOTIFY menusChanged)
+    Q_PROPERTY(QStringList menuBar READ menuBar NOTIFY menusChanged)
     Q_PROPERTY(bool gesturing READ gesturing NOTIFY gesturingChanged)
 
 public:
@@ -302,6 +302,7 @@ public:
 signals:
     void settingsChanged();
     void shortcutsChanged();
+    void menusChanged();
     void fileDialogRequested(const QVariantMap& request);
     void confirmRequested(const QVariantMap& request);
     void gesturingChanged();

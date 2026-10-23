@@ -32,6 +32,27 @@ TEST_CASE("actions run with params and refuse when disabled or unknown") {
     CHECK_THROWS_AS(registry.addAction(echo("test.echo", "Again")), std::logic_error);
 }
 
+TEST_CASE("menus change only with their actions, and an action's info says whether it runs now") {
+    QTemporaryDir dir;
+    Registry registry{dir.filePath("settings.ini")};
+    bool enabled = false;
+    Action action = echo("test.echo", "Echo");
+    action.enabled = [&enabled] { return enabled; };
+    action.menus = {kEditMenu};
+    registry.addAction(action);
+    registry.addSetting({.id = "test.flag", .title = "Flag", .type = SettingType::Boolean, .defaultValue = false});
+
+    int menus = 0;
+    QObject::connect(&registry, &Registry::menusChanged, [&menus] { ++menus; });
+    registry.setSetting("test.flag", true);
+    CHECK(menus == 0);
+    CHECK_FALSE(registry.actionInfo("test.echo").value("enabled").toBool());
+    enabled = true;
+    CHECK(registry.actionInfo("test.echo").value("enabled").toBool());
+    registry.setShortcut("test.echo", "Ctrl+E");
+    CHECK(menus == 1);
+}
+
 TEST_CASE("settings validate, persist and reject read only writes") {
     QTemporaryDir dir;
     const QString path = dir.filePath("settings.ini");

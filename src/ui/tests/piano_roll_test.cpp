@@ -1,5 +1,6 @@
 #include <QTest>
 #include <catch2/catch_test_macros.hpp>
+#include <cmath>
 #include <string>
 #include <variant>
 
@@ -143,4 +144,25 @@ TEST_CASE("Delete in the focused piano roll removes the selected notes and keeps
     QTest::keyClick(roll.main.window, Qt::Key_Right);
     CHECK(roll.note(kept).start == 240);
     MainWindow::settle();
+}
+
+TEST_CASE("the piano roll fits and centers its keys on the notes of the clip it opens, and an empty clip on middle C") {
+    Roll empty;
+    QQuickItem* grid = empty.main.item("pianoRoll.grid");
+    const double middleC = empty.call("yOf", 60) + empty.keyHeight() / 2;
+    CHECK(std::abs(middleC - grid->height() / 2) <= empty.keyHeight());
+
+    const std::string track = empty.main.rig.run("track.addMidi").at("id");
+    const std::string clip = empty.main.rig.run("midi.addClip", {{"track", track}, {"at", 0}}).at("id");
+    for (const int pitch : {60, 72, 84}) {
+        empty.main.rig.run("midi.addNote", {{"clip", clip}, {"pitch", pitch}, {"start", 0}});
+    }
+    REQUIRE(25 * empty.keyHeight() > grid->height());
+    empty.main.rig.run("midi.editClip", {{"clip", clip}});
+    MainWindow::settle();
+    CHECK(empty.call("yOf", 84) >= 0);
+    CHECK(empty.call("yOf", 60) + empty.keyHeight() <= grid->height());
+    const double middle = (empty.call("yOf", 60) + empty.call("yOf", 84) + empty.keyHeight()) / 2;
+    CHECK(std::abs(middle - grid->height() / 2) <= empty.keyHeight());
+    empty.main.rig.nav.setKeyHeight(kDefaultKeyHeight);
 }

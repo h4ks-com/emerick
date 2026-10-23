@@ -71,8 +71,8 @@ ColumnLayout {
     ChromeButton {
         objectName: "insert.add:" + list.trackId
         actionId: "insert.add"
-        iconName: "plus"
-        iconColor: Theme.inkDim
+        textSize: Theme.textSmall
+        padding: Theme.space1
         menu: picker
         implicitHeight: Theme.headerButton
         Layout.fillWidth: true

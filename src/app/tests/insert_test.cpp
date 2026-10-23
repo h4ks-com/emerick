@@ -5,6 +5,8 @@
 #include <string>
 #include <vector>
 
+#include "emerick/app/automation_params.hpp"
+#include "emerick/app/session_mapping.hpp"
 #include "project_rig.hpp"
 
 using namespace emerick;
@@ -108,4 +110,24 @@ TEST_CASE("stems and the mix play each track's inserts before its fader") {
     const float expected = 0.25F * std::pow(10.0F, (12.0F - 6.0F) / 20.0F);
     CHECK(sampleAt(rig.path("stems") / "Vox.wav", 24000) == Approx(expected).margin(1e-3));
     CHECK(sampleAt(rig.path("mix.wav"), 24000) == Approx(expected).margin(1e-3));
+}
+
+TEST_CASE("an insert's number and switch params are automation params, and their lanes reach the engine") {
+    ProjectRig rig;
+    const std::string vox = rig.run("track.addAudio").at("id");
+    const std::string eq = rig.run("insert.add", {{"track", vox}, {"type", "eq"}}).at("id");
+    const model::Document& document = rig.controller->project().document();
+    const auto params = automationParams(rig.registry, document, trackOf(rig, vox));
+    const auto gain = std::ranges::find(params, eq + ".peak2Gain", &AutomationParam::id);
+    REQUIRE(gain != params.end());
+    CHECK(gain->title == "Channel EQ Mid gain");
+    CHECK(gain->maximum == 24.0);
+    CHECK(std::ranges::find(params, eq + ".lowCutSlope", &AutomationParam::id) == params.end());
+
+    rig.run("automation.addPoint", {{"track", vox}, {"param", eq + ".peak2Gain"}, {"tick", 0}, {"value", 6.0}});
+    const auto lanes = toSession(document, rig.registry, {}).tracks.at(0).automation;
+    REQUIRE(lanes.size() == 1);
+    CHECK(lanes.front().target == engine::AutomationTarget::insert);
+    CHECK(lanes.front().insert == eq);
+    CHECK(lanes.front().param == 14);
 }

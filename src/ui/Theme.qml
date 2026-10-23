@@ -62,6 +62,7 @@ QtObject {
         api: "#6FA0E0",
         actionId: "#D88AA0"
     })
+    readonly property real dockShare: 0.6
     readonly property int consoleHeight: 240
     readonly property int consoleMinHeight: 96
     readonly property int consoleInputLines: 8
@@ -71,6 +72,7 @@ QtObject {
     readonly property int mixerHeight: 320
     readonly property int mixerMinHeight: 200
     readonly property int stripWidth: 84
+    readonly property int faderMinHeight: 64
     readonly property int faderGroove: 3
     readonly property int faderCapWidth: 28
     readonly property int faderCapHeight: 14
@@ -86,6 +88,7 @@ QtObject {
     readonly property int transportButton: 36
     readonly property int displayHeight: 44
     readonly property int tooltipDelay: 500
+    readonly property int noticeDuration: 10000
     readonly property color displayInset: Qt.rgba(0, 0, 0, 0.35)
     function glow(color) {
         return Qt.rgba(color.r, color.g, color.b, 0.18)
@@ -159,6 +162,7 @@ QtObject {
     readonly property int pianoRollHeight: 320
     readonly property int pianoRollMinHeight: 200
     readonly property int velocityLaneHeight: 64
+    readonly property real velocityLaneShare: 0.2
     readonly property int velocityBar: 4
     readonly property int noteGrip: 6
     readonly property int minGridSpacing: 6
@@ -174,7 +178,7 @@ QtObject {
     }
 
     // Track icons are Phosphor names and fade icons are our own; an icon we do not bundle shows as a note.
-    readonly property var icons: ["arrows-merge", "broom", "circle", "copy", "dots-three", "fade-equalPower", "fade-exponential", "fade-linear", "fade-logarithmic", "fade-sCurve", "file", "gear-six", "guitar", "magnet", "magnifying-glass", "metronome", "music-note", "music-notes", "pause", "pencil-simple", "piano-keys", "play", "plus", "sidebar-simple", "skip-back", "sliders", "squares-four", "stop", "waveform", "x"]
+    readonly property var icons: ["arrows-merge", "automation", "broom", "circle", "copy", "dots-three", "fade-equalPower", "fade-exponential", "fade-linear", "fade-logarithmic", "fade-sCurve", "file", "gear-six", "guitar", "magnet", "magnifying-glass", "metronome", "music-note", "music-notes", "pause", "pencil-simple", "piano-keys", "play", "plus", "sidebar-simple", "skip-back", "sliders", "squares-four", "stop", "waveform", "x"]
     function iconSource(name) {
         return "icons/" + (icons.indexOf(name) >= 0 ? name : "music-note") + ".svg"
     }

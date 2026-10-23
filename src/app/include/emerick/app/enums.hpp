@@ -42,6 +42,9 @@ Q_ENUM_NS(ConsoleFilter)
 enum class ScriptScope : std::uint8_t { User, Project };
 Q_ENUM_NS(ScriptScope)
 
+enum class HealthProblem : std::uint8_t { MissingFile, ClipPastSource, SampleRate, MissingDevice };
+Q_ENUM_NS(HealthProblem)
+
 // Api is a name in the emerick table; ActionId is the id string an emerick.run, emerick.setting or help call takes.
 enum class CodeToken : std::uint8_t { Keyword, StringLiteral, NumberLiteral, Comment, Call, Api, ActionId };
 Q_ENUM_NS(CodeToken)

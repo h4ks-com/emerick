@@ -20,7 +20,8 @@ DockPanel {
     readonly property real gridTicks: 4 * Project.ticksPerQuarter / Registry.settings["midi.grid"]
     readonly property int keysTop: Theme.rulerHeight
     readonly property real gridWidth: Math.max(0, width - Theme.trackHeaderWidth)
-    readonly property real gridHeight: Math.max(0, height - keysTop - Theme.velocityLaneHeight)
+    readonly property real velocityHeight: Math.min(Theme.velocityLaneHeight, height * Theme.velocityLaneShare)
+    readonly property real gridHeight: Math.max(0, height - keysTop - velocityHeight)
     readonly property real contentHeight: 128 * keyHeight
     readonly property int barStep: {
         let step = 1
@@ -30,7 +31,9 @@ DockPanel {
         return step
     }
     readonly property bool showBeats: barStep === 1 && Project.ticksPerBeat * pixelsPerTick >= Theme.beatSpacing
-    property real scrollY: Math.max(0, (127 - 72) * keyHeight)
+    // Key rows from the top of the keys to the middle of the view, so a resize or key zoom keeps the middle in place.
+    property real middleRow: 127.5 - 60
+    readonly property real scrollY: clampedScroll(middleRow * keyHeight - gridHeight / 2)
 
     // Grid x of a position in ticks from the clip start, and back.
     function xOf(ticks) {
@@ -49,8 +52,21 @@ DockPanel {
     function place(ticks, modifiers) {
         return Project.placedOn(Math.round(clipStart + ticks), modifiers, gridTicks) - clipStart
     }
+    function clampedScroll(y) {
+        return Math.max(0, Math.min(y, contentHeight - gridHeight))
+    }
     function scrollKeys(dy) {
-        scrollY = Math.max(0, Math.min(scrollY + dy, contentHeight - gridHeight))
+        middleRow = (clampedScroll(scrollY + dy) + gridHeight / 2) / keyHeight
+    }
+    function showNotes() {
+        const pitches = notes.length > 0 ? notes.map(note => note.pitch) : [60]
+        const low = Math.min(...pitches)
+        const high = Math.max(...pitches)
+        const span = high - low + 1
+        if (gridHeight > 0 && span * keyHeight > gridHeight) {
+            Nav.keyHeight = Math.floor(gridHeight / span)
+        }
+        middleRow = 127.5 - (low + high) / 2
     }
     function noteName(pitch) {
         return ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"][pitch % 12] + (Math.floor(pitch / 12) - 2)
@@ -92,10 +108,12 @@ DockPanel {
         Nav.scrollTicks = Math.max(0, anchor - (x - Theme.trackHeaderWidth) / Nav.pixelsPerTick)
     }
     function zoomKeys(height) {
-        const middle = (scrollY + gridHeight / 2) / keyHeight
+        middleRow = (scrollY + gridHeight / 2) / keyHeight
         Nav.keyHeight = height
-        scrollY = Math.max(0, Math.min(middle * Nav.keyHeight - gridHeight / 2, contentHeight - gridHeight))
     }
+    readonly property string clipId: Nav.pianoRollClip
+    onClipIdChanged: Qt.callLater(showNotes)
+    Component.onCompleted: Qt.callLater(showNotes)
 
     readonly property var keyActions: ({
         [Qt.Key_Up]: event => ({id: "midi.moveNotes", params: {pitch: event.modifiers & Qt.ShiftModifier ? 12 : 1}}),
@@ -311,7 +329,7 @@ DockPanel {
     VelocityLane {
         y: roll.keysTop + roll.gridHeight
         width: roll.width
-        height: Theme.velocityLaneHeight
+        height: roll.velocityHeight
         roll: roll
     }
 

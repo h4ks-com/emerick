@@ -269,3 +269,33 @@ TEST_CASE("a compressor insert reports the deepest gain reduction since the last
     CHECK(readings.front().db == Approx(-10.5).margin(0.5));
     CHECK(rig.rig.engine.takeGainReductions().front().db == 0.0F);
 }
+
+TEST_CASE("an automated EQ band gain lifts its band while the transport plays") {
+    TempFolder folder;
+    const std::filesystem::path tone = folder.path / "tone.wav";
+    writeWav(tone, sine(1000, 48000));
+    Rig rig;
+    Track track{.id = "vox", .kind = TrackKind::audio};
+    track.audioOut = {"keyboard", {1, 2}};
+    track.audioClips = {{.path = tone, .start = 0, .length = 1920, .sourceOffset = 0, .gain = 1.0F}};
+    track.inserts = {
+        {.id = "eq", .type = EffectType::eq, .bypass = false, .params = defaultParams(effectSpec(EffectType::eq))}};
+    const std::size_t gain = *paramIndex(effectSpec(EffectType::eq), "peak2Gain");
+    track.automation = {{.target = AutomationTarget::insert,
+                         .bus = {},
+                         .points = {{.tick = 0, .value = 0.0F}, {.tick = 960, .value = 12.0F}},
+                         .insert = "eq",
+                         .param = gain}};
+    rig.engine.setSession({.tracks = {track}});
+    playOnceReadAhead(rig);
+    const Frames start = rig.audio.processedFrames();
+    rig.audio.process(36000);
+    const std::vector<float> output = rig.audio.output("keyboard", 1);
+    const std::vector<float> dry = sine(1000, 4800);
+    const auto levelAt = [&](Frames frame) {
+        return rmsDb(std::span(output).subspan(static_cast<std::size_t>(start + frame), 4800)) - rmsDb(dry);
+    };
+    CHECK(levelAt(0) < 1.5);
+    CHECK(levelAt(12000) == Approx(6.0).margin(1.0));
+    CHECK(levelAt(28000) == Approx(12.0).margin(0.3));
+}

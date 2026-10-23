@@ -103,6 +103,53 @@ void connectBuses(Snapshot& snapshot, const Session& session, std::vector<Sessio
     }
 }
 
+std::optional<std::size_t> sendIndex(const Session& session, const TrackState& state, const std::string& bus) {
+    const auto busIndex =
+        static_cast<std::size_t>(std::ranges::find(session.tracks, bus, &Track::id) - session.tracks.begin());
+    const auto send = std::ranges::find(state.sends, busIndex, &SendState::bus);
+    return send == state.sends.end() ? std::nullopt
+                                     : std::optional{static_cast<std::size_t>(send - state.sends.begin())};
+}
+
+// Runs after connectBuses, so a send lane finds its send, and a lane whose send went silent plays nothing.
+void addLanes(Snapshot& snapshot, const Session& session) {
+    for (std::size_t index = 0; index < session.tracks.size(); ++index) {
+        TrackState& state = snapshot.tracks[index];
+        if (state.mix.empty()) {
+            continue;
+        }
+        for (const AutomationLane& lane : session.tracks[index].automation) {
+            if (lane.points.empty()) {
+                continue;
+            }
+            LaneState added{.target = lane.target, .send = 0, .insert = 0, .param = 0, .points = {}};
+            if (lane.target == AutomationTarget::send) {
+                const auto send = sendIndex(session, state, lane.bus);
+                if (!send) {
+                    continue;
+                }
+                added.send = *send;
+            }
+            if (lane.target == AutomationTarget::insert) {
+                const auto& inserts = session.tracks[index].inserts;
+                const auto insert = std::ranges::find(inserts, lane.insert, &Insert::id);
+                if (insert == inserts.end() || lane.param >= kMaxEffectParams) {
+                    continue;
+                }
+                added.insert = static_cast<std::size_t>(insert - inserts.begin());
+                added.param = lane.param;
+            }
+            added.points = lane.points | std::views::transform([&](const AutomationPoint& point) {
+                               return LanePoint{.frame = session.tempo.ticksToFrames(point.tick, snapshot.sampleRate),
+                                                .value = point.value,
+                                                .curve = point.curve};
+                           }) |
+                           std::ranges::to<std::vector>();
+            state.lanes.push_back(std::move(added));
+        }
+    }
+}
+
 }  // namespace
 
 SnapshotBuilder::SnapshotBuilder(MidiBackend& midi, TakeInbox& inbox, PollingSet<ClipStream>& reader,
@@ -164,6 +211,7 @@ BuiltSnapshot SnapshotBuilder::build(const Session& session, const StreamLayout&
         snapshot.tracks.push_back(std::move(state));
     }
     connectBuses(snapshot, session, built.errors);
+    addLanes(snapshot, session);
     updateSoloPaths(snapshot);
     addMetronome(snapshot, session, layout, built.errors);
     snapshot.tailOutputs.resize(static_cast<std::size_t>(layout.outputChannels));

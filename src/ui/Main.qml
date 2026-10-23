@@ -235,43 +235,57 @@ ApplicationWindow {
         }
     }
 
-    // The panels load only while open, so their heights live here and survive closing them.
-    Loader {
-        id: pianoRollDock
-        property real panelHeight: Theme.pianoRollHeight
+    // The open docks share at most dockShare of the window: each keeps its minimum and they give up the height above it
+    // in proportion, so the tracks always keep the rest.
+    readonly property var docks: [pianoRollDock, mixerDock, consoleDock].filter(dock => dock.active)
+    readonly property real dockBudget: contentItem.height * Theme.dockShare
+    readonly property real dockMinimums: docks.reduce((sum, dock) => sum + dock.minimum, 0)
+    readonly property real dockWanted: docks.reduce((sum, dock) => sum + dock.panelHeight, 0)
+    readonly property real dockGive: Math.min(1, Math.max(0, dockBudget - dockMinimums) / Math.max(1, dockWanted - dockMinimums))
+
+    // A panel loads only while open, so its height lives here and survives closing it.
+    component Dock: Loader {
+        property real panelHeight
+        property real minimum
         anchors.left: parent.left
         anchors.right: parent.right
+        height: !active ? 0 : window.dockMinimums > window.dockBudget ? minimum * window.dockBudget / window.dockMinimums
+                                                                        : minimum + (panelHeight - minimum) * window.dockGive
+        function resizeBy(delta) {
+            panelHeight = Math.max(minimum, Math.min(window.dockBudget, panelHeight + delta))
+        }
+    }
+
+    Dock {
+        id: pianoRollDock
+        panelHeight: Theme.pianoRollHeight
+        minimum: Theme.pianoRollMinHeight
         anchors.bottom: mixerDock.top
-        height: active ? Math.max(Theme.pianoRollMinHeight, Math.min(panelHeight, parent.height - mixerDock.height - consoleDock.height - Theme.consoleHeight)) : 0
         active: Nav.pianoRollOpen && Nav.page === App.Main
         sourceComponent: PianoRoll {
-            onResizeBy: delta => pianoRollDock.panelHeight = Math.max(Theme.pianoRollMinHeight, pianoRollDock.panelHeight + delta)
+            onResizeBy: delta => pianoRollDock.resizeBy(delta)
         }
     }
 
-    Loader {
+    Dock {
         id: mixerDock
-        property real panelHeight: Theme.mixerHeight
-        anchors.left: parent.left
-        anchors.right: parent.right
+        panelHeight: Theme.mixerHeight
+        minimum: Theme.mixerMinHeight
         anchors.bottom: consoleDock.top
-        height: active ? Math.max(Theme.mixerMinHeight, Math.min(panelHeight, parent.height - consoleDock.height - Theme.consoleHeight)) : 0
         active: Nav.mixerOpen && Nav.page === App.Main
         sourceComponent: Mixer {
-            onResizeBy: delta => mixerDock.panelHeight = Math.max(Theme.mixerMinHeight, mixerDock.panelHeight + delta)
+            onResizeBy: delta => mixerDock.resizeBy(delta)
         }
     }
 
-    Loader {
+    Dock {
         id: consoleDock
-        property real panelHeight: Theme.consoleHeight
-        anchors.left: parent.left
-        anchors.right: parent.right
+        panelHeight: Theme.consoleHeight
+        minimum: Theme.consoleMinHeight
         anchors.bottom: parent.bottom
-        height: active ? Math.max(Theme.consoleMinHeight, Math.min(panelHeight, parent.height - Theme.consoleHeight)) : 0
         active: Nav.consoleOpen && Nav.page === App.Main
         sourceComponent: ConsolePanel {
-            onResizeBy: delta => consoleDock.panelHeight = Math.max(Theme.consoleMinHeight, consoleDock.panelHeight + delta)
+            onResizeBy: delta => consoleDock.resizeBy(delta)
         }
     }
 
@@ -282,6 +296,45 @@ ApplicationWindow {
     }
 
     CommandPalette {}
+
+    HealthPanel {}
+
+    GlassPanel {
+        id: healthNotice
+        property bool shown: false
+        anchors.right: parent.right
+        anchors.bottom: parent.bottom
+        anchors.margins: Theme.space4
+        width: noticeButton.implicitWidth + 2 * Theme.space2
+        height: noticeButton.implicitHeight + 2 * Theme.space2
+        visible: shown && !Nav.healthOpen
+        ChromeButton {
+            id: noticeButton
+            objectName: "project.health"
+            anchors.centerIn: parent
+            text: "Review " + Project.healthIssues.length + (Project.healthIssues.length === 1 ? " project issue" : " project issues")
+            onClicked: healthNotice.shown = false
+        }
+        Timer {
+            id: noticeTimer
+            interval: Theme.noticeDuration
+            onTriggered: healthNotice.shown = false
+        }
+        Connections {
+            target: Project
+            function onHealthChanged() {
+                healthNotice.shown = Project.healthIssues.length > 0 && !Nav.healthOpen
+                noticeTimer.restart()
+            }
+        }
+        Connections {
+            target: Nav
+            function onChanged() {
+                if (Nav.healthOpen)
+                    healthNotice.shown = false
+            }
+        }
+    }
 
     InsertEditor {}
 

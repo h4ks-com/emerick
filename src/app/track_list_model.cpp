@@ -13,9 +13,11 @@
 #include <utility>
 #include <variant>
 
+#include "emerick/app/automation_params.hpp"
 #include "emerick/app/project_actions.hpp"
 #include "emerick/app/project_state.hpp"
 #include "emerick/core/overloaded.hpp"
+#include "emerick/model/automation.hpp"
 #include "emerick/model/clip_edit.hpp"
 
 namespace emerick::app {
@@ -46,6 +48,22 @@ QVariantList noteList(const model::MidiClip& clip) {
                                            {"start", QVariant::fromValue(note.start)},
                                            {"length", QVariant::fromValue(note.length)},
                                            {"channel", note.channel}}};
+           }) |
+           std::ranges::to<QVariantList>();
+}
+
+QVariant pointEntry(const model::AutomationPoint& point) {
+    return QVariantMap{{"id", qs(point.id.value)},
+                       {"tick", QVariant::fromValue(point.tick)},
+                       {"value", point.value},
+                       {"curve", qs(std::string{core::automationCurveId(point.curve)})}};
+}
+
+QVariantList laneList(const model::Track& track) {
+    return track.automation | std::views::transform([](const model::AutomationLane& lane) {
+               return QVariant{QVariantMap{
+                   {"param", qs(lane.param)},
+                   {"points", lane.points | std::views::transform(pointEntry) | std::ranges::to<QVariantList>()}}};
            }) |
            std::ranges::to<QVariantList>();
 }
@@ -119,13 +137,28 @@ QString TrackListModel::trackName(const model::TrackId& id) const {
 QVariantList TrackListModel::sendList(const model::Track& track) const {
     QVariantList sends;
     for (const model::Send& send : track.sends) {
-        sends.append(QVariantMap{{"bus", qs(send.bus.value)},
-                                 {"busName", trackName(send.bus)},
-                                 {"db", send.levelDb},
-                                 {"pre", send.pre},
-                                 {"enabled", send.enabled}});
+        sends.append(
+            QVariantMap{{"bus", qs(send.bus.value)},
+                        {"busName", trackName(send.bus)},
+                        {"db", controller_.automatedValue(track, sendParamId(send.bus)).value_or(send.levelDb)},
+                        {"pre", send.pre},
+                        {"enabled", send.enabled}});
     }
     return sends;
+}
+
+QVariantList TrackListModel::paramList(const model::Track& track) const {
+    return automationParams(registry_, project_.document(), track) |
+           std::views::transform([](const AutomationParam& param) {
+               return QVariant{QVariantMap{{"id", qs(param.id)},
+                                           {"title", qs(param.title)},
+                                           {"minimum", param.minimum},
+                                           {"maximum", param.maximum},
+                                           {"value", param.value},
+                                           {"toggle", param.toggle},
+                                           {"unit", qs(param.unit)}}};
+           }) |
+           std::ranges::to<QVariantList>();
 }
 
 QVariantMap TrackListModel::insert(const QString& id) const {
@@ -152,7 +185,9 @@ TrackListModel::TrackListModel(ProjectController& controller, const Registry& re
       project_(controller.project()),
       registry_(registry),
       rows_(project_.document().tracks | std::views::transform(&model::Track::id) | std::ranges::to<std::vector>()),
-      listener_(project_.addListener([this](const model::Change& change) { changed(change); })) {}
+      listener_(project_.addListener([this](const model::Change& change) { changed(change); })) {
+    connect(&controller_, &ProjectController::transportChanged, this, &TrackListModel::transportMoved);
+}
 
 TrackListModel::~TrackListModel() { project_.removeListener(listener_); }
 
@@ -183,7 +218,9 @@ QVariant TrackListModel::data(const QModelIndex& index, int role) const {
         case Role::colorIndex:
             return track.color;
         case Role::mute:
-            return track.mute;
+            return controller_.automatedValue(track, "mute")
+                .transform([](double value) { return value >= 0.5; })
+                .value_or(track.mute);
         case Role::solo:
             return track.solo;
         case Role::armed:
@@ -191,9 +228,9 @@ QVariant TrackListModel::data(const QModelIndex& index, int role) const {
         case Role::monitor:
             return track.monitor;
         case Role::gainDb:
-            return track.gainDb;
+            return controller_.automatedValue(track, "gain").value_or(track.gainDb);
         case Role::pan:
-            return track.pan;
+            return controller_.automatedValue(track, "pan").value_or(track.pan);
         case Role::audioIn:
             return audioRoute(track.audioIn);
         case Role::audioOut:
@@ -222,36 +259,46 @@ QVariant TrackListModel::data(const QModelIndex& index, int role) const {
             return qs(type != nullptr ? type->laneComponent : std::string{});
         case Role::clipType:
             return qs(clipTypeName(clipTypeOf(type)));
+        case Role::automationMode:
+            return qs(std::string{model::automationModeId(track.automationMode)});
+        case Role::automation:
+            return laneList(track);
+        case Role::automationParams:
+            return paramList(track);
     }
     return {};
 }
 
 QHash<int, QByteArray> TrackListModel::roleNames() const {
-    static constexpr std::array<std::pair<Role, const char*>, 25> kNames{{{Role::id, "trackId"},
-                                                                          {Role::name, "name"},
-                                                                          {Role::kind, "kind"},
-                                                                          {Role::icon, "icon"},
-                                                                          {Role::colorIndex, "colorIndex"},
-                                                                          {Role::mute, "mute"},
-                                                                          {Role::solo, "solo"},
-                                                                          {Role::armed, "armed"},
-                                                                          {Role::monitor, "monitor"},
-                                                                          {Role::gainDb, "gainDb"},
-                                                                          {Role::pan, "pan"},
-                                                                          {Role::audioIn, "audioIn"},
-                                                                          {Role::audioOut, "audioOut"},
-                                                                          {Role::midiIn, "midiIn"},
-                                                                          {Role::midiOut, "midiOut"},
-                                                                          {Role::audioRoutes, "audioRoutes"},
-                                                                          {Role::midiRoutes, "midiRoutes"},
-                                                                          {Role::busRoutes, "busRoutes"},
-                                                                          {Role::sends, "sends"},
-                                                                          {Role::inserts, "inserts"},
-                                                                          {Role::outputBusName, "outputBusName"},
-                                                                          {Role::clips, "clips"},
-                                                                          {Role::trackData, "trackData"},
-                                                                          {Role::laneComponent, "laneComponent"},
-                                                                          {Role::clipType, "clipType"}}};
+    static constexpr std::array<std::pair<Role, const char*>, 28> kNames{
+        {{Role::id, "trackId"},
+         {Role::name, "name"},
+         {Role::kind, "kind"},
+         {Role::icon, "icon"},
+         {Role::colorIndex, "colorIndex"},
+         {Role::mute, "mute"},
+         {Role::solo, "solo"},
+         {Role::armed, "armed"},
+         {Role::monitor, "monitor"},
+         {Role::gainDb, "gainDb"},
+         {Role::pan, "pan"},
+         {Role::audioIn, "audioIn"},
+         {Role::audioOut, "audioOut"},
+         {Role::midiIn, "midiIn"},
+         {Role::midiOut, "midiOut"},
+         {Role::audioRoutes, "audioRoutes"},
+         {Role::midiRoutes, "midiRoutes"},
+         {Role::busRoutes, "busRoutes"},
+         {Role::sends, "sends"},
+         {Role::inserts, "inserts"},
+         {Role::outputBusName, "outputBusName"},
+         {Role::clips, "clips"},
+         {Role::trackData, "trackData"},
+         {Role::laneComponent, "laneComponent"},
+         {Role::clipType, "clipType"},
+         {Role::automationMode, "automationMode"},
+         {Role::automation, "automation"},
+         {Role::automationParams, "automationParams"}}};
     QHash<int, QByteArray> names;
     for (const auto& [role, name] : kNames) {
         names.insert(static_cast<int>(role), name);
@@ -272,6 +319,18 @@ void TrackListModel::changed(const model::Change& change) {
     syncRows();
     if (!rows_.empty()) {
         emit dataChanged(index(0), index(static_cast<int>(rows_.size()) - 1));
+    }
+}
+
+void TrackListModel::transportMoved() {
+    for (std::size_t row = 0; row < rows_.size(); ++row) {
+        const model::Track* track = project_.track(rows_[row]);
+        if (track != nullptr && !track->automation.empty() && track->automationMode != model::AutomationMode::off) {
+            const QModelIndex at = index(static_cast<int>(row));
+            emit dataChanged(at, at,
+                             {static_cast<int>(Role::gainDb), static_cast<int>(Role::pan), static_cast<int>(Role::mute),
+                              static_cast<int>(Role::sends)});
+        }
     }
 }
 

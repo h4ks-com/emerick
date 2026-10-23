@@ -18,6 +18,7 @@
 
 #include "emerick/app/event_wait.hpp"
 #include "emerick/app/project_bundle.hpp"
+#include "emerick/app/project_health.hpp"
 #include "emerick/app/project_state.hpp"
 #include "emerick/app/session_mapping.hpp"
 #include "emerick/app/stem_export.hpp"
@@ -99,6 +100,11 @@ ProjectController::ProjectController(const Registry& registry, std::unique_ptr<e
             qWarning("cannot save %s: %s", folder_.c_str(), error.what());
         }
     });
+    connect(&registry, &Registry::gesturingChanged, this, [this] {
+        if (!registry_.gesturing()) {
+            releaseAutomation();
+        }
+    });
     createUntitled();
     publish();
     connect(&timer_, &QTimer::timeout, this, &ProjectController::poll);
@@ -126,6 +132,17 @@ void ProjectController::moveTo(const std::filesystem::path& folder, model::Docum
     project_.reset(std::move(document));
     setEdited(false);
     emit fileChanged();
+    checkHealth();
+}
+
+Json ProjectController::checkHealth() {
+    const Json issues = healthJson(app::checkHealth(project_.document(), {.folder = folder_,
+                                                                          .sampleRate = options_.sampleRate,
+                                                                          .audioDevices = engine_.audioDevices(),
+                                                                          .midiPorts = engine_.midiPorts()}));
+    healthIssues_ = toVariant(issues).toList();
+    emit healthChanged();
+    return issues;
 }
 
 void ProjectController::createUntitled() {
@@ -319,6 +336,7 @@ void ProjectController::stop() {
     timer_.stop();
     waitForEngine([this] { return !engine_.playing(); });
     stopTicks_ = engine_.position().ticks;
+    commitPasses(std::exchange(passes_, {}), stopTicks_);
     timer_.start(kPollPeriod);
 }
 
@@ -404,6 +422,7 @@ void ProjectController::setMetronome(const engine::Metronome& metronome) {
 void ProjectController::publish() {
     engine::Session session = toSession(project_.document(), registry_, folder_);
     session.metronome = metronome_;
+    applyPasses(session);
     routeErrors_ = dropUnusableDevices(session, engine_.audioDevices(), options_.sampleRate);
     std::set<std::string> ids;
     std::set<std::string> audioIds;

@@ -7,6 +7,7 @@
 #include <string>
 #include <vector>
 
+#include "emerick/core/automation.hpp"
 #include "emerick/core/fade.hpp"
 #include "emerick/core/time.hpp"
 #include "emerick/engine/effects.hpp"
@@ -71,6 +72,26 @@ struct Insert {
     EffectParams params{};
 };
 
+// The parameter a lane moves. Gain and send levels are in dB, pan runs from -1 to 1 and mute is on from 0.5.
+enum class AutomationTarget : std::uint8_t { gain, pan, mute, send, insert };
+
+struct AutomationPoint {
+    Ticks tick = 0;
+    float value = 0.0F;
+    core::AutomationCurve curve = core::AutomationCurve::linear;
+};
+
+// A send lane names the bus of the send it moves. While a lane plays, it overrides the track's gain, pan, mute or
+// send level.
+struct AutomationLane {
+    AutomationTarget target = AutomationTarget::gain;
+    std::string bus;
+    std::vector<AutomationPoint> points;  // sorted by tick
+    // An insert lane names the insert and the index of the param it moves in the effect's table.
+    std::string insert;
+    std::size_t param = 0;
+};
+
 struct Track {
     std::string id;
     TrackKind kind = TrackKind::audio;
@@ -92,6 +113,7 @@ struct Track {
     std::vector<Insert> inserts;
     std::vector<AudioClip> audioClips;
     std::vector<MidiClip> midiClips;
+    std::vector<AutomationLane> automation;
 };
 
 // Click and sample play one sound per beat, a groove plays a drum pattern, and the MIDI modes send either as notes.

@@ -87,6 +87,9 @@ TEST_CASE("a mixer strip adds a send from its bus picker, and a send level drag 
     MainWindow::settle();
 
     QQuickItem* level = inMixer(main, "send.setLevel:" + qid(vox) + ":" + qid(verb));
+    CHECK(inMixer(main, "send.bus:" + qid(vox) + ":" + qid(verb))->property("text").toString() == "Verb");
+    CHECK(level->property("displayText").toString() == "0.0");
+    CHECK(level->width() >= inMixer(main, "mixer.output:" + qid(vox))->width() - 1);
     const QPointF press = level->mapToScene({level->width() / 2, level->height() / 2});
     main.send(QEvent::MouseButtonPress, press, Qt::LeftButton, Qt::NoModifier);
     for (int step = 1; step <= 5; ++step) {
@@ -101,6 +104,24 @@ TEST_CASE("a mixer strip adds a send from its bus picker, and a send level drag 
     CHECK(main.rig.controller->project().undoName() == undoBefore);
 
     main.rig.nav.setMixerOpen(false);
+    MainWindow::settle();
+}
+
+TEST_CASE("the piano roll, mixer and console open together leave the track list at least 40 percent of the window") {
+    MainWindow& main = MainWindow::instance();
+    main.rig.nav.setPianoRollOpen(true);
+    main.rig.nav.setMixerOpen(true);
+    main.rig.nav.setConsoleOpen(true);
+    MainWindow::settle();
+    QQuickItem* tracks = main.item("tracks");
+    const double content = tracks->parentItem()->parentItem()->height();
+    CHECK(tracks->height() >= 0.4 * content - 1);
+    CHECK(main.item("pianoRoll")->height() > 0);
+    CHECK(main.item("mixer")->height() > 0);
+
+    main.rig.nav.setPianoRollOpen(false);
+    main.rig.nav.setMixerOpen(false);
+    main.rig.nav.setConsoleOpen(false);
     MainWindow::settle();
 }
 

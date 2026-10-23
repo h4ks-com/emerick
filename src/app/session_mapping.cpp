@@ -9,6 +9,7 @@
 #include <variant>
 #include <vector>
 
+#include "emerick/app/automation_params.hpp"
 #include "emerick/core/overloaded.hpp"
 #include "emerick/model/midi_notes.hpp"
 
@@ -58,7 +59,8 @@ engine::Track commonFields(const model::Track& track, engine::TrackKind kind) {
             .sends = {},
             .inserts = {},
             .audioClips = {},
-            .midiClips = {}};
+            .midiClips = {},
+            .automation = {}};
 }
 
 // An insert of a type this build does not know stays silent, and a param it does not know is ignored.
@@ -153,6 +155,7 @@ engine::Session toSession(const model::Document& document, const Registry& regis
         const TrackType* type = registry.trackType(track.kind);
         if (type != nullptr && type->toEngine) {
             session.tracks.push_back(type->toEngine(track, context));
+            session.tracks.back().automation = engineLanes(registry, document, track);
         }
     }
     return session;

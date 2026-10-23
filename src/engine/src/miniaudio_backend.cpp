@@ -168,7 +168,8 @@ StreamLayout MiniaudioBackend::open(const StreamRequest& request, AudioCallback 
     }
 
     StreamLayout& layout = impl_->layout;
-    layout = concatenateDevices({opened}, {{opened.id}, request.sampleRate, request.blockFrames});
+    layout = concatenateDevices(
+        {opened}, {.deviceIds = {opened.id}, .sampleRate = request.sampleRate, .blockFrames = request.blockFrames});
     layout.sampleRate = impl_->device->sampleRate;
     impl_->adapter = PlanarAdapter(layout.inputChannels, layout.outputChannels, layout.maxFrames);
     impl_->callback = std::move(callback);

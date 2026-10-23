@@ -92,7 +92,7 @@ TEST_CASE("sends and output buses round trip, and a format 3 project loads with 
     }
 }
 
-TEST_CASE("inserts round trip in order, and a format 5 project loads with none") {
+TEST_CASE("inserts round trip in order, and a format 6 project loads with none") {
     Document document = sampleDocument();
     document.tracks[1].inserts = {{.type = "eq", .bypass = false, .params = {{"peak2Gain", 3.5}}},
                                   {.type = "reverb", .bypass = true, .params = {}}};
@@ -101,7 +101,7 @@ TEST_CASE("inserts round trip in order, and a format 5 project loads with none")
     CHECK(trackWithInsert(loaded, document.tracks[1].inserts[1].id) == &loaded.tracks[1]);
 
     auto json = toJson(document);
-    json["format"] = 5;
+    json["format"] = 6;
     for (auto& track : json["tracks"]) {
         track.erase("inserts");
     }

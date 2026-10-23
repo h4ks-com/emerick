@@ -3,6 +3,7 @@
 #include <QObject>
 #include <QString>
 #include <QTimer>
+#include <QVariantList>
 #include <QVariantMap>
 #include <chrono>
 #include <filesystem>
@@ -11,6 +12,7 @@
 #include <optional>
 #include <set>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include "emerick/app/registry.hpp"
@@ -38,6 +40,7 @@ class ProjectController : public QObject {
     Q_PROPERTY(QVariantList markers READ markers NOTIFY projectChanged)
     Q_PROPERTY(QVariantMap routeDevices READ routeDevices NOTIFY devicesChanged)
     Q_PROPERTY(QVariantMap trackErrors READ trackErrors NOTIFY trackErrorsChanged)
+    Q_PROPERTY(QVariantList healthIssues READ healthIssues NOTIFY healthChanged)
     Q_PROPERTY(int midiChannelCount READ midiChannelCount CONSTANT)
     Q_PROPERTY(int trackColorCount READ trackColorCount CONSTANT)
     Q_PROPERTY(QString name READ name NOTIFY fileChanged)
@@ -93,6 +96,13 @@ public:
     void setLiveGain(const model::TrackId& id, double db);
     void setLivePan(const model::TrackId& id, double pan);
 
+    // While the transport runs and the track is in Touch or Latch, a control move writes value into the param's lane
+    // and returns true, and the caller leaves the track's own setting alone. The engine plays the written value until
+    // the pass ends: in Touch when the gesture ends, in Latch when the transport stops. Each pass is one undo step.
+    bool writeAutomation(const model::TrackId& id, const std::string& param, double value);
+    // The value the param plays now: the value being written, or the lane's value at the playhead.
+    [[nodiscard]] std::optional<double> automatedValue(const model::Track& track, std::string_view param) const;
+
     // The metronome plays from these settings once the next flush publishes them.
     void setMetronome(const engine::Metronome& metronome);
     // Playback and exports read the pan law from the registry; a new law reaches playback at the next flush.
@@ -140,6 +150,8 @@ public:
     [[nodiscard]] const TrackMeters& meters() const { return meters_; }
     // Per track id, the reasons its routes do not play, one per line.
     [[nodiscard]] QVariantMap trackErrors() const { return trackErrors_; }
+    Json checkHealth();
+    [[nodiscard]] QVariantList healthIssues() const { return healthIssues_; }
     [[nodiscard]] static int midiChannelCount() { return kMidiChannels; }
     [[nodiscard]] static int trackColorCount() { return kTrackColors; }
 
@@ -150,10 +162,23 @@ signals:
     void projectChanged();
     void devicesChanged();
     void trackErrorsChanged();
+    void healthChanged();
     // The folder, the name or the edited flag changed.
     void fileChanged();
 
 private:
+    struct AutomationPass {
+        model::TrackId track;
+        std::string param;
+        core::Ticks start = 0;
+        std::vector<model::AutomationPoint> points;
+        double lastValue = 0.0;
+    };
+
+    void releaseAutomation();
+    // Writes the passes into their lanes as one undo step and ends them.
+    void commitPasses(std::vector<AutomationPass> passes, core::Ticks end);
+    void applyPasses(engine::Session& session) const;
     void createUntitled();
     void leave();
     void discardIfEmpty();
@@ -201,10 +226,12 @@ private:
     std::chrono::steady_clock::time_point lastLevels_ = std::chrono::steady_clock::now();
     bool lastStalled_ = false;
     QVariantMap trackErrors_;
+    QVariantList healthIssues_;
     std::optional<std::chrono::steady_clock::time_point> lastActive_;
     bool warm_ = false;
     bool warmWhileActive_ = true;
     QString streamSummary_;
+    std::vector<AutomationPass> passes_;
     QTimer timer_;
 };
 

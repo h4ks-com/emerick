@@ -44,6 +44,7 @@ Rectangle {
     }
 
     implicitWidth: Theme.stripWidth
+    implicitHeight: column.implicitHeight + 2 * Theme.space1
     border.width: Theme.hairline
     border.color: selected ? Theme.inkDim : Theme.rule
     gradient: Gradient {
@@ -56,6 +57,7 @@ Rectangle {
     }
 
     ColumnLayout {
+        id: column
         anchors.fill: parent
         anchors.margins: Theme.space1
         spacing: Theme.space1
@@ -100,6 +102,7 @@ Rectangle {
         RowLayout {
             spacing: Theme.space1
             Layout.fillHeight: true
+            Layout.preferredHeight: Theme.faderMinHeight
             Layout.alignment: Qt.AlignHCenter
             GainSlider {
                 orientation: Qt.Vertical

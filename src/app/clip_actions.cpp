@@ -89,8 +89,8 @@ void select(const ProjectController& controller, Nav& nav, const std::vector<mod
     }
 }
 
-Json importClip(const Registry& registry, ProjectController& controller, const Json& params) {
-    const model::TrackId id = trackParam(controller.project(), params);
+Json importClip(const Registry& registry, ProjectController& controller, const Nav& nav, const Json& params) {
+    const model::TrackId id = targetTrack(controller, nav, params);
     const model::Track& track = *controller.project().track(id);
     const TrackType* type = registry.trackType(track.kind);
     if (type == nullptr || !type->routes.audio) {
@@ -392,8 +392,12 @@ void registerClipActions(Registry& registry, ProjectController& controller, Nav&
          .title = "Import audio file",
          .aliases = {"add audio file", "import clip"},
          .category = "Clips",
-         .schema = {{"required", {"track", "path"}}, {"properties", {{"at", Json::object()}}}},
-         .run = [&registry, &controller](const Json& params) { return importClip(registry, controller, params); }});
+         .schema = {{"required", {"path"}}, {"properties", {{"track", {{"type", "string"}}}, {"at", Json::object()}}}},
+         .run = [&registry, &controller,
+                 &nav](const Json& params) { return importClip(registry, controller, nav, params); },
+         .menus = {kTrackMenu},
+         .dialog = FileDialog{
+             .param = "path", .mode = FileDialogMode::Open, .nameFilter = "Audio files (*.wav *.aif *.aiff *.flac)"}});
     registry.addAction({.id = "project.clipEvents",
                         .title = "Show clip notes and MIDI events",
                         .category = "Clips",

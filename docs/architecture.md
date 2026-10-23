@@ -24,12 +24,14 @@ The engine never sees the model. `emerick_app` turns the document into an engine
 - **Registry.** Every action, setting, track type, MIDI device profile and plugin QML component is registered once in `app::Registry`. Menus, shortcuts, the Cmd+K palette, MCP tools and Lua all read the registry. A control's QML `objectName` is its registry id.
 - **Gestures.** A drag runs its registry actions live through `Registry::updateGesture`, at most once a frame. Each run reverts the last one first, so every view and the engine follow the drag, and `endGesture` leaves one undo step and one action log line with the final values. Escape cancels a drag and reverts it.
 - **Notes.** A MIDI clip keeps each note (id, pitch, velocity, start, length, channel) in its notes and every other message in its events. Playback, export and the piano roll read the notes; the engine session gets them as note-ons and note-offs merged with the events, and a recorded take becomes notes when it lands.
+- **Automation.** A track keeps one lane of points per parameter id (`gain`, `pan`, `mute`, `send.<busId>.level`) and an automation mode. The app resolves each id to an engine target, and the engine evaluates the lanes every 32 samples and ramps the track's gain, pan and sends between those values.
 - **Locations.** Each registry entry can name a UI location (`settings.audio.bufferSize`). Revealing a location changes the `Nav` state object only; QML binds to `Nav`, so the same call works for a click, the palette, an agent and a test.
 
 ## Projects
 
 - A project is a bundle: a folder named `<Name>.erk` holding `project.json` and `audio/`. On macOS the app's Info.plist declares it a document package, so Finder shows it as one file and opens it in Emerick.
 - A new project starts as `Untitled N.erk` in the `Emerick` folder of the platform music folder, so every take lands in a real folder. Autosave writes `project.json` about 2 s after the last edit or take. Leaving an untitled project that holds nothing deletes it.
+- Opening a project checks it for missing audio files, clips that run past their file, audio files at another sample rate than the engine's and routes to missing devices, and offers the issues it finds. `project.health` runs the same check and lists them.
 - An action that takes a path, such as `project.open` or `export.logic`, opens a file dialog when the UI runs it without one. An agent passes the path, and a missing one is an error naming the param. An action that deletes files asks first in the UI; an agent passes `confirm: true`.
 - `export.logic` writes `<Name> for Logic/`: one numbered WAV per audio track from bar 1 to the project end, and `MIDI.mid` with the tempo, the meter, one named track per MIDI track, the project's markers, and markers from the track types that name the timeline, such as chords and Style sections.
 
@@ -48,7 +50,7 @@ The engine plays the metronome on the tempo map's beat grid to the sample: a syn
 
 ## Inserts
 
-The engine plays each track's insert effects on its mix before the fader. The snapshot builder makes an effect's state once per insert id at the stream's sample rate, with its delay lines at full length, and later snapshots share it, so an edit keeps reverb tails and delay lines and the params glide to their new values. Effects report no latency, and exports play them through the same engine. A param's id is `<insert id>.<param id>`, and `insert.setParam` takes it in place of the insert param.
+The engine plays each track's insert effects on its mix before the fader. The snapshot builder makes an effect's state once per insert id at the stream's sample rate, with its delay lines at full length, and later snapshots share it, so an edit keeps reverb tails and delay lines and the params glide to their new values. Effects report no latency, and exports play them through the same engine. A param's id is `<insert id>.<param id>`: an automation lane plays it, and `insert.setParam` takes it in place of the insert param.
 
 ## Devices
 
@@ -73,6 +75,7 @@ The console (Cmd+\`) runs Lua in the same sandboxed host on the UI thread. `Regi
 - Catch2 unit tests per target. The engine runs on `OfflineBackend`, faster than realtime, with golden renders.
 - `NullAudioBackend` and an in-process virtual MIDI port, selected with `--audio=null --midi=virtual`, let the app run anywhere. With the virtual port, `midi.inject` feeds it and `midi.sent` lists what the app sent to it.
 - `docker/` runs the app headless (`QT_QPA_PLATFORM=offscreen`) in Ubuntu 24.04 with Qt 6.11, exposes the MCP port, and `e2e/` drives it over MCP.
+- CI runs `make quality` on macOS and Ubuntu and the Docker e2e on every pull request and push to main. An action test fails when a registry action has no menu entry, shortcut or control.
 
 ## Libraries
 

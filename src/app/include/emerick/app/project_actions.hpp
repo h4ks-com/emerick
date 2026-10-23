@@ -25,6 +25,8 @@ void registerTrackEditActions(Registry& registry, ProjectController& controller,
 void registerSendActions(Registry& registry, ProjectController& controller, Nav& nav);
 // Add, remove, move, bypass and edit insert effects on audio tracks and buses, and open their editor.
 void registerInsertActions(Registry& registry, ProjectController& controller, Nav& nav);
+// Points, lanes and modes of track automation, and the automation view. Point edits find their points in any lane.
+void registerAutomationActions(Registry& registry, ProjectController& controller, Nav& nav);
 // Deletes the track with every send and output bus that names it as one undo step.
 void removeTrack(ProjectController& controller, const model::TrackId& id);
 // The track named by params, or the selected track when params names none.
@@ -32,6 +34,8 @@ model::TrackId targetTrack(const ProjectController& controller, const Nav& nav, 
 Json trackResult(const ProjectController& controller, const model::TrackId& id);
 Json editTrack(ProjectController& controller, const model::TrackId& id, std::string name,
                const std::function<void(model::Track&)>& edit);
+// One submenu entry per track color, passing its index as the color param.
+std::vector<MenuChoice> colorChoices();
 // Clip actions without a clip param act on the selected clips, so their shortcuts work on what the user selected.
 void registerClipActions(Registry& registry, ProjectController& controller, Nav& nav);
 // Copy, cut, paste, select all and clip neighbors, and the Delete key's action.

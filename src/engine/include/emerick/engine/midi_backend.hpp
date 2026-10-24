@@ -100,7 +100,8 @@ private:
     std::vector<std::string> inputs_;
     std::vector<std::string> outputs_;
     mutable std::mutex mutex_;
-    std::map<std::string, MidiReceive, std::less<>> receivers_;
+    // A port feeds every input open on it, as CoreMIDI does.
+    std::multimap<std::string, MidiReceive, std::less<>> receivers_;
     std::map<std::string, std::vector<SentMidi>, std::less<>> sent_;
 };
 

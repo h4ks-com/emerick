@@ -3,7 +3,7 @@ import QtQuick.Controls.Basic
 import QtQuick.Controls.impl
 import Emerick.App
 
-// The one picker every view uses. Each entry has an id and a name. Typing filters the names, the arrows move,
+// The one picker every view uses. Each entry has an id and a name. Typing filters the names and lists an exact name first, then the names it starts, the arrows move,
 // Enter picks and Escape closes. With acceptsText, Enter on no match hands over the typed text.
 Item {
     id: control
@@ -19,7 +19,13 @@ Item {
     readonly property alias field: field
     readonly property var matches: {
         const terms = popup.opened ? field.text.toLowerCase().split(" ").filter(term => term !== "") : []
-        return model.filter(entry => terms.every(term => entry.name.toLowerCase().includes(term)))
+        const found = model.filter(entry => terms.every(term => entry.name.toLowerCase().includes(term)))
+        const typed = terms.join(" ")
+        const rank = entry => {
+            const name = entry.name.toLowerCase()
+            return name === typed ? 0 : terms.length > 0 && name.startsWith(terms[0]) ? 1 : 2
+        }
+        return [0, 1, 2].reduce((ranked, level) => ranked.concat(found.filter(entry => rank(entry) === level)), [])
     }
 
     signal picked(var entry)

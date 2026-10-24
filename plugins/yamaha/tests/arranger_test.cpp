@@ -50,6 +50,10 @@ TEST_CASE("setting up the arranger adds Chords, Style and one track per part in 
     CHECK(tracks.at(3).at("name") == "Right 1");
     CHECK(tracks.at(3).at("icon") == "piano-keys");
     CHECK(tracks.at(13).at("name") == "Bass");
+    CHECK(tracks.at(0).at("armed") == false);
+    for (std::size_t index = 1; index < tracks.size(); ++index) {
+        CHECK(tracks.at(index).at("armed") == true);
+    }
     CHECK(state.at("clockOut") == Json::array({kMidiPort}));
 
     rig.run("project.undo");
@@ -146,6 +150,7 @@ TEST_CASE("chord sysex recorded from the keyboard lands on the Chords track and 
     YamahaRig rig;
     rig.run("yamaha.setupArranger");
     const std::string chords = rig.controller->project().document().tracks.at(0).id.value;
+    rig.run("track.armAll", {{"value", false}});
     rig.run("track.setArm", {{"track", chords}, {"value", true}});
 
     rig.run("transport.record");

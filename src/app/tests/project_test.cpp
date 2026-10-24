@@ -532,3 +532,24 @@ TEST_CASE("the route pickers list devices by name and channels apart from them")
     CHECK(channels == QStringList{"1", "2", "1-2"});
     CHECK(devices.value("midiChannels").toList().size() == kMidiChannels + 1);
 }
+
+TEST_CASE("arm all tracks arms every track in one undo step and disarms them when all are armed") {
+    ProjectRig rig;
+    const std::string vox = rig.run("track.addAudio").at("id");
+    const std::string keys = rig.run("track.addMidi").at("id");
+    rig.run("track.setArm", {{"track", vox}, {"value", true}});
+    const auto armed = [&] {
+        return std::ranges::count_if(rig.controller->project().document().tracks, &model::Track::armed);
+    };
+    rig.run("track.armAll");
+    CHECK(armed() == 2);
+    rig.run("track.armAll");
+    CHECK(armed() == 0);
+    rig.run("project.undo");
+    CHECK(armed() == 2);
+    rig.run("project.undo");
+    CHECK(armed() == 1);
+    rig.run("track.armAll", {{"value", false}});
+    CHECK(armed() == 0);
+    (void)keys;
+}

@@ -7,12 +7,14 @@
 #include <iterator>
 #include <libremidi/reader.hpp>
 #include <optional>
+#include <ranges>
 #include <stdexcept>
 #include <string>
 #include <utility>
 #include <vector>
 
 #include "emerick/app/action_params.hpp"
+#include "emerick/app/project_actions.hpp"
 #include "emerick/app/project_state.hpp"
 #include "emerick/core/midi.hpp"
 #include "emerick/yamaha/profile.hpp"
@@ -236,12 +238,20 @@ void registerArrangerActions(app::Registry& registry, app::ProjectController& co
                      throw AppError("no MIDI port with both an input and an output, connect the keyboard or pass port");
                  }
                  controller.project().group("set up arranger", [&] {
+                     const std::size_t first = controller.project().document().tracks.size();
                      addChartTracks(controller, registry, *keyboard, {});
+                     const auto& tracks = controller.project().document().tracks;
+                     const auto charts = tracks | std::views::drop(first) | std::views::transform(&model::Track::id) |
+                                         std::ranges::to<std::vector>();
+                     for (const model::TrackId& id : charts) {
+                         app::editTrack(controller, id, "arm track", [](model::Track& track) { track.armed = true; });
+                     }
                      for (const Part& part : genos2Parts()) {
                          model::Track track;
                          track.kind = "midi";
                          track.name = part.name;
                          track.icon = part.icon;
+                         track.armed = true;
                          track.midiIn = {.portId = *keyboard, .channel = part.channel, .thru = false, .sysex = false};
                          addTrack(controller, std::move(track));
                      }

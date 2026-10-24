@@ -108,6 +108,31 @@ void registerTrackFlags(Registry& registry, ProjectController& controller, const
                  },
              .menus = trackMenus()});
     }
+    registry.addAction(
+        {.id = "track.armAll",
+         .title = "Arm all tracks",
+         .description = "Arms every track for recording, or disarms them all when every track is armed already.",
+         .aliases = {"record all tracks", "disarm all tracks", "record enable all"},
+         .category = "Tracks",
+         .shortcut = "Shift+Alt+R",
+         .schema = {{"properties", {{"value", {{"type", "boolean"}}}}}},
+         .run =
+             [&controller](const Json& params) {
+                 const auto& tracks = controller.project().document().tracks;
+                 const bool value =
+                     optionalParam<bool>(params, "value").value_or(!std::ranges::all_of(tracks, &model::Track::armed));
+                 const auto ids = tracks | std::views::transform(&model::Track::id) | std::ranges::to<std::vector>();
+                 controller.project().group(value ? "arm all tracks" : "disarm all tracks", [&] {
+                     for (const model::TrackId& id : ids) {
+                         editTrack(controller, id, "arm track", [&](model::Track& track) { track.armed = value; });
+                     }
+                 });
+                 for (const model::TrackId& id : ids) {
+                     controller.setLiveArmed(id, value);
+                 }
+                 return projectState(controller);
+             },
+         .menus = {kTrackMenu}});
 }
 
 void registerTrackLooks(Registry& registry, ProjectController& controller, const Nav& nav) {

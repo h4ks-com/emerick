@@ -1,6 +1,8 @@
 #include "emerick/yamaha/chord.hpp"
 
 #include <catch2/catch_test_macros.hpp>
+#include <string>
+#include <vector>
 
 #include "emerick/yamaha/sysex.hpp"
 
@@ -62,4 +64,23 @@ TEST_CASE("notes are a block voicing with the bass an octave below") {
     CHECK(Chord::parse("Dm7")->notes(48) == std::vector<int>{50, 53, 57, 60});
     CHECK(Chord::parse("C/E")->notes(48) == std::vector<int>{40, 48, 52, 55});
     CHECK(Chord::parse("N.C.")->notes(48).empty());
+}
+
+TEST_CASE("held notes name the chord they spell, over the lowest note") {
+    const auto named = [](const std::vector<int>& notes) {
+        const auto chord = recognizeChord(notes);
+        return chord ? chord->name() : std::string{"none"};
+    };
+    CHECK(named({60, 64, 67}) == "C");
+    CHECK(named({58, 61, 65, 68}) == "Bbm7");
+    CHECK(named({67, 71, 74, 77}) == "G7");
+    CHECK(named({64, 67, 72}) == "C/E");
+    CHECK(named({50, 60, 64, 67}) == "Cadd9/D");
+    CHECK(named({49, 60, 64, 67}) == "C/Db");
+    CHECK(named({60, 64, 67, 69}) == "C6");
+    CHECK(named({57, 60, 64, 67}) == "Am7");
+    CHECK(named({60, 62, 67}) == "Csus2");
+    CHECK(named({60, 72}) == "C(1+8)");
+    CHECK(named({60, 61, 62}) == "none");
+    CHECK(named({}) == "none");
 }

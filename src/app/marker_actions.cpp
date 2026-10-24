@@ -153,6 +153,18 @@ void registerMarkerNavigation(Registry& registry, ProjectController& controller,
                             .shortcut = text,
                             .run = [&controller, number](const Json&) { return gotoNumber(controller, number); }});
     }
+    registry.addAction({.id = "marker.toggleList",
+                        .title = "Show or hide marker list",
+                        .aliases = {"markers list", "marker overview"},
+                        .category = "Markers",
+                        .run =
+                            [&nav](const Json&) {
+                                const bool open = !(nav.inspectorOpen() && nav.markerListOpen());
+                                nav.setMarkerListOpen(open);
+                                nav.setInspectorOpen(nav.inspectorOpen() || open);
+                                return Json{{"markerListOpen", open}};
+                            },
+                        .menus = {kViewMenu}});
 }
 
 void registerMarkerEdits(Registry& registry, ProjectController& controller, Nav& nav) {
@@ -162,7 +174,7 @@ void registerMarkerEdits(Registry& registry, ProjectController& controller, Nav&
          .title = "Add marker",
          .aliases = {"create marker", "new marker", "add section marker"},
          .category = "Markers",
-         .shortcut = "Alt+'",
+         .shortcut = "Alt+M",
          .schema = {{"properties",
                      {{"at", Json::object()}, {"name", {{"type", "string"}}}, {"color", {{"type", "integer"}}}}}},
          .run = [&controller, &nav](const Json& params) { return addMarker(controller, nav, params); },

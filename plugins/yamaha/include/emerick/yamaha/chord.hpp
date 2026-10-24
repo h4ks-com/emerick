@@ -31,6 +31,8 @@ struct ChordType {
 
 bool isChordType(int type);
 const ChordType& chordType(int type);
+// Every chord type in Chord Control order, so the index is the type byte.
+std::span<const ChordType> chordTypes();
 
 struct Note {
     int pitchClass = 0;
@@ -54,5 +56,9 @@ struct Chord {
     [[nodiscard]] std::vector<int> notes(int baseOctaveNote) const;
     bool operator==(const Chord&) const = default;
 };
+
+// Names the chord that held MIDI notes spell, the lowest note as its bass, the way the keyboard's Fingered mode reads
+// them; a root over the lowest note wins, then any root, then an on-bass chord.
+std::optional<Chord> recognizeChord(std::span<const int> notes);
 
 }  // namespace emerick::yamaha

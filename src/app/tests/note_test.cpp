@@ -159,6 +159,17 @@ TEST_CASE("notes play and export as the note-ons and note-offs they came from") 
                        {1920, {0x90, 60, 90}}, {2400, {0x80, 60, 0}}, {2880, {0x90, 67, 70}}, {3840, {0x80, 67, 0}}});
 }
 
+TEST_CASE("a piano roll key plays on the track's port and on the channel playback sends the clip's notes on") {
+    NoteRig keys;
+    keys.rig.run("midi.addNote", {{"clip", keys.clip}, {"pitch", 40}, {"start", 0}, {"channel", 11}});
+    keys.rig.run("track.setMidiOut", {{"track", keys.track}, {"port", kMidiPort}, {"channel", 0}});
+    const Json key = {{"track", keys.track}, {"clip", keys.clip}, {"pitch", 60}};
+    CHECK(keys.rig.run("midi.audition", key).at("bytes") == Json{0x9A, 60, 100});
+    CHECK(keys.rig.run("midi.audition", {{"track", keys.track}, {"pitch", 60}}).at("bytes").at(0) == 0x90);
+    keys.rig.run("track.setMidiOut", {{"track", keys.track}, {"channel", 3}});
+    CHECK(keys.rig.run("midi.audition", key).at("bytes").at(0) == 0x92);
+}
+
 TEST_CASE("a project saved before notes had ids opens with the same notes and playback") {
     NoteRig keys;
     keys.add(60, 0, 480, 90);

@@ -92,6 +92,15 @@ TEST_CASE("transport position advances in frames and ticks and locates by ticks"
     CHECK(rig.engine.position().ticks == 2400);
 }
 
+TEST_CASE("a tempo change keeps the playhead on its tick") {
+    Rig rig;
+    rig.engine.setSession({.tempo = kTempo});
+    rig.engine.locate(1920);
+    rig.engine.setSession({.tempo = {60.0, {4, 4}}});
+    CHECK(rig.engine.position().ticks == 1920);
+    CHECK(rig.engine.position().frames == 96000);
+}
+
 TEST_CASE("a stopped session with no track listening opens no device and still locates") {
     Rig rig;
     Track vox{.id = "vox", .kind = TrackKind::audio};
@@ -261,6 +270,21 @@ TEST_CASE("each port sends its messages in timestamp order") {
     const auto sent = rig.midi.sent(kPort1);
     CHECK(bytesOf(sent) == std::vector<Bytes>{{0xFA}, {0xF8}, {0x90, 60, 100}, {0xF8}, {0x80, 60, 0}});
     CHECK(std::ranges::is_sorted(sent, {}, &SentMidi::timestampNs));
+}
+
+TEST_CASE("events at the start frame go out before Start, and the first clock after it") {
+    Rig rig;
+    Track style = midiTrack("style", {}, {kPort1, 0});
+    const Bytes section{0xF0, 0x43, 0x7E, 0x00, 0x09, 0x7F, 0xF7};
+    style.midiClips.push_back({.events = {{0, section}}});
+    rig.engine.setSession({.tempo = kTempo, .tracks = {style}, .clockPorts = {kPort1}});
+    rig.engine.play();
+    rig.audio.process(kBlock);
+
+    const auto sent = waitForSent(rig.midi, kPort1, 3);
+    REQUIRE(sent.size() >= 3);
+    CHECK(bytesOf(sent) == std::vector<Bytes>{section, {0xFA}, {0xF8}});
+    CHECK(frameOf(sent[1]) == 0);
 }
 
 TEST_CASE("a reopened stream drops the snapshot built for the old devices") {

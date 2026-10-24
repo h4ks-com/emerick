@@ -3,7 +3,7 @@ import QtQuick.Controls.Basic
 import QtQuick.Controls.impl
 import Emerick.App
 
-// The one picker every view uses. Each entry has an id and a name. Typing filters the names, the arrows move,
+// The one picker every view uses. Each entry has an id and a name. Typing filters the names and lists an exact name first, then the names it starts, the arrows move,
 // Enter picks and Escape closes. With acceptsText, Enter on no match hands over the typed text.
 Item {
     id: control
@@ -13,13 +13,21 @@ Item {
     property string toolTip
     // What the closed picker shows when no entry has currentId.
     property string missingText: currentId
+    // Several edited items differ in this value.
+    property bool mixed: false
     readonly property var current: model.find(entry => entry.id === currentId)
-    readonly property string displayText: current !== undefined ? current.name : missingText
+    readonly property string displayText: mixed ? "Mixed" : current !== undefined ? current.name : missingText
     readonly property alias popup: popup
     readonly property alias field: field
     readonly property var matches: {
         const terms = popup.opened ? field.text.toLowerCase().split(" ").filter(term => term !== "") : []
-        return model.filter(entry => terms.every(term => entry.name.toLowerCase().includes(term)))
+        const found = model.filter(entry => terms.every(term => entry.name.toLowerCase().includes(term)))
+        const typed = terms.join(" ")
+        const rank = entry => {
+            const name = entry.name.toLowerCase()
+            return name === typed ? 0 : terms.length > 0 && name.startsWith(terms[0]) ? 1 : 2
+        }
+        return [0, 1, 2].reduce((ranked, level) => ranked.concat(found.filter(entry => rank(entry) === level)), [])
     }
 
     signal picked(var entry)
@@ -67,7 +75,7 @@ Item {
         text: control.displayText
         placeholderText: control.displayText
         placeholderTextColor: Theme.inkDim
-        color: control.enabled ? Theme.ink : Theme.inkDim
+        color: !field.activeFocus ? Theme.clear : control.enabled ? Theme.ink : Theme.inkDim
         selectionColor: Theme.rule
         selectedTextColor: Theme.ink
         font.pixelSize: Theme.textLabel
@@ -75,7 +83,7 @@ Item {
             radius: Theme.radiusClip
             color: popup.opened || field.hovered ? Theme.rule : Theme.lift
         }
-        ToolTip.text: control.toolTip
+        ToolTip.text: control.toolTip + (control.displayText ? "   " + control.displayText : "")
         ToolTip.visible: control.toolTip !== "" && hovered && !popup.opened
         ToolTip.delay: Theme.tooltipDelay
         onPressed: control.open()
@@ -94,6 +102,19 @@ Item {
             event.accepted = popup.opened
             control.close()
         }
+    }
+
+    // A TextField scrolls to its cursor and cannot elide, so we show the closed picker's name in a Text.
+    Text {
+        anchors.fill: field
+        leftPadding: field.leftPadding
+        rightPadding: field.rightPadding
+        visible: !field.activeFocus
+        text: control.displayText
+        color: control.enabled ? Theme.ink : Theme.inkDim
+        font: field.font
+        elide: Text.ElideRight
+        verticalAlignment: Text.AlignVCenter
     }
 
     ColorImage {

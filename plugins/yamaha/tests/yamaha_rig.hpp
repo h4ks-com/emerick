@@ -50,9 +50,11 @@ inline std::vector<RawEvent> takeSysex() {
 
 // A project rig with the plugin registered.
 struct YamahaRig : app::test::ProjectRig {
-    explicit YamahaRig(const std::vector<std::string>& midiPorts = {app::test::kMidiPort}) : ProjectRig(midiPorts) {
-        registerWith(registry, *controller, nav);
-    }
+    explicit YamahaRig(const std::vector<std::string>& midiPorts = {app::test::kMidiPort},
+                       double sampleRate = app::test::kRate)
+        : ProjectRig(midiPorts, sampleRate), chordInput(registerWith(registry, *controller, nav)) {}
+
+    std::unique_ptr<ChordInput> chordInput;
 
     [[nodiscard]] const model::Track& track(const std::string& id) const {
         return *controller->project().track(model::TrackId{id});

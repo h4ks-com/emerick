@@ -42,7 +42,11 @@ Glass: the control bar and popovers use `slate` at 96% with a 1 px top highlight
 +-----------+----------------------------------------------------------+
 ```
 
-Left aligned everywhere. Track header holds arm, mute, solo, name and an instrument icon, and a thin level meter along its right edge; the inspector shows the selected track's inputs and outputs per track (audio device and channels, MIDI port and channel), always visible, never hidden in a global preference.
+Left aligned everywhere. Track header holds arm, mute, solo, name and an instrument icon, and a thin level meter along its right edge; the inspector shows the selected track's inputs and outputs per track (audio device and channels, MIDI port and channel), always visible, never hidden in a global preference. Dragging the inspector's right edge, or the header column's edge above the tracks or beside the piano keys, resizes it, and the width stays as a setting.
+
+Command-click a track header to add it to the selection and Shift-click to select a range; Command+A on a header selects every track. The inspector then reads "N tracks" and shows "Mixed" where the tracks differ, and its routes, flags, gain and pan, the header controls of a selected track, the track menu and Delete act on every selected track as one undo step. Gain and pan move each track by the same amount, as in Logic.
+
+Left and Right move the playhead one bar, and Shift with them eight bars. A tempo change keeps the playhead on its bar and beat.
 
 The mixer (X) docks at the bottom of the window above the console. Each track gets a channel strip with its output, a pan knob, a vertical gain fader beside the level meter, mute, solo and arm, and its name on its color. The track header holds the same pan knob beside its gain. Drag a knob to pan, and double-click or Alt-click it to center; its tooltip reads L 23, C or R 40. The pan law (Settings / Audio) sets how much a centered track drops on each side, the same in playback, exports and meters.
 
@@ -56,7 +60,9 @@ The open docks (piano roll, mixer, console) take at most 60 percent of the windo
 
 Automation (A, or the lane button beside the magnet) draws each track's automation lane over its clips as a line with a handle per point in the track color, and the track header swaps its gain row for the automation mode and the lane's parameter: volume, pan, mute, a send level or an insert param. Click the lane to add a point, drag points or a segment between two points to move them, drag empty space to select, and Alt-click a point or press Delete to remove points. A track in Read plays its lanes and its fader, pan knob and sends follow them; Off ignores them. In Touch, moving the fader, pan knob or a send level during playback writes points until the control is let go, and Latch keeps writing its last value until the transport stops; each pass is one undo step. Exports play the automation.
 
-A marker lane under the bar ruler shows each marker as a named flag, and the inspector lists the markers under the track routes; clicking one moves the playhead there. Drags snap to the beat grid while snap is on, and holding Command (Ctrl on Linux and Windows) snaps them the other way, as Control does in Logic.
+A marker lane under the bar ruler shows each marker as a named flag, and its header holds buttons for the previous and next marker, the marker list and a "+" that adds a marker at the playhead (Alt+M). The inspector lists the markers under the track routes; clicking one moves the playhead there. Drags snap to the beat grid while snap is on, and holding Command (Ctrl on Linux and Windows) snaps them the other way, as Control does in Logic.
+
+The Chords and Style lanes show each chord or section as a block that lasts until the next one. Click a block or an empty spot to open its picker: a chord takes a root, a type from the keyboard's chord types and an optional bass note, or a name typed into the root field, and a section takes one of the sections the style plays. While a chord picker is open, the next chord played on the Chords track's MIDI input sets that block. Drag a block to move it, right-click it to change, split or delete it, and press Delete or Backspace to delete the selected block.
 
 An audio clip draws each fade with its shape: linear, equal power, exponential, logarithmic or S-curve. Dragging a fade handle sideways sets the fade's length and dragging it up or down bends its curve, as in Logic. Where clips on a track overlap, the newer clip plays over the older one outside its fades, and "Create crossfade" fades both over the overlap with equal power. Mute clip (Control-M, as in Logic) greys a clip out with a muted icon, and a muted clip plays and exports nothing.
 

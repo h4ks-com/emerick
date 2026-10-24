@@ -6,9 +6,13 @@
 using namespace emerick::yamaha;
 using Bytes = std::vector<std::uint8_t>;
 
-TEST_CASE("the Genos2 profile names every channel") {
+TEST_CASE("the Genos2 profile names every channel as the keyboard transmits it") {
     const auto& parts = genos2Parts();
-    CHECK(parts.front().name == "Right 1");
+    CHECK(parts[0].name == "Right 1");
+    CHECK(parts[1].name == "Right 2");
+    CHECK(parts[2].name == "Right 3");
+    CHECK(parts[3].name == "Left");
+    CHECK(parts[4].name == "Multi Pad 1");
     CHECK(parts.front().icon == "piano-keys");
     CHECK(parts[10].name == "Bass");
     CHECK(parts[10].icon == "guitar");

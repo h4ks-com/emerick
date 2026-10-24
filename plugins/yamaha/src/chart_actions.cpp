@@ -1,5 +1,6 @@
 #include <algorithm>
 #include <functional>
+#include <iterator>
 #include <optional>
 #include <string>
 #include <utility>
@@ -21,10 +22,11 @@ struct EventKind {
     const char* actionPrefix;
     const char* trackKind;
     const char* label;
+    const char* contextMenu;
 };
 
-constexpr EventKind kChordEvents{"yamaha.chord", kChordKind, "chord"};
-constexpr EventKind kSectionEvents{"yamaha.section", kStyleKind, "section"};
+constexpr EventKind kChordEvents{"yamaha.chord", kChordKind, "chord", kChordContextMenu};
+constexpr EventKind kSectionEvents{"yamaha.section", kStyleKind, "section", kSectionContextMenu};
 
 model::TrackId kindTrack(const app::ProjectController& controller, const Json& params, const EventKind& kind) {
     const model::TrackId id = app::trackParam(controller.project(), params);
@@ -100,8 +102,48 @@ auto eventAt(std::vector<Event>& events, core::Ticks at, const EventKind& kind, 
 }
 
 template <class Event>
-void registerMoveAndDelete(app::Registry& registry, app::ProjectController& controller, const EventKind& kind) {
+void registerBlockActions(app::Registry& registry, app::ProjectController& controller, app::Nav& nav,
+                          const EventKind& kind) {
     const std::string label = kind.label;
+    registry.addAction({.id = std::string{kind.actionPrefix} + ".edit",
+                        .title = "Change " + label,
+                        .aliases = {"edit " + label, "pick " + label},
+                        .category = "Yamaha",
+                        .schema = {{"required", {"track", "at"}}},
+                        .run =
+                            [&controller, &nav, &kind](const Json& params) {
+                                const model::TrackId id = kindTrack(controller, params, kind);
+                                const core::Ticks at = positionOf(controller, params, "at");
+                                nav.setEditingBlock({{"track", app::qs(id.value)}, {"at", QVariant::fromValue(at)}});
+                                return Json{{"track", id.value}, {"at", at}};
+                            },
+                        .menus = {kind.contextMenu}});
+    registry.addAction({.id = std::string{kind.actionPrefix} + ".split",
+                        .title = "Split " + label,
+                        .aliases = {"cut " + label},
+                        .category = "Yamaha",
+                        .schema = {{"required", {"track", "at", "to"}}},
+                        .run =
+                            [&controller, &kind](const Json& params) {
+                                const model::TrackId id = kindTrack(controller, params, kind);
+                                const core::Ticks at = positionOf(controller, params, "at");
+                                const core::Ticks to = positionOf(controller, params, "to");
+                                const auto& tempo = controller.project().document().tempo;
+                                return editEvents<Event>(controller, id, std::string{"split "} + kind.label,
+                                                         [&](std::vector<Event>& events) {
+                                                             const auto found = eventAt(events, at, kind, tempo);
+                                                             const auto next = std::next(found);
+                                                             if (to <= at || (next != events.end() && to >= next->at)) {
+                                                                 throw AppError(std::string{"split inside the "} +
+                                                                                kind.label + " at " +
+                                                                                tempo.toBarBeatTick(at).format());
+                                                             }
+                                                             Event copy = *found;
+                                                             copy.at = to;
+                                                             events.push_back(std::move(copy));
+                                                         });
+                            },
+                        .menus = {kind.contextMenu}});
     registry.addAction({.id = std::string{kind.actionPrefix} + ".move",
                         .title = "Move " + label,
                         .category = "Yamaha",
@@ -124,14 +166,17 @@ void registerMoveAndDelete(app::Registry& registry, app::ProjectController& cont
                         .aliases = {"remove " + label},
                         .category = "Yamaha",
                         .schema = {{"required", {"track", "at"}}},
-                        .run = [&controller, &kind](const Json& params) {
-                            const model::TrackId id = kindTrack(controller, params, kind);
-                            const core::Ticks at = positionOf(controller, params, "at");
-                            const auto& tempo = controller.project().document().tempo;
-                            return editEvents<Event>(
-                                controller, id, std::string{"delete "} + kind.label,
-                                [&](std::vector<Event>& events) { events.erase(eventAt(events, at, kind, tempo)); });
-                        }});
+                        .run =
+                            [&controller, &kind](const Json& params) {
+                                const model::TrackId id = kindTrack(controller, params, kind);
+                                const core::Ticks at = positionOf(controller, params, "at");
+                                const auto& tempo = controller.project().document().tempo;
+                                return editEvents<Event>(controller, id, std::string{"delete "} + kind.label,
+                                                         [&](std::vector<Event>& events) {
+                                                             events.erase(eventAt(events, at, kind, tempo));
+                                                         });
+                            },
+                        .menus = {kind.contextMenu}});
 }
 
 Chord chordParam(const Json& params) {
@@ -178,7 +223,7 @@ SectionEvent sectionParam(const Json& params) {
 
 }  // namespace
 
-void registerChartActions(app::Registry& registry, app::ProjectController& controller) {
+void registerChartActions(app::Registry& registry, app::ProjectController& controller, app::Nav& nav) {
     registry.addAction(
         {.id = "yamaha.chord.set",
          .title = "Set chord",
@@ -191,7 +236,7 @@ void registerChartActions(app::Registry& registry, app::ProjectController& contr
              return editEvents<ChordEvent>(controller, id, "set chord " + event.chord.name(),
                                            [&](auto& events) { placeAt(events, event); });
          }});
-    registerMoveAndDelete<ChordEvent>(registry, controller, kChordEvents);
+    registerBlockActions<ChordEvent>(registry, controller, nav, kChordEvents);
 
     registry.addAction({.id = "yamaha.section.set",
                         .title = "Set style section",
@@ -210,7 +255,7 @@ void registerChartActions(app::Registry& registry, app::ProjectController& contr
                             return editEvents<SectionEvent>(controller, id, "set section " + sectionName(event),
                                                             [&](auto& events) { placeAt(events, event); });
                         }});
-    registerMoveAndDelete<SectionEvent>(registry, controller, kSectionEvents);
+    registerBlockActions<SectionEvent>(registry, controller, nav, kSectionEvents);
     registry.addAction({.id = "yamaha.section.addMarkers",
                         .title = "Add markers from style sections",
                         .aliases = {"sections to markers", "mark sections"},

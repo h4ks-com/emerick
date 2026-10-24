@@ -315,7 +315,7 @@ void registerMidiKind(Registry& registry, ProjectController& controller, Nav& na
     registry.addAction(std::move(add));
 }
 
-void registerRouteActions(Registry& registry, ProjectController& controller) {
+void registerRouteActions(Registry& registry, ProjectController& controller, const Nav& nav) {
     const auto addAudioRoute = [&](const char* actionId, const char* title, Direction direction,
                                    model::AudioRoute model::Track::* field) {
         registry.addAction(
@@ -324,12 +324,16 @@ void registerRouteActions(Registry& registry, ProjectController& controller) {
              .aliases = {direction == Direction::input ? "audio input" : "audio output"},
              .category = "Tracks / Routing",
              .schema = {{"required", {"track"}},
-                        {"properties", {{"device", {{"type", "string"}}}, {"channels", {{"type", "array"}}}}}},
-             .run = [&controller, title, direction, field](const Json& params) {
-                 const auto id = trackParam(controller.project(), params);
-                 const auto route =
-                     mergeAudioRoute(controller, controller.project().track(id)->*field, params, direction);
-                 return editTrack(controller, id, title, [&](model::Track& track) { track.*field = route; });
+                        {"properties",
+                         {{"device", {{"type", "string"}}},
+                          {"channels", {{"type", "array"}}},
+                          {"selection", {{"type", "boolean"}}}}}},
+             .run = [&controller, &nav, title, direction, field](const Json& params) {
+                 return editTargets(controller, nav, params, title, [&](const model::TrackId& id) {
+                     const auto route =
+                         mergeAudioRoute(controller, controller.project().track(id)->*field, params, direction);
+                     editTrack(controller, id, title, [&](model::Track& track) { track.*field = route; });
+                 });
              }});
     };
     addAudioRoute("track.setAudioIn", "Set track audio input", Direction::input, &model::Track::audioIn);
@@ -349,16 +353,18 @@ void registerRouteActions(Registry& registry, ProjectController& controller) {
                                         {{"port", {{"type", "string"}}},
                                          {"channel", {{"type", "integer"}}},
                                          {"thru", {{"type", "boolean"}}},
-                                         {"sysex", {{"type", "boolean"}}}}}},
-                            .run = [&registry, &controller, title, direction, field](const Json& params) {
-                                const auto id = trackParam(controller.project(), params);
-                                const auto route = mergeMidiRoute(controller, controller.project().track(id)->*field,
-                                                                  params, direction);
-                                return editTrack(controller, id, title, [&](model::Track& track) {
-                                    track.*field = route;
-                                    if (direction == Direction::input) {
-                                        applyDeviceProfile(registry, track);
-                                    }
+                                         {"sysex", {{"type", "boolean"}}},
+                                         {"selection", {{"type", "boolean"}}}}}},
+                            .run = [&registry, &controller, &nav, title, direction, field](const Json& params) {
+                                return editTargets(controller, nav, params, title, [&](const model::TrackId& id) {
+                                    const auto route = mergeMidiRoute(
+                                        controller, controller.project().track(id)->*field, params, direction);
+                                    editTrack(controller, id, title, [&](model::Track& track) {
+                                        track.*field = route;
+                                        if (direction == Direction::input) {
+                                            applyDeviceProfile(registry, track);
+                                        }
+                                    });
                                 });
                             }});
     };
@@ -388,7 +394,7 @@ void registerTrackActions(Registry& registry, ProjectController& controller, Nav
     registerTrackEditActions(registry, controller, nav);
     registerSendActions(registry, controller, nav);
     registerInsertActions(registry, controller, nav);
-    registerRouteActions(registry, controller);
+    registerRouteActions(registry, controller, nav);
 }
 
 }  // namespace emerick::app

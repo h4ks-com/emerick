@@ -29,10 +29,20 @@ Rectangle {
 
     signal contextRequested()
 
-    readonly property bool selected: Nav.selectedTrack === trackId
+    readonly property bool selected: Nav.selectedTracks.indexOf(trackId) >= 0
     readonly property bool roomy: height >= Theme.headerButton * 2 + Theme.space3
+    // A clicked header takes Cmd+A to select every track, and a press elsewhere gives the key back to the window.
+    property bool editKeys: true
 
     color: selected ? Theme.rule : Theme.slate
+
+    Keys.onShortcutOverride: event => event.accepted = event.key === Qt.Key_A && event.modifiers === Qt.ControlModifier
+    Keys.onPressed: event => {
+        if (event.key === Qt.Key_A && event.modifiers === Qt.ControlModifier) {
+            event.accepted = true
+            Registry.runAction("track.selectAll", {})
+        }
+    }
 
     HoverHandler {
         id: hover
@@ -74,7 +84,14 @@ Rectangle {
                 }
             }
         }
-        onClicked: if (!menuPress) Registry.runAction("track.select", {track: header.trackId})
+        onClicked: mouse => {
+            if (menuPress) {
+                return
+            }
+            header.forceActiveFocus()
+            Registry.runAction("track.select", {track: header.trackId, extend: (mouse.modifiers & Qt.ControlModifier) !== 0,
+                                                range: (mouse.modifiers & Qt.ShiftModifier) !== 0})
+        }
         onDoubleClicked: if (!menuPress) Registry.runAction("track.beginRename", {track: header.trackId})
     }
 

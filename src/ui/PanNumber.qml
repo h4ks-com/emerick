@@ -24,5 +24,5 @@ DragNumber {
         }
         return side ? (side[1] === "L" ? -1 : 1) * Number(side[2]) / 100 : Number(typed) / 100
     }
-    actionsFor: number => [{id: "track.setPan", params: {track: trackId, value: number}}]
+    actionsFor: number => [{id: "track.setPan", params: {track: trackId, value: number, selection: true}}]
 }

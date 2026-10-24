@@ -104,7 +104,7 @@ int run(int argc, char** argv) {
         profileFolder.isEmpty() ? std::filesystem::path{}
                                 : std::filesystem::path{profileFolder.toStdString()} / "projects");
     registerProjectActions(registry, controller, nav);
-    emerick::yamaha::registerWith(registry, controller, nav);
+    const auto yamaha = emerick::yamaha::registerWith(registry, controller, nav);
     TrackListModel tracks(controller, registry);
     FileOpenFilter fileOpen(registry);
     QGuiApplication::instance()->installEventFilter(&fileOpen);

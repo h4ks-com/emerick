@@ -7,10 +7,12 @@ namespace emerick::engine {
 
 class VirtualMidiBackend::Input final : public MidiInput {
 public:
-    Input(VirtualMidiBackend& backend, std::string portId) : backend_(backend), portId_(std::move(portId)) {}
+    using Receiver = decltype(VirtualMidiBackend::receivers_)::iterator;
+
+    Input(VirtualMidiBackend& backend, Receiver receiver) : backend_(backend), receiver_(receiver) {}
     ~Input() override {
         const std::scoped_lock lock(backend_.mutex_);
-        backend_.receivers_.erase(portId_);
+        backend_.receivers_.erase(receiver_);
     }
     Input(const Input&) = delete;
     Input& operator=(const Input&) = delete;
@@ -19,7 +21,7 @@ public:
 
 private:
     VirtualMidiBackend& backend_;
-    std::string portId_;
+    Receiver receiver_;
 };
 
 class VirtualMidiBackend::Output final : public MidiOutput {
@@ -56,8 +58,7 @@ std::unique_ptr<MidiInput> VirtualMidiBackend::openInput(const std::string& port
         throw std::invalid_argument("unknown MIDI input " + portId);
     }
     const std::scoped_lock lock(mutex_);
-    receivers_[portId] = std::move(receive);
-    return std::make_unique<Input>(*this, portId);
+    return std::make_unique<Input>(*this, receivers_.emplace(portId, std::move(receive)));
 }
 
 std::unique_ptr<MidiOutput> VirtualMidiBackend::openOutput(const std::string& portId) {
@@ -70,7 +71,8 @@ std::unique_ptr<MidiOutput> VirtualMidiBackend::openOutput(const std::string& po
 void VirtualMidiBackend::inject(std::string_view portId, std::span<const std::uint8_t> bytes,
                                 std::int64_t timestampNs) {
     const std::scoped_lock lock(mutex_);
-    if (const auto receiver = receivers_.find(portId); receiver != receivers_.end()) {
+    const auto [first, last] = receivers_.equal_range(portId);
+    for (auto receiver = first; receiver != last; ++receiver) {
         receiver->second(bytes, timestampNs);
     }
 }

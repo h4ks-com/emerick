@@ -19,7 +19,8 @@ DockPanel {
     readonly property int keyHeight: Nav.keyHeight
     readonly property real gridTicks: 4 * Project.ticksPerQuarter / Registry.settings["midi.grid"]
     readonly property int keysTop: Theme.rulerHeight
-    readonly property real gridWidth: Math.max(0, width - Theme.trackHeaderWidth)
+    readonly property int headerWidth: Registry.settings["view.headerWidth"]
+    readonly property real gridWidth: Math.max(0, width - roll.headerWidth)
     readonly property real velocityHeight: Math.min(Theme.velocityLaneHeight, height * Theme.velocityLaneShare)
     readonly property real gridHeight: Math.max(0, height - keysTop - velocityHeight)
     readonly property real contentHeight: 128 * keyHeight
@@ -103,9 +104,9 @@ DockPanel {
         }
     }
     function zoomAround(factor, x) {
-        const anchor = scrollTicks + (x - Theme.trackHeaderWidth) / pixelsPerTick
+        const anchor = scrollTicks + (x - roll.headerWidth) / pixelsPerTick
         Nav.pixelsPerTick = pixelsPerTick * factor
-        Nav.scrollTicks = Math.max(0, anchor - (x - Theme.trackHeaderWidth) / Nav.pixelsPerTick)
+        Nav.scrollTicks = Math.max(0, anchor - (x - roll.headerWidth) / Nav.pixelsPerTick)
     }
     function zoomKeys(height) {
         middleRow = (scrollY + gridHeight / 2) / keyHeight
@@ -169,7 +170,7 @@ DockPanel {
     Item {
         id: grid
         objectName: "pianoRoll.grid"
-        x: Theme.trackHeaderWidth
+        x: roll.headerWidth
         y: roll.keysTop
         width: roll.gridWidth
         height: roll.gridHeight
@@ -333,7 +334,7 @@ DockPanel {
     PianoKeyboard {
         id: keys
         y: roll.keysTop
-        width: Theme.trackHeaderWidth
+        width: roll.headerWidth
         height: roll.gridHeight
         roll: roll
     }
@@ -346,7 +347,7 @@ DockPanel {
     }
 
     Rectangle {
-        width: Theme.trackHeaderWidth
+        width: roll.headerWidth
         height: roll.keysTop
         color: Theme.slate
         Text {
@@ -380,7 +381,7 @@ DockPanel {
     }
 
     Ruler {
-        x: Theme.trackHeaderWidth
+        x: roll.headerWidth
         width: roll.gridWidth
         height: Theme.rulerHeight
         scrollTicks: roll.scrollTicks
@@ -390,10 +391,17 @@ DockPanel {
     }
 
     Rectangle {
-        x: Theme.trackHeaderWidth - Theme.hairline
+        x: roll.headerWidth - Theme.hairline
         width: Theme.hairline
         height: roll.height
         color: Theme.rule
+    }
+
+    PaneEdge {
+        settingId: "view.headerWidth"
+        x: roll.headerWidth - width
+        y: Theme.splitterGrip
+        height: roll.height - y
     }
 
     Label {

@@ -7,6 +7,7 @@
 #include <array>
 #include <cstddef>
 #include <filesystem>
+#include <functional>
 #include <iterator>
 #include <ranges>
 #include <span>
@@ -150,6 +151,17 @@ QVariantMap TrackListModel::clip(const QString& id) const {
                   {"trackName", qs(found->track->name)},
                   {"colorIndex", found->track->color}});
     return entry;
+}
+
+bool TrackListModel::sameAcross(const QStringList& ids, const QString& role) const {
+    const int key = roleNames().key(role.toUtf8(), -1);
+    const auto values =
+        ids | std::views::transform([&](const QString& id) {
+            const auto row = std::ranges::find(rows_, model::TrackId{id.toStdString()});
+            return row == rows_.end() ? QVariant{} : data(index(static_cast<int>(row - rows_.begin())), key);
+        }) |
+        std::ranges::to<std::vector>();
+    return std::ranges::adjacent_find(values, std::ranges::not_equal_to{}) == values.end();
 }
 
 QString TrackListModel::trackName(const model::TrackId& id) const {

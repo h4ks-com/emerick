@@ -2,7 +2,9 @@
 
 #include <algorithm>
 #include <array>
+#include <bitset>
 #include <cstdlib>
+#include <span>
 #include <string_view>
 #include <utility>
 
@@ -84,11 +86,59 @@ std::optional<Note> noteFromName(std::string_view name) {
     return code ? noteFromCode(*code) : std::nullopt;
 }
 
+constexpr int kPitchClasses = 12;
+constexpr std::array<std::string_view, kPitchClasses> kSpelling{"C",  "Db", "D",  "Eb", "E",  "F",
+                                                                "F#", "G",  "Ab", "A",  "Bb", "B"};
+
+using PitchSet = std::bitset<kPitchClasses>;
+
+PitchSet above(const PitchSet& pitches, int root) {
+    PitchSet result;
+    for (int pitch = 0; pitch < kPitchClasses; ++pitch) {
+        result[static_cast<std::size_t>((pitch - root + kPitchClasses) % kPitchClasses)] =
+            pitches[static_cast<std::size_t>(pitch)];
+    }
+    return result;
+}
+
+PitchSet pitchesOf(const ChordType& type) {
+    PitchSet result;
+    for (const int interval : type.intervals()) {
+        result.set(static_cast<std::size_t>(interval % kPitchClasses));
+    }
+    return result;
+}
+
+std::optional<int> typeSpelling(const PitchSet& pitches, int root) {
+    if (!pitches[static_cast<std::size_t>(root)]) {
+        return std::nullopt;
+    }
+    const PitchSet intervals = above(pitches, root);
+    const auto types = std::span(kChordTypes).first(kNoChordType);
+    const auto found = std::ranges::find_if(types, [&](const ChordType& type) { return pitchesOf(type) == intervals; });
+    return found == types.end() ? std::nullopt : std::optional{static_cast<int>(found - types.begin())};
+}
+
+Note spelled(int pitchClass) { return {pitchClass, std::string(kSpelling[static_cast<std::size_t>(pitchClass)])}; }
+
+std::optional<Chord> firstSpelling(const PitchSet& pitches, int bass, bool overBass) {
+    for (int offset = 0; offset < kPitchClasses; ++offset) {
+        const int root = (bass + offset) % kPitchClasses;
+        if (const auto type = typeSpelling(pitches, root)) {
+            const bool slash = overBass || root != bass;
+            return Chord{spelled(root), *type, slash ? std::optional{spelled(bass)} : std::nullopt};
+        }
+    }
+    return std::nullopt;
+}
+
 }  // namespace
 
 bool isChordType(int type) { return type >= 0 && std::cmp_less(type, kChordTypes.size()); }
 
 const ChordType& chordType(int type) { return kChordTypes.at(static_cast<std::size_t>(type)); }
+
+std::span<const ChordType> chordTypes() { return kChordTypes; }
 
 std::optional<Note> noteFromCode(std::uint8_t code) {
     const int step = (code & 0x0F) - 1;
@@ -163,6 +213,23 @@ std::vector<int> Chord::notes(int baseOctaveNote) const {
         result.push_back(baseOctaveNote + root.pitchClass + interval);
     }
     return result;
+}
+
+std::optional<Chord> recognizeChord(std::span<const int> notes) {
+    if (notes.empty()) {
+        return std::nullopt;
+    }
+    PitchSet pitches;
+    for (const int note : notes) {
+        pitches.set(static_cast<std::size_t>(note % kPitchClasses));
+    }
+    const int bass = std::ranges::min(notes) % kPitchClasses;
+    if (auto chord = firstSpelling(pitches, bass, false)) {
+        return chord;
+    }
+    PitchSet upper = pitches;
+    upper.reset(static_cast<std::size_t>(bass));
+    return upper.any() ? firstSpelling(upper, bass, true) : std::nullopt;
 }
 
 }  // namespace emerick::yamaha

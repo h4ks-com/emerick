@@ -6,6 +6,7 @@
 #include <QQuickWindow>
 #include <QTest>
 #include <catch2/catch_test_macros.hpp>
+#include <functional>
 #include <vector>
 
 #include "emerick/app/console.hpp"
@@ -28,10 +29,14 @@ struct MainWindow {
     KeyFocusFilter keyFocus;
     QQuickWindow* window = nullptr;
 
-    MainWindow() {
+    // A plugin test registers its plugin in registerPlugins, before the window loads, as the app does.
+    explicit MainWindow(const std::function<void(ProjectRig&)>& registerPlugins = {}) {
         QCoreApplication::instance()->installEventFilter(&keyFocus);
         registerCoreActions(rig.registry, rig.nav, {});
         registerConsoleActions(rig.registry, rig.nav, console);
+        if (registerPlugins) {
+            registerPlugins(rig);
+        }
         exposeToQml(engine, rig.registry, rig.nav, *rig.controller, tracks, peaks, &console);
         engine.loadFromModule("Emerick.Ui", "Main");
         REQUIRE(engine.rootObjects().size() == 1);

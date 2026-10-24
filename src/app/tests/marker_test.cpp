@@ -85,7 +85,7 @@ TEST_CASE("the marker keys go to the next, previous and numbered markers") {
     rig.run("marker.goto", {{"number", 1}});
     CHECK(rig.controller->positionTicks() == kBar);
     CHECK_THROWS_AS(rig.run("marker.goto3"), AppError);
-    CHECK(rig.registry.action("marker.add")->shortcut == "Alt+'");
+    CHECK(rig.registry.action("marker.add")->shortcut == "Alt+M");
     CHECK(rig.registry.action("marker.next")->shortcut == "Alt+.");
     CHECK(rig.registry.action("marker.goto1")->shortcut == "1");
 }

@@ -553,3 +553,59 @@ TEST_CASE("arm all tracks arms every track in one undo step and disarms them whe
     CHECK(armed() == 0);
     (void)keys;
 }
+
+TEST_CASE("Cmd-click and Shift-click select several tracks, and edits with selection set them all in one undo step") {
+    ProjectRig rig;
+    const std::string first = rig.run("track.addAudio").at("id");
+    const std::string second = rig.run("track.addAudio").at("id");
+    const std::string third = rig.run("track.addAudio").at("id");
+    const auto id = [](const std::string& text) { return QString::fromStdString(text); };
+    const auto track = [&](const std::string& text) { return *rig.controller->project().track(model::TrackId{text}); };
+
+    rig.run("track.select", {{"track", first}});
+    rig.run("track.select", {{"track", third}, {"range", true}});
+    CHECK(rig.nav.selectedTracks() == QStringList{id(first), id(second), id(third)});
+    CHECK(rig.nav.selectedTrack() == id(third));
+    rig.run("track.select", {{"track", second}, {"extend", true}});
+    CHECK(rig.nav.selectedTracks() == QStringList{id(first), id(third)});
+
+    rig.run("track.setMute", {{"track", first}, {"value", true}, {"selection", true}});
+    CHECK(track(first).mute);
+    CHECK_FALSE(track(second).mute);
+    CHECK(track(third).mute);
+    rig.run("project.undo");
+    CHECK_FALSE(track(first).mute);
+    CHECK_FALSE(track(third).mute);
+
+    rig.run("track.setGain", {{"track", third}, {"db", -6.0}});
+    rig.run("track.setGain", {{"track", first}, {"db", 3.0}, {"selection", true}});
+    CHECK(track(first).gainDb == Approx(3.0));
+    CHECK(track(third).gainDb == Approx(-3.0));
+    rig.run("track.setColor", {{"track", third}, {"color", 4}, {"selection", true}});
+    CHECK(track(first).color == 4);
+    CHECK(track(second).color != 4);
+
+    rig.run("track.setMute", {{"track", second}, {"value", true}, {"selection", true}});
+    CHECK_FALSE(track(first).mute);
+    CHECK(track(second).mute);
+
+    rig.run("track.selectAll");
+    CHECK(rig.nav.selectedTracks().size() == 3);
+    rig.run("track.remove", {{"track", first}, {"selection", true}});
+    CHECK(rig.controller->project().document().tracks.empty());
+    rig.run("project.undo");
+    CHECK(rig.controller->project().document().tracks.size() == 3);
+}
+
+TEST_CASE("the arrow keys step the playhead by one bar and Shift steps eight, and a tempo change keeps its bar") {
+    ProjectRig rig;
+    CHECK(rig.registry.action("transport.barForward")->shortcut == "Right");
+    CHECK(rig.registry.action("transport.eightBarsBack")->shortcut == "Shift+Left");
+    CHECK(rig.registry.action("clip.selectNext")->shortcut.empty());
+    const core::Ticks bar = rig.controller->ticksPerBar();
+    rig.run("transport.barForward");
+    rig.run("transport.eightBarsForward");
+    CHECK(rig.controller->positionTicks() == 9 * bar);
+    rig.run("project.setTempo", {{"bpm", 60}});
+    CHECK(processUntil([&] { return rig.controller->positionTicks() == 9 * bar; }));
+}

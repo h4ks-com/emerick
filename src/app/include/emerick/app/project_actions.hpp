@@ -31,6 +31,11 @@ void registerAutomationActions(Registry& registry, ProjectController& controller
 void removeTrack(ProjectController& controller, const model::TrackId& id);
 // The track named by params, or the selected track when params names none.
 model::TrackId targetTrack(const ProjectController& controller, const Nav& nav, const Json& params);
+// The target track, or with the selection param every selected track when the target is one of them, as in Logic.
+std::vector<model::TrackId> targetTracks(const ProjectController& controller, const Nav& nav, const Json& params);
+// Runs edit on every target track as one undo step named name, and returns the target track.
+Json editTargets(ProjectController& controller, const Nav& nav, const Json& params, const std::string& name,
+                 const std::function<void(const model::TrackId&)>& edit);
 Json trackResult(const ProjectController& controller, const model::TrackId& id);
 Json editTrack(ProjectController& controller, const model::TrackId& id, std::string name,
                const std::function<void(model::Track&)>& edit);

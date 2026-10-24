@@ -11,6 +11,11 @@ Rectangle {
     readonly property DragGroup dragGroup: DragGroup {
         target: inspector
     }
+    readonly property bool severalTracks: Nav.selectedTracks.length > 1
+
+    function mixed(role) {
+        return severalTracks && Tracks.revision >= 0 && !Tracks.sameAcross(Nav.selectedTracks, role)
+    }
 
     component RouteLabel: Label {
         color: Theme.inkDim
@@ -23,7 +28,7 @@ Rectangle {
         required property string trackId
         name: actionId + ":" + trackId
         toolTip: Registry.actionInfo(actionId).title
-        onPicked: params => Registry.runAction(actionId, Object.assign({track: trackId}, params))
+        onPicked: params => Registry.runAction(actionId, Object.assign({track: trackId, selection: true}, params))
         Layout.fillWidth: true
     }
 
@@ -33,12 +38,14 @@ Rectangle {
         required property string trackId
         required property var ports
         required property var route
+        property bool mixed: false
         Layout.fillWidth: true
         RouteCombo {
             actionId: midiRoute.actionId
             trackId: midiRoute.trackId
             model: midiRoute.ports
             currentId: midiRoute.route.port
+            mixed: midiRoute.mixed
             Layout.fillWidth: true
         }
         RouteCombo {
@@ -47,6 +54,7 @@ Rectangle {
             part: "channel"
             model: Project.routeDevices.midiChannels
             currentId: String(midiRoute.route.channel)
+            mixed: midiRoute.mixed
             Layout.preferredWidth: Theme.channelPickerWidth
         }
     }
@@ -126,6 +134,12 @@ Rectangle {
                 required property var midiOut
                 required property real pan
                 required property real recordDelayMs
+                required property real gainDb
+                required property bool mute
+                required property bool solo
+                required property bool armed
+                required property bool monitor
+                readonly property bool records: !busRoutes
                 readonly property var clip: visible && Nav.selectedClips.length > 0
                                             ? clips.find(entry => entry.id === Nav.selectedClips[0]) : undefined
                 readonly property bool audioClip: clip !== undefined && clip.type === "audio"
@@ -141,16 +155,65 @@ Rectangle {
                 spacing: Theme.space1
 
                 Label {
-                    text: panel.name
+                    objectName: "inspector.trackTitle"
+                    text: inspector.severalTracks ? Nav.selectedTracks.length + " tracks" : panel.name
                     color: Theme.ink
                     font.pixelSize: Theme.textBody
                     font.weight: Font.Medium
+                    elide: Text.ElideRight
+                    Layout.fillWidth: true
+                }
+
+                RowLayout {
+                    spacing: Theme.space1
+                    Repeater {
+                        model: [{flag: "track.setMute", text: "M", role: "mute", color: Theme.mute, recording: false},
+                            {flag: "track.setSolo", text: "S", role: "solo", color: Theme.tape, recording: false},
+                            {flag: "track.setArm", text: "R", role: "armed", color: Theme.rec, recording: true},
+                            {flag: "track.setMonitor", text: "I", role: "monitor", color: Theme.tape, recording: true}]
+                        FlagButton {
+                            required property var modelData
+                            objectName: modelData.flag + ":" + panel.trackId + ":inspector"
+                            visible: panel.records || !modelData.recording
+                            trackId: panel.trackId
+                            flag: modelData.flag
+                            value: panel[modelData.role]
+                            text: modelData.text
+                            activeColor: modelData.color
+                        }
+                    }
+                    GainReadout {
+                        objectName: "track.setGain:" + panel.trackId + ":inspector"
+                        trackId: panel.trackId
+                        gainDb: panel.gainDb
+                        framed: true
+                        textColor: Theme.ink
+                        font.pixelSize: Theme.textLabel
+                        badge: inspector.mixed("gainDb") ? "Mixed" : ""
+                        Layout.fillWidth: true
+                    }
+                }
+
+                RouteLabel { text: "Record delay"; visible: panel.records }
+                DragNumber {
+                    visible: panel.records
+                    objectName: "track.setRecordDelay:" + panel.trackId
+                    actionId: "track.setRecordDelay"
+                    value: panel.recordDelayMs
+                    from: -Theme.maxRecordDelayMs
+                    to: Theme.maxRecordDelayMs
+                    decimals: 1
+                    unit: "ms"
+                    badge: inspector.mixed("recordDelayMs") ? "Mixed" : ""
+                    actionsFor: number => [{id: actionId, params: {track: panel.trackId, ms: number, selection: true}}]
+                    Layout.fillWidth: true
                 }
 
                 RouteLabel { text: "Pan" }
                 PanNumber {
                     trackId: panel.trackId
                     pan: panel.pan
+                    badge: inspector.mixed("pan") ? "Mixed" : ""
                     Layout.fillWidth: true
                 }
 
@@ -161,6 +224,7 @@ Rectangle {
                     trackId: panel.trackId
                     devices: Project.routeDevices.audioIn
                     route: panel.audioIn
+                    mixed: inspector.mixed("audioIn")
                 }
                 RouteLabel { text: "Audio output"; visible: panel.audioRoutes || panel.busRoutes }
                 AudioRoute {
@@ -169,6 +233,7 @@ Rectangle {
                     trackId: panel.trackId
                     devices: Project.routeDevices.audioOut
                     route: panel.audioOut
+                    mixed: inspector.mixed("audioOut")
                 }
 
                 RouteLabel { text: "Inserts"; visible: panel.audioRoutes || panel.busRoutes }
@@ -194,6 +259,7 @@ Rectangle {
                     trackId: panel.trackId
                     ports: Project.routeDevices.midiIn
                     route: panel.midiIn
+                    mixed: inspector.mixed("midiIn")
                 }
                 RouteLabel { text: "MIDI output"; visible: panel.midiRoutes }
                 MidiRoute {
@@ -202,19 +268,7 @@ Rectangle {
                     trackId: panel.trackId
                     ports: Project.routeDevices.midiOut
                     route: panel.midiOut
-                }
-                RouteLabel { text: "Record delay"; visible: !panel.busRoutes }
-                DragNumber {
-                    visible: !panel.busRoutes
-                    objectName: "track.setRecordDelay:" + panel.trackId
-                    actionId: "track.setRecordDelay"
-                    value: panel.recordDelayMs
-                    from: -Theme.maxRecordDelayMs
-                    to: Theme.maxRecordDelayMs
-                    decimals: 1
-                    unit: "ms"
-                    actionsFor: number => [{id: actionId, params: {track: panel.trackId, ms: number}}]
-                    Layout.fillWidth: true
+                    mixed: inspector.mixed("midiOut")
                 }
                 Label {
                     objectName: "inspector.trackErrors"
@@ -377,21 +431,38 @@ Rectangle {
         anchors.margins: Theme.space3
         spacing: Theme.space1
 
-        Label {
-            text: "Markers"
-            color: Theme.ink
-            font.pixelSize: Theme.textBody
-            font.weight: Font.Medium
+        RowLayout {
+            spacing: 0
+            Label {
+                text: "Markers"
+                color: Theme.ink
+                font.pixelSize: Theme.textBody
+                font.weight: Font.Medium
+                Layout.fillWidth: true
+            }
+            Repeater {
+                model: [{id: "marker.previous", icon: "caret-left"}, {id: "marker.next", icon: "caret-right"},
+                    {id: "marker.add", icon: "plus"}]
+                ChromeButton {
+                    required property var modelData
+                    objectName: modelData.id + ":inspector"
+                    actionId: modelData.id
+                    iconName: modelData.icon
+                    iconColor: Theme.inkDim
+                }
+            }
         }
         Label {
-            visible: Project.markers.length === 0
-            text: "No markers yet, " + Theme.shortcutText(Registry.actionInfo("marker.add").shortcut) + " to add one at the playhead"
+            visible: Nav.markerListOpen && Project.markers.length === 0
+            text: "No markers yet, click + or press " + Theme.shortcutText(Registry.actionInfo("marker.add").shortcut)
+                  + " to add one at the playhead"
             color: Theme.inkDim
             font.pixelSize: Theme.textLabel
             wrapMode: Text.Wrap
             Layout.fillWidth: true
         }
         ListView {
+            visible: Nav.markerListOpen
             clip: true
             model: Project.markers
             boundsBehavior: Flickable.StopAtBounds

@@ -2,6 +2,7 @@
 
 #include <QCoreApplication>
 #include <QTimer>
+#include <algorithm>
 #include <array>
 #include <memory>
 #include <numbers>
@@ -38,7 +39,42 @@ constexpr std::array kViewSteps{
     ViewStep{"view.trackShorter", "Make tracks shorter", "vertical zoom out", "Ctrl+Up", nullptr, 1, -kTrackHeightStep},
 };
 
+struct PaneWidth {
+    const char* id;
+    const char* title;
+    const char* alias;
+    int defaultWidth;
+    int minimum;
+    int maximum;
+};
+
+constexpr std::array kPaneWidths{
+    PaneWidth{"view.inspectorWidth", "Inspector width", "sidebar width", 260, 200, 640},
+    PaneWidth{"view.headerWidth", "Track header width", "piano keyboard width", 240, 180, 480},
+};
+
+void registerPaneWidths(Registry& registry) {
+    for (const PaneWidth& pane : kPaneWidths) {
+        registry.addSetting({.id = pane.id,
+                             .title = pane.title,
+                             .aliases = {pane.alias},
+                             .category = "Settings / View",
+                             .type = SettingType::Integer,
+                             .defaultValue = pane.defaultWidth,
+                             .minimum = pane.minimum,
+                             .maximum = pane.maximum,
+                             .hint = "Drag the pane's edge to resize it",
+                             .location = "settings.general",
+                             .merge = [pane](const Json&, const Json& change) {
+                                 return change.is_number() ? Json(std::clamp(static_cast<int>(change.get<double>()),
+                                                                             pane.minimum, pane.maximum))
+                                                           : change;
+                             }});
+    }
+}
+
 void registerViewActions(Registry& registry, Nav& nav) {
+    registerPaneWidths(registry);
     for (const ViewStep& step : kViewSteps) {
         registry.addAction(
             {.id = step.id,

@@ -1,4 +1,5 @@
 #include <catch2/catch_test_macros.hpp>
+#include <memory>
 #include <string>
 
 #include "emerick/yamaha/plugin.hpp"
@@ -9,7 +10,7 @@ using namespace emerick;
 namespace {
 
 struct YamahaFuzzRig : app::test::FuzzRig {
-    YamahaFuzzRig() { yamaha::registerWith(registry, *controller, nav); }
+    YamahaFuzzRig() : chordInput(yamaha::registerWith(registry, *controller, nav)) {}
 
     void populate() {
         FuzzRig::populate();
@@ -20,6 +21,8 @@ struct YamahaFuzzRig : app::test::FuzzRig {
             controller->project().addTrack(std::move(track));
         }
     }
+
+    std::unique_ptr<yamaha::ChordInput> chordInput;
 };
 
 }  // namespace

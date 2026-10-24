@@ -106,4 +106,12 @@ TEST_CASE("a track's record delay moves its next take later by the delay's frame
     rig.run("project.undo");
     rig.run("project.undo");
     CHECK(rig.controller->project().track(model::TrackId{id})->recordDelayMs == 0.0);
+
+    const std::string other = rig.run("track.addMidi").at("id");
+    rig.run("track.select", {{"track", id}});
+    rig.run("track.select", {{"track", other}, {"extend", true}});
+    rig.run("track.setRecordDelay", {{"track", other}, {"ms", -4}, {"selection", true}});
+    CHECK(rig.controller->project().track(model::TrackId{id})->recordDelayMs == -4.0);
+    CHECK(rig.controller->project().track(model::TrackId{other})->recordDelayMs == -4.0);
+    CHECK(rig.controller->project().undoName() == "set track record delay");
 }

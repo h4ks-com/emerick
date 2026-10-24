@@ -17,6 +17,7 @@
 #include "emerick/app/project_actions.hpp"
 #include "emerick/app/project_state.hpp"
 #include "emerick/core/midi.hpp"
+#include "emerick/engine/audio_backend.hpp"
 #include "emerick/yamaha/profile.hpp"
 #include "registration.hpp"
 
@@ -29,6 +30,7 @@ using app::Json;
 
 constexpr const char* kPluginId = "yamaha";
 constexpr const char* kKeyboardName = "Digital Keyboard";
+constexpr const char* kKeyboardAudioName = "Keyboard Audio";
 
 bool hasPort(const std::vector<engine::MidiPortInfo>& ports, const std::string& id, bool input) {
     return std::ranges::any_of(ports, [&](const auto& port) { return port.id == id && port.isInput == input; });
@@ -54,40 +56,49 @@ std::optional<std::string> keyboardPort(app::ProjectController& controller, cons
     return found == ports.end() ? std::nullopt : std::optional{found->id};
 }
 
-std::string controllerPort(app::ProjectController& controller, const app::Registry& registry,
-                           const std::string& keyboard) {
-    const auto port = registry.settingValue(kControllerPortSetting).get<std::string>();
-    return hasPort(controller.engine().midiPorts(), port, false) ? port : keyboard;
-}
-
 void addTrack(app::ProjectController& controller, model::Track track) {
     track.color = static_cast<int>(controller.project().document().tracks.size() % app::kTrackColors);
     controller.project().addTrack(std::move(track));
 }
 
-model::Track arrangerTrack(const app::Registry& registry, const char* kind, const std::string& keyboard,
-                           model::MidiRoute out, Json data) {
+// The keyboard reads Chord and Section Control sysex on its own port whatever its Receive channels are.
+model::Track arrangerTrack(const app::Registry& registry, const char* kind, const std::string& keyboard, Json data) {
     const app::TrackType& type = *registry.trackType(kind);
     model::Track track;
     track.kind = kind;
     track.name = type.title;
     track.icon = type.icon;
     track.midiIn = {.portId = keyboard, .channel = 0, .thru = false, .sysex = !keyboard.empty()};
-    track.midiOut = std::move(out);
+    track.midiOut = {.portId = keyboard, .channel = 0, .thru = false, .sysex = false};
     track.data = std::move(data);
     return track;
 }
 
-// A Chords track sends block chords to the keyboard's chord detect channel, a Style track presses section buttons.
 void addChartTracks(app::ProjectController& controller, const app::Registry& registry, const std::string& keyboard,
                     const Chart& chart) {
-    const std::string sectionPort = keyboard.empty() ? keyboard : controllerPort(controller, registry, keyboard);
-    addTrack(controller,
-             arrangerTrack(registry, kChordKind, keyboard,
-                           {keyboard, registry.settingValue(kChordChannelSetting).get<int>()}, Json(chart.chords)));
-    addTrack(controller, arrangerTrack(registry, kStyleKind, keyboard,
-                                       {sectionPort, registry.settingValue(kControllerChannelSetting).get<int>()},
-                                       Json(chart.sections)));
+    addTrack(controller, arrangerTrack(registry, kChordKind, keyboard, Json(chart.chords)));
+    addTrack(controller, arrangerTrack(registry, kStyleKind, keyboard, Json(chart.sections)));
+}
+
+// Armed part tracks keep thru off, so the keyboard never hears its own notes echoed back.
+model::Track partTrack(const Part& part, const std::string& keyboard) {
+    model::Track track;
+    track.kind = "midi";
+    track.name = part.name;
+    track.icon = part.icon;
+    track.armed = true;
+    track.midiIn = {.portId = keyboard, .channel = part.channel, .thru = false, .sysex = false};
+    track.midiOut = {.portId = keyboard, .channel = part.channel, .thru = false, .sysex = false};
+    return track;
+}
+
+std::optional<std::string> keyboardAudio(app::ProjectController& controller) {
+    const auto& devices = controller.engine().audioDevices();
+    const auto found = std::ranges::find_if(devices, [&](const engine::AudioDeviceInfo& device) {
+        return device.name.contains(kKeyboardName) && device.inputChannels >= 2 &&
+               !engine::unsupportedRate(device, controller.sampleRate());
+    });
+    return found == devices.end() ? std::nullopt : std::optional{found->id};
 }
 
 std::vector<std::uint8_t> readFile(const std::filesystem::path& path) {
@@ -247,13 +258,11 @@ void registerArrangerActions(app::Registry& registry, app::ProjectController& co
                          app::editTrack(controller, id, "arm track", [](model::Track& track) { track.armed = true; });
                      }
                      for (const Part& part : genos2Parts()) {
-                         model::Track track;
-                         track.kind = "midi";
-                         track.name = part.name;
-                         track.icon = part.icon;
-                         track.armed = true;
-                         track.midiIn = {.portId = *keyboard, .channel = part.channel, .thru = false, .sysex = false};
-                         addTrack(controller, std::move(track));
+                         addTrack(controller, partTrack(part, *keyboard));
+                     }
+                     if (const auto audio = keyboardAudio(controller)) {
+                         registry.run("track.addAudio", {{"name", kKeyboardAudioName},
+                                                         {"audioIn", {{"device", *audio}, {"channels", {1, 2}}}}});
                      }
                      std::vector<std::string> clockPorts = controller.project().document().clockPorts;
                      if (!std::ranges::contains(clockPorts, *keyboard)) {

@@ -174,7 +174,7 @@ TEST_CASE("one HTTP round trip on a random port") {
     CHECK(Json::parse(body.toStdString()).at("result").at("protocolVersion") == kMcpProtocolVersions.front());
     CHECK(post(R"({"jsonrpc":"2.0","method":"notifications/initialized"})", {}).first == 202);
     CHECK(post(R"({"jsonrpc":"2.0","id":2,"method":"ping"})", "https://evil.example").first == 403);
-    CHECK(post(R"({"jsonrpc":"2.0","id":2,"method":"ping"})", "http://localhost:7777").first == 200);
+    CHECK(post(R"({"jsonrpc":"2.0","id":2,"method":"ping"})", "http://localhost:8888").first == 200);
     CHECK(post("not json", {}).first == 400);
     const auto [malformedStatus, malformed] = post(R"({"jsonrpc":2})", {});
     CHECK(malformedStatus == 200);

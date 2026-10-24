@@ -2,7 +2,7 @@ import json
 import urllib.error
 import urllib.request
 
-URL = "http://127.0.0.1:7777/mcp"
+URL = "http://127.0.0.1:8888/mcp"
 
 
 class Client:

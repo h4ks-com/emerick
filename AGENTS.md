@@ -23,7 +23,7 @@ Emerick is a small native DAW in C++23 and Qt 6.11 QML. It records and plays aud
 - `make quality` the full gate: format-check, lint, test
 - `make docker-build` build the headless image (Qt 6.11, builds the repo, runs ctest)
 - `make e2e` build the Docker image and drive the headless app over MCP
-- `docker run --rm -p 127.0.0.1:7777:7777 emerick-dev` run the headless app; `.mcp.json` registers it as the `emerick` MCP server
+- `docker run --rm -p 127.0.0.1:8888:8888 emerick-dev` run the headless app; `.mcp.json` registers it as the `emerick` MCP server
 
 ## Before considering work complete
 1. Run `make quality` and fix every failure.

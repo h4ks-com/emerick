@@ -30,5 +30,5 @@ RUN --mount=type=cache,target=/ccache \
 
 FROM build AS runtime
 COPY docker/entrypoint.sh /usr/local/bin/entrypoint.sh
-EXPOSE 7777
+EXPOSE 8888
 ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]

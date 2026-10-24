@@ -69,7 +69,7 @@ TEST_CASE("settings validate, persist and reject read only writes") {
     const Setting port{.id = "mcp.port",
                        .title = "MCP port",
                        .type = SettingType::Integer,
-                       .defaultValue = 7777,
+                       .defaultValue = 8888,
                        .minimum = 0,
                        .maximum = 65535};
     {

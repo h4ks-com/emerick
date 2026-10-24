@@ -189,7 +189,7 @@ void registerCoreActions(Registry& registry, Nav& nav, const Backends& backends)
                          .aliases = {"agent port", "server port"},
                          .category = "Settings / Agents",
                          .type = SettingType::Integer,
-                         .defaultValue = 7777,
+                         .defaultValue = 8888,
                          .minimum = 0,
                          .maximum = kMaxPort,
                          .hint = "Restart Emerick to apply",

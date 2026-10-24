@@ -51,6 +51,7 @@ QtObject {
     readonly property int paletteWidth: 560
     readonly property int menuWidth: 240
     readonly property int channelPickerWidth: 76
+    readonly property int chordPickerWidth: 104
     readonly property int pickerRows: 10
     readonly property int paletteTop: 72
     readonly property int paletteListHeight: 360

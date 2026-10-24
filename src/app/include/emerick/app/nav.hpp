@@ -42,6 +42,7 @@ class Nav : public QObject {
     Q_PROPERTY(bool pianoRollOpen READ pianoRollOpen WRITE setPianoRollOpen NOTIFY changed)
     Q_PROPERTY(QString pianoRollClip READ pianoRollClip WRITE setPianoRollClip NOTIFY changed)
     Q_PROPERTY(QString editingInsert READ editingInsert WRITE setEditingInsert NOTIFY changed)
+    Q_PROPERTY(QVariantMap editingBlock READ editingBlock WRITE setEditingBlock NOTIFY changed)
     Q_PROPERTY(QStringList selectedNotes READ selectedNotes WRITE setSelectedNotes NOTIFY selectionChanged)
     Q_PROPERTY(int keyHeight READ keyHeight WRITE setKeyHeight NOTIFY viewChanged)
     Q_PROPERTY(bool automationOpen READ automationOpen WRITE setAutomationOpen NOTIFY changed)
@@ -82,6 +83,8 @@ public:
     [[nodiscard]] QStringList selectedNotes() const { return selectedNotes_; }
     // The insert whose effect editor is open.
     [[nodiscard]] QString editingInsert() const { return editingInsert_; }
+    // The lane block whose picker is open, as its track and its position in ticks, or empty.
+    [[nodiscard]] QVariantMap editingBlock() const { return editingBlock_; }
     // The height of one key row in the piano roll, its vertical zoom.
     [[nodiscard]] int keyHeight() const { return keyHeight_; }
     // Whether tracks show their automation lanes, and per track id the parameter its lane shows, gain by default.
@@ -128,6 +131,7 @@ public:
         assign(pianoRollClip_, value, &Nav::changed);
     }
     void setEditingInsert(const QString& value) { assign(editingInsert_, value, &Nav::changed); }
+    void setEditingBlock(const QVariantMap& value) { assign(editingBlock_, value, &Nav::changed); }
     void setSelectedNotes(const QStringList& value) { assign(selectedNotes_, value, &Nav::selectionChanged); }
     void setKeyHeight(int value) {
         assign(keyHeight_, std::clamp(value, kMinKeyHeight, kMaxKeyHeight), &Nav::viewChanged);
@@ -185,6 +189,10 @@ public:
                 {"pianoRollClip", pianoRollClip_.toStdString()},
                 {"selectedNotes", strings(selectedNotes_)},
                 {"editingInsert", editingInsert_.toStdString()},
+                {"editingBlock", editingBlock_.isEmpty()
+                                     ? nlohmann::json::object()
+                                     : nlohmann::json{{"track", editingBlock_.value("track").toString().toStdString()},
+                                                      {"at", editingBlock_.value("at").toLongLong()}}},
                 {"keyHeight", keyHeight_},
                 {"automationOpen", automationOpen_},
                 {"automationLanes", lanes()},
@@ -233,6 +241,7 @@ private:
     QString pianoRollClip_;
     QStringList selectedNotes_;
     QString editingInsert_;
+    QVariantMap editingBlock_;
     int keyHeight_ = kDefaultKeyHeight;
     bool automationOpen_ = false;
     QVariantMap automationLanes_;

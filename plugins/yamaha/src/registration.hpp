@@ -16,6 +16,9 @@ namespace emerick::yamaha {
 inline constexpr const char* kChordKind = "yamaha.chord";
 inline constexpr const char* kStyleKind = "yamaha.style";
 inline constexpr const char* kYamahaMenu = "Plugins/Yamaha Arranger";
+// The menus a right click on a chord or section block opens, which run their actions with that block.
+inline constexpr const char* kChordContextMenu = "Chord context";
+inline constexpr const char* kSectionContextMenu = "Section context";
 
 inline constexpr const char* kChordChannelSetting = "yamaha.chordDetectChannel";
 inline constexpr const char* kControllerPortSetting = "yamaha.controllerPort";
@@ -45,7 +48,7 @@ ChartOptions chartOptions(const app::Registry& registry, int shiftBars = 0);
 
 void registerSettings(app::Registry& registry, app::ProjectController& controller, app::Nav& nav);
 void registerTrackKinds(app::Registry& registry);
-void registerChartActions(app::Registry& registry, app::ProjectController& controller);
+void registerChartActions(app::Registry& registry, app::ProjectController& controller, app::Nav& nav);
 void registerArrangerActions(app::Registry& registry, app::ProjectController& controller);
 
 }  // namespace emerick::yamaha

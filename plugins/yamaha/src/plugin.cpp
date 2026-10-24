@@ -1,6 +1,7 @@
 #include "emerick/yamaha/plugin.hpp"
 
 #include <QtLogging>
+#include <memory>
 #include <ranges>
 #include <string>
 #include <utility>
@@ -144,12 +145,13 @@ void registerTrackKinds(app::Registry& registry) {
              }});
 }
 
-void registerWith(app::Registry& registry, app::ProjectController& controller, app::Nav& nav) {
+std::unique_ptr<ChordInput> registerWith(app::Registry& registry, app::ProjectController& controller, app::Nav& nav) {
     registerSettings(registry, nav);
     registerTrackKinds(registry);
     registerDeviceProfile(registry);
-    registerChartActions(registry, controller);
+    registerChartActions(registry, controller, nav);
     registerArrangerActions(registry, controller);
+    return std::make_unique<ChordInput>(registry, controller, nav);
 }
 
 }  // namespace emerick::yamaha

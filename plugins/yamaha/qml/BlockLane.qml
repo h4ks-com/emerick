@@ -3,31 +3,27 @@ import QtQuick.Controls.Basic
 import Emerick.App
 import Emerick.Ui
 
-// A timeline lane of named blocks that runs <actionPrefix>.set, .move and .delete on its track.
+// A timeline lane of named blocks on its track. A click runs <actionPrefix>.edit, which opens the picker, a drag
+// runs <actionPrefix>.move as one gesture, and a right click opens the block's context menu.
 Item {
     id: lane
     property string trackId
     property real pixelsPerTick: Nav.pixelsPerTick
     property string actionPrefix
-    property string nameParam
+    property string contextMenu
     property var blocks: []
-    property int snapTicks: 960
-    property bool editing: false
-    property real editAt: 0
-    property string editText
+    // The picker's content, which reads editAt and editLabel and calls set.
+    property Component picker
+    property real menuAt: 0
+    property real menuTo: 0
+    readonly property bool editing: Nav.editingBlock.track === trackId
+    readonly property real editAt: editing ? Nav.editingBlock.at : 0
+    readonly property string editLabel: blocks.find(block => block.at === editAt)?.label ?? ""
 
-    objectName: actionPrefix + ".set:" + trackId
+    objectName: actionPrefix + ".edit:" + trackId
 
-    function snapped(x) {
-        return Math.max(0, Math.round(x / pixelsPerTick / snapTicks) * snapTicks)
-    }
-
-    function edit(at, text) {
-        editAt = at
-        editText = text
-        editing = true
-        editor.forceActiveFocus()
-        editor.selectAll()
+    function ticksAt(x, modifiers) {
+        return Math.max(0, Project.placed(Math.round(x / pixelsPerTick), modifiers))
     }
 
     function run(action, params) {
@@ -35,80 +31,167 @@ Item {
         Registry.runAction(actionPrefix + "." + action, params)
     }
 
-    MouseArea {
-        anchors.fill: parent
-        onClicked: mouse => lane.edit(lane.snapped(mouse.x), "")
+    function set(params) {
+        params.at = editAt
+        run("set", params)
     }
 
+    function closePicker() {
+        Nav.editingBlock = {}
+    }
+
+    function deletes(event) {
+        return event.key === Qt.Key_Backspace || event.key === Qt.Key_Delete
+    }
+
+    function focusBlock(at) {
+        for (let index = 0; index < blockRepeater.count; ++index) {
+            const block = blockRepeater.itemAt(index)
+            if (block && block.modelData.at === at) {
+                block.forceActiveFocus()
+            }
+        }
+    }
+
+    onEditingChanged: editing ? pickerPopup.open() : pickerPopup.close()
+
+    MouseArea {
+        anchors.fill: parent
+        onClicked: mouse => lane.run("edit", {at: lane.ticksAt(mouse.x, mouse.modifiers)})
+    }
+
+    ActionMenu {
+        id: blockMenu
+        objectName: "menu." + lane.actionPrefix + ".context"
+        menuName: lane.contextMenu
+        params: ({track: lane.trackId, at: lane.menuAt, to: lane.menuTo})
+    }
+
+    // We count the blocks rather than list them, so a drag keeps its block item while the document follows it.
     Repeater {
-        model: lane.blocks
+        id: blockRepeater
+        model: lane.blocks.length
         delegate: Rectangle {
             id: block
-            required property var modelData
-            readonly property real homeX: modelData.at * lane.pixelsPerTick
+            required property int index
+            readonly property var modelData: lane.blocks[index] ?? {at: 0, end: 0, label: "", gap: true, colorIndex: 0}
+            readonly property bool picked: activeFocus || (lane.editing && lane.editAt === modelData.at)
             objectName: lane.actionPrefix + ".move:" + lane.trackId + ":" + modelData.at
-            x: homeX
+            x: modelData.at * lane.pixelsPerTick
             y: Theme.space1
             width: Math.max(2 * Theme.hairline, (modelData.end - modelData.at) * lane.pixelsPerTick - Theme.hairline)
             height: lane.height - 2 * Theme.space1
             radius: Theme.radiusClip
             color: modelData.gap ? Theme.clear : Theme.trackColors[modelData.colorIndex]
-            border.width: activeFocus ? Theme.hairline : 0
-            border.color: Theme.tape
-            Keys.onDeletePressed: lane.run("delete", {at: modelData.at})
-            ToolTip.text: Registry.actionInfo(lane.actionPrefix + ".move").title
-            ToolTip.visible: blockArea.containsMouse && !blockArea.pressed
+            border.width: picked ? Theme.selectionWidth : modelData.gap ? Theme.hairline : 0
+            border.color: picked ? Theme.tape : Theme.rule
+            Keys.onShortcutOverride: event => event.accepted = lane.deletes(event)
+            Keys.onPressed: event => {
+                if (lane.deletes(event)) {
+                    event.accepted = true
+                    const at = modelData.at
+                    block.focus = false
+                    lane.run("delete", {at: at})
+                }
+            }
+            ToolTip.text: modelData.label + "\nClick to change, drag to move"
+            ToolTip.visible: blockArea.containsMouse && !blockArea.tipDismissed
             ToolTip.delay: Theme.tooltipDelay
 
             Text {
-                anchors.verticalCenter: parent.verticalCenter
-                anchors.left: parent.left
-                anchors.leftMargin: Theme.space2
+                anchors.fill: parent
+                anchors.leftMargin: Theme.space1 + Theme.hairline
+                anchors.rightMargin: Theme.space1
+                verticalAlignment: Text.AlignVCenter
                 text: block.modelData.label
                 color: block.modelData.gap ? Theme.inkDim : Theme.ink
                 font.pixelSize: Theme.textBody
+                font.weight: Font.Medium
+                fontSizeMode: Text.HorizontalFit
+                minimumPixelSize: Theme.textSmall
+                elide: Text.ElideRight
             }
 
             MouseArea {
                 id: blockArea
                 anchors.fill: parent
+                acceptedButtons: Qt.LeftButton | Qt.RightButton
                 hoverEnabled: true
-                drag.target: block
-                drag.axis: Drag.XAxis
-                drag.minimumX: 0
-                onPressed: block.forceActiveFocus()
-                onDoubleClicked: lane.edit(block.modelData.at, block.modelData.label)
+                cursorShape: dragging ? Qt.ClosedHandCursor : Qt.ArrowCursor
+                // A press hides the tooltip until the pointer leaves, so it never covers the blocks while we work.
+                property bool tipDismissed: false
+                property real pressX
+                property real pressAt
+                property bool dragging: false
+                property bool context: false
+                onExited: tipDismissed = false
+                onPressed: mouse => {
+                    tipDismissed = true
+                    block.forceActiveFocus()
+                    pressAt = block.modelData.at
+                    dragging = false
+                    context = Theme.isContextClick(mouse)
+                    if (context) {
+                        lane.menuAt = pressAt
+                        lane.menuTo = lane.ticksAt(block.x + mouse.x, mouse.modifiers)
+                        blockMenu.popup()
+                        return
+                    }
+                    pressX = blockArea.mapToItem(null, mouse.x, 0).x
+                }
+                onPositionChanged: mouse => {
+                    if (!pressed || context) {
+                        return
+                    }
+                    const dx = blockArea.mapToItem(null, mouse.x, 0).x - pressX
+                    dragging = dragging || Math.abs(dx) >= Theme.dragThreshold
+                    if (dragging) {
+                        Registry.updateGesture(Registry.actionInfo(lane.actionPrefix + ".move").title, [{
+                            id: lane.actionPrefix + ".move",
+                            params: {track: lane.trackId, at: pressAt, to: lane.ticksAt(pressAt * lane.pixelsPerTick + dx, mouse.modifiers)}
+                        }])
+                    }
+                }
                 onReleased: {
-                    const to = lane.snapped(block.x)
-                    block.x = Qt.binding(() => block.homeX)
-                    if (to !== block.modelData.at)
-                        lane.run("move", {at: block.modelData.at, to: to})
+                    if (dragging) {
+                        dragging = false
+                        Registry.endGesture()
+                    } else if (!context) {
+                        lane.run("edit", {at: pressAt})
+                    }
+                }
+                onCanceled: {
+                    if (dragging) {
+                        dragging = false
+                        Registry.cancelGesture()
+                        Registry.endGesture()
+                    }
                 }
             }
         }
     }
 
-    TextField {
-        id: editor
-        objectName: lane.actionPrefix + ".set:" + lane.trackId + ":" + lane.editAt
-        visible: lane.editing
+    Popup {
+        id: pickerPopup
+        objectName: lane.actionPrefix + ".picker:" + lane.trackId
+        property real openedAt
         x: lane.editAt * lane.pixelsPerTick
-        height: lane.height
-        width: Theme.labelWidth
-        text: lane.editText
-        ToolTip.text: Registry.actionInfo(lane.actionPrefix + ".set").title
-        ToolTip.visible: hovered && !activeFocus
-        ToolTip.delay: Theme.tooltipDelay
-        font.pixelSize: Theme.textBody
-        onAccepted: {
-            const params = {at: lane.editAt}
-            params[lane.nameParam] = text
-            lane.editing = false
-            lane.run("set", params)
+        y: lane.height
+        margins: Theme.space2
+        padding: Theme.space2
+        focus: true
+        closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
+        background: GlassPanel {}
+        contentItem: Loader {
+            active: pickerPopup.visible
+            sourceComponent: lane.picker
         }
-        onActiveFocusChanged: if (!activeFocus) lane.editing = false
-        // A hidden field keeps the focus it had, which would turn the window's shortcuts off.
-        onVisibleChanged: if (!visible) focus = false
-        Keys.onEscapePressed: lane.editing = false
+        onAboutToShow: openedAt = lane.editAt
+        onClosed: {
+            if (lane.editing) {
+                lane.closePicker()
+            }
+            lane.focusBlock(openedAt)
+        }
     }
 }

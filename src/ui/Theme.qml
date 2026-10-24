@@ -143,8 +143,9 @@ QtObject {
     readonly property color clipInk: Qt.rgba(0, 0, 0, 0.5)
     // A muted clip greys out, as a muted region does in Logic.
     readonly property color mutedClip: "#5A5D66"
-    // A take in progress shows in the record color until it lands as a clip.
-    readonly property color takePreview: Qt.rgba(0.937, 0.325, 0.314, 0.55)
+    // A take in progress shows in a dimmed record color until it lands as a clip. It stays opaque, so the clips it
+    // records over do not show through it.
+    readonly property color takePreview: Qt.tint(graphite, Qt.rgba(0.937, 0.325, 0.314, 0.6))
     readonly property color fadeShade: Qt.rgba(0, 0, 0, 0.3)
     readonly property color fadeLine: Qt.rgba(1, 1, 1, 0.7)
     readonly property int clipInset: 2

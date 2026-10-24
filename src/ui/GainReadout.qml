@@ -18,5 +18,5 @@ DragNumber {
     font.pixelSize: Theme.textSmall
     implicitWidth: Theme.gainReadoutWidth
     implicitHeight: Theme.headerButton
-    actionsFor: number => [{id: "track.setGain", params: {track: trackId, db: number}}]
+    actionsFor: number => [{id: "track.setGain", params: {track: trackId, db: number, selection: true}}]
 }

@@ -110,7 +110,7 @@ TEST_CASE("completion offers action ids, setting ids, members and tracks by fuzz
     REQUIRE(!actions.items.empty());
     CHECK(actions.items.front().label == "track.setMute");
     CHECK(actions.items.front().insert == "track.setMute\"");
-    CHECK(actions.items.front().detail == "Mute track   (track?: string, value?: boolean)");
+    CHECK(actions.items.front().detail == "Mute track   (selection?: boolean, track?: string, value?: boolean)");
     CHECK(actions.from == std::string_view{"emerick.run(\""}.size());
 
     CHECK(firstLabel(completeAtEnd(registry, "emerick.setting('bufsz")) == "audio.bufferSize");
@@ -130,9 +130,9 @@ TEST_CASE("completion offers action ids, setting ids, members and tracks by fuzz
 TEST_CASE("help prints an action, a setting and an emerick function from the registry") {
     ConsoleRig fixture;
     fixture.console.eval("help('track.setMute')");
-    CHECK(fixture.lines(ConsoleLine::Print) == std::vector<std::string>{"Mute track  (track.setMute)",
-                                                                        "Parameters: track?: string, value?: boolean",
-                                                                        "Shortcut: M"});
+    CHECK(fixture.lines(ConsoleLine::Print) ==
+          std::vector<std::string>{"Mute track  (track.setMute)",
+                                   "Parameters: selection?: boolean, track?: string, value?: boolean", "Shortcut: M"});
     fixture.console.clear();
     fixture.console.eval("help(emerick.run)");
     CHECK(fixture.lines(ConsoleLine::Print).front() == "emerick.run(id, params?)");

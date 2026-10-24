@@ -7,6 +7,7 @@
 #include <vector>
 
 #include "emerick/app/action_params.hpp"
+#include "emerick/app/automation_params.hpp"
 #include "emerick/app/project_actions.hpp"
 #include "emerick/app/project_state.hpp"
 #include "emerick/model/clip_edit.hpp"
@@ -85,6 +86,31 @@ Json selectNeighbor(ProjectController& controller, Nav& nav, std::ptrdiff_t step
     return trackResult(controller, track.id);
 }
 
+// The track joins the selection and shows in the inspector, or leaves it when it was selected already.
+void toggleSelected(Nav& nav, const QString& id) {
+    QStringList selected = nav.selectedTracks();
+    if (selected.removeAll(id) > 0) {
+        nav.setSelectedTracks(selected);
+    } else {
+        nav.selectTracks(selected << id, id);
+    }
+}
+
+// Selects every track from the selected track to the given one, which the inspector then shows.
+void selectRange(const ProjectController& controller, Nav& nav, const model::TrackId& to) {
+    const auto& tracks = controller.project().document().tracks;
+    const auto rowOf = [&](const std::string& id) {
+        return std::ranges::find(tracks, id, [](const model::Track& track) { return track.id.value; }) - tracks.begin();
+    };
+    const std::ptrdiff_t end = rowOf(to.value);
+    const std::ptrdiff_t anchor = rowOf(nav.selectedTrack().toStdString());
+    const auto [first, last] = std::minmax(anchor == std::ssize(tracks) ? end : anchor, end);
+    nav.selectTracks(tracks | std::views::drop(first) | std::views::take(last - first + 1) |
+                         std::views::transform([](const model::Track& track) { return qs(track.id.value); }) |
+                         std::ranges::to<QStringList>(),
+                     qs(to.value));
+}
+
 void registerTrackFlags(Registry& registry, ProjectController& controller, const Nav& nav) {
     for (const TrackFlag& flag : kTrackFlags) {
         registry.addAction(
@@ -93,18 +119,23 @@ void registerTrackFlags(Registry& registry, ProjectController& controller, const
              .aliases = {std::string{flag.alias}},
              .category = "Tracks",
              .shortcut = std::string{flag.shortcut},
-             .schema = {{"properties", {{"track", {{"type", "string"}}}, {"value", {{"type", "boolean"}}}}}},
+             .schema = {{"properties",
+                         {{"track", {{"type", "string"}}},
+                          {"value", {{"type", "boolean"}}},
+                          {"selection", {{"type", "boolean"}}}}}},
              .run =
                  [&controller, &nav, flag](const Json& params) {
-                     const auto id = targetTrack(controller, nav, params);
-                     const bool value =
-                         optionalParam<bool>(params, "value").value_or(!(controller.project().track(id)->*flag.field));
-                     Json result = editTrack(controller, id, std::string{flag.title},
-                                             [&](model::Track& track) { track.*flag.field = value; });
-                     if (flag.live != nullptr) {
-                         (controller.*flag.live)(id, value);
-                     }
-                     return result;
+                     const auto target = targetTrack(controller, nav, params);
+                     const bool value = optionalParam<bool>(params, "value")
+                                            .value_or(!(controller.project().track(target)->*flag.field));
+                     return editTargets(controller, nav, params, std::string{flag.title},
+                                        [&](const model::TrackId& id) {
+                                            editTrack(controller, id, std::string{flag.title},
+                                                      [&](model::Track& track) { track.*flag.field = value; });
+                                            if (flag.live != nullptr) {
+                                                (controller.*flag.live)(id, value);
+                                            }
+                                        });
                  },
              .menus = trackMenus()});
     }
@@ -144,12 +175,13 @@ void registerTrackLooks(Registry& registry, ProjectController& controller, const
                     {"properties", {{"track", {{"type", "string"}}}, {"color", {{"type", "integer"}}}}}},
          .run =
              [&controller, &nav](const Json& params) {
-                 const auto id = targetTrack(controller, nav, params);
                  const auto color = param<int>(params, "color");
                  if (color < 0 || color >= kTrackColors) {
                      throw AppError("color must be 0 to " + std::to_string(kTrackColors - 1));
                  }
-                 return editTrack(controller, id, "set track color", [&](model::Track& track) { track.color = color; });
+                 return editTargets(controller, nav, params, "set track color", [&](const model::TrackId& id) {
+                     editTrack(controller, id, "set track color", [&](model::Track& track) { track.color = color; });
+                 });
              },
          .menus = trackMenus(),
          .submenu = colorChoices,
@@ -157,46 +189,73 @@ void registerTrackLooks(Registry& registry, ProjectController& controller, const
              [&controller, &nav](const Json& params) {
                  return std::to_string(controller.project().track(targetTrack(controller, nav, params))->color);
              }});
-    registry.addAction({.id = "track.setIcon",
-                        .title = "Set track icon",
-                        .category = "Tracks",
-                        .schema = {{"required", {"icon"}},
-                                   {"properties", {{"track", {{"type", "string"}}}, {"icon", {{"type", "string"}}}}}},
-                        .run =
-                            [&controller, &nav](const Json& params) {
-                                const auto id = targetTrack(controller, nav, params);
-                                const auto icon = param<std::string>(params, "icon");
-                                return editTrack(controller, id, "set track icon",
-                                                 [&](model::Track& track) { track.icon = icon; });
-                            },
-                        .menus = trackMenus(),
-                        .submenu =
-                            [] {
-                                return kTrackIcons | std::views::transform([](const TrackIcon& icon) {
-                                           return MenuChoice{.id = std::string{icon.icon},
-                                                             .title = std::string{icon.title},
-                                                             .params = {{"icon", icon.icon}},
-                                                             .icon = std::string{icon.icon}};
-                                       }) |
-                                       std::ranges::to<std::vector>();
-                            },
-                        .current =
-                            [&controller, &nav](const Json& params) {
-                                return controller.project().track(targetTrack(controller, nav, params))->icon;
-                            }});
+    registry.addAction(
+        {.id = "track.setIcon",
+         .title = "Set track icon",
+         .category = "Tracks",
+         .schema = {{"required", {"icon"}},
+                    {"properties", {{"track", {{"type", "string"}}}, {"icon", {{"type", "string"}}}}}},
+         .run =
+             [&controller, &nav](const Json& params) {
+                 const auto icon = param<std::string>(params, "icon");
+                 return editTargets(controller, nav, params, "set track icon", [&](const model::TrackId& id) {
+                     editTrack(controller, id, "set track icon", [&](model::Track& track) { track.icon = icon; });
+                 });
+             },
+         .menus = trackMenus(),
+         .submenu =
+             [] {
+                 return kTrackIcons | std::views::transform([](const TrackIcon& icon) {
+                            return MenuChoice{.id = std::string{icon.icon},
+                                              .title = std::string{icon.title},
+                                              .params = {{"icon", icon.icon}},
+                                              .icon = std::string{icon.icon}};
+                        }) |
+                        std::ranges::to<std::vector>();
+             },
+         .current =
+             [&controller, &nav](const Json& params) {
+                 return controller.project().track(targetTrack(controller, nav, params))->icon;
+             }});
 }
 
 void registerTrackSelection(Registry& registry, ProjectController& controller, Nav& nav) {
     registry.addAction({.id = "track.select",
                         .title = "Select track",
+                        .description = "With extend it adds the track to the selection or takes it out, and with "
+                                       "range it selects every track from the selected track to this one.",
                         .aliases = {"show track in inspector"},
                         .category = "Tracks",
-                        .schema = {{"required", {"track"}}},
+                        .schema = {{"required", {"track"}},
+                                   {"properties",
+                                    {{"track", {{"type", "string"}}},
+                                     {"extend", {{"type", "boolean"}}},
+                                     {"range", {{"type", "boolean"}}}}}},
                         .run = [&controller, &nav](const Json& params) {
                             const auto id = trackParam(controller.project(), params);
-                            nav.setSelectedTrack(qs(id.value));
+                            if (optionalParam<bool>(params, "range").value_or(false)) {
+                                selectRange(controller, nav, id);
+                            } else if (optionalParam<bool>(params, "extend").value_or(false)) {
+                                toggleSelected(nav, qs(id.value));
+                            } else {
+                                nav.setSelectedTrack(qs(id.value));
+                            }
                             return trackResult(controller, id);
                         }});
+    registry.addAction({.id = "track.selectAll",
+                        .title = "Select all tracks",
+                        .aliases = {"select every track"},
+                        .category = "Tracks",
+                        .run =
+                            [&controller, &nav](const Json&) {
+                                nav.setSelectedTracks(controller.project().document().tracks |
+                                                      std::views::transform([](const model::Track& track) {
+                                                          return qs(track.id.value);
+                                                      }) |
+                                                      std::ranges::to<QStringList>());
+                                return nav.toJson();
+                            },
+                        .menus = {kTrackMenu}});
     registry.addAction({.id = "track.showMenu",
                         .title = "Show track menu",
                         .aliases = {"track context menu", "track options"},
@@ -204,7 +263,11 @@ void registerTrackSelection(Registry& registry, ProjectController& controller, N
                         .schema = {{"properties", {{"track", {{"type", "string"}}}}}},
                         .run = [&controller, &nav](const Json& params) {
                             const auto id = targetTrack(controller, nav, params);
-                            nav.setSelectedTrack(qs(id.value));
+                            if (nav.selectedTracks().contains(qs(id.value))) {
+                                nav.selectTracks(nav.selectedTracks(), qs(id.value));
+                            } else {
+                                nav.setSelectedTrack(qs(id.value));
+                            }
                             nav.setTrackMenu(qs(id.value));
                             return Json{{"trackMenu", id.value}};
                         }});
@@ -233,6 +296,29 @@ model::TrackId targetTrack(const ProjectController& controller, const Nav& nav, 
         throw AppError("select a track first, or pass track");
     }
     return selected;
+}
+
+std::vector<model::TrackId> targetTracks(const ProjectController& controller, const Nav& nav, const Json& params) {
+    const model::TrackId target = targetTrack(controller, nav, params);
+    const QStringList selected = nav.selectedTracks();
+    if (!optionalParam<bool>(params, "selection").value_or(false) || !selected.contains(qs(target.value))) {
+        return {target};
+    }
+    return controller.project().document().tracks | std::views::transform(&model::Track::id) |
+           std::views::filter([&](const model::TrackId& id) { return selected.contains(qs(id.value)); }) |
+           std::ranges::to<std::vector>();
+}
+
+Json editTargets(ProjectController& controller, const Nav& nav, const Json& params, const std::string& name,
+                 const std::function<void(const model::TrackId&)>& edit) {
+    const model::TrackId target = targetTrack(controller, nav, params);
+    const std::vector<model::TrackId> ids = targetTracks(controller, nav, params);
+    if (ids.size() == 1) {
+        edit(target);
+    } else {
+        controller.project().group(name, [&] { std::ranges::for_each(ids, edit); });
+    }
+    return trackResult(controller, target);
 }
 
 std::vector<MenuChoice> colorChoices() {
@@ -291,7 +377,8 @@ void registerTrackEditActions(Registry& registry, ProjectController& controller,
                         .schema = {{"properties", {{"track", {{"type", "string"}}}}}},
                         .run =
                             [&controller, &nav](const Json& params) {
-                                removeTrack(controller, targetTrack(controller, nav, params));
+                                editTargets(controller, nav, params, "remove tracks",
+                                            [&](const model::TrackId& id) { removeTrack(controller, id); });
                                 return projectState(controller);
                             },
                         .menus = trackMenus()});
@@ -309,40 +396,57 @@ void registerTrackEditActions(Registry& registry, ProjectController& controller,
                         }});
     registerTrackSelection(registry, controller, nav);
     registerTrackFlags(registry, controller, nav);
-    registry.addAction({.id = "track.setGain",
-                        .title = "Set track gain",
-                        .aliases = {"track volume", "fader"},
-                        .category = "Tracks",
-                        .schema = {{"required", {"track", "db"}}},
-                        .run = [&controller](const Json& params) {
-                            const auto id = trackParam(controller.project(), params);
-                            const auto db = param<double>(params, "db");
-                            const bool written = controller.writeAutomation(id, "gain", db);
-                            Json result = written ? trackResult(controller, id)
-                                                  : editTrack(controller, id, "set track gain",
-                                                              [&](model::Track& track) { track.gainDb = db; });
-                            controller.setLiveGain(id, db);
-                            return result;
-                        }});
-    registry.addAction({.id = "track.setPan",
-                        .title = "Set track pan",
-                        .aliases = {"balance", "pan knob"},
-                        .category = "Tracks",
-                        .schema = {{"required", {"track", "value"}},
-                                   {"properties", {{"value", {{"type", "number"}, {"minimum", -1}, {"maximum", 1}}}}}},
-                        .run = [&controller](const Json& params) {
-                            const auto id = trackParam(controller.project(), params);
-                            const auto value = param<double>(params, "value");
-                            if (value < -1.0 || value > 1.0) {
-                                throw AppError("value must be from -1 (hard left) to 1 (hard right)");
-                            }
-                            const bool written = controller.writeAutomation(id, "pan", value);
-                            Json result = written ? trackResult(controller, id)
-                                                  : editTrack(controller, id, "set track pan",
-                                                              [&](model::Track& track) { track.pan = value; });
-                            controller.setLivePan(id, value);
-                            return result;
-                        }});
+    registry.addAction(
+        {.id = "track.setGain",
+         .title = "Set track gain",
+         .description = "With selection every selected track moves by the same number of dB.",
+         .aliases = {"track volume", "fader"},
+         .category = "Tracks",
+         .schema =
+             {{"required", {"track", "db"}},
+              {"properties",
+               {{"track", {{"type", "string"}}}, {"db", {{"type", "number"}}}, {"selection", {{"type", "boolean"}}}}}},
+         .run = [&controller, &nav](const Json& params) {
+             const auto target = trackParam(controller.project(), params);
+             const auto wanted = param<double>(params, "db");
+             const double change = wanted - controller.project().track(target)->gainDb;
+             return editTargets(controller, nav, params, "set track gain", [&](const model::TrackId& id) {
+                 const double db = id == target ? wanted
+                                                : std::clamp(controller.project().track(id)->gainDb + change,
+                                                             kAutomationGainMinDb, kAutomationGainMaxDb);
+                 if (!controller.writeAutomation(id, "gain", db)) {
+                     editTrack(controller, id, "set track gain", [&](model::Track& track) { track.gainDb = db; });
+                 }
+                 controller.setLiveGain(id, db);
+             });
+         }});
+    registry.addAction(
+        {.id = "track.setPan",
+         .title = "Set track pan",
+         .description = "With selection every selected track pans by the same amount.",
+         .aliases = {"balance", "pan knob"},
+         .category = "Tracks",
+         .schema = {{"required", {"track", "value"}},
+                    {"properties",
+                     {{"track", {{"type", "string"}}},
+                      {"value", {{"type", "number"}, {"minimum", -1}, {"maximum", 1}}},
+                      {"selection", {{"type", "boolean"}}}}}},
+         .run = [&controller, &nav](const Json& params) {
+             const auto target = trackParam(controller.project(), params);
+             const auto wanted = param<double>(params, "value");
+             if (wanted < -1.0 || wanted > 1.0) {
+                 throw AppError("value must be from -1 (hard left) to 1 (hard right)");
+             }
+             const double change = wanted - controller.project().track(target)->pan;
+             return editTargets(controller, nav, params, "set track pan", [&](const model::TrackId& id) {
+                 const double value =
+                     id == target ? wanted : std::clamp(controller.project().track(id)->pan + change, -1.0, 1.0);
+                 if (!controller.writeAutomation(id, "pan", value)) {
+                     editTrack(controller, id, "set track pan", [&](model::Track& track) { track.pan = value; });
+                 }
+                 controller.setLivePan(id, value);
+             });
+         }});
     registerTrackLooks(registry, controller, nav);
 }
 

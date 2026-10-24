@@ -10,6 +10,7 @@ RowLayout {
     required property var devices
     required property var route
     property string toolTip
+    property bool mixed: false
     readonly property var device: devices.find(entry => entry.id === route.device)
 
     signal picked(var params)
@@ -19,6 +20,7 @@ RowLayout {
         model: picker.devices
         currentId: picker.route.device
         missingText: "Missing device"
+        mixed: picker.mixed
         toolTip: picker.toolTip
         onPicked: entry => picker.picked(entry.params)
         Layout.fillWidth: true
@@ -28,6 +30,7 @@ RowLayout {
         visible: picker.route.device !== ""
         model: picker.device !== undefined ? picker.device.channels : []
         currentId: picker.route.channels.join("-")
+        mixed: picker.mixed
         toolTip: picker.toolTip
         onPicked: entry => picker.picked(entry.params)
         Layout.preferredWidth: Theme.channelPickerWidth

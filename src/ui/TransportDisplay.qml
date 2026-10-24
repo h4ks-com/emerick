@@ -91,13 +91,14 @@ Rectangle {
             id: tempo
             objectName: "project.setTempo"
             label: "tempo"
-            widest: "000"
+            widest: "000.0"
             DragNumber {
                 objectName: "project.setTempo.bpm"
                 anchors.fill: parent
                 actionId: "project.setTempo"
                 framed: false
                 dragsVertically: true
+                stepArrows: false
                 value: Number(Clock.bpm)
                 from: Theme.minBpm
                 to: Theme.maxBpm

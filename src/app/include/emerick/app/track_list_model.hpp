@@ -65,6 +65,8 @@ public:
     Q_INVOKABLE QVariantMap clip(const QString& id) const;
     // The insert as project state lists it, with its track's id and name, or an empty map when it is gone.
     Q_INVOKABLE QVariantMap insert(const QString& id) const;
+    // Whether every listed track has the same value of the named role, so a view can show "Mixed" where they differ.
+    Q_INVOKABLE bool sameAcross(const QStringList& ids, const QString& role) const;
 
 signals:
     void revisionChanged();

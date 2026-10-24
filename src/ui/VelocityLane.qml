@@ -27,7 +27,7 @@ Rectangle {
 
     Item {
         id: bars
-        x: Theme.trackHeaderWidth
+        x: lane.roll.headerWidth
         y: Theme.space1
         width: lane.width - x
         height: lane.height - 2 * Theme.space1

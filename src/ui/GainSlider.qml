@@ -17,7 +17,7 @@ Slider {
     ToolTip.visible: pressed || hovered
     ToolTip.text: "Set track gain   " + value.toFixed(1) + " dB"
     onMoved: Registry.updateGesture(Registry.actionInfo("track.setGain").title,
-                                    [{id: "track.setGain", params: {track: trackId, db: value}}])
+                                    [{id: "track.setGain", params: {track: trackId, db: value, selection: true}}])
     onPressedChanged: {
         if (!pressed) {
             Registry.endGesture()

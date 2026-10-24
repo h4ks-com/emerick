@@ -218,7 +218,13 @@ void registerMarkerEdits(Registry& registry, ProjectController& controller, Nav&
                                    [&](model::Marker& marker) { marker.color = color; });
              },
          .menus = {kMarkerContextMenu},
-         .submenu = colorChoices});
+         .submenu = colorChoices,
+         .current =
+             [&controller, &nav](const Json& params) {
+                 const auto color =
+                     model::findMarker(controller.project().document(), targetMarker(controller, nav, params))->color;
+                 return color ? std::to_string(*color) : std::string{};
+             }});
     registry.addAction({.id = "marker.delete",
                         .title = "Delete marker",
                         .aliases = {"remove marker"},

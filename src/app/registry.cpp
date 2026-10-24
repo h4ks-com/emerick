@@ -205,8 +205,11 @@ namespace {
 QVariantList menuChoices(const Action& action) {
     QVariantList choices;
     for (const MenuChoice& choice : action.submenu()) {
-        choices.append(
-            QVariantMap{{"id", qs(choice.id)}, {"title", qs(choice.title)}, {"params", toVariant(choice.params)}});
+        choices.append(QVariantMap{{"id", qs(choice.id)},
+                                   {"title", qs(choice.title)},
+                                   {"params", toVariant(choice.params)},
+                                   {"icon", qs(choice.icon)},
+                                   {"color", choice.color}});
     }
     return choices;
 }
@@ -669,6 +672,18 @@ QVariantMap Registry::actionInfo(const QString& id) const {
         info.insert("choices", menuChoices(*found));
     }
     return info;
+}
+
+QString Registry::currentChoice(const QString& id, const QVariantMap& params) const {
+    const Action* found = action(id.toStdString());
+    if (found == nullptr || !found->current) {
+        return {};
+    }
+    try {
+        return qs(found->current(toJson(QVariant{params})));
+    } catch (const AppError&) {
+        return {};
+    }
 }
 
 QVariantList Registry::sections(const QString& parent) const {

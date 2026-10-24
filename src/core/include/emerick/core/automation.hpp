@@ -15,11 +15,12 @@ enum class AutomationCurve : std::uint8_t { linear, hold, smooth };
 struct AutomationCurveName {
     AutomationCurve curve;
     std::string_view id;
+    std::string_view title;
 };
 
-inline constexpr std::array kAutomationCurves{AutomationCurveName{AutomationCurve::linear, "linear"},
-                                              AutomationCurveName{AutomationCurve::hold, "hold"},
-                                              AutomationCurveName{AutomationCurve::smooth, "smooth"}};
+inline constexpr std::array kAutomationCurves{AutomationCurveName{AutomationCurve::linear, "linear", "Linear"},
+                                              AutomationCurveName{AutomationCurve::hold, "hold", "Hold"},
+                                              AutomationCurveName{AutomationCurve::smooth, "smooth", "Smooth"}};
 
 constexpr std::optional<AutomationCurve> automationCurveFromId(std::string_view id) {
     const auto* found = std::ranges::find(kAutomationCurves, id, &AutomationCurveName::id);

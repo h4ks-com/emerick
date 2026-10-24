@@ -74,6 +74,9 @@ struct MenuChoice {
     std::string id = {};
     std::string title = {};
     Json params = {};
+    // A choice that picks an icon or a track color shows it beside its title.
+    std::string icon = {};
+    int color = -1;
 };
 
 struct Action {
@@ -95,6 +98,8 @@ struct Action {
     // A UI activation asks this question first and runs the action with confirm: true.
     std::string confirm = {};
     std::function<std::vector<MenuChoice>()> submenu = {};
+    // The id of the submenu choice the target of these params has now, which its menu marks.
+    std::function<std::string(const Json& params)> current = {};
     // The action log skips a quiet action and logs the actions it runs instead, as for the console's own actions.
     bool quiet = false;
     // An action that runs Lua, which MCP refuses when it serves without lua.eval.
@@ -279,6 +284,8 @@ public:
     Q_INVOKABLE static QString keySequence(int key, int modifiers);
     Q_INVOKABLE QVariantList palette(const QString& query) const;
     Q_INVOKABLE QVariantMap actionInfo(const QString& id) const;
+    // Empty when the action marks no choice or its target is gone.
+    Q_INVOKABLE QString currentChoice(const QString& id, const QVariantMap& params) const;
     Q_INVOKABLE QVariantList sections(const QString& parent) const;
     Q_INVOKABLE QVariantList settingsAt(const QString& location) const;
     // The UI runs actions through here. An action with a file dialog or a confirm question asks the user first and

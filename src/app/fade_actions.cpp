@@ -46,7 +46,8 @@ std::vector<MenuChoice> shapeChoices() {
     return core::kFadeShapes | std::views::transform([](const core::FadeShapeName& name) {
                return MenuChoice{.id = std::string{name.id},
                                  .title = std::string{name.title},
-                                 .params = {{"shape", std::string{name.id}}}};
+                                 .params = {{"shape", std::string{name.id}}},
+                                 .icon = "fade-" + std::string{name.id}};
            }) |
            std::ranges::to<std::vector>();
 }
@@ -144,7 +145,13 @@ void registerFadeActions(Registry& registry, ProjectController& controller, Nav&
                                     return clipResults(controller, ids);
                                 },
                             .menus = {kClipContextMenu},
-                            .submenu = shapeChoices});
+                            .submenu = shapeChoices,
+                            .current =
+                                [&controller, &nav, key](const Json& params) {
+                                    const auto ids = targetClips(controller, nav, params);
+                                    return ids.empty() ? std::string{}
+                                                       : clipResult(controller, ids.front()).value(key, std::string{});
+                                }});
     };
     shapeAction("clip.setFadeInShape", "Set fade in shape", "fadeInShape", "fade in curve");
     shapeAction("clip.setFadeOutShape", "Set fade out shape", "fadeOutShape", "fade out curve");

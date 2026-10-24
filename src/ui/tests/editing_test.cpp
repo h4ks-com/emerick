@@ -117,6 +117,14 @@ TEST_CASE("the track context menu lists registry actions and its Delete track re
     CHECK(itemTitles(menu) == registryTitles(main.rig.registry, kTrackContextMenu));
     CHECK(main.rig.nav.trackMenu() == qid(vox));
 
+    QObject* colors = main.menu("track.setColor");
+    CHECK(menuItem(colors, "Rose")->property("swatch").toInt() == 3);
+    QMetaObject::invokeMethod(colors, "aboutToShow");
+    CHECK(menuItem(colors, "Teal")->property("marked").toBool());
+    CHECK_FALSE(menuItem(colors, "Rose")->property("marked").toBool());
+    CHECK(menuItem(main.menu("track.setIcon"), "Guitar")->property("iconName").toString() == "guitar");
+    CHECK(menuItem(menu, "Delete track")->property("swatch").toInt() == -1);
+
     QMetaObject::invokeMethod(menuItem(menu, "Delete track")->property("action").value<QObject*>(), "trigger");
     CHECK(main.rig.controller->project().track(model::TrackId{vox}) == nullptr);
     main.rig.run("project.undo");

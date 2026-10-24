@@ -240,7 +240,7 @@ void registerPointEdits(Registry& registry, ProjectController& controller, Nav& 
              [] {
                  return core::kAutomationCurves | std::views::transform([](const core::AutomationCurveName& curve) {
                             return MenuChoice{.id = std::string{curve.id},
-                                              .title = std::string{curve.id},
+                                              .title = std::string{curve.title},
                                               .params = {{"curve", curve.id}}};
                         }) |
                         std::ranges::to<std::vector>();

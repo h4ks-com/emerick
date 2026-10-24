@@ -47,13 +47,16 @@ GlassMenu {
                     id: submenu
                     required property var modelData
                     property var choices: modelData.choices
+                    property string current
                     objectName: modelData.id
                     title: modelData.title
+                    marks: current !== ""
                     onAboutToShow: {
                         const fresh = Registry.actionInfo(modelData.id).choices
                         if (JSON.stringify(fresh) !== JSON.stringify(choices)) {
                             choices = fresh
                         }
+                        current = Registry.currentChoice(modelData.id, actionMenu.params ?? {})
                     }
                     Instantiator {
                         model: submenu.choices
@@ -62,6 +65,9 @@ GlassMenu {
                             objectName: submenu.modelData.id + ":" + modelData.id
                             actionId: submenu.modelData.id
                             title: modelData.title
+                            iconName: modelData.icon ?? ""
+                            swatch: modelData.color ?? -1
+                            marked: modelData.id === submenu.current
                             params: actionMenu.paramsWith(modelData.params)
                         }
                         onObjectAdded: (index, object) => submenu.insertItem(index, object)

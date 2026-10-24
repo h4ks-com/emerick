@@ -111,23 +111,27 @@ void registerTrackFlags(Registry& registry, ProjectController& controller, const
 }
 
 void registerTrackLooks(Registry& registry, ProjectController& controller, const Nav& nav) {
-    registry.addAction({.id = "track.setColor",
-                        .title = "Set track color",
-                        .category = "Tracks",
-                        .schema = {{"required", {"color"}},
-                                   {"properties", {{"track", {{"type", "string"}}}, {"color", {{"type", "integer"}}}}}},
-                        .run =
-                            [&controller, &nav](const Json& params) {
-                                const auto id = targetTrack(controller, nav, params);
-                                const auto color = param<int>(params, "color");
-                                if (color < 0 || color >= kTrackColors) {
-                                    throw AppError("color must be 0 to " + std::to_string(kTrackColors - 1));
-                                }
-                                return editTrack(controller, id, "set track color",
-                                                 [&](model::Track& track) { track.color = color; });
-                            },
-                        .menus = trackMenus(),
-                        .submenu = colorChoices});
+    registry.addAction(
+        {.id = "track.setColor",
+         .title = "Set track color",
+         .category = "Tracks",
+         .schema = {{"required", {"color"}},
+                    {"properties", {{"track", {{"type", "string"}}}, {"color", {{"type", "integer"}}}}}},
+         .run =
+             [&controller, &nav](const Json& params) {
+                 const auto id = targetTrack(controller, nav, params);
+                 const auto color = param<int>(params, "color");
+                 if (color < 0 || color >= kTrackColors) {
+                     throw AppError("color must be 0 to " + std::to_string(kTrackColors - 1));
+                 }
+                 return editTrack(controller, id, "set track color", [&](model::Track& track) { track.color = color; });
+             },
+         .menus = trackMenus(),
+         .submenu = colorChoices,
+         .current =
+             [&controller, &nav](const Json& params) {
+                 return std::to_string(controller.project().track(targetTrack(controller, nav, params))->color);
+             }});
     registry.addAction({.id = "track.setIcon",
                         .title = "Set track icon",
                         .category = "Tracks",
@@ -146,9 +150,14 @@ void registerTrackLooks(Registry& registry, ProjectController& controller, const
                                 return kTrackIcons | std::views::transform([](const TrackIcon& icon) {
                                            return MenuChoice{.id = std::string{icon.icon},
                                                              .title = std::string{icon.title},
-                                                             .params = {{"icon", icon.icon}}};
+                                                             .params = {{"icon", icon.icon}},
+                                                             .icon = std::string{icon.icon}};
                                        }) |
                                        std::ranges::to<std::vector>();
+                            },
+                        .current =
+                            [&controller, &nav](const Json& params) {
+                                return controller.project().track(targetTrack(controller, nav, params))->icon;
                             }});
 }
 
@@ -205,7 +214,8 @@ std::vector<MenuChoice> colorChoices() {
     return std::views::iota(0, kTrackColors) | std::views::transform([](int color) {
                return MenuChoice{.id = std::to_string(color),
                                  .title = std::string{kColorNames[static_cast<std::size_t>(color)]},
-                                 .params = {{"color", color}}};
+                                 .params = {{"color", color}},
+                                 .color = color};
            }) |
            std::ranges::to<std::vector>();
 }

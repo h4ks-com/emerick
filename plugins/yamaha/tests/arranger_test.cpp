@@ -38,16 +38,19 @@ TEST_CASE("setting up the arranger adds Chords, Style and one track per part in 
     CHECK(tracks.at(1).at("kind") == "yamaha.chord");
     CHECK(tracks.at(1).at("name") == "Chords");
     CHECK(tracks.at(1).at("midiIn") == Json{{"port", kMidiPort}, {"channel", 0}, {"thru", false}, {"sysex", true}});
-    CHECK(tracks.at(1).at("midiOut").at("channel") == 4);
+    CHECK(tracks.at(1).at("midiOut") == Json{{"port", kMidiPort}, {"channel", 0}, {"thru", false}, {"sysex", false}});
     CHECK(tracks.at(2).at("kind") == "yamaha.style");
-    CHECK(tracks.at(2).at("midiOut") == Json{{"port", kMidiPort}, {"channel", 1}, {"thru", false}, {"sysex", false}});
+    CHECK(tracks.at(2).at("midiOut") == Json{{"port", kMidiPort}, {"channel", 0}, {"thru", false}, {"sysex", false}});
     for (int channel = 1; channel <= 16; ++channel) {
         const Json& part = tracks.at(static_cast<std::size_t>(channel) + 2);
+        const Json route{{"port", kMidiPort}, {"channel", channel}, {"thru", false}, {"sysex", false}};
         CHECK(part.at("kind") == "midi");
-        CHECK(part.at("midiIn") == Json{{"port", kMidiPort}, {"channel", channel}, {"thru", false}, {"sysex", false}});
-        CHECK(part.at("midiOut").at("port") == "");
+        CHECK(part.at("midiIn") == route);
+        CHECK(part.at("midiOut") == route);
     }
     CHECK(tracks.at(3).at("name") == "Right 1");
+    CHECK(tracks.at(4).at("name") == "Right 2");
+    CHECK(tracks.at(6).at("name") == "Left");
     CHECK(tracks.at(3).at("icon") == "piano-keys");
     CHECK(tracks.at(13).at("name") == "Bass");
     CHECK(tracks.at(0).at("armed") == false);
@@ -63,17 +66,50 @@ TEST_CASE("setting up the arranger adds Chords, Style and one track per part in 
     CHECK(rig.controller->project().document().tracks.size() == 19);
 }
 
-TEST_CASE("the arranger finds the keyboard port and the controller port by name") {
+TEST_CASE("the arranger finds the keyboard port by name and routes every track and the clock to it") {
     YamahaRig rig({"Other", kKeyboard, kController});
     rig.run("yamaha.setupArranger");
-    const auto& tracks = rig.controller->project().document().tracks;
-    CHECK(tracks.at(0).midiIn.portId == kKeyboard);
-    CHECK(tracks.at(1).midiOut.portId == kController);
+    const auto& document = rig.controller->project().document();
+    CHECK(std::ranges::all_of(document.tracks, [](const model::Track& track) {
+        return track.midiIn.portId == kKeyboard && track.midiOut.portId == kKeyboard;
+    }));
+    CHECK(document.clockPorts == std::vector<std::string>{kKeyboard});
     CHECK_THROWS_AS(rig.run("yamaha.setupArranger", {{"port", "Missing"}}), app::AppError);
 
-    rig.registry.setSetting("yamaha.controllerPort", "Other");
-    rig.run("yamaha.setupArranger", {{"port", kKeyboard}});
-    CHECK(rig.controller->project().document().tracks.at(19).midiOut.portId == "Other");
+    rig.run("yamaha.setupArranger", {{"port", kController}});
+    CHECK(document.tracks.at(19).midiOut.portId == kController);
+    CHECK(document.clockPorts == std::vector<std::string>{kKeyboard, kController});
+}
+
+TEST_CASE("the arranger adds a stereo audio track on the keyboard's audio input when it runs at the project rate") {
+    YamahaRig rig({kMidiPort}, app::test::kKeyboardRate);
+    const Json tracks = rig.run("yamaha.setupArranger").at("tracks");
+    REQUIRE(tracks.size() == 19);
+    CHECK(tracks.back().at("kind") == "audio");
+    CHECK(tracks.back().at("name") == "Keyboard Audio");
+    CHECK(tracks.back().at("audioIn").at("device") == "keyboard");
+    CHECK(tracks.back().at("audioIn").at("channels") == Json{1, 2});
+    CHECK(tracks.back().at("armed") == false);
+}
+
+TEST_CASE("playback sends each part's notes on its channel and never echoes the keyboard back") {
+    YamahaRig rig;
+    rig.run("yamaha.setupArranger");
+    const auto& tracks = rig.controller->project().document().tracks;
+    const std::string bass = tracks.at(12).id.value;
+    REQUIRE(tracks.at(12).name == "Bass");
+    const std::string clip = rig.run("midi.addClip", {{"track", bass}, {"at", 0}}).at("id");
+    rig.run("midi.addNote", {{"clip", clip}, {"pitch", 36}, {"start", 0}, {"channel", 11}});
+    rig.run("track.armAll", {{"value", false}});
+
+    rig.run("transport.play");
+    rig.midi->inject(kMidiPort, Bytes{0x90, 64, 90}, rig.audio->hostTimeAt(rig.audio->processedFrames()));
+    rig.audio->process(48000);
+    REQUIRE(processUntil([&] { return rig.controller->engine().midiFlushed(); }));
+    rig.run("transport.stop");
+    const std::vector<Bytes> sent = sentTo(rig, kMidiPort);
+    CHECK(std::ranges::contains(sent, Bytes{0x9A, 36, 100}));
+    CHECK_FALSE(std::ranges::contains(sent, Bytes{0x90, 64, 90}));
 }
 
 TEST_CASE("a MIDI track on a keyboard channel takes the part name and icon") {
@@ -146,7 +182,7 @@ TEST_CASE("the voice table goes to the keyboard on request and before play") {
     CHECK_FALSE(sentVoices(rig));
 }
 
-TEST_CASE("chord sysex recorded from the keyboard lands on the Chords track and plays back as block chords") {
+TEST_CASE("chord sysex recorded from the keyboard lands on the Chords track and plays back as Chord Control") {
     YamahaRig rig;
     rig.run("yamaha.setupArranger");
     const std::string chords = rig.controller->project().document().tracks.at(0).id.value;
@@ -177,8 +213,9 @@ TEST_CASE("chord sysex recorded from the keyboard lands on the Chords track and 
     REQUIRE(processUntil([&] { return rig.controller->engine().midiFlushed(); }));
     rig.run("transport.stop");
     const std::vector<Bytes> sent = sentTo(rig, kMidiPort);
-    CHECK(std::ranges::contains(sent, Bytes{0x93, 50, 90}));
-    CHECK(std::ranges::contains(sent, Bytes{0x93, 60, 90}));
+    CHECK(std::ranges::contains(sent, Bytes{0xF0, 0x43, 0x7E, 0x02, 0x32, 0x08, 0x7F, 0x7F, 0xF7}));
+    CHECK(std::ranges::contains(sent, Bytes{0xF0, 0x43, 0x7E, 0x02, 0x35, 0x20, 0x7F, 0x7F, 0xF7}));
+    CHECK_FALSE(std::ranges::any_of(sent, [](const Bytes& bytes) { return (bytes.at(0) & 0xF0) == 0x90; }));
 }
 
 TEST_CASE("setting up the arranger publishes the session once without listing devices") {

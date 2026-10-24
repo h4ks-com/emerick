@@ -61,10 +61,6 @@ TEST_CASE("the plugin lists its settings under the Plugins group and its actions
     CHECK(submenu.value("title").toString() == "Yamaha Arranger");
     CHECK(submenu.value("row").toInt() == static_cast<int>(app::MenuRow::Menu));
     CHECK(menus.value("Plugins/Yamaha Arranger").toList().size() == 5);
-
-    const QVariantList port = rig.registry.settingsAt("settings.yamaha").at(1).toMap().value("suggestions").toList();
-    REQUIRE(port.size() == 1);
-    CHECK(port.front().toMap().value("name").toString() == QString::fromStdString(app::test::kMidiPort));
 }
 
 TEST_CASE("a recorded take becomes the chord list and the section list") {
@@ -113,7 +109,7 @@ TEST_CASE("the snap and anticipation settings shape recorded chords") {
     CHECK(rig.track(id).data.at(0).at("at") == offBeat);
 }
 
-TEST_CASE("a chord track plays block chords on its MIDI out channel") {
+TEST_CASE("a chord track plays Chord Control sysex and no notes, whatever its MIDI out channel") {
     YamahaRig rig;
     const std::string id = rig.addTrack("yamaha.chord");
     rig.run("track.setMidiOut", {{"track", id}, {"port", app::test::kMidiPort}, {"channel", 4}});
@@ -125,35 +121,25 @@ TEST_CASE("a chord track plays block chords on its MIDI out channel") {
     CHECK(track.kind == engine::TrackKind::midi);
     CHECK(track.midiOut.portId == app::test::kMidiPort);
     const auto& events = track.midiClips.at(0).events;
-    REQUIRE(events.size() == 14);
-    CHECK(events.at(0) == engine::MidiEvent{0, {0x93, 48, 90}});
-    CHECK(events.at(3).tick == kBar);
-    CHECK(events.at(3).bytes.at(0) == 0x83);
-    CHECK(events.at(6).tick == 2 * kBar);
-    CHECK(events.back().tick == 3 * kBar);
+    REQUIRE(events.size() == 3);
+    CHECK(events.at(0) == engine::MidiEvent{0, chordSysex(0, 0x31, 0x00).bytes});
+    CHECK(events.at(1).tick == kBar);
+    CHECK(decodeChordControl(events.at(1).bytes)->isNoChord());
+    CHECK(events.at(2) == engine::MidiEvent{2 * kBar, chordSysex(0, 0x35, 0x13).bytes});
 }
 
-TEST_CASE("the chord detect channel setting applies when the route has no channel") {
-    YamahaRig rig;
-    const std::string id = rig.addTrack("yamaha.chord");
-    rig.run("yamaha.chord.set", {{"track", id}, {"at", 0}, {"chord", "C"}});
-    CHECK(bytesOf(played(rig, id)).at(0).at(0) == 0x93);
-    rig.registry.setSetting("yamaha.chordDetectChannel", 5);
-    CHECK(bytesOf(played(rig, id)).at(0).at(0) == 0x94);
-}
-
-TEST_CASE("a style track presses section buttons on its MIDI out channel") {
+TEST_CASE("a style track presses Section Control switches") {
     YamahaRig rig;
     const std::string id = rig.addTrack("yamaha.style");
     rig.run("yamaha.section.set", {{"track", id}, {"at", 0}, {"kind", "main"}, {"variation", 1}});
     rig.run("yamaha.section.set", {{"track", id}, {"at", kBar}, {"name", "Ending 2"}});
-    CHECK(bytesOf(played(rig, id)) ==
-          std::vector<Bytes>{{0xB0, 12, 127}, {0xB0, 12, 0}, {0xB0, 32, 127}, {0xB0, 32, 0}});
-    rig.registry.setSetting("yamaha.controllerChannel", 2);
-    CHECK(bytesOf(played(rig, id)).at(0).at(0) == 0xB1);
+    CHECK(bytesOf(played(rig, id)) == std::vector<Bytes>{{0xF0, 0x43, 0x7E, 0x00, 0x09, 0x7F, 0xF7},
+                                                         {0xF0, 0x43, 0x7E, 0x00, 0x09, 0x00, 0xF7},
+                                                         {0xF0, 0x43, 0x7E, 0x00, 0x21, 0x7F, 0xF7},
+                                                         {0xF0, 0x43, 0x7E, 0x00, 0x21, 0x00, 0xF7}});
 }
 
-TEST_CASE("a MIDI export turns chords and sections into markers and chords into block chord notes") {
+TEST_CASE("a MIDI export turns chords and sections into markers and chords into Chord Control sysex") {
     YamahaRig rig;
     const std::string chords = rig.addTrack("yamaha.chord");
     const std::string style = rig.addTrack("yamaha.style");
@@ -173,7 +159,8 @@ TEST_CASE("a MIDI export turns chords and sections into markers and chords into 
                              }) |
                              std::views::transform(&libremidi::track_event::tick) | std::ranges::to<std::vector>();
     CHECK(markerTicks == std::vector<int>{0, static_cast<int>(kBar)});
-    CHECK(midi.tracks.at(1).at(1).m.bytes == libremidi::midi_bytes{0x93, 48, 90});
+    CHECK(midi.tracks.at(1).at(1).m.bytes ==
+          libremidi::midi_bytes{0xF0, 0x43, 0x7E, 0x02, 0x31, 0x00, 0x7F, 0x7F, 0xF7});
     CHECK(app::test::metaTexts(midi.tracks.at(2), libremidi::meta_event_type::TRACK_NAME) ==
           std::vector<std::string>{"yamaha.style"});
 }

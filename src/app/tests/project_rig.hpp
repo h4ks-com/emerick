@@ -25,6 +25,8 @@
 namespace emerick::app::test {
 
 inline constexpr double kRate = 48000.0;
+// The only rate the offline "Digital Keyboard" device runs at.
+inline constexpr double kKeyboardRate = 44100.0;
 inline constexpr core::Frames kBlock = 64;
 inline const std::string kMidiPort = "Keyboard";
 // CoreAudio names devices by UID, so the views must show the name instead.
@@ -94,7 +96,7 @@ struct ProjectRig {
     QTimer clock;
 
     // Each MIDI port name is both an input and an output.
-    explicit ProjectRig(const std::vector<std::string>& midiPorts = {kMidiPort}) {
+    explicit ProjectRig(const std::vector<std::string>& midiPorts = {kMidiPort}, double sampleRate = kRate) {
         ensureApplication();
         auto offline = std::make_unique<engine::OfflineBackend>(
             std::vector<engine::AudioDeviceInfo>{{"interface", "Interface", 2, 2},
@@ -108,7 +110,7 @@ struct ProjectRig {
         audioLister = audioOwner.get();
         midiLister = midiOwner.get();
         controller = std::make_unique<ProjectController>(registry, std::move(audioOwner), std::move(midiOwner),
-                                                         engine::Engine::Options{kRate, kBlock}, path("Projects"));
+                                                         engine::Engine::Options{sampleRate, kBlock}, path("Projects"));
         controller->setWarmWhileActive(false);
         registerProjectActions(registry, *controller, nav);
         QObject::connect(&clock, &QTimer::timeout, [this] { audio->process(kBlock); });

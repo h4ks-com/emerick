@@ -426,6 +426,17 @@ std::vector<RecordedTake> Engine::takeRecordings() {
     return impl_->inbox.take();
 }
 
+std::vector<TakeProgress> Engine::takeProgress() {
+    std::vector<TakeProgress> progress;
+    for (const auto& entry : impl_->builder.recorders()) {
+        const std::shared_ptr<TakeRecorder> recorder = entry.second.lock();
+        if (auto read = recorder ? recorder->takeProgress() : std::nullopt) {
+            progress.push_back(*std::move(read));
+        }
+    }
+    return progress;
+}
+
 std::vector<LevelReading> Engine::takeInputLevels() { return takeLevels(impl_->builder.inputMeters()); }
 
 std::vector<LevelReading> Engine::takeOutputLevels() { return takeLevels(impl_->builder.outputMeters()); }

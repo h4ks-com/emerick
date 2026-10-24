@@ -24,6 +24,8 @@ void exposeToQml(QQmlEngine& engine, Registry& registry, Nav& nav, ProjectContro
                                  std::make_unique<TransportClock>(controller, &engine).release());
     qmlRegisterSingletonInstance("Emerick.App", 1, 0, "Effects", std::make_unique<EffectCatalog>(&engine).release());
     qmlRegisterSingletonInstance("Emerick.App", 1, 0, "Peaks", &peaks);
+    QObject::connect(&controller, &ProjectController::takePeaks, &peaks, &PeakCache::addLive);
+    QObject::connect(&controller, &ProjectController::audioTakeLanded, &peaks, &PeakCache::forgetLive);
     qmlRegisterSingletonInstance("Emerick.App", 1, 0, "Meters", &controller.meters());
     if (console != nullptr) {
         qmlRegisterSingletonInstance("Emerick.App", 1, 0, "Console", console);

@@ -171,6 +171,10 @@ StreamLayout MiniaudioBackend::open(const StreamRequest& request, AudioCallback 
     layout = concatenateDevices(
         {opened}, {.deviceIds = {opened.id}, .sampleRate = request.sampleRate, .blockFrames = request.blockFrames});
     layout.sampleRate = impl_->device->sampleRate;
+    // miniaudio reports no device latency, so we count the periods it buffers on each side.
+    layout.inputLatency = impl_->device->capture.internalPeriodSizeInFrames;
+    layout.outputLatency = static_cast<Frames>(impl_->device->playback.internalPeriodSizeInFrames) *
+                           impl_->device->playback.internalPeriods;
     impl_->adapter = PlanarAdapter(layout.inputChannels, layout.outputChannels, layout.maxFrames);
     impl_->callback = std::move(callback);
     if (ma_device_start(&*impl_->device) != MA_SUCCESS) {

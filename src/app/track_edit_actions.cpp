@@ -1,6 +1,8 @@
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <cstddef>
+#include <format>
 #include <ranges>
 #include <string>
 #include <string_view>
@@ -32,6 +34,8 @@ constexpr std::array kTrackFlags{
     TrackFlag{"track.setArm", "Arm track for recording", "record enable", "Alt+R", &model::Track::armed,
               &ProjectController::setLiveArmed},
     TrackFlag{"track.setMonitor", "Monitor track input", "input monitoring", "", &model::Track::monitor, nullptr}};
+
+constexpr double kMaxRecordDelayMs = 1000.0;
 
 constexpr std::array<std::string_view, kTrackColors> kColorNames{"Teal",  "Blue",  "Violet", "Rose",
                                                                  "Amber", "Green", "Sand",   "Steel"};
@@ -445,6 +449,29 @@ void registerTrackEditActions(Registry& registry, ProjectController& controller,
                      editTrack(controller, id, "set track pan", [&](model::Track& track) { track.pan = value; });
                  }
                  controller.setLivePan(id, value);
+             });
+         }});
+    registry.addAction(
+        {.id = "track.setRecordDelay",
+         .title = "Set track record delay",
+         .description =
+             "Moves the track's next takes later by ms milliseconds, or earlier when negative, to make up for "
+             "an instrument whose audio or MIDI arrives late. With selection every selected track gets the delay.",
+         .aliases = {"latency compensation", "record offset", "track delay"},
+         .category = "Tracks / Routing",
+         .schema = {{"required", {"ms"}},
+                    {"properties",
+                     {{"track", {{"type", "string"}}},
+                      {"ms", {{"type", "number"}, {"minimum", -kMaxRecordDelayMs}, {"maximum", kMaxRecordDelayMs}}},
+                      {"selection", {{"type", "boolean"}}}}}},
+         .run = [&controller, &nav](const Json& params) {
+             const auto ms = param<double>(params, "ms");
+             if (!(std::abs(ms) <= kMaxRecordDelayMs)) {
+                 throw AppError(std::format("ms must be from {} to {}", -kMaxRecordDelayMs, kMaxRecordDelayMs));
+             }
+             return editTargets(controller, nav, params, "set track record delay", [&](const model::TrackId& id) {
+                 editTrack(controller, id, "set track record delay",
+                           [&](model::Track& track) { track.recordDelayMs = ms; });
              });
          }});
     registerTrackLooks(registry, controller, nav);

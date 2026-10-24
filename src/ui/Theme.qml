@@ -124,6 +124,7 @@ QtObject {
     readonly property real gainStepDb: 0.5
     readonly property real clipGainMaxDb: 24
     readonly property real panStep: 0.01
+    readonly property real maxRecordDelayMs: 1000
     readonly property real panKnobStep: 0.02
     readonly property int panKnob: 20
     readonly property real panKnobSweep: 135
@@ -140,6 +141,11 @@ QtObject {
     readonly property int timelineTailBars: 16
     readonly property color clipLabel: Qt.rgba(0, 0, 0, 0.28)
     readonly property color clipInk: Qt.rgba(0, 0, 0, 0.5)
+    // A muted clip greys out, as a muted region does in Logic.
+    readonly property color mutedClip: "#5A5D66"
+    // A take in progress shows in a dimmed record color until it lands as a clip. It stays opaque, so the clips it
+    // records over do not show through it.
+    readonly property color takePreview: Qt.tint(graphite, Qt.rgba(0.937, 0.325, 0.314, 0.6))
     readonly property color fadeShade: Qt.rgba(0, 0, 0, 0.3)
     readonly property color fadeLine: Qt.rgba(1, 1, 1, 0.7)
     readonly property int clipInset: 2
@@ -188,7 +194,7 @@ QtObject {
     }
 
     // Track icons are Phosphor names and fade icons are our own; an icon we do not bundle shows as a note.
-    readonly property var icons: ["arrows-merge", "automation", "broom", "caret-left", "caret-right", "circle", "copy", "dots-three", "fade-equalPower", "fade-exponential", "fade-linear", "fade-logarithmic", "fade-sCurve", "file", "gear-six", "guitar", "list", "magnet", "magnifying-glass", "metronome", "music-note", "music-notes", "pause", "pencil-simple", "piano-keys", "play", "plus", "sidebar-simple", "skip-back", "sliders", "squares-four", "stop", "waveform", "x"]
+    readonly property var icons: ["arrows-merge", "automation", "broom", "caret-left", "caret-right", "circle", "copy", "dots-three", "fade-equalPower", "fade-exponential", "fade-linear", "fade-logarithmic", "fade-sCurve", "file", "gear-six", "guitar", "list", "magnet", "magnifying-glass", "metronome", "music-note", "music-notes", "pause", "pencil-simple", "piano-keys", "play", "plus", "sidebar-simple", "skip-back", "sliders", "speaker-slash", "squares-four", "stop", "waveform", "x"]
     function iconSource(name) {
         return "icons/" + (icons.indexOf(name) >= 0 ? name : "music-note") + ".svg"
     }

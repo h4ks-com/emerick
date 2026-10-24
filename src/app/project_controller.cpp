@@ -509,6 +509,7 @@ void ProjectController::poll() {
     engine_.releaseIdleStream();
     logStreamChanges();
     collectTakes();
+    updatePreviews();
     updateTrackErrors();
     readLevels();
     const core::Ticks ticks = engine_.position().ticks;
@@ -558,6 +559,10 @@ int ProjectController::collectTakes() {
             takeErrors_.push_back({take.trackId, std::string{"cannot keep the take: "} + error.what()});
         } catch (const std::filesystem::filesystem_error& error) {
             takeErrors_.push_back({take.trackId, std::string{"cannot keep the take: "} + error.what()});
+        }
+        endPreview(take.trackId);
+        if (!take.audioFile.empty()) {
+            emit audioTakeLanded(take.audioFile);
         }
     }
     if (takeErrors_.size() != errorsBefore) {

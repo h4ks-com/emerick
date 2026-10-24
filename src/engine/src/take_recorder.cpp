@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <ranges>
 #include <utility>
 
 namespace emerick::engine {
@@ -56,11 +57,13 @@ TakeRecorder::~TakeRecorder() {
     finish();
 }
 
-void TakeRecorder::begin(Ticks startTick) {
+void TakeRecorder::begin(Ticks startTick, Frames delay) {
     owedFrames_ = 0;
     lostMidi_ = 0;
-    framesToSkip_ = captureOffset_;
-    recording_ = writeKeepingRoomForEnd(Header{Kind::begin, 0, startTick, 0}, std::span<const std::uint8_t>{});
+    const Frames skip = captureOffset_ - delay;
+    framesToSkip_ = std::max<Frames>(skip, 0);
+    recording_ = writeKeepingRoomForEnd(Header{Kind::begin, 0, startTick, 0, std::max<Frames>(-skip, 0)},
+                                        std::span<const std::uint8_t>{});
 }
 
 void TakeRecorder::writeAudio(std::span<const float* const> channels, Frames frames) {
@@ -107,6 +110,7 @@ void TakeRecorder::poll() {
             case Kind::begin:
                 finish();
                 start(header.tick);
+                writeZeros(header.leadFrames);
                 break;
             case Kind::audio:
                 writeSilence(header.owedFrames);
@@ -117,6 +121,10 @@ void TakeRecorder::poll() {
                 readInto(ring_, std::span(bytes_));
                 if (take_) {
                     take_->midiEvents.push_back({header.tick - take_->startTick, bytes_});
+                    const std::scoped_lock lock(progressMutex_);
+                    if (progress_) {
+                        progress_->midiEvents.push_back(take_->midiEvents.back());
+                    }
                 }
                 break;
             case Kind::end:
@@ -141,27 +149,56 @@ void TakeRecorder::start(Ticks startTick) {
                          .nonFiniteSamples = 0,
                          .droppedFrames = 0,
                          .droppedMidiEvents = 0};
-    if (trackKind_ != TrackKind::audio) {
-        return;
+    peakFrames_ = 0;
+    std::filesystem::path audioFile;
+    if (trackKind_ == TrackKind::audio) {
+        const std::filesystem::path path = freeTakePath(folder_, trackId_);
+        SF_INFO info{};
+        info.samplerate = static_cast<int>(sampleRate_);
+        info.channels = channels_;
+        info.format = SF_FORMAT_WAV | SF_FORMAT_FLOAT;
+        file_.reset(sf_open(path.c_str(), SFM_WRITE, &info));
+        if (file_) {
+            audioFile = path;
+            take_->audioFile = path;
+        } else {
+            markDamaged("cannot write " + path.string() + ": " + sf_strerror(nullptr));
+        }
     }
-    const std::filesystem::path path = freeTakePath(folder_, trackId_);
-    SF_INFO info{};
-    info.samplerate = static_cast<int>(sampleRate_);
-    info.channels = channels_;
-    info.format = SF_FORMAT_WAV | SF_FORMAT_FLOAT;
-    file_.reset(sf_open(path.c_str(), SFM_WRITE, &info));
-    if (file_) {
-        take_->audioFile = path;
-    } else {
-        markDamaged("cannot write " + path.string() + ": " + sf_strerror(nullptr));
+    const std::scoped_lock lock(progressMutex_);
+    progress_ = TakeProgress{.trackId = trackId_,
+                             .take = ++takes_,
+                             .startTick = startTick,
+                             .audioFile = std::move(audioFile),
+                             .frames = 0,
+                             .midiEvents = {},
+                             .peakMinimum = {},
+                             .peakMaximum = {}};
+}
+
+std::optional<TakeProgress> TakeRecorder::takeProgress() {
+    const std::scoped_lock lock(progressMutex_);
+    if (!progress_) {
+        return std::nullopt;
     }
+    TakeProgress read = *progress_;
+    progress_->midiEvents.clear();
+    progress_->peakMinimum.clear();
+    progress_->peakMaximum.clear();
+    return read;
 }
 
 void TakeRecorder::writeSilence(Frames frames) {
+    if (take_) {
+        take_->droppedFrames += frames;
+    }
+    writeZeros(frames);
+}
+
+void TakeRecorder::writeZeros(Frames frames) {
     if (!take_ || frames == 0) {
         return;
     }
-    take_->droppedFrames += frames;
     while (frames > 0) {
         const auto chunk = static_cast<std::uint32_t>(std::min(frames, kSilenceChunkFrames));
         samples_.assign(static_cast<std::size_t>(chunk) * static_cast<std::size_t>(channels_), 0.0F);
@@ -186,9 +223,36 @@ void TakeRecorder::writeSamples(std::uint32_t frames) {
 }
 
 void TakeRecorder::writeToFile(std::uint32_t frames) {
-    if (take_ && file_ && sf_writef_float(file_.get(), samples_.data(), frames) != frames) {
+    if (!take_ || !file_) {
+        return;
+    }
+    if (sf_writef_float(file_.get(), samples_.data(), frames) != frames) {
         markDamaged("cannot write all audio to " + take_->audioFile.string());
     }
+    addPeaks(frames);
+}
+
+void TakeRecorder::addPeaks(std::uint32_t frames) {
+    const auto width = static_cast<std::size_t>(channels_);
+    std::vector<float> minimum;
+    std::vector<float> maximum;
+    for (std::size_t frame = 0; frame < frames; ++frame) {
+        const auto [low, high] = std::ranges::minmax(std::span(samples_).subspan(frame * width, width));
+        peakLow_ = peakFrames_ == 0 ? low : std::min(peakLow_, low);
+        peakHigh_ = peakFrames_ == 0 ? high : std::max(peakHigh_, high);
+        if (++peakFrames_ == kTakePeakFrames) {
+            minimum.push_back(peakLow_);
+            maximum.push_back(peakHigh_);
+            peakFrames_ = 0;
+        }
+    }
+    const std::scoped_lock lock(progressMutex_);
+    if (!progress_) {
+        return;
+    }
+    progress_->frames += frames;
+    progress_->peakMinimum.insert(progress_->peakMinimum.end(), minimum.begin(), minimum.end());
+    progress_->peakMaximum.insert(progress_->peakMaximum.end(), maximum.begin(), maximum.end());
 }
 
 void TakeRecorder::markDamaged(std::string error) {
@@ -197,7 +261,12 @@ void TakeRecorder::markDamaged(std::string error) {
     }
 }
 
+// We end the progress before the take reaches the inbox, so a reader that sees the take never sees its progress again.
 void TakeRecorder::finish() {
+    {
+        const std::scoped_lock lock(progressMutex_);
+        progress_.reset();
+    }
     file_.reset();
     if (take_ && (trackKind_ == TrackKind::audio || !take_->midiEvents.empty())) {
         inbox_.add(std::move(*take_));

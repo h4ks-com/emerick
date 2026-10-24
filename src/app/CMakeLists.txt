@@ -82,6 +82,7 @@ qt_add_library(emerick_app STATIC
     send_actions.cpp
     session_mapping.cpp
     stem_export.cpp
+    take_preview.cpp
     track_actions.cpp
     track_edit_actions.cpp
     track_list_model.cpp
@@ -107,6 +108,7 @@ emerick_target(emerick_app)
 if(EMERICK_BUILD_TESTS)
     emerick_test(emerick_app_tests
         tests/automation_test.cpp
+        tests/clip_mute_test.cpp
         tests/code_highlighter_test.cpp
         tests/console_test.cpp
         tests/devices_test.cpp
@@ -130,6 +132,7 @@ if(EMERICK_BUILD_TESTS)
         tests/registry_test.cpp
         tests/script_library_test.cpp
         tests/send_test.cpp
+        tests/take_preview_test.cpp
         tests/transport_test.cpp)
     target_link_libraries(emerick_app_tests
         PRIVATE emerick_app Qt6::Network Qt6::Qml Qt6::QuickControls2 PkgConfig::SNDFILE libremidi)

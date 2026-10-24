@@ -144,12 +144,14 @@ Json clipState(const model::Clip& clip, const core::TempoMap& tempo, bool includ
                                             {"fadeInShape", core::fadeShapeId(audio.fadeInShape)},
                                             {"fadeOutShape", core::fadeShapeId(audio.fadeOutShape)},
                                             {"fadeInCurve", audio.fadeInCurve},
-                                            {"fadeOutCurve", audio.fadeOutCurve}});
+                                            {"fadeOutCurve", audio.fadeOutCurve},
+                                            {"muted", audio.muted}});
                              return result;
                          },
                          [&](const model::MidiClip& midi) {
                              Json result{{"id", midi.id.value}, {"type", "midi"}};
                              result.update(timing(midi.start, midi.length, tempo));
+                             result["muted"] = midi.muted;
                              result["noteCount"] = midi.notes.size();
                              result["eventCount"] = midi.events.size();
                              if (includeEvents) {
@@ -207,6 +209,7 @@ Json trackState(const model::Track& track, const core::TempoMap& tempo,
         {"automation", track.automation | std::views::transform([](const model::AutomationLane& lane) {
                            return Json{{"param", lane.param}, {"pointCount", lane.points.size()}};
                        }) | std::ranges::to<Json::array_t>()},
+        {"recordDelayMs", track.recordDelayMs},
         {"data", track.data}};
 }
 

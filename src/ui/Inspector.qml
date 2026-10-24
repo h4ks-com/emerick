@@ -133,6 +133,7 @@ Rectangle {
                 required property var midiIn
                 required property var midiOut
                 required property real pan
+                required property real recordDelayMs
                 required property real gainDb
                 required property bool mute
                 required property bool solo
@@ -191,6 +192,21 @@ Rectangle {
                         badge: inspector.mixed("gainDb") ? "Mixed" : ""
                         Layout.fillWidth: true
                     }
+                }
+
+                RouteLabel { text: "Record delay"; visible: panel.records }
+                DragNumber {
+                    visible: panel.records
+                    objectName: "track.setRecordDelay:" + panel.trackId
+                    actionId: "track.setRecordDelay"
+                    value: panel.recordDelayMs
+                    from: -Theme.maxRecordDelayMs
+                    to: Theme.maxRecordDelayMs
+                    decimals: 1
+                    unit: "ms"
+                    badge: inspector.mixed("recordDelayMs") ? "Mixed" : ""
+                    actionsFor: number => [{id: actionId, params: {track: panel.trackId, ms: number, selection: true}}]
+                    Layout.fillWidth: true
                 }
 
                 RouteLabel { text: "Pan" }

@@ -18,6 +18,7 @@ Item {
     property bool editing: false
 
     readonly property string clipId: clip.id
+    readonly property bool clipMuted: clip.muted === true
     readonly property bool audio: clip.type === "audio"
     readonly property real start: clip.start
     readonly property real end: clip.start + clip.length

@@ -96,6 +96,31 @@ Json selectNeighborClip(ProjectController& controller, Nav& nav, const Json& par
     return selectionState(controller, nav);
 }
 
+// Without value, mutes the clips unless every one of them is muted already, as Logic's Mute Region does.
+Json setClipsMuted(ProjectController& controller, const Nav& nav, const Json& params) {
+    const auto ids =
+        params.contains("clips")
+            ? param<std::vector<std::string>>(params, "clips") | std::views::transform([&](const std::string& id) {
+                  return clipParam(controller.project(), Json{{"clip", id}});
+              }) | std::ranges::to<std::vector>()
+            : targetClips(controller, nav, params);
+    const auto clipOf = [&](const model::ClipId& id) { return controller.project().findClip(id)->clip; };
+    const bool value =
+        optionalParam<bool>(params, "value").value_or(!std::ranges::all_of(ids, [&](const model::ClipId& id) {
+            return model::clipMuted(*clipOf(id));
+        }));
+    const std::string name = value ? "mute clip" : "unmute clip";
+    controller.project().group(name, [&] {
+        for (const model::ClipId& id : ids) {
+            controller.project().editTrack(
+                controller.project().findClip(id)->track->id, name, [&](model::Track& track) {
+                    model::setClipMuted(*std::ranges::find(track.clips, id, model::clipId), value);
+                });
+        }
+    });
+    return clipResults(controller, ids);
+}
+
 constexpr double kFitMargin = 0.05;
 
 // Fits the selected clips, or the whole project, into the lanes with a small margin on each side.
@@ -173,6 +198,19 @@ void registerClipEditActions(Registry& registry, ProjectController& controller, 
                                 return selectionState(controller, nav);
                             },
                         .menus = {kEditMenu}});
+    registry.addAction(
+        {.id = "clip.setMute",
+         .title = "Mute clip",
+         .description = "Mutes the clips, or unmutes them when every one is muted already. A muted "
+                        "clip plays nothing and exports nothing.",
+         .aliases = {"mute region", "silence clip", "unmute clip"},
+         .category = "Clips",
+         .shortcut = "Meta+M",
+         .schema =
+             {{"properties",
+               {{"clip", {{"type", "string"}}}, {"clips", {{"type", "array"}}}, {"value", {{"type", "boolean"}}}}}},
+         .run = [&controller, &nav](const Json& params) { return setClipsMuted(controller, nav, params); },
+         .menus = {kEditMenu, kClipContextMenu}});
     registry.addAction(
         {.id = "clip.selectPrevious",
          .title = "Select previous clip",

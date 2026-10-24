@@ -26,7 +26,7 @@ private:
 
 // We call begin, the writes and end on the audio thread and poll on the writer thread, which writes WAV or collects
 // MIDI. An audio take skips its first captureOffset frames, the round trip from our output back to our input, so it
-// lines up with what the player heard.
+// lines up with what the player heard. The UI thread reads the take in progress through takeProgress.
 class TakeRecorder {
 public:
     TakeRecorder(std::string trackId, TrackKind kind, int channels, double sampleRate, Frames maxBlock,
@@ -38,13 +38,16 @@ public:
     TakeRecorder& operator=(TakeRecorder&&) = delete;
 
     [[nodiscard]] bool recording() const { return recording_; }
-    void begin(Ticks startTick);
+    // A positive delay starts an audio take with that many frames of silence, a negative one skips them.
+    void begin(Ticks startTick, Frames delay);
     void writeAudio(std::span<const float* const> channels, Frames frames);
     void writeMidi(Ticks tick, std::span<const std::uint8_t> bytes);
     void countLostMidi(std::uint32_t events) { lostMidi_ += events; }
     void end();
 
     void poll();
+    // What the take in progress gained since the last call, or nothing while no take runs.
+    std::optional<TakeProgress> takeProgress();
 
 private:
     enum class Kind : std::uint8_t { begin, audio, midi, end };
@@ -54,14 +57,17 @@ private:
         std::uint32_t size = 0;
         Ticks tick = 0;
         Frames owedFrames = 0;
+        Frames leadFrames = 0;
     };
 
     template <class T>
     bool writeKeepingRoomForEnd(const Header& header, std::span<const T> payload);
     void start(Ticks startTick);
     void writeSilence(Frames frames);
+    void writeZeros(Frames frames);
     void writeSamples(std::uint32_t frames);
     void writeToFile(std::uint32_t frames);
+    void addPeaks(std::uint32_t frames);
     void markDamaged(std::string error);
     void finish();
 
@@ -84,6 +90,13 @@ private:
     SndFile file_;
     std::vector<float> samples_;
     std::vector<std::uint8_t> bytes_;
+
+    std::uint64_t takes_ = 0;
+    Frames peakFrames_ = 0;
+    float peakLow_ = 0.0F;
+    float peakHigh_ = 0.0F;
+    std::mutex progressMutex_;
+    std::optional<TakeProgress> progress_;
 };
 
 }  // namespace emerick::engine

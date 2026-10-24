@@ -11,6 +11,14 @@ const ClipId& clipId(const Clip& clip) {
     return std::visit([](const auto& value) -> const ClipId& { return value.id; }, clip);
 }
 
+bool clipMuted(const Clip& clip) {
+    return std::visit([](const auto& value) { return value.muted; }, clip);
+}
+
+void setClipMuted(Clip& clip, bool muted) {
+    std::visit([muted](auto& value) { value.muted = muted; }, clip);
+}
+
 Track* findTrack(Document& document, const TrackId& id) {
     const auto found = std::ranges::find(document.tracks, id, &Track::id);
     return found == document.tracks.end() ? nullptr : &*found;

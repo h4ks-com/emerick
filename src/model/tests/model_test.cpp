@@ -110,6 +110,30 @@ TEST_CASE("inserts round trip in order, and a format 6 project loads with none")
     }
 }
 
+TEST_CASE("clip mute and record delay round trip, and a format 7 project loads with neither") {
+    Document document = sampleDocument();
+    document.tracks[0].recordDelayMs = -12.5;
+    setClipMuted(document.tracks[0].clips[0], true);
+    setClipMuted(document.tracks[0].clips[1], true);
+    const Document loaded = documentFromJson(toJson(document));
+    CHECK(loaded.tracks[0].recordDelayMs == -12.5);
+    CHECK(clipMuted(loaded.tracks[0].clips[0]));
+    CHECK(clipMuted(loaded.tracks[0].clips[1]));
+
+    auto json = toJson(document);
+    json["format"] = 7;
+    for (auto& track : json["tracks"]) {
+        track.erase("recordDelayMs");
+        for (auto& clip : track["clips"]) {
+            clip.erase("muted");
+        }
+    }
+    const Document old = documentFromJson(json);
+    CHECK(old.tracks[0].recordDelayMs == 0.0);
+    CHECK_FALSE(clipMuted(old.tracks[0].clips[0]));
+    CHECK_FALSE(clipMuted(old.tracks[0].clips[1]));
+}
+
 TEST_CASE("reaches follows sends and output buses through a chain of buses") {
     Document document;
     Track vox = named("Vox");

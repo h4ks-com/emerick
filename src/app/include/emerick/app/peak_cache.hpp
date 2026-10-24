@@ -54,12 +54,17 @@ public:
 
     // Null while the peaks load; loaded() fires on the cache's thread once they are in.
     const PeakLevels* levels(const std::filesystem::path& file);
+    // Adds the finest peaks of a take in progress, so its waveform draws while it records.
+    void addLive(const std::filesystem::path& file, const Peaks& finest);
+    // Drops a recorded file's live peaks, so the next request loads them from the finished file.
+    void forgetLive(const std::filesystem::path& file);
 
 signals:
     void loaded();
 
 private:
     std::mutex mutex_;
+    std::map<std::filesystem::path, Peaks> live_;
     // A null entry means the file is loading.
     std::map<std::filesystem::path, std::unique_ptr<const PeakLevels>> files_;
     // Declared last, so the pool waits for running loads before the map goes away.

@@ -51,7 +51,7 @@ TEST_CASE("a take keeps its length and timing when the writer falls behind, and 
     TakeInbox inbox;
     {
         TakeRecorder recorder("vox", TrackKind::audio, 1, kSlowRate, kFrames, 0, folder.path, inbox);
-        recorder.begin(0);
+        recorder.begin(0, 0);
         std::vector<float> block(static_cast<std::size_t>(kFrames));
         const std::array<const float*, 1> channels{block.data()};
         for (int number = 1; number <= 7; ++number) {
@@ -123,7 +123,7 @@ TEST_CASE("a MIDI take counts the events a full ring turned away") {
     TakeInbox inbox;
     {
         TakeRecorder recorder("keys", TrackKind::midi, 0, kRate, kBlock, 0, folder.path, inbox);
-        recorder.begin(0);
+        recorder.begin(0, 0);
         const std::array<std::uint8_t, 3> note{0x90, 60, 100};
         for (int event = 0; event < 20000; ++event) {
             recorder.writeMidi(event, note);

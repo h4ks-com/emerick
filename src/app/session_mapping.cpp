@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <functional>
 #include <optional>
 #include <ranges>
 #include <string>
@@ -55,6 +56,7 @@ engine::Track commonFields(const model::Track& track, engine::TrackKind kind) {
             .midiOut = {},
             .midiThru = false,
             .claimsSysex = false,
+            .recordDelayMs = track.recordDelayMs,
             .outputBus = {},
             .sends = {},
             .inserts = {},
@@ -113,7 +115,7 @@ engine::Track audioEngineTrack(const model::Track& track, const std::filesystem:
     engine::Track result = commonFields(track, engine::TrackKind::audio);
     result.audioIn = toEngine(track.audioIn);
     addBusRoutes(result, track);
-    for (const model::Clip& clip : track.clips) {
+    for (const model::Clip& clip : track.clips | std::views::filter(std::not_fn(model::clipMuted))) {
         std::visit(core::Overloaded{
                        [&](const model::AudioClip& audio) { result.audioClips.push_back(toEngine(audio, folder)); },
                        [](const model::MidiClip&) {}},
@@ -134,7 +136,7 @@ engine::Track midiEngineTrack(const model::Track& track) {
     result.midiOut = toEngine(track.midiOut);
     result.midiThru = track.midiOut.thru;
     result.claimsSysex = track.midiIn.sysex;
-    for (const model::Clip& clip : track.clips) {
+    for (const model::Clip& clip : track.clips | std::views::filter(std::not_fn(model::clipMuted))) {
         std::visit(core::Overloaded{[](const model::AudioClip&) {},
                                     [&](const model::MidiClip& midi) { result.midiClips.push_back(toEngine(midi)); }},
                    clip);

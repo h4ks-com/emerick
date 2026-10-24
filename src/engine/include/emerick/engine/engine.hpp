@@ -104,6 +104,8 @@ public:
     [[nodiscard]] bool midiFlushed() const;
     // Returns the takes finished since the last call.
     std::vector<RecordedTake> takeRecordings();
+    // Returns what every take in progress gained since the last call.
+    std::vector<TakeProgress> takeProgress();
     // Reads and resets the input level of every audio track with an input.
     std::vector<LevelReading> takeInputLevels();
     // Reads and resets the deepest gain reduction of every compressor insert.

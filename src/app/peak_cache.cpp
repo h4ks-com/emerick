@@ -188,4 +188,23 @@ const PeakLevels* PeakCache::levels(const std::filesystem::path& file) {
     return nullptr;
 }
 
+// We rebuild every level on each call, so a call costs the take's whole length; folding only the new tail would not.
+void PeakCache::addLive(const std::filesystem::path& file, const Peaks& finest) {
+    {
+        const std::scoped_lock lock{mutex_};
+        Peaks& peaks = live_[file];
+        peaks.minimum.insert(peaks.minimum.end(), finest.minimum.begin(), finest.minimum.end());
+        peaks.maximum.insert(peaks.maximum.end(), finest.maximum.begin(), finest.maximum.end());
+        files_[file] = std::make_unique<const PeakLevels>(buildLevels(peaks));
+    }
+    emit loaded();
+}
+
+void PeakCache::forgetLive(const std::filesystem::path& file) {
+    const std::scoped_lock lock{mutex_};
+    if (live_.erase(file) > 0) {
+        files_.erase(file);
+    }
+}
+
 }  // namespace emerick::app

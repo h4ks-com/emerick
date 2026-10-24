@@ -84,7 +84,10 @@ void route(Snapshot& snapshot, const RealtimeState& state, const MidiInputPort* 
     if (!state.taking) {
         return;
     }
-    const Ticks tick = snapshot.tempo.framesToTicks(std::max(eventFrame, state.takeStartFrame), snapshot.sampleRate);
+    const auto record = [&](TrackState& track) {
+        const Frames frame = std::max(eventFrame + track.recordDelay, state.takeStartFrame);
+        track.recorder->writeMidi(snapshot.tempo.framesToTicks(frame, snapshot.sampleRate), bytes);
+    };
     const auto recording = [&](const TrackState& track) {
         return track.kind == TrackKind::midi && track.midiIn.get() == port && track.recorder &&
                track.recorder->recording();
@@ -92,7 +95,7 @@ void route(Snapshot& snapshot, const RealtimeState& state, const MidiInputPort* 
     if (!sysex) {
         for (TrackState& track : snapshot.tracks) {
             if (recording(track) && acceptsMessage(track, port, bytes)) {
-                track.recorder->writeMidi(tick, bytes);
+                record(track);
             }
         }
         return;
@@ -100,14 +103,14 @@ void route(Snapshot& snapshot, const RealtimeState& state, const MidiInputPort* 
     bool claimed = false;
     for (TrackState& track : snapshot.tracks) {
         if (recording(track) && track.claimsSysex) {
-            track.recorder->writeMidi(tick, bytes);
+            record(track);
             claimed = true;
         }
     }
     if (!claimed) {
         const auto first = std::ranges::find_if(snapshot.tracks, recording);
         if (first != snapshot.tracks.end()) {
-            first->recorder->writeMidi(tick, bytes);
+            record(*first);
         }
     }
 }

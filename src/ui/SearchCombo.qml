@@ -13,8 +13,10 @@ Item {
     property string toolTip
     // What the closed picker shows when no entry has currentId.
     property string missingText: currentId
+    // Several edited items differ in this value.
+    property bool mixed: false
     readonly property var current: model.find(entry => entry.id === currentId)
-    readonly property string displayText: current !== undefined ? current.name : missingText
+    readonly property string displayText: mixed ? "Mixed" : current !== undefined ? current.name : missingText
     readonly property alias popup: popup
     readonly property alias field: field
     readonly property var matches: {
@@ -67,7 +69,7 @@ Item {
         text: control.displayText
         placeholderText: control.displayText
         placeholderTextColor: Theme.inkDim
-        color: control.enabled ? Theme.ink : Theme.inkDim
+        color: !field.activeFocus ? Theme.clear : control.enabled ? Theme.ink : Theme.inkDim
         selectionColor: Theme.rule
         selectedTextColor: Theme.ink
         font.pixelSize: Theme.textLabel
@@ -75,7 +77,7 @@ Item {
             radius: Theme.radiusClip
             color: popup.opened || field.hovered ? Theme.rule : Theme.lift
         }
-        ToolTip.text: control.toolTip
+        ToolTip.text: control.toolTip + (control.displayText ? "   " + control.displayText : "")
         ToolTip.visible: control.toolTip !== "" && hovered && !popup.opened
         ToolTip.delay: Theme.tooltipDelay
         onPressed: control.open()
@@ -94,6 +96,19 @@ Item {
             event.accepted = popup.opened
             control.close()
         }
+    }
+
+    // A TextField scrolls to its cursor and cannot elide, so we show the closed picker's name in a Text.
+    Text {
+        anchors.fill: field
+        leftPadding: field.leftPadding
+        rightPadding: field.rightPadding
+        visible: !field.activeFocus
+        text: control.displayText
+        color: control.enabled ? Theme.ink : Theme.inkDim
+        font: field.font
+        elide: Text.ElideRight
+        verticalAlignment: Text.AlignVCenter
     }
 
     ColorImage {

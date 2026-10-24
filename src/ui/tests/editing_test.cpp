@@ -191,7 +191,7 @@ TEST_CASE("marker keys add and visit markers, the list locates, a double click r
     const auto& markers = main.rig.controller->project().document().markers;
     const auto before = markers.size();
 
-    QTest::keyClick(main.window, Qt::Key_Apostrophe, Qt::AltModifier);
+    QTest::keyClick(main.window, Qt::Key_M, Qt::AltModifier);
     REQUIRE(markers.size() == before + 1);
     const std::string id = main.rig.nav.selectedMarker().toStdString();
     CHECK(model::findMarker(main.rig.controller->project().document(), model::MarkerId{id})->at == 2 * bar);
@@ -337,5 +337,77 @@ TEST_CASE("the default input picker in Settings sets the default and its button 
 
     CHECK(trackOf(main, vox).audioIn.deviceId == kMotuId);
     CHECK(trackOf(main, vox).audioIn.channels == std::vector{2});
+    MainWindow::settle();
+}
+
+TEST_CASE("Cmd-clicking track headers selects both, and the inspector shows Mixed and sets every selected track") {
+    MainWindow& main = MainWindow::instance();
+    const std::string first = main.rig.run("track.addAudio").at("id");
+    const std::string second = main.rig.run("track.addAudio").at("id");
+    main.rig.run("track.setAudioIn", {{"track", first}, {"device", kMotuId}});
+    MainWindow::settle();
+    main.click(main.item("track.move:" + qid(first)));
+    QQuickItem* header = main.item("track.move:" + qid(second));
+    const QPointF at = header->mapToScene({header->width() / 2, header->height() / 2});
+    main.send(QEvent::MouseButtonPress, at, Qt::LeftButton, Qt::ControlModifier);
+    main.send(QEvent::MouseButtonRelease, at, Qt::NoButton, Qt::ControlModifier);
+    MainWindow::settle();
+    CHECK(main.rig.nav.selectedTracks() == QStringList{qid(first), qid(second)});
+    CHECK(main.item("inspector.trackTitle")->property("text").toString() == "2 tracks");
+
+    const QString picker = "track.setAudioIn:" + qid(second);
+    CHECK(main.item(picker)->property("displayText").toString() == "Mixed");
+    pick(main, picker, "motu");
+    CHECK(trackOf(main, first).audioIn.deviceId == kMotuId);
+    CHECK(trackOf(main, second).audioIn.deviceId == kMotuId);
+    CHECK(main.item(picker)->property("displayText").toString() == "MOTU M2");
+
+    main.click(main.item("track.setMute:" + qid(first)));
+    CHECK(trackOf(main, first).mute);
+    CHECK(trackOf(main, second).mute);
+    main.rig.run("project.undo");
+    CHECK_FALSE(trackOf(main, second).mute);
+
+    main.click(main.item("track.move:" + qid(first)));
+    CHECK(main.rig.nav.selectedTracks() == QStringList{qid(first)});
+    QTest::keyClick(main.window, Qt::Key_A, Qt::ControlModifier);
+    CHECK(main.rig.nav.selectedTracks().size() == std::ssize(main.rig.controller->project().document().tracks));
+    main.rig.run("track.select", {{"track", first}});
+    MainWindow::settle();
+}
+
+TEST_CASE("the marker lane buttons add a marker at the playhead, step between markers and toggle the list") {
+    MainWindow& main = MainWindow::instance();
+    const core::Ticks bar = main.rig.controller->ticksPerBar();
+    const auto& markers = main.rig.controller->project().document().markers;
+    const auto before = markers.size();
+    main.rig.run("transport.locate", {{"position", 5 * bar}});
+    main.click(main.item("marker.add:lane"));
+    REQUIRE(markers.size() == before + 1);
+    CHECK(model::findMarker(main.rig.controller->project().document(),
+                            model::MarkerId{main.rig.nav.selectedMarker().toStdString()})
+              ->at == 5 * bar);
+    main.rig.run("transport.locate", {{"position", 7 * bar}});
+    main.click(main.item("marker.previous:lane"));
+    CHECK(main.rig.controller->positionTicks() == 5 * bar);
+
+    main.click(main.item("marker.toggleList:lane"));
+    CHECK_FALSE(main.rig.nav.markerListOpen());
+    main.click(main.item("marker.toggleList:lane"));
+    CHECK(main.rig.nav.markerListOpen());
+    main.rig.run("project.undo");
+    MainWindow::settle();
+}
+
+TEST_CASE("dragging the inspector's edge resizes it within its limits and keeps the width as a setting") {
+    MainWindow& main = MainWindow::instance();
+    QQuickItem* inspector = main.item("inspector");
+    const double width = inspector->width();
+    main.drag(main.item("view.inspectorWidth"), QPointF{60, 0});
+    CHECK(main.rig.registry.settingValue("view.inspectorWidth") == static_cast<int>(width) + 60);
+    CHECK(inspector->width() == width + 60);
+    main.drag(main.item("view.inspectorWidth"), QPointF{-2000, 0});
+    CHECK(main.rig.registry.settingValue("view.inspectorWidth") == 200);
+    main.rig.registry.setSetting("view.inspectorWidth", static_cast<int>(width));
     MainWindow::settle();
 }

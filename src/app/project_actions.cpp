@@ -77,14 +77,15 @@ struct BarStep {
     const char* title;
     const char* alias;
     const char* shortcut;
+    const char* extraShortcut;
     int bars;
 };
 
 constexpr std::array kBarSteps{
-    BarStep{"transport.barBack", "Go back one bar", "rewind one bar", ",", -1},
-    BarStep{"transport.barForward", "Go forward one bar", "forward one bar", ".", 1},
-    BarStep{"transport.eightBarsBack", "Go back eight bars", "rewind eight bars", "Shift+,", -8},
-    BarStep{"transport.eightBarsForward", "Go forward eight bars", "forward eight bars", "Shift+.", 8},
+    BarStep{"transport.barBack", "Go back one bar", "rewind one bar", "Left", ",", -1},
+    BarStep{"transport.barForward", "Go forward one bar", "forward one bar", "Right", ".", 1},
+    BarStep{"transport.eightBarsBack", "Go back eight bars", "rewind eight bars", "Shift+Left", "Shift+,", -8},
+    BarStep{"transport.eightBarsForward", "Go forward eight bars", "forward eight bars", "Shift+Right", "Shift+.", 8},
 };
 
 // Steps land on bar lines, so going back from inside a bar first returns to that bar's start, as in Logic.
@@ -177,6 +178,7 @@ void registerTransportActions(Registry& registry, ProjectController& controller)
                             .aliases = {step.alias},
                             .category = "Transport",
                             .shortcut = step.shortcut,
+                            .extraShortcuts = {step.extraShortcut},
                             .run =
                                 [&controller, step](const Json&) {
                                     controller.locate(barStep(controller.positionTicks(),

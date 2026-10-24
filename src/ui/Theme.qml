@@ -44,8 +44,6 @@ QtObject {
     readonly property int swatchSize: 24
     readonly property int switchWidth: 36
     readonly property int snapDuration: 120
-    readonly property int inspectorWidth: 260
-    readonly property int trackHeaderWidth: 240
     readonly property int sidebarWidth: 200
     readonly property int labelWidth: 160
     readonly property int paletteWidth: 560
@@ -189,7 +187,7 @@ QtObject {
     }
 
     // Track icons are Phosphor names and fade icons are our own; an icon we do not bundle shows as a note.
-    readonly property var icons: ["arrows-merge", "automation", "broom", "circle", "copy", "dots-three", "fade-equalPower", "fade-exponential", "fade-linear", "fade-logarithmic", "fade-sCurve", "file", "gear-six", "guitar", "magnet", "magnifying-glass", "metronome", "music-note", "music-notes", "pause", "pencil-simple", "piano-keys", "play", "plus", "sidebar-simple", "skip-back", "sliders", "squares-four", "stop", "waveform", "x"]
+    readonly property var icons: ["arrows-merge", "automation", "broom", "caret-left", "caret-right", "circle", "copy", "dots-three", "fade-equalPower", "fade-exponential", "fade-linear", "fade-logarithmic", "fade-sCurve", "file", "gear-six", "guitar", "list", "magnet", "magnifying-glass", "metronome", "music-note", "music-notes", "pause", "pencil-simple", "piano-keys", "play", "plus", "sidebar-simple", "skip-back", "sliders", "squares-four", "stop", "waveform", "x"]
     function iconSource(name) {
         return "icons/" + (icons.indexOf(name) >= 0 ? name : "music-note") + ".svg"
     }

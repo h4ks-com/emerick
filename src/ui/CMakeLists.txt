@@ -39,6 +39,7 @@ qt_add_qml_module(emerick_ui
         MarkerLane.qml
         Mixer.qml
         MixerStrip.qml
+        PaneEdge.qml
         PanKnob.qml
         PanNumber.qml
         ParamChoice.qml
@@ -63,6 +64,8 @@ qt_add_qml_module(emerick_ui
         icons/arrows-merge.svg
         icons/automation.svg
         icons/broom.svg
+        icons/caret-left.svg
+        icons/caret-right.svg
         icons/circle.svg
         icons/copy.svg
         icons/dots-three.svg
@@ -74,6 +77,7 @@ qt_add_qml_module(emerick_ui
         icons/file.svg
         icons/gear-six.svg
         icons/guitar.svg
+        icons/list.svg
         icons/magnet.svg
         icons/magnifying-glass.svg
         icons/metronome.svg

@@ -21,8 +21,9 @@ Rectangle {
         target: area
     }
     readonly property real pixelsPerTick: Nav.pixelsPerTick
+    readonly property int headerWidth: Registry.settings["view.headerWidth"]
     readonly property int lanesTop: Theme.rulerHeight + Theme.markerLaneHeight
-    readonly property real laneWidth: Math.max(0, width - Theme.trackHeaderWidth)
+    readonly property real laneWidth: Math.max(0, width - area.headerWidth)
     readonly property real visibleTicks: laneWidth / pixelsPerTick
     readonly property real totalTicks: Math.max(Project.endTicks + Theme.timelineTailBars * Project.ticksPerBar,
                                                 scrollTicks + visibleTicks)
@@ -36,7 +37,7 @@ Rectangle {
     readonly property bool showBeats: barStep === 1 && Project.ticksPerBeat * pixelsPerTick >= Theme.beatSpacing
 
     function xOf(ticks) {
-        return Theme.trackHeaderWidth + (ticks - scrollTicks) * pixelsPerTick
+        return area.headerWidth + (ticks - scrollTicks) * pixelsPerTick
     }
 
     function scrollTo(ticks) {
@@ -71,7 +72,7 @@ Rectangle {
         id: trackMenu
         objectName: "menu.trackContext"
         menuName: "Track context"
-        params: ({track: Nav.trackMenu})
+        params: ({track: Nav.trackMenu, selection: true})
         onClosed: Nav.trackMenu = ""
     }
     Connections {
@@ -91,7 +92,7 @@ Rectangle {
             const rows = [...Array(list.count).keys()]
             const row = rows.find(index => area.trackIdAt(index) === Nav.trackMenu)
             const top = area.lanesTop + (row === undefined ? 0 : row) * Nav.trackHeight - list.contentY
-            trackMenu.popup(area, Theme.trackHeaderWidth - Theme.space5, top + Theme.space5)
+            trackMenu.popup(area, area.headerWidth - Theme.space5, top + Theme.space5)
         }
     }
     ActionMenu {
@@ -120,9 +121,9 @@ Rectangle {
     }
 
     function zoomAround(factor, sceneX) {
-        const anchor = scrollTicks + (sceneX - Theme.trackHeaderWidth) / pixelsPerTick
+        const anchor = scrollTicks + (sceneX - area.headerWidth) / pixelsPerTick
         Nav.pixelsPerTick = pixelsPerTick * factor
-        scrollTo(anchor - (sceneX - Theme.trackHeaderWidth) / Nav.pixelsPerTick)
+        scrollTo(anchor - (sceneX - area.headerWidth) / Nav.pixelsPerTick)
     }
 
     function scrollRows(dy) {
@@ -171,7 +172,7 @@ Rectangle {
 
     Item {
         anchors.fill: parent
-        anchors.leftMargin: Theme.trackHeaderWidth
+        anchors.leftMargin: area.headerWidth
         clip: true
         Repeater {
             objectName: "grid"
@@ -179,7 +180,7 @@ Rectangle {
             delegate: Item {
                 required property int index
                 readonly property int bar: (Math.floor(area.scrollTicks / (area.barStep * Project.ticksPerBar)) + index) * area.barStep
-                x: area.xOf(bar * Project.ticksPerBar) - Theme.trackHeaderWidth
+                x: area.xOf(bar * Project.ticksPerBar) - area.headerWidth
                 y: area.lanesTop
                 width: area.barStep * Project.ticksPerBar * area.pixelsPerTick
                 height: area.height - area.lanesTop
@@ -242,7 +243,7 @@ Rectangle {
 
             Item {
                 objectName: "lane:" + row.trackId
-                x: Theme.trackHeaderWidth
+                x: area.headerWidth
                 width: area.laneWidth
                 height: parent.height
                 clip: true
@@ -327,7 +328,7 @@ Rectangle {
             }
 
             TrackHeader {
-                width: Theme.trackHeaderWidth
+                width: area.headerWidth
                 height: parent.height
                 index: row.index
                 trackId: row.trackId
@@ -374,7 +375,7 @@ Rectangle {
             kept = keep
         }
         function reach(at) {
-            x = Math.max(Theme.trackHeaderWidth, Math.min(from.x, at.x))
+            x = Math.max(area.headerWidth, Math.min(from.x, at.x))
             y = Math.max(area.lanesTop, Math.min(from.y, at.y))
             width = Math.min(area.width, Math.max(from.x, at.x)) - x
             height = Math.min(area.height, Math.max(from.y, at.y)) - y
@@ -385,7 +386,7 @@ Rectangle {
                 return
             }
             visible = false
-            const fromTicks = area.scrollTicks + (x - Theme.trackHeaderWidth) / area.pixelsPerTick
+            const fromTicks = area.scrollTicks + (x - area.headerWidth) / area.pixelsPerTick
             const toTicks = fromTicks + width / area.pixelsPerTick
             const firstRow = Math.floor((y - area.lanesTop + list.contentY) / Nav.trackHeight)
             const lastRow = Math.floor((y + height - area.lanesTop + list.contentY) / Nav.trackHeight)
@@ -419,7 +420,7 @@ Rectangle {
 
     Rectangle {
         x: 0
-        width: Theme.trackHeaderWidth
+        width: area.headerWidth
         height: area.lanesTop
         color: Theme.slate
         ChromeButton {
@@ -456,6 +457,27 @@ Rectangle {
             color: Theme.inkDim
             font.pixelSize: Theme.textSmall
         }
+        Row {
+            y: Theme.rulerHeight
+            height: Theme.markerLaneHeight
+            anchors.right: parent.right
+            anchors.rightMargin: Theme.space2
+            Repeater {
+                model: [{id: "marker.previous", icon: "caret-left"}, {id: "marker.next", icon: "caret-right"},
+                    {id: "marker.toggleList", icon: "list"}, {id: "marker.add", icon: "plus"}]
+                ChromeButton {
+                    required property var modelData
+                    objectName: modelData.id + ":lane"
+                    actionId: modelData.id
+                    implicitWidth: Theme.markerLaneHeight
+                    implicitHeight: Theme.markerLaneHeight
+                    iconName: modelData.icon
+                    iconColor: Theme.inkDim
+                    active: modelData.id === "marker.toggleList" && Nav.inspectorOpen && Nav.markerListOpen
+                    activeColor: Theme.ink
+                }
+            }
+        }
         Rectangle {
             anchors.bottom: parent.bottom
             width: parent.width
@@ -465,7 +487,7 @@ Rectangle {
     }
 
     Ruler {
-        x: Theme.trackHeaderWidth
+        x: area.headerWidth
         width: area.laneWidth
         height: Theme.rulerHeight
         scrollTicks: area.scrollTicks
@@ -475,7 +497,7 @@ Rectangle {
     }
 
     MarkerLane {
-        x: Theme.trackHeaderWidth
+        x: area.headerWidth
         y: Theme.rulerHeight
         width: area.laneWidth
         height: Theme.markerLaneHeight
@@ -484,10 +506,17 @@ Rectangle {
     }
 
     Rectangle {
-        x: Theme.trackHeaderWidth - Theme.hairline
+        x: area.headerWidth - Theme.hairline
         width: Theme.hairline
         height: area.height
         color: Theme.rule
+    }
+
+    // We keep the edge above the tracks, so the header meters and the clip edges at bar 1 keep their clicks.
+    PaneEdge {
+        settingId: "view.headerWidth"
+        x: area.headerWidth - width / 2
+        height: area.lanesTop
     }
 
     Item {
@@ -496,7 +525,7 @@ Rectangle {
         x: at - width / 2
         width: Theme.playheadCap
         height: area.height
-        visible: list.count > 0 && at >= Theme.trackHeaderWidth && at <= area.width
+        visible: list.count > 0 && at >= area.headerWidth && at <= area.width
         Rectangle {
             anchors.horizontalCenter: parent.horizontalCenter
             width: Theme.hairline
@@ -523,7 +552,7 @@ Rectangle {
         id: horizontal
         objectName: "tracks.scroll"
         orientation: Qt.Horizontal
-        x: Theme.trackHeaderWidth
+        x: area.headerWidth
         width: area.laneWidth
         anchors.bottom: parent.bottom
         size: area.visibleTicks / area.totalTicks

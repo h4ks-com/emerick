@@ -2,7 +2,8 @@ import QtQuick
 import Emerick.App
 
 // One part of a track route: the device, or with part "channel" its channels. Picking runs the route action with
-// only the params that entry sets, and the action keeps the rest of the route.
+// only the params that entry sets, and the action keeps the rest of the route. On one of several selected tracks it
+// sets every selected track.
 SearchCombo {
     required property string actionId
     required property string trackId
@@ -10,5 +11,5 @@ SearchCombo {
     objectName: actionId + ":" + trackId + (part ? ":" + part : "")
     missingText: part ? currentId : "Missing device"
     toolTip: Registry.actionInfo(actionId).title
-    onPicked: entry => Registry.runAction(actionId, Object.assign({track: trackId}, entry.params))
+    onPicked: entry => Registry.runAction(actionId, Object.assign({track: trackId, selection: true}, entry.params))
 }

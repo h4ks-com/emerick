@@ -220,8 +220,13 @@ ApplicationWindow {
         spacing: 0
         Inspector {
             visible: Nav.inspectorOpen
-            Layout.preferredWidth: Theme.inspectorWidth
+            Layout.preferredWidth: Registry.settings["view.inspectorWidth"]
             Layout.fillHeight: true
+            PaneEdge {
+                settingId: "view.inspectorWidth"
+                anchors.right: parent.right
+                height: parent.height
+            }
         }
         Rectangle {
             visible: Nav.inspectorOpen

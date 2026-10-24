@@ -27,6 +27,7 @@ class Nav : public QObject {
     Q_PROPERTY(emerick::app::Page page READ page WRITE setPage NOTIFY changed)
     Q_PROPERTY(QString settingsTab READ settingsTab WRITE setSettingsTab NOTIFY changed)
     Q_PROPERTY(QString selectedTrack READ selectedTrack WRITE setSelectedTrack NOTIFY changed)
+    Q_PROPERTY(QStringList selectedTracks READ selectedTracks WRITE setSelectedTracks NOTIFY changed)
     Q_PROPERTY(QString renamingTrack READ renamingTrack WRITE setRenamingTrack NOTIFY changed)
     Q_PROPERTY(QString selectedMarker READ selectedMarker WRITE setSelectedMarker NOTIFY selectionChanged)
     Q_PROPERTY(QString renamingMarker READ renamingMarker WRITE setRenamingMarker NOTIFY changed)
@@ -35,6 +36,7 @@ class Nav : public QObject {
     Q_PROPERTY(bool aboutOpen READ aboutOpen WRITE setAboutOpen NOTIFY changed)
     Q_PROPERTY(bool healthOpen READ healthOpen WRITE setHealthOpen NOTIFY changed)
     Q_PROPERTY(bool inspectorOpen READ inspectorOpen WRITE setInspectorOpen NOTIFY changed)
+    Q_PROPERTY(bool markerListOpen READ markerListOpen WRITE setMarkerListOpen NOTIFY changed)
     Q_PROPERTY(bool projectMenuOpen READ projectMenuOpen WRITE setProjectMenuOpen NOTIFY changed)
     Q_PROPERTY(bool consoleOpen READ consoleOpen WRITE setConsoleOpen NOTIFY changed)
     Q_PROPERTY(bool mixerOpen READ mixerOpen WRITE setMixerOpen NOTIFY changed)
@@ -58,7 +60,9 @@ public:
 
     [[nodiscard]] Page page() const { return page_; }
     [[nodiscard]] QString settingsTab() const { return settingsTab_; }
+    // The track the inspector shows, which is always one of the selected tracks.
     [[nodiscard]] QString selectedTrack() const { return selectedTrack_; }
+    [[nodiscard]] QStringList selectedTracks() const { return selectedTracks_; }
     // The track whose header shows its name field.
     [[nodiscard]] QString renamingTrack() const { return renamingTrack_; }
     // Selecting clips deselects the marker and selecting a marker deselects the clips, so Delete removes what was
@@ -72,6 +76,8 @@ public:
     [[nodiscard]] bool aboutOpen() const { return aboutOpen_; }
     [[nodiscard]] bool healthOpen() const { return healthOpen_; }
     [[nodiscard]] bool inspectorOpen() const { return inspectorOpen_; }
+    // Whether the inspector lists the markers.
+    [[nodiscard]] bool markerListOpen() const { return markerListOpen_; }
     [[nodiscard]] bool projectMenuOpen() const { return projectMenuOpen_; }
     [[nodiscard]] bool consoleOpen() const { return consoleOpen_; }
     [[nodiscard]] bool mixerOpen() const { return mixerOpen_; }
@@ -101,7 +107,16 @@ public:
 
     void setPage(Page value) { assign(page_, value, &Nav::changed); }
     void setSettingsTab(const QString& value) { assign(settingsTab_, value, &Nav::changed); }
-    void setSelectedTrack(const QString& value) { assign(selectedTrack_, value, &Nav::changed); }
+    void setSelectedTrack(const QString& value) {
+        selectTracks(value.isEmpty() ? QStringList{} : QStringList{value}, value);
+    }
+    void setSelectedTracks(const QStringList& value) {
+        selectTracks(value, value.contains(selectedTrack_) || value.isEmpty() ? selectedTrack_ : value.back());
+    }
+    void selectTracks(const QStringList& tracks, const QString& primary) {
+        assign(selectedTracks_, tracks, &Nav::changed);
+        assign(selectedTrack_, tracks.contains(primary) ? primary : QString{}, &Nav::changed);
+    }
     void setRenamingTrack(const QString& value) { assign(renamingTrack_, value, &Nav::changed); }
     void setSelectedMarker(const QString& value) {
         if (!value.isEmpty()) {
@@ -116,6 +131,7 @@ public:
     void setAboutOpen(bool value) { assign(aboutOpen_, value, &Nav::changed); }
     void setHealthOpen(bool value) { assign(healthOpen_, value, &Nav::changed); }
     void setInspectorOpen(bool value) { assign(inspectorOpen_, value, &Nav::changed); }
+    void setMarkerListOpen(bool value) { assign(markerListOpen_, value, &Nav::changed); }
     void setProjectMenuOpen(bool value) { assign(projectMenuOpen_, value, &Nav::changed); }
     void setConsoleOpen(bool value) { assign(consoleOpen_, value, &Nav::changed); }
     void setMixerOpen(bool value) { assign(mixerOpen_, value, &Nav::changed); }
@@ -168,6 +184,7 @@ public:
         return {{"page", enumKey(page_)},
                 {"settingsTab", settingsTab_.toStdString()},
                 {"selectedTrack", selectedTrack_.toStdString()},
+                {"selectedTracks", strings(selectedTracks_)},
                 {"selectedClips", strings(selectedClips_)},
                 {"selectedMarker", selectedMarker_.toStdString()},
                 {"pixelsPerTick", pixelsPerTick_},
@@ -177,6 +194,7 @@ public:
                 {"aboutOpen", aboutOpen_},
                 {"healthOpen", healthOpen_},
                 {"inspectorOpen", inspectorOpen_},
+                {"markerListOpen", markerListOpen_},
                 {"projectMenuOpen", projectMenuOpen_},
                 {"consoleOpen", consoleOpen_},
                 {"mixerOpen", mixerOpen_},
@@ -217,6 +235,7 @@ private:
     Page page_ = Page::Main;
     QString settingsTab_ = QStringLiteral("general");
     QString selectedTrack_;
+    QStringList selectedTracks_;
     QString renamingTrack_;
     QString selectedMarker_;
     QString renamingMarker_;
@@ -225,6 +244,7 @@ private:
     bool aboutOpen_ = false;
     bool healthOpen_ = false;
     bool inspectorOpen_ = true;
+    bool markerListOpen_ = true;
     bool projectMenuOpen_ = false;
     bool consoleOpen_ = false;
     bool mixerOpen_ = false;

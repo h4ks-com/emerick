@@ -178,17 +178,17 @@ void registerClipEditActions(Registry& registry, ProjectController& controller, 
          .title = "Select previous clip",
          .aliases = {"clip to the left"},
          .category = "Clips",
-         .shortcut = "Left",
          .schema = {{"properties", {{"track", {{"type", "string"}}}}}},
-         .run = [&controller, &nav](const Json& params) { return selectNeighborClip(controller, nav, params, -1); }});
+         .run = [&controller, &nav](const Json& params) { return selectNeighborClip(controller, nav, params, -1); },
+         .menus = {kEditMenu}});
     registry.addAction(
         {.id = "clip.selectNext",
          .title = "Select next clip",
          .aliases = {"clip to the right"},
          .category = "Clips",
-         .shortcut = "Right",
          .schema = {{"properties", {{"track", {{"type", "string"}}}}}},
-         .run = [&controller, &nav](const Json& params) { return selectNeighborClip(controller, nav, params, 1); }});
+         .run = [&controller, &nav](const Json& params) { return selectNeighborClip(controller, nav, params, 1); },
+         .menus = {kEditMenu}});
     registry.addAction({.id = "view.zoomToFit",
                         .title = "Zoom to fit",
                         .aliases = {"fit selection", "show whole project"},
@@ -211,7 +211,8 @@ void registerClipEditActions(Registry& registry, ProjectController& controller, 
                                 } else if (const auto marker = selectedMarker(controller, nav)) {
                                     deleteMarker(controller, *marker);
                                 } else {
-                                    removeTrack(controller, targetTrack(controller, nav, Json::object()));
+                                    editTargets(controller, nav, {{"selection", true}}, "remove tracks",
+                                                [&](const model::TrackId& id) { removeTrack(controller, id); });
                                 }
                                 return projectState(controller);
                             },

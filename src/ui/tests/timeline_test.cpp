@@ -10,6 +10,7 @@
 #include <string>
 #include <variant>
 
+#include "emerick/app/core_actions.hpp"
 #include "emerick/app/qml_exposure.hpp"
 #include "project_rig.hpp"
 
@@ -30,6 +31,7 @@ struct Timeline {
     QQuickView view;
 
     Timeline() {
+        registerCoreActions(rig.registry, rig.nav, {});
         exposeToQml(*view.engine(), rig.registry, rig.nav, *rig.controller, tracks, peaks);
         view.setResizeMode(QQuickView::SizeRootObjectToView);
         view.loadFromModule("Emerick.Ui", "TrackList");

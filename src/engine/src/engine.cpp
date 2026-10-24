@@ -161,6 +161,9 @@ struct Engine::Impl {
         }
         const StreamRequest request = requestFor(next);
         checkRates(request.deviceIds);
+        const bool tempoChanged = next.tempo != session.tempo;
+        const Ticks playhead =
+            session.tempo.framesToTicks(rt.publishedFrame.load(std::memory_order_relaxed), layout.sampleRate);
         const bool changed = !layoutRequest || !sameDevices(request, *layoutRequest);
         if (changed && streamOpen) {
             closeStream();
@@ -175,6 +178,10 @@ struct Engine::Impl {
         }
         session = std::move(next);
         builder.prune();
+        if (tempoChanged) {
+            push({.type = Command::Type::locate, .ticks = playhead});
+            ++locatesRequested;
+        }
     }
 
     void play() {

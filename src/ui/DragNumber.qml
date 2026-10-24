@@ -28,6 +28,7 @@ Item {
     // click or Alt-click sets resetValue where a click would open the field for typing.
     property bool showsText: true
     property bool dragsVertically: false
+    property bool stepArrows: true
     property real resetValue: NaN
     property alias font: label.font
     property color textColor: Theme.ink
@@ -301,8 +302,8 @@ Item {
         required property int direction
         y: (field.height - height) / 2
         width: Theme.space4
-        // The arrows show only where they fit beside the number, so they never cover a large one such as the tempo.
-        visible: (hover.hovered || field.editing) && !field.held && field.showsText
+        // The arrows show only where they fit beside the number, so they never cover a large one.
+        visible: (hover.hovered || field.editing) && !field.held && field.showsText && field.stepArrows
                  && (field.editing || field.width - label.contentWidth >= width)
         text: direction < 0 ? "‹" : "›"
         color: Theme.inkDim

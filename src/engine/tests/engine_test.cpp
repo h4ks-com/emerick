@@ -92,6 +92,15 @@ TEST_CASE("transport position advances in frames and ticks and locates by ticks"
     CHECK(rig.engine.position().ticks == 2400);
 }
 
+TEST_CASE("a tempo change keeps the playhead on its tick") {
+    Rig rig;
+    rig.engine.setSession({.tempo = kTempo});
+    rig.engine.locate(1920);
+    rig.engine.setSession({.tempo = {60.0, {4, 4}}});
+    CHECK(rig.engine.position().ticks == 1920);
+    CHECK(rig.engine.position().frames == 96000);
+}
+
 TEST_CASE("a stopped session with no track listening opens no device and still locates") {
     Rig rig;
     Track vox{.id = "vox", .kind = TrackKind::audio};

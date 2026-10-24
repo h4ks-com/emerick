@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Controls.Basic
+import QtQuick.Controls.impl
 import QtQuick.Shapes
 import Emerick.App
 
@@ -106,7 +107,7 @@ Item {
         anchors.topMargin: Theme.clipInset
         anchors.bottomMargin: Theme.clipInset + Theme.hairline
         radius: Theme.radiusClip
-        color: content.clipItem.trackColor
+        color: content.clipItem.clipMuted ? Theme.mutedClip : content.clipItem.trackColor
         clip: true
 
         // We tint the label opaque, because its square bottom half overlaps its rounded top and would darken twice.
@@ -115,18 +116,29 @@ Item {
             width: parent.width
             height: Theme.clipLabelHeight
             radius: Theme.radiusClip
-            color: Qt.tint(content.clipItem.trackColor, Theme.clipLabel)
+            color: Qt.tint(body.color, Theme.clipLabel)
+            // The name stays at the left edge of the view while the clip starts before it, as in Logic.
+            readonly property real leftEdge: Theme.fadeHandle + Theme.space1
+                                             + Math.max(0, (content.clipItem.viewFrom - content.clipItem.start) * content.clipItem.pixelsPerTick)
             Rectangle {
                 anchors.bottom: parent.bottom
                 width: parent.width
                 height: parent.radius
                 color: label.color
             }
+            IconImage {
+                id: mutedIcon
+                objectName: "clip.muted:" + content.clipItem.clipId
+                visible: content.clipItem.clipMuted
+                x: label.leftEdge
+                anchors.verticalCenter: parent.verticalCenter
+                source: Theme.iconSource("speaker-slash")
+                sourceSize: Qt.size(Theme.clipLabelHeight - Theme.space1, Theme.clipLabelHeight - Theme.space1)
+                color: Theme.ink
+            }
             Text {
                 anchors.fill: parent
-                // The name stays at the left edge of the view while the clip starts before it, as in Logic.
-                anchors.leftMargin: Theme.fadeHandle + Theme.space1
-                                    + Math.max(0, (content.clipItem.viewFrom - content.clipItem.start) * content.clipItem.pixelsPerTick)
+                anchors.leftMargin: label.leftEdge + (mutedIcon.visible ? mutedIcon.width + Theme.space1 : 0)
                 anchors.rightMargin: Theme.space1
                 verticalAlignment: Text.AlignVCenter
                 text: content.clipItem.trackName + "   Take " + content.clipItem.clip.take

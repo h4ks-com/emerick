@@ -86,7 +86,7 @@ void updateTake(RealtimeState& state, Snapshot& snapshot) {
         const Ticks startTick = snapshot.tempo.framesToTicks(state.frame, snapshot.sampleRate);
         for (TrackState& track : snapshot.tracks) {
             if (track.armed && track.recorder) {
-                track.recorder->begin(startTick);
+                track.recorder->begin(startTick, track.recordDelay);
             }
         }
     } else if (!shouldTake) {

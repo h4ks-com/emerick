@@ -61,6 +61,7 @@ struct AudioClip {
     core::FadeShape fadeOutShape = core::FadeShape::linear;
     double fadeInCurve = 0.0;
     double fadeOutCurve = 0.0;
+    bool muted = false;
 
     bool operator==(const AudioClip&) const = default;
 };
@@ -91,12 +92,14 @@ struct MidiClip {
     Ticks length = 0;
     std::vector<MidiEvent> events;
     std::vector<Note> notes;
+    bool muted = false;
 
     bool operator==(const MidiClip&) const = default;
 };
 
 // Clips may overlap; overlapping clips stack as takes and nothing is overwritten. A later clip in the list plays over
-// earlier ones wherever it plays at full gain, so its fades crossfade with the clips beneath it.
+// earlier ones wherever it plays at full gain, so its fades crossfade with the clips beneath it. A muted clip plays
+// nothing, so the clips beneath it play there.
 using Clip = std::variant<AudioClip, MidiClip>;
 
 // A send feeds a copy of a track's signal to a bus, before or after the track's fader and pan.
@@ -166,6 +169,9 @@ struct Track {
     std::vector<Clip> clips;
     AutomationMode automationMode = AutomationMode::read;
     std::vector<AutomationLane> automation;
+    // Moves the track's takes later by this many milliseconds, or earlier when negative, to make up for an
+    // instrument whose audio or MIDI reaches us late.
+    double recordDelayMs = 0.0;
     nlohmann::json data;  // plugin-owned, the model never interprets it
 
     bool operator==(const Track&) const = default;
@@ -198,6 +204,8 @@ struct ClipRef {
 };
 
 const ClipId& clipId(const Clip& clip);
+bool clipMuted(const Clip& clip);
+void setClipMuted(Clip& clip, bool muted);
 
 Track* findTrack(Document& document, const TrackId& id);
 const Track* findTrack(const Document& document, const TrackId& id);

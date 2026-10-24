@@ -107,6 +107,8 @@ struct Track {
     MidiRoute midiOut;
     bool midiThru = false;
     bool claimsSysex = false;
+    // Moves the track's takes later by this many milliseconds, or earlier when negative.
+    double recordDelayMs = 0.0;
     // A track with an output bus plays into that bus in place of audioOut.
     std::string outputBus;
     std::vector<Send> sends;
@@ -179,6 +181,22 @@ struct RecordedTake {
     // Frames the writer fell behind on, written as silence so later audio stays in time.
     Frames droppedFrames = 0;
     std::uint64_t droppedMidiEvents = 0;
+};
+
+// A take in progress reports its peaks over this many frames, the finest level the app's peak cache keeps.
+inline constexpr Frames kTakePeakFrames = 256;
+
+// What a take in progress gained since the last reading, so the app can draw it growing.
+struct TakeProgress {
+    std::string trackId;
+    std::uint64_t take = 0;  // grows with every take the track starts
+    Ticks startTick = 0;
+    std::filesystem::path audioFile;
+    Frames frames = 0;                  // audio frames in the file so far
+    std::vector<MidiEvent> midiEvents;  // ticks relative to startTick
+    // The lowest and highest sample of every kTakePeakFrames frames, over all channels.
+    std::vector<float> peakMinimum;
+    std::vector<float> peakMaximum;
 };
 
 }  // namespace emerick::engine

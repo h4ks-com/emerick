@@ -40,7 +40,7 @@ The engine never sees the model. `emerick_app` turns the document into an engine
 1. The UI thread builds an immutable `Session` snapshot once per event loop turn that changed the project, and swaps it in by atomic pointer at the next block. Retired snapshots return to the UI thread for deletion.
 2. Live changes (mute, arm, transport) go through an SPSC command queue drained at block start.
 3. The audio callback runs the graph single threaded; a worker pool joins later behind the same interface when profiling needs it.
-4. Armed audio tracks write into per-track rings; a writer thread writes the files. Clip playback reads ahead on a reader thread.
+4. Armed audio tracks write into per-track rings; a writer thread writes the files. Clip playback reads ahead on a reader thread. The writer thread also keeps each take in progress (its frames, peaks and MIDI so far), which the app polls to draw the take while it records. An audio take skips the round trip latency the devices report, so it lines up with what the player heard, and each track's record delay moves its takes later or earlier on top of that.
 5. MIDI arrives with absolute timestamps on the MIDI thread, goes through an SPSC queue, and is placed on the timeline in the callback.
 6. The audio thread never allocates, locks or frees.
 

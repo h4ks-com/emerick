@@ -6,8 +6,10 @@
 #include <QVariantList>
 #include <QVariantMap>
 #include <chrono>
+#include <cstdint>
 #include <filesystem>
 #include <functional>
+#include <map>
 #include <memory>
 #include <optional>
 #include <set>
@@ -15,6 +17,7 @@
 #include <string_view>
 #include <vector>
 
+#include "emerick/app/peak_cache.hpp"
 #include "emerick/app/registry.hpp"
 #include "emerick/app/track_meters.hpp"
 #include "emerick/engine/engine.hpp"
@@ -24,6 +27,18 @@ namespace emerick::app {
 
 inline constexpr int kMidiChannels = 16;
 inline constexpr int kTrackColors = 8;
+
+// A take in progress as the tracks area draws it, until it lands as a clip and one undo step.
+struct TakePreview {
+    std::uint64_t take = 0;
+    core::Ticks start = 0;
+    core::Ticks length = 0;
+    std::filesystem::path audioFile;
+    core::Frames frames = 0;
+    engine::RecordedTake recorded;
+    // The track as the take would leave it, for every kind but audio, once the take holds any MIDI.
+    std::optional<model::Track> track;
+};
 
 class ProjectController : public QObject {
     Q_OBJECT
@@ -110,6 +125,8 @@ public:
 
     // Returns how many finished takes it added, one undo step each.
     int collectTakes();
+    // The track's take in progress, or null while it records none.
+    [[nodiscard]] const TakePreview* takePreview(const model::TrackId& id) const;
 
     // Project edits reach the engine and the views once per event loop turn; flush sends a pending one right away.
     void flush();
@@ -165,6 +182,12 @@ signals:
     void healthChanged();
     // The folder, the name or the edited flag changed.
     void fileChanged();
+    // The track's take in progress grew, started or ended.
+    void takePreviewChanged(const QString& trackId);
+    // A take in progress wrote audio with these finest peaks, emitted before the preview that shows them.
+    void takePeaks(const std::filesystem::path& file, const emerick::app::Peaks& peaks);
+    // An audio take landed, so its peaks now come from the finished file.
+    void audioTakeLanded(const std::filesystem::path& file);
 
 private:
     struct AutomationPass {
@@ -197,6 +220,9 @@ private:
     void poll();
     void readLevels();
     void addTake(const engine::RecordedTake& take);
+    void updatePreviews();
+    void updatePreview(const std::string& trackId, engine::TakeProgress progress);
+    void endPreview(const std::string& trackId);
     void moveTo(const std::filesystem::path& folder, model::Document document);
     [[nodiscard]] static qint64 snappedIf(bool snap, qint64 ticks, qint64 step);
 
@@ -232,6 +258,7 @@ private:
     bool warmWhileActive_ = true;
     QString streamSummary_;
     std::vector<AutomationPass> passes_;
+    std::map<std::string, TakePreview> previews_;
     QTimer timer_;
 };
 

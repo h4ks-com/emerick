@@ -68,6 +68,28 @@ QVariantList laneList(const model::Track& track) {
            std::ranges::to<QVariantList>();
 }
 
+// The take in progress on a clip lane, as the tracks area draws it, or an empty map.
+QVariantMap previewEntry(const TakePreview* preview, ClipType type) {
+    if (preview == nullptr || type == ClipType::none) {
+        return {};
+    }
+    QVariantMap entry{{"type", clipTypeName(type)},
+                      {"start", QVariant::fromValue(preview->start)},
+                      {"length", QVariant::fromValue(preview->length)},
+                      {"file", qs(preview->audioFile.string())},
+                      {"frames", QVariant::fromValue(preview->frames)},
+                      {"notes", QVariantList{}}};
+    if (preview->track && !preview->track->clips.empty()) {
+        std::visit(core::Overloaded{[](const model::AudioClip&) {},
+                                    [&](const model::MidiClip& midi) {
+                                        entry["notes"] = noteList(midi);
+                                        entry["length"] = QVariant::fromValue(std::max(preview->length, midi.length));
+                                    }},
+                   preview->track->clips.back());
+    }
+    return entry;
+}
+
 }  // namespace
 
 QVariantMap TrackListModel::clipEntry(const model::Clip& clip, int take) const {
@@ -77,6 +99,7 @@ QVariantMap TrackListModel::clipEntry(const model::Clip& clip, int take) const {
     const core::Ticks end = model::clipEnd(clip);
     QVariantMap entry{{"id", qs(model::clipId(clip).value)},
                       {"take", take},
+                      {"muted", model::clipMuted(clip)},
                       {"start", QVariant::fromValue(start)},
                       {"length", QVariant::fromValue(end - start)},
                       {"startText", qs(tempo.toBarBeatTick(start).format())},
@@ -187,6 +210,15 @@ TrackListModel::TrackListModel(ProjectController& controller, const Registry& re
       rows_(project_.document().tracks | std::views::transform(&model::Track::id) | std::ranges::to<std::vector>()),
       listener_(project_.addListener([this](const model::Change& change) { changed(change); })) {
     connect(&controller_, &ProjectController::transportChanged, this, &TrackListModel::transportMoved);
+    connect(&controller_, &ProjectController::takePreviewChanged, this, &TrackListModel::takePreviewChanged);
+}
+
+void TrackListModel::takePreviewChanged(const QString& trackId) {
+    const auto row = std::ranges::find(rows_, model::TrackId{trackId.toStdString()});
+    if (row != rows_.end()) {
+        const QModelIndex at = index(static_cast<int>(row - rows_.begin()));
+        emit dataChanged(at, at, {static_cast<int>(Role::takePreview), static_cast<int>(Role::trackData)});
+    }
 }
 
 TrackListModel::~TrackListModel() { project_.removeListener(listener_); }
@@ -253,8 +285,10 @@ QVariant TrackListModel::data(const QModelIndex& index, int role) const {
             return trackName(track.outputBus);
         case Role::clips:
             return clipList(track);
-        case Role::trackData:
-            return toVariant(track.data);
+        case Role::trackData: {
+            const TakePreview* preview = controller_.takePreview(track.id);
+            return toVariant(preview != nullptr && preview->track ? preview->track->data : track.data);
+        }
         case Role::laneComponent:
             return qs(type != nullptr ? type->laneComponent : std::string{});
         case Role::clipType:
@@ -265,40 +299,45 @@ QVariant TrackListModel::data(const QModelIndex& index, int role) const {
             return laneList(track);
         case Role::automationParams:
             return paramList(track);
+        case Role::recordDelayMs:
+            return track.recordDelayMs;
+        case Role::takePreview:
+            return previewEntry(controller_.takePreview(track.id), clipTypeOf(type));
     }
     return {};
 }
 
 QHash<int, QByteArray> TrackListModel::roleNames() const {
-    static constexpr std::array<std::pair<Role, const char*>, 28> kNames{
-        {{Role::id, "trackId"},
-         {Role::name, "name"},
-         {Role::kind, "kind"},
-         {Role::icon, "icon"},
-         {Role::colorIndex, "colorIndex"},
-         {Role::mute, "mute"},
-         {Role::solo, "solo"},
-         {Role::armed, "armed"},
-         {Role::monitor, "monitor"},
-         {Role::gainDb, "gainDb"},
-         {Role::pan, "pan"},
-         {Role::audioIn, "audioIn"},
-         {Role::audioOut, "audioOut"},
-         {Role::midiIn, "midiIn"},
-         {Role::midiOut, "midiOut"},
-         {Role::audioRoutes, "audioRoutes"},
-         {Role::midiRoutes, "midiRoutes"},
-         {Role::busRoutes, "busRoutes"},
-         {Role::sends, "sends"},
-         {Role::inserts, "inserts"},
-         {Role::outputBusName, "outputBusName"},
-         {Role::clips, "clips"},
-         {Role::trackData, "trackData"},
-         {Role::laneComponent, "laneComponent"},
-         {Role::clipType, "clipType"},
-         {Role::automationMode, "automationMode"},
-         {Role::automation, "automation"},
-         {Role::automationParams, "automationParams"}}};
+    static constexpr std::array<std::pair<Role, const char*>, 30> kNames{{{Role::id, "trackId"},
+                                                                          {Role::name, "name"},
+                                                                          {Role::kind, "kind"},
+                                                                          {Role::icon, "icon"},
+                                                                          {Role::colorIndex, "colorIndex"},
+                                                                          {Role::mute, "mute"},
+                                                                          {Role::solo, "solo"},
+                                                                          {Role::armed, "armed"},
+                                                                          {Role::monitor, "monitor"},
+                                                                          {Role::gainDb, "gainDb"},
+                                                                          {Role::pan, "pan"},
+                                                                          {Role::audioIn, "audioIn"},
+                                                                          {Role::audioOut, "audioOut"},
+                                                                          {Role::midiIn, "midiIn"},
+                                                                          {Role::midiOut, "midiOut"},
+                                                                          {Role::audioRoutes, "audioRoutes"},
+                                                                          {Role::midiRoutes, "midiRoutes"},
+                                                                          {Role::busRoutes, "busRoutes"},
+                                                                          {Role::sends, "sends"},
+                                                                          {Role::inserts, "inserts"},
+                                                                          {Role::outputBusName, "outputBusName"},
+                                                                          {Role::clips, "clips"},
+                                                                          {Role::trackData, "trackData"},
+                                                                          {Role::laneComponent, "laneComponent"},
+                                                                          {Role::clipType, "clipType"},
+                                                                          {Role::automationMode, "automationMode"},
+                                                                          {Role::automation, "automation"},
+                                                                          {Role::automationParams, "automationParams"},
+                                                                          {Role::recordDelayMs, "recordDelayMs"},
+                                                                          {Role::takePreview, "takePreview"}}};
     QHash<int, QByteArray> names;
     for (const auto& [role, name] : kNames) {
         names.insert(static_cast<int>(role), name);

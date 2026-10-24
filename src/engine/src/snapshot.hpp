@@ -104,6 +104,7 @@ struct TrackState {
     std::vector<std::uint8_t> midiBytes;
     std::array<std::bitset<kMidiNotes>, kMidiChannels> soundingNotes{};
     std::shared_ptr<TakeRecorder> recorder;
+    Frames recordDelay = 0;
     std::shared_ptr<LevelMeter> inputMeter;
     std::shared_ptr<LevelMeter> outputMeter;
     // The track's signal per channel for the current block, so we apply its fader and pan and meter it before it joins

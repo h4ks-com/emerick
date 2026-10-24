@@ -125,6 +125,7 @@ Rectangle {
                 required property var midiIn
                 required property var midiOut
                 required property real pan
+                required property real recordDelayMs
                 readonly property var clip: visible && Nav.selectedClips.length > 0
                                             ? clips.find(entry => entry.id === Nav.selectedClips[0]) : undefined
                 readonly property bool audioClip: clip !== undefined && clip.type === "audio"
@@ -201,6 +202,19 @@ Rectangle {
                     trackId: panel.trackId
                     ports: Project.routeDevices.midiOut
                     route: panel.midiOut
+                }
+                RouteLabel { text: "Record delay"; visible: !panel.busRoutes }
+                DragNumber {
+                    visible: !panel.busRoutes
+                    objectName: "track.setRecordDelay:" + panel.trackId
+                    actionId: "track.setRecordDelay"
+                    value: panel.recordDelayMs
+                    from: -Theme.maxRecordDelayMs
+                    to: Theme.maxRecordDelayMs
+                    decimals: 1
+                    unit: "ms"
+                    actionsFor: number => [{id: actionId, params: {track: panel.trackId, ms: number}}]
+                    Layout.fillWidth: true
                 }
                 Label {
                     objectName: "inspector.trackErrors"

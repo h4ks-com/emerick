@@ -233,6 +233,7 @@ Rectangle {
             required property string automationMode
             required property var automation
             required property var automationParams
+            required property var takePreview
             readonly property string automationParam: Nav.automationLanes[trackId] ?? "gain"
             readonly property var shownParam: automationParams.find(param => param.id === automationParam) ?? null
             readonly property bool dropTarget: area.dragRows !== 0 && index === area.dragFrom + area.dragRows
@@ -310,6 +311,16 @@ Rectangle {
                             viewTo: area.scrollTicks + area.visibleTicks
                             height: row.height
                         }
+                    }
+                    TakeRegion {
+                        objectName: "takePreview:" + row.trackId
+                        visible: row.laneComponent === "" && row.takePreview.type !== undefined
+                        take: visible ? row.takePreview : {type: "", start: 0, length: 0, file: "", frames: 0, notes: []}
+                        title: row.name + "   Take " + (row.clips.length + 1)
+                        pixelsPerTick: area.pixelsPerTick
+                        viewFrom: area.scrollTicks
+                        viewTo: area.scrollTicks + area.visibleTicks
+                        height: row.height
                     }
                 }
 

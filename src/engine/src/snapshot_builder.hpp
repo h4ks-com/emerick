@@ -43,6 +43,7 @@ public:
     [[nodiscard]] const std::map<std::string, std::weak_ptr<Effect>>& compressors() const { return compressors_; }
     // The output meter of every track with an audio output, by track id.
     [[nodiscard]] const Meters& outputMeters() const { return outputMeters_; }
+    [[nodiscard]] const std::map<std::string, std::weak_ptr<TakeRecorder>>& recorders() const { return recorders_; }
 
 private:
     std::shared_ptr<MidiInputPort> inputPort(const std::string& id);

@@ -46,6 +46,8 @@ public:
         automationMode,
         automation,
         automationParams,
+        recordDelayMs,
+        takePreview,
     };
 
     TrackListModel(ProjectController& controller, const Registry& registry, QObject* parent = nullptr);
@@ -73,6 +75,7 @@ private:
     void changed(const model::Change& change);
     // Rows whose controls follow automation update as the playhead moves.
     void transportMoved();
+    void takePreviewChanged(const QString& trackId);
     // Removes, moves and inserts rows until they match the document's tracks, so views keep their other delegates.
     void syncRows();
 

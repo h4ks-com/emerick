@@ -120,7 +120,25 @@ struct MainWindow {
              Qt::NoModifier);
     }
 
+    // Scrolls the views that hold target until it shows, as a person would before clicking it.
+    static void scrollIntoView(QQuickItem* target) {
+        for (QQuickItem* view = target->parentItem(); view != nullptr; view = view->parentItem()) {
+            if (!view->inherits("QQuickFlickable")) {
+                continue;
+            }
+            const double top = target->mapToItem(view, QPointF{0, 0}).y();
+            const double bottom = top + target->height();
+            const double contentY = view->property("contentY").toDouble();
+            if (bottom > view->height()) {
+                view->setProperty("contentY", contentY + bottom - view->height());
+            } else if (top < 0) {
+                view->setProperty("contentY", contentY + top);
+            }
+        }
+    }
+
     void click(QQuickItem* target, Qt::MouseButton button = Qt::LeftButton) const {
+        scrollIntoView(target);
         // We grab a frame so pending layout passes run and we click where the item really is.
         window->grabWindow();
         const QPointF at = target->mapToScene({target->width() / 2, target->height() / 2});

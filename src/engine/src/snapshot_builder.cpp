@@ -1,6 +1,7 @@
 #include "snapshot_builder.hpp"
 
 #include <algorithm>
+#include <cmath>
 #include <ranges>
 #include <stdexcept>
 #include <utility>
@@ -8,6 +9,8 @@
 namespace emerick::engine {
 
 namespace {
+
+constexpr double kMillisecondsPerSecond = 1000.0;
 
 template <class T, class Make>
 std::shared_ptr<T> cached(std::map<std::string, std::weak_ptr<T>>& cache, const std::string& key, Make make) {
@@ -336,6 +339,7 @@ void SnapshotBuilder::addRecorder(TrackState& state, const Track& track, const S
     if (track.kind == TrackKind::audio) {
         state.inputMeter = meter(inputMeters_, track.id, state.inputs.size());
     }
+    state.recordDelay = std::llround(track.recordDelayMs * layout.sampleRate / kMillisecondsPerSecond);
     const int channels = static_cast<int>(state.inputs.size());
     const std::string key = track.id + "/" + std::to_string(static_cast<int>(track.kind)) + "/" +
                             std::to_string(channels) + "/" + std::to_string(captureOffset) + "/" +

@@ -51,6 +51,9 @@ struct RealtimeState {
     Snapshot* current = nullptr;
     Frames frame = 0;
     bool transportPlaying = false;
+    // We send Start after the events at the start frame, so a keyboard has its Style section and chord before it
+    // starts.
+    bool startPending = false;
     bool recordEnabled = false;
     bool taking = false;
     Frames takeStartFrame = 0;

@@ -16,8 +16,6 @@ namespace emerick::yamaha {
 
 namespace {
 
-constexpr int kMidiChannels = 16;
-
 std::vector<RawEvent> rawEvents(const engine::RecordedTake& take) {
     return take.midiEvents | std::views::transform([&](const engine::MidiEvent& event) {
                return RawEvent{take.startTick + event.tick, event.bytes};
@@ -36,10 +34,6 @@ void mergeTake(model::Track& track, std::vector<Event> recorded, core::Ticks fro
     }
     std::ranges::stable_sort(events, {}, &Event::at);
     track.data = events;
-}
-
-int outChannel(const app::Registry& registry, const model::Track& track, const char* setting) {
-    return track.midiOut.channel != 0 ? track.midiOut.channel : registry.settingValue(setting).get<int>();
 }
 
 engine::Track withRendered(const model::Track& track, const std::vector<RawEvent>& rendered) {
@@ -69,14 +63,6 @@ void addSetting(app::Registry& registry, app::Setting setting) {
     registry.addSetting(std::move(setting));
 }
 
-app::Json midiOutputs(const app::ProjectController& controller) {
-    return controller.engine().midiPorts() |
-           std::views::filter([](const engine::MidiPortInfo& port) { return !port.isInput; }) |
-           std::views::transform(
-               [](const engine::MidiPortInfo& port) { return app::Json{{"id", port.id}, {"name", port.name}}; }) |
-           std::ranges::to<app::Json::array_t>();
-}
-
 void registerDeviceProfile(app::Registry& registry) {
     app::MidiDeviceProfile profile{.nameMatch = "Digital Keyboard"};
     for (const Part& part : genos2Parts()) {
@@ -94,30 +80,8 @@ ChartOptions chartOptions(const app::Registry& registry, int shiftBars) {
             .anticipation = registry.settingValue(kAnticipationSetting).get<bool>()};
 }
 
-void registerSettings(app::Registry& registry, app::ProjectController& controller, app::Nav& nav) {
+void registerSettings(app::Registry& registry, app::Nav& nav) {
     app::addSettingsSection(registry, nav, {.key = "yamaha", .title = "Yamaha Arranger", .group = app::kPluginsGroup});
-    addSetting(registry, {.id = kChordChannelSetting,
-                          .title = "Chord detect channel",
-                          .aliases = {"chord channel"},
-                          .type = app::SettingType::Integer,
-                          .defaultValue = kChordDetectChannel,
-                          .minimum = 1,
-                          .maximum = kMidiChannels,
-                          .hint = "Match the keyboard's chord detect channel"});
-    addSetting(registry, {.id = kControllerPortSetting,
-                          .title = "External controller port",
-                          .aliases = {"section port"},
-                          .type = app::SettingType::String,
-                          .defaultValue = "Digital Keyboard Port 2",
-                          .hint = "Match the keyboard's external controller port",
-                          .suggestions = [&controller] { return midiOutputs(controller); }});
-    addSetting(registry, {.id = kControllerChannelSetting,
-                          .title = "External controller channel",
-                          .aliases = {"section channel"},
-                          .type = app::SettingType::Integer,
-                          .defaultValue = 1,
-                          .minimum = 1,
-                          .maximum = kMidiChannels});
     addSetting(
         registry,
         {.id = kSnapSetting, .title = "Snap chords to beats", .type = app::SettingType::Boolean, .defaultValue = true});
@@ -141,10 +105,8 @@ void registerTrackKinds(app::Registry& registry) {
          .laneComponent = "qrc:/qt/qml/Emerick/Yamaha/ChordLane.qml",
          .routes = {.midi = true},
          .toEngine =
-             [&registry](const model::Track& track, const app::PlaybackContext& context) {
-                 const auto chords = playableEvents<ChordEvent>(track);
-                 const core::Ticks end = chords.empty() ? 0 : chords.back().at + context.tempo.ticksPerBar();
-                 return withRendered(track, chordNotes(chords, outChannel(registry, track, kChordChannelSetting), end));
+             [](const model::Track& track, const app::PlaybackContext&) {
+                 return withRendered(track, chordControls(playableEvents<ChordEvent>(track)));
              },
          .fromTake =
              [&registry](model::Track& track, const engine::RecordedTake& take, const app::TakeContext& context) {
@@ -165,9 +127,8 @@ void registerTrackKinds(app::Registry& registry) {
          .laneComponent = "qrc:/qt/qml/Emerick/Yamaha/StyleLane.qml",
          .routes = {.midi = true},
          .toEngine =
-             [&registry](const model::Track& track, const app::PlaybackContext&) {
-                 return withRendered(track, sectionControls(playableEvents<SectionEvent>(track),
-                                                            outChannel(registry, track, kControllerChannelSetting)));
+             [](const model::Track& track, const app::PlaybackContext&) {
+                 return withRendered(track, sectionControls(playableEvents<SectionEvent>(track)));
              },
          .fromTake =
              [&registry](model::Track& track, const engine::RecordedTake& take, const app::TakeContext& context) {
@@ -184,7 +145,7 @@ void registerTrackKinds(app::Registry& registry) {
 }
 
 void registerWith(app::Registry& registry, app::ProjectController& controller, app::Nav& nav) {
-    registerSettings(registry, controller, nav);
+    registerSettings(registry, nav);
     registerTrackKinds(registry);
     registerDeviceProfile(registry);
     registerChartActions(registry, controller);

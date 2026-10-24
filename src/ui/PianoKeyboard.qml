@@ -112,7 +112,8 @@ Rectangle {
         ToolTip.text: "Play " + keyboard.roll.noteName(keyboard.keyAt(mouseX, mouseY))
 
         function send(pitch, on) {
-            Registry.runAction("midi.audition", {track: keyboard.roll.clip.trackId, pitch: pitch, on: on})
+            Registry.runAction("midi.audition",
+                               {track: keyboard.roll.clip.trackId, clip: Nav.pianoRollClip, pitch: pitch, on: on})
         }
 
         onPressed: mouse => keyboard.play(keyboard.keyAt(mouse.x, mouse.y))

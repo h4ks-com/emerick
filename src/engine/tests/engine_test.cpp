@@ -263,6 +263,21 @@ TEST_CASE("each port sends its messages in timestamp order") {
     CHECK(std::ranges::is_sorted(sent, {}, &SentMidi::timestampNs));
 }
 
+TEST_CASE("events at the start frame go out before Start, and the first clock after it") {
+    Rig rig;
+    Track style = midiTrack("style", {}, {kPort1, 0});
+    const Bytes section{0xF0, 0x43, 0x7E, 0x00, 0x09, 0x7F, 0xF7};
+    style.midiClips.push_back({.events = {{0, section}}});
+    rig.engine.setSession({.tempo = kTempo, .tracks = {style}, .clockPorts = {kPort1}});
+    rig.engine.play();
+    rig.audio.process(kBlock);
+
+    const auto sent = waitForSent(rig.midi, kPort1, 3);
+    REQUIRE(sent.size() >= 3);
+    CHECK(bytesOf(sent) == std::vector<Bytes>{section, {0xFA}, {0xF8}});
+    CHECK(frameOf(sent[1]) == 0);
+}
+
 TEST_CASE("a reopened stream drops the snapshot built for the old devices") {
     auto owner = std::make_unique<EagerBackend>();
     const EagerBackend& audio = *owner;

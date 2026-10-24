@@ -76,9 +76,9 @@ Voice parseVoice(std::string_view line) {
 const std::array<Part, 16>& genos2Parts() {
     static const std::array<Part, 16> parts{{
         {1, "Right 1", "piano-keys"},
-        {2, "Left", "piano-keys"},
-        {3, "Right 2", "piano-keys"},
-        {4, "Right 3", "piano-keys"},
+        {2, "Right 2", "piano-keys"},
+        {3, "Right 3", "piano-keys"},
+        {4, "Left", "piano-keys"},
         {5, "Multi Pad 1", "squares-four"},
         {6, "Multi Pad 2", "squares-four"},
         {7, "Multi Pad 3", "squares-four"},

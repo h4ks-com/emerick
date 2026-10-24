@@ -8,6 +8,7 @@
 #include <iterator>
 #include <numbers>
 #include <span>
+#include <utility>
 
 #include "clock.hpp"
 #include "emerick/core/midi.hpp"
@@ -107,10 +108,16 @@ void locate(RealtimeState& state, Snapshot& snapshot, Ticks ticks, std::int64_t 
     state.locatesApplied.fetch_add(1, std::memory_order_release);
 }
 
-void startTransport(RealtimeState& state, Snapshot& snapshot, std::int64_t timestampNs) {
+void startTransport(RealtimeState& state, Snapshot& snapshot) {
     state.transportPlaying = true;
-    sendToClockPorts(snapshot, core::midi::kStart, timestampNs);
+    state.startPending = true;
     updateTake(state, snapshot);
+}
+
+void sendPendingStart(RealtimeState& state, const Snapshot& snapshot, std::int64_t timestampNs) {
+    if (std::exchange(state.startPending, false)) {
+        sendToClockPorts(snapshot, core::midi::kStart, timestampNs);
+    }
 }
 
 void apply(RealtimeState& state, Snapshot& snapshot, const Command& command, const AudioBlock& block) {
@@ -123,13 +130,14 @@ void apply(RealtimeState& state, Snapshot& snapshot, const Command& command, con
             if (state.recordEnabled && snapshot.metronome.countInFrames > 0) {
                 state.countInLeft = snapshot.metronome.countInFrames;
             } else {
-                startTransport(state, snapshot, block.hostTimeNs);
+                startTransport(state, snapshot);
             }
             break;
         case Command::Type::stop:
             state.countInLeft = 0;
             if (state.transportPlaying) {
                 state.transportPlaying = false;
+                state.startPending = false;
                 sendToClockPorts(snapshot, core::midi::kStop, block.hostTimeNs);
                 releaseNotes(snapshot, block.hostTimeNs);
                 sendAllNotesOff(snapshot, block.hostTimeNs);
@@ -419,7 +427,7 @@ Frames countIn(RealtimeState& state, Snapshot& snapshot, const AudioBlock& block
     if (state.countInLeft > 0) {
         return block.frames;
     }
-    startTransport(state, snapshot, block.hostTimeNs + framesToNs(frames, snapshot.sampleRate));
+    startTransport(state, snapshot);
     return frames;
 }
 
@@ -490,8 +498,9 @@ void processBlock(RealtimeState& state, const AudioBlock& block) {
     receiveMidi(snapshot, state, block, state.frame - rollFrom);
     if (state.transportPlaying) {
         const AudioBlock rolling = rollFrom == 0 ? block : tailOf(snapshot, block, rollFrom);
-        sendClock(snapshot, state.frame, rolling);
         playMidiClips(snapshot, state.frame, rolling);
+        sendPendingStart(state, snapshot, rolling.hostTimeNs);
+        sendClock(snapshot, state.frame, rolling);
         playAudioClips(snapshot, state.frame, rollFrom, rolling.frames);
         playMetronome(state, snapshot, block, rollFrom, state.frame);
     }

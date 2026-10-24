@@ -17,9 +17,6 @@ inline constexpr const char* kChordKind = "yamaha.chord";
 inline constexpr const char* kStyleKind = "yamaha.style";
 inline constexpr const char* kYamahaMenu = "Plugins/Yamaha Arranger";
 
-inline constexpr const char* kChordChannelSetting = "yamaha.chordDetectChannel";
-inline constexpr const char* kControllerPortSetting = "yamaha.controllerPort";
-inline constexpr const char* kControllerChannelSetting = "yamaha.controllerChannel";
 inline constexpr const char* kSnapSetting = "yamaha.snapToBeat";
 inline constexpr const char* kAnticipationSetting = "yamaha.anticipation";
 inline constexpr const char* kSendVoicesSetting = "yamaha.sendVoicesOnPlay";
@@ -43,7 +40,7 @@ std::vector<Event> eventsOf(const nlohmann::json& data) {
 
 ChartOptions chartOptions(const app::Registry& registry, int shiftBars = 0);
 
-void registerSettings(app::Registry& registry, app::ProjectController& controller, app::Nav& nav);
+void registerSettings(app::Registry& registry, app::Nav& nav);
 void registerTrackKinds(app::Registry& registry);
 void registerChartActions(app::Registry& registry, app::ProjectController& controller);
 void registerArrangerActions(app::Registry& registry, app::ProjectController& controller);

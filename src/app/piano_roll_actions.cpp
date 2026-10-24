@@ -56,6 +56,20 @@ struct Audition {
     std::unique_ptr<engine::MidiOutput> output;
 };
 
+// Playback keeps each note's own channel when the output names none, so a key plays on the channel of the clip's notes.
+int auditionChannel(const ProjectController& controller, const model::Track& track, const Json& params) {
+    if (track.midiOut.channel != 0) {
+        return track.midiOut.channel;
+    }
+    if (params.contains("clip")) {
+        const model::MidiClip& clip = midiClipOf(controller, clipParam(controller.project(), params));
+        if (!clip.notes.empty()) {
+            return clip.notes.front().channel;
+        }
+    }
+    return std::max(1, track.midiIn.channel);
+}
+
 Json audition(ProjectController& controller, Audition& open, const Json& params) {
     const model::Track& track = *controller.project().track(trackParam(controller.project(), params));
     const int pitch = param<int>(params, "pitch");
@@ -67,7 +81,7 @@ Json audition(ProjectController& controller, Audition& open, const Json& params)
         return {{"sent", false}};
     }
     const bool on = optionalParam<bool>(params, "on").value_or(true);
-    const int channel = std::max(1, track.midiOut.channel);
+    const int channel = auditionChannel(controller, track, params);
     const std::vector<std::uint8_t> bytes{
         core::midi::statusFor(on ? core::midi::kNoteOn : core::midi::kNoteOff, channel),
         static_cast<std::uint8_t>(pitch), static_cast<std::uint8_t>(on ? NoteDefaults{}.velocity : 0)};
@@ -210,11 +224,12 @@ void registerPianoRollActions(Registry& registry, ProjectController& controller,
     registry.addAction({.id = "midi.audition",
                         .title = "Play piano roll key",
                         .description = "Sends a note-on, or a note-off with on false, to the track's MIDI output "
-                                       "when it has one.",
+                                       "when it has one, on the channel the clip's notes play on.",
                         .category = "MIDI",
                         .schema = {{"required", {"track", "pitch"}},
                                    {"properties",
                                     {{"track", {{"type", "string"}}},
+                                     {"clip", {{"type", "string"}}},
                                      {"pitch", {{"type", "integer"}}},
                                      {"on", {{"type", "boolean"}}}}}},
                         .run = [&controller, open](const Json& params) { return audition(controller, *open, params); },

@@ -188,12 +188,23 @@ struct Marker {
     bool operator==(const Marker&) const = default;
 };
 
+// The region playback repeats while enabled, as Logic's cycle. A region whose end is not after its start is no region.
+struct Cycle {
+    bool enabled = false;
+    Ticks start = 0;
+    Ticks end = 0;
+
+    [[nodiscard]] bool active() const { return enabled && end > start; }
+    bool operator==(const Cycle&) const = default;
+};
+
 struct Document {
     core::TempoMap tempo;
     std::vector<Track> tracks;
     std::vector<Marker> markers;                           // sorted by position
     std::vector<std::string> clockPorts;                   // MIDI outputs that get clock, Start and Stop
     nlohmann::json pluginData = nlohmann::json::object();  // one plugin-owned value per plugin id
+    Cycle cycle = {};
 
     bool operator==(const Document&) const = default;
 };

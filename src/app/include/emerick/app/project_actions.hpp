@@ -70,6 +70,9 @@ void registerMarkerActions(Registry& registry, ProjectController& controller, Na
 std::optional<model::MarkerId> selectedMarker(const ProjectController& controller, const Nav& nav);
 void deleteMarker(ProjectController& controller, const model::MarkerId& id);
 
+// Toggle the cycle, set its locators and set it to the selected clips.
+void registerCycleActions(Registry& registry, ProjectController& controller, Nav& nav);
+
 void registerProjectFileActions(Registry& registry, ProjectController& controller);
 void registerProjectFolderActions(Registry& registry, ProjectController& controller, Nav& nav);
 void registerExportActions(Registry& registry, ProjectController& controller);

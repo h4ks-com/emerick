@@ -32,6 +32,7 @@ public:
     void setPluginData(const std::string& plugin, nlohmann::json value, std::string name);
     // Stores the markers sorted by position.
     void setMarkers(std::vector<Marker> markers, std::string name);
+    void setCycle(const Cycle& cycle, std::string name);
     // Every edit made inside edits becomes one undo step named name, and listeners hear one change at the end.
     void group(std::string name, const std::function<void()>& edits);
     // When edits throw, we revert the edits they made and restore the redo steps, so the document and the history

@@ -290,6 +290,31 @@ TEST_CASE("move track undo and redo") {
     CHECK_FALSE(project.moveTrack(a.id, 3));
 }
 
+TEST_CASE("the cycle round trips, and a format 8 project loads with none") {
+    Document document = sampleDocument();
+    document.cycle = {.enabled = true, .start = 3840, .end = 11520};
+    CHECK(documentFromJson(toJson(document)).cycle == document.cycle);
+
+    auto json = toJson(document);
+    json["format"] = 8;
+    json.erase("cycle");
+    const Document old = documentFromJson(json);
+    CHECK(old.cycle == Cycle{});
+    CHECK_FALSE(old.cycle.active());
+}
+
+TEST_CASE("set cycle undoes and redoes, and a cycle without length is never active") {
+    Project project;
+    project.setCycle({.enabled = true, .start = 0, .end = 3840}, "set cycle");
+    CHECK(project.document().cycle.active());
+    CHECK(project.undoName() == "set cycle");
+    project.undo();
+    CHECK(project.document().cycle == Cycle{});
+    project.redo();
+    CHECK(project.document().cycle.end == 3840);
+    CHECK_FALSE(Cycle{.enabled = true, .start = 960, .end = 960}.active());
+}
+
 TEST_CASE("set tempo undo and redo") {
     Project project;
     project.setTempo({140.0, {6, 8}});

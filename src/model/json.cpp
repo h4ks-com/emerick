@@ -252,6 +252,12 @@ Marker markerFromJson(const nlohmann::json& json) {
             color.is_null() ? std::nullopt : std::optional<int>{color.get<int>()}};
 }
 
+Cycle cycleFromJson(const nlohmann::json& json) {
+    return {.enabled = json.value("enabled", false),
+            .start = json.value("start", Ticks{0}),
+            .end = json.value("end", Ticks{0})};
+}
+
 }  // namespace
 
 nlohmann::json toJson(const Document& document) {
@@ -259,16 +265,18 @@ nlohmann::json toJson(const Document& document) {
     for (const Track& track : document.tracks) {
         tracks.push_back(trackToJson(track));
     }
-    return {{"format", kFormatVersion},
-            {"tempo",
-             {{"bpm", document.tempo.bpm},
-              {"numerator", document.tempo.meter.numerator},
-              {"denominator", document.tempo.meter.denominator}}},
-            {"tracks", std::move(tracks)},
-            {"markers",
-             document.markers | std::views::transform(markerToJson) | std::ranges::to<nlohmann::json::array_t>()},
-            {"clockPorts", document.clockPorts},
-            {"pluginData", document.pluginData}};
+    return {
+        {"format", kFormatVersion},
+        {"tempo",
+         {{"bpm", document.tempo.bpm},
+          {"numerator", document.tempo.meter.numerator},
+          {"denominator", document.tempo.meter.denominator}}},
+        {"tracks", std::move(tracks)},
+        {"markers",
+         document.markers | std::views::transform(markerToJson) | std::ranges::to<nlohmann::json::array_t>()},
+        {"clockPorts", document.clockPorts},
+        {"pluginData", document.pluginData},
+        {"cycle", {{"enabled", document.cycle.enabled}, {"start", document.cycle.start}, {"end", document.cycle.end}}}};
 }
 
 Document documentFromJson(const nlohmann::json& json) {
@@ -282,7 +290,8 @@ Document documentFromJson(const nlohmann::json& json) {
                       json.value("markers", nlohmann::json::array()) | std::views::transform(markerFromJson) |
                           std::ranges::to<std::vector>(),
                       json.value("clockPorts", std::vector<std::string>{}),
-                      json.value("pluginData", nlohmann::json::object())};
+                      json.value("pluginData", nlohmann::json::object()),
+                      cycleFromJson(json.value("cycle", nlohmann::json::object()))};
     for (const auto& track : json.at("tracks")) {
         document.tracks.push_back(trackFromJson(track));
     }

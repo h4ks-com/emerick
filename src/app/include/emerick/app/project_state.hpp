@@ -28,6 +28,7 @@ Json markerState(const model::Marker& marker, int number, const core::TempoMap& 
 Json markersState(const model::Document& document);
 // Sends a pending edit to the engine first, so sessionError and skippedClips describe the current project.
 Json projectState(ProjectController& controller);
+Json cycleState(const model::Document& document);
 Json transportState(const ProjectController& controller);
 Json devicesState(const ProjectController& controller);
 // The MIDI output ports as the {id, name} entries a String setting suggests.

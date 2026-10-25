@@ -22,13 +22,20 @@ namespace {
 
 // The timeline frame at an offset into the block, which moves only while the transport runs, from where a count-in
 // ended.
+// A cycle jump at jumpOffset puts the timeline back at jumpFrame from there on.
 struct BlockTime {
     Frames frame = 0;
     Frames rollFrom = 0;
     bool playing = false;
+    Frames jumpOffset = 0;
+    Frames jumpFrame = -1;
 
     [[nodiscard]] Frames at(Frames offset) const {
-        return playing ? frame + std::max<Frames>(offset - rollFrom, 0) : frame;
+        if (!playing) {
+            return frame;
+        }
+        return jumpFrame >= 0 && offset >= jumpOffset ? jumpFrame + offset - jumpOffset
+                                                      : frame + std::max<Frames>(offset - rollFrom, 0);
     }
 };
 
@@ -225,7 +232,7 @@ void playAudioClips(Snapshot& snapshot, Frames frame, Frames offset, Frames fram
             const bool overlapped = anyCovers(later, from, to);
             const Frames local = from - clip.start;
             const Frames count = to - from;
-            const std::span<const float> samples = clip.stream->read(local, count);
+            const std::span<const float> samples = clip.stream->read(local, count, clip.preload.get());
             const auto channels = static_cast<std::size_t>(clip.stream->channels());
             const auto first = static_cast<std::size_t>(offset + (from - frame));
             for (Frames at = 0; at < count; ++at) {
@@ -438,14 +445,63 @@ Frames countIn(RealtimeState& state, Snapshot& snapshot, const AudioBlock& block
     return frames;
 }
 
-AudioBlock tailOf(Snapshot& snapshot, const AudioBlock& block, Frames offset) {
-    for (std::size_t index = 0; index < block.outputs.size(); ++index) {
-        snapshot.tailOutputs[index] = block.outputs[index] + offset;
-    }
-    return {.frames = block.frames - offset,
+// The stretch of a block from offset on for frames frames, for the parts that only send MIDI.
+AudioBlock midiPart(const Snapshot& snapshot, const AudioBlock& block, Frames offset, Frames frames) {
+    return {.frames = frames,
             .hostTimeNs = block.hostTimeNs + framesToNs(offset, snapshot.sampleRate),
             .inputs = {},
-            .outputs = std::span(snapshot.tailOutputs).first(block.outputs.size())};
+            .outputs = {}};
+}
+
+// Plays the transport from offset on for frames frames of the block, where the timeline is at state.frame.
+void playPart(RealtimeState& state, Snapshot& snapshot, const AudioBlock& block, Frames offset, Frames frames) {
+    const AudioBlock midi = midiPart(snapshot, block, offset, frames);
+    playMidiClips(snapshot, state.frame, midi);
+    sendPendingStart(state, snapshot, midi.hostTimeNs);
+    sendClock(snapshot, state.frame, midi);
+    playAudioClips(snapshot, state.frame, offset, frames);
+    AudioBlock upTo = block;
+    upTo.frames = offset + frames;
+    playMetronome(state, snapshot, upTo, offset, state.frame);
+}
+
+// A preloaded clip waits at the preload's end, so its stream reads ahead from there while the preload plays.
+void jumpToCycleStart(RealtimeState& state, Snapshot& snapshot, std::int64_t timestampNs) {
+    sendToClockPorts(snapshot, core::midi::kStop, timestampNs);
+    releaseNotes(snapshot, timestampNs);
+    for (const RestartMessage& message : snapshot.cycleRestart) {
+        message.port->queue(message.bytes, timestampNs);
+    }
+    state.frame = snapshot.cycleStart;
+    for (TrackState& track : snapshot.tracks) {
+        for (ClipPlayback& clip : track.clips) {
+            const Frames local = std::clamp<Frames>(state.frame - clip.start, 0, clip.length);
+            clip.stream->seek(clip.preload && clip.preload->start == local ? local + clip.preload->frames : local);
+        }
+    }
+    chaseMidi(snapshot, state.frame, timestampNs);
+    state.startPending = true;
+}
+
+// Plays the rolling part of the block from offset on and jumps back at each cycle end it crosses, unless we record,
+// since a take runs straight on. Returns where the last jump left the timeline in the block, if it jumped.
+BlockTime playTransport(RealtimeState& state, Snapshot& snapshot, const AudioBlock& block, Frames offset) {
+    BlockTime time{.frame = state.frame, .rollFrom = offset, .playing = true};
+    const bool cycling = snapshot.cycleEnd > snapshot.cycleStart && !state.recordEnabled;
+    while (offset < block.frames) {
+        const Frames left = block.frames - offset;
+        const bool jumps = cycling && state.frame < snapshot.cycleEnd && snapshot.cycleEnd - state.frame <= left;
+        const Frames frames = jumps ? snapshot.cycleEnd - state.frame : left;
+        playPart(state, snapshot, block, offset, frames);
+        offset += frames;
+        state.frame += frames;
+        if (jumps) {
+            jumpToCycleStart(state, snapshot, block.hostTimeNs + framesToNs(offset, snapshot.sampleRate));
+            time.jumpOffset = offset;
+            time.jumpFrame = state.frame;
+        }
+    }
+    return time;
 }
 
 }  // namespace
@@ -505,23 +561,16 @@ void processBlock(RealtimeState& state, const AudioBlock& block) {
     }
     const Frames rollFrom = countIn(state, snapshot, block);
     receiveMidi(snapshot, state, block, state.frame - rollFrom);
+    BlockTime time{.frame = state.frame, .rollFrom = rollFrom, .playing = false};
     if (state.transportPlaying) {
-        const AudioBlock rolling = rollFrom == 0 ? block : tailOf(snapshot, block, rollFrom);
-        playMidiClips(snapshot, state.frame, rolling);
-        sendPendingStart(state, snapshot, rolling.hostTimeNs);
-        sendClock(snapshot, state.frame, rolling);
-        playAudioClips(snapshot, state.frame, rollFrom, rolling.frames);
-        playMetronome(state, snapshot, block, rollFrom, state.frame);
+        time = playTransport(state, snapshot, block, rollFrom);
     } else if (snapshot.clockWhileStopped) {
         sendClock(snapshot, state.stoppedClockFrame, block);
         state.stoppedClockFrame += block.frames;
     }
     renderMetronome(state, snapshot, block);
     monitorAndRecordAudio(snapshot, block, rollFrom);
-    mixTracks(snapshot, block, {.frame = state.frame, .rollFrom = rollFrom, .playing = state.transportPlaying});
-    if (state.transportPlaying) {
-        state.frame += block.frames - rollFrom;
-    }
+    mixTracks(snapshot, block, time);
     state.publishedFrame.store(state.frame, std::memory_order_relaxed);
     state.publishedPlaying.store(state.transportPlaying || state.countInLeft > 0, std::memory_order_relaxed);
 }

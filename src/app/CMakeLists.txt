@@ -60,6 +60,7 @@ qt_add_library(emerick_app STATIC
     key_focus.cpp
     lua_host.cpp
     lua_text.cpp
+    cycle_actions.cpp
     marker_actions.cpp
     mcp_server.cpp
     mcp_tools.cpp
@@ -111,6 +112,7 @@ if(EMERICK_BUILD_TESTS)
         tests/clip_mute_test.cpp
         tests/code_highlighter_test.cpp
         tests/console_test.cpp
+        tests/cycle_test.cpp
         tests/devices_test.cpp
         tests/fade_test.cpp
         tests/gesture_test.cpp

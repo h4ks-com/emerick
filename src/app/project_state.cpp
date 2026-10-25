@@ -293,12 +293,19 @@ Json streamState(const engine::Engine& engine) {
             {"devices", devices}};
 }
 
+Json cycleState(const model::Document& document) {
+    return {{"enabled", document.cycle.enabled},
+            {"start", positionState(document.cycle.start, document.tempo)},
+            {"end", positionState(document.cycle.end, document.tempo)}};
+}
+
 Json transportState(const ProjectController& controller) {
     return {{"playing", controller.playing()},
             {"recording", controller.recording()},
             {"position", positionState(controller.positionTicks(), controller.project().document().tempo)},
             {"streamError", controller.streamError().toStdString()},
             {"startReason", controller.startReason().toStdString()},
+            {"cycle", cycleState(controller.project().document())},
             {"sync", syncState(controller)},
             {"meters", controller.meters().state()},
             {"stream", streamState(controller.engine())}};

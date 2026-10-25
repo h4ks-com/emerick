@@ -152,6 +152,23 @@ struct Metronome {
 // level and raises a hard-panned one by 3 dB on its side; every other law plays a hard-panned track at full level.
 enum class PanLaw : std::uint8_t { compensated, zeroDb, constantPower, compromise, linear };
 
+// Bytes for one output port, which the session must use.
+struct PortMessage {
+    std::string portId;
+    std::vector<std::uint8_t> bytes;
+    bool operator==(const PortMessage&) const = default;
+};
+
+// While playback without recording crosses end, it jumps to start sample-accurately. At each jump we send Stop to the
+// clock ports, release held notes, send restart, chase MIDI at start and send Start, so a device that ignores Song
+// Position Pointer starts over in its state at start.
+struct Cycle {
+    Ticks start = 0;
+    Ticks end = 0;
+    std::vector<PortMessage> restart;
+    bool operator==(const Cycle&) const = default;
+};
+
 struct Session {
     core::TempoMap tempo;
     std::vector<Track> tracks;
@@ -164,6 +181,8 @@ struct Session {
     bool chaseMidi = true;
     // Clock ports get clock while stopped too, so a device that follows it runs at the project tempo.
     bool clockWhileStopped = false;
+    // An end at or before start plays straight on.
+    Cycle cycle = {};
 };
 
 // A clip we skipped because its file is missing or at another sample rate.

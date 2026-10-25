@@ -1,4 +1,5 @@
 import QtQuick
+import QtQuick.Controls.Basic
 import Emerick.App
 
 Rectangle {
@@ -13,8 +14,32 @@ Rectangle {
     readonly property real stepTicks: barStep * Project.ticksPerBar
     readonly property int firstStep: Math.floor(scrollTicks / stepTicks)
 
+    readonly property var cycle: Project.cycle
+    readonly property real cycleHeight: height / 2
+
     color: Theme.slate
     clip: true
+
+    function ticksAt(x) {
+        return Math.max(0, Math.round(scrollTicks + x / pixelsPerTick))
+    }
+    function xOf(ticks) {
+        return (ticks - scrollTicks) * pixelsPerTick
+    }
+    function dragCycle(params) {
+        Registry.updateGesture(Registry.actionInfo("cycle.set").title, [{id: "cycle.set", params: params}])
+    }
+
+    Rectangle {
+        id: cycleBar
+        visible: ruler.cycle.end > ruler.cycle.start
+        x: ruler.xOf(ruler.cycle.start)
+        width: Math.max(Theme.hairline, (ruler.cycle.end - ruler.cycle.start) * ruler.pixelsPerTick)
+        height: ruler.cycleHeight
+        radius: Theme.radiusClip / 2
+        color: ruler.cycle.enabled ? Theme.tape : Theme.inkDim
+        opacity: ruler.cycle.enabled ? 0.45 : 0.25
+    }
 
     Repeater {
         model: Math.ceil(ruler.width / (ruler.stepTicks * ruler.pixelsPerTick)) + 1
@@ -61,9 +86,130 @@ Rectangle {
         color: Theme.rule
     }
 
+    // A drag along the upper half sets new locators, as in Logic.
+    MouseArea {
+        id: cycleArea
+        objectName: "cycle.set"
+        width: parent.width
+        height: ruler.cycleHeight
+        hoverEnabled: true
+        property real pressTicks
+        property bool dragging: false
+        ToolTip.text: "Drag to set the cycle locators"
+        ToolTip.visible: containsMouse && !pressed && !cycleBody.containsMouse && !startEdge.containsMouse && !endEdge.containsMouse
+        ToolTip.delay: Theme.tooltipDelay
+        onPressed: mouse => {
+            pressTicks = Project.placed(ruler.ticksAt(mouse.x), mouse.modifiers)
+            dragging = false
+        }
+        onPositionChanged: mouse => {
+            if (!pressed) {
+                return
+            }
+            const at = Project.placed(ruler.ticksAt(mouse.x), mouse.modifiers)
+            dragging = dragging || at !== pressTicks
+            if (dragging && at !== pressTicks) {
+                ruler.dragCycle({start: Math.min(at, pressTicks), end: Math.max(at, pressTicks), enabled: true})
+            }
+        }
+        onReleased: Registry.endGesture()
+        onCanceled: {
+            Registry.cancelGesture()
+            Registry.endGesture()
+        }
+    }
+
+    // A click on the bar turns the cycle on or off, and a drag moves it.
+    MouseArea {
+        id: cycleBody
+        objectName: "cycle.toggle"
+        visible: cycleBar.visible
+        x: cycleBar.x
+        width: cycleBar.width
+        height: ruler.cycleHeight
+        hoverEnabled: true
+        cursorShape: pressed && dragging ? Qt.ClosedHandCursor : Qt.OpenHandCursor
+        property real pressX
+        property real pressStart
+        property real length
+        property bool dragging: false
+        readonly property var info: Registry.actionInfo("cycle.toggle")
+        ToolTip.text: info.title + (info.shortcut ? "   " + Theme.shortcutText(info.shortcut) : "") + "\nDrag to move the cycle"
+        ToolTip.visible: containsMouse && !pressed && !startEdge.containsMouse && !endEdge.containsMouse
+        ToolTip.delay: Theme.tooltipDelay
+        onPressed: mouse => {
+            pressX = mapToItem(ruler, mouse.x, 0).x
+            pressStart = ruler.cycle.start
+            length = ruler.cycle.end - ruler.cycle.start
+            dragging = false
+        }
+        onPositionChanged: mouse => {
+            if (!pressed) {
+                return
+            }
+            const dx = mapToItem(ruler, mouse.x, 0).x - pressX
+            dragging = dragging || Math.abs(dx) >= Theme.dragThreshold
+            if (dragging) {
+                const start = Math.max(0, Project.placed(Math.round(pressStart + dx / ruler.pixelsPerTick), mouse.modifiers))
+                ruler.dragCycle({start: start, end: start + length})
+            }
+        }
+        onReleased: {
+            if (dragging) {
+                Registry.endGesture()
+            } else {
+                Registry.runAction("cycle.toggle", {})
+            }
+        }
+        onCanceled: {
+            Registry.cancelGesture()
+            Registry.endGesture()
+        }
+    }
+
+    component CycleEdge: MouseArea {
+        id: edge
+        required property bool isStart
+        visible: cycleBar.visible
+        width: Theme.space2
+        height: ruler.cycleHeight
+        x: (isStart ? cycleBar.x : cycleBar.x + cycleBar.width) - width / 2
+        hoverEnabled: true
+        cursorShape: Qt.SizeHorCursor
+        ToolTip.text: isStart ? "Drag to move the left locator" : "Drag to move the right locator"
+        ToolTip.visible: containsMouse && !pressed
+        ToolTip.delay: Theme.tooltipDelay
+        onPositionChanged: mouse => {
+            if (!pressed) {
+                return
+            }
+            const at = Project.placed(ruler.ticksAt(mapToItem(ruler, mouse.x, 0).x), mouse.modifiers)
+            if (isStart ? at < ruler.cycle.end : at > ruler.cycle.start) {
+                ruler.dragCycle(isStart ? {start: at} : {end: at})
+            }
+        }
+        onReleased: Registry.endGesture()
+        onCanceled: {
+            Registry.cancelGesture()
+            Registry.endGesture()
+        }
+    }
+    CycleEdge {
+        id: startEdge
+        objectName: "cycle.set:start"
+        isStart: true
+    }
+    CycleEdge {
+        id: endEdge
+        objectName: "cycle.set:end"
+        isStart: false
+    }
+
     MouseArea {
         objectName: "transport.locate"
-        anchors.fill: parent
+        y: ruler.cycleHeight
+        width: parent.width
+        height: parent.height - y
         function locate(mouse) {
             const ticks = Math.max(0, Math.round(ruler.scrollTicks + Math.min(Math.max(mouse.x, 0), width) / ruler.pixelsPerTick))
             Registry.runAction("transport.locate", {position: Project.placed(ticks, mouse.modifiers)})

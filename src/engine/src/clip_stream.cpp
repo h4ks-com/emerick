@@ -26,6 +26,20 @@ std::expected<ClipFile, std::string> openClipFile(const std::filesystem::path& p
     return opened;
 }
 
+std::optional<Preload> preloadClip(const std::filesystem::path& path, double sampleRate, Frames sourceOffset,
+                                   Frames local, Frames frames) {
+    auto opened = openClipFile(path, sampleRate);
+    if (!opened || sf_seek(opened->file.get(), sourceOffset + local, SEEK_SET) < 0) {
+        return std::nullopt;
+    }
+    Preload preload{.start = local,
+                    .frames = 0,
+                    .samples = std::vector<float>(static_cast<std::size_t>(frames * opened->info.channels))};
+    preload.frames = std::max<sf_count_t>(sf_readf_float(opened->file.get(), preload.samples.data(), frames), 0);
+    preload.samples.resize(static_cast<std::size_t>(preload.frames * opened->info.channels));
+    return preload;
+}
+
 ClipStream::ClipStream(ClipFile opened, Frames sourceOffset, Frames length, double sampleRate, Frames maxBlock)
     : file_(std::move(opened.file)),
       channels_(opened.info.channels),
@@ -54,11 +68,18 @@ void ClipStream::seek(Frames local) {
     generation_.store(audioGeneration_, std::memory_order_release);
 }
 
-std::span<const float> ClipStream::read(Frames local, Frames count) {
-    if (local != expected_) {
+std::span<const float> ClipStream::read(Frames local, Frames count, const Preload* preload) {
+    Frames produced = 0;
+    if (preload != nullptr && local >= preload->start && local < preload->start + preload->frames &&
+        expected_ == preload->start + preload->frames) {
+        produced = std::min(count, preload->start + preload->frames - local);
+        std::copy_n(preload->samples.begin() + static_cast<std::ptrdiff_t>(samplesFor(local - preload->start)),
+                    samplesFor(produced), scratch_.begin());
+        local += produced;
+    }
+    if (local != expected_ && produced < count) {
         seek(local);
     }
-    Frames produced = 0;
     const auto zero = [&](Frames frames) {
         std::fill_n(scratch_.begin() + produced * channels_, frames * channels_, 0.0F);
         produced += frames;

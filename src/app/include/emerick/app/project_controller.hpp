@@ -69,6 +69,7 @@ class ProjectController : public QObject {
     Q_PROPERTY(qint64 ticksPerQuarter READ ticksPerQuarter CONSTANT)
     Q_PROPERTY(qint64 endTicks READ endTicks NOTIFY projectChanged)
     Q_PROPERTY(QVariantList markers READ markers NOTIFY projectChanged)
+    Q_PROPERTY(QVariantMap cycle READ cycle NOTIFY projectChanged)
     Q_PROPERTY(QVariantMap routeDevices READ routeDevices NOTIFY devicesChanged)
     Q_PROPERTY(QVariantMap trackErrors READ trackErrors NOTIFY trackErrorsChanged)
     Q_PROPERTY(QVariantList healthIssues READ healthIssues NOTIFY healthChanged)
@@ -124,8 +125,9 @@ public:
     // A plugin reports under its own source name; the transport shows each status, and an empty label removes it.
     void setSyncStatus(const std::string& source, SyncStatus status);
     [[nodiscard]] const std::map<std::string, SyncStatus>& syncStatus() const { return syncStatus_; }
-    // Why play started where it did, from a track type's alignStart, until the transport stops.
-    [[nodiscard]] QString startReason() const { return startReason_; }
+    // Why play started where it did, from a track type's alignStart, until the transport stops. Otherwise why the
+    // cycle starts before its left locator, while it is on.
+    [[nodiscard]] QString startReason() const { return startReason_.isEmpty() ? cycleReason_ : startReason_; }
     [[nodiscard]] QVariantList syncBadges() const;
 
     // Live toggles reach the engine at the next block, before the rebuilt session does.
@@ -181,6 +183,8 @@ public:
     Q_INVOKABLE qint64 placedOn(qint64 ticks, int modifiers, qint64 step) const;
     // Each marker's state in position order.
     [[nodiscard]] QVariantList markers() const;
+    // The cycle's enabled flag and locators in ticks.
+    [[nodiscard]] QVariantMap cycle() const;
     [[nodiscard]] QVariantMap routeDevices() const;
     // A position as bar.beat.tick, or with duration a length counted from zero, as the number fields show them.
     Q_INVOKABLE QString ticksText(qint64 ticks, bool duration) const;
@@ -242,7 +246,11 @@ private:
     [[nodiscard]] std::vector<const model::Track*> playingTracks() const;
     void sendTrackMidi(const model::Track& track, const std::vector<MidiMessage>& messages);
     void chaseTrackTypes(core::Ticks at);
+    [[nodiscard]] std::optional<StartAlignment> earliestAlignment(core::Ticks at) const;
     void alignStart();
+    // The cycle the engine plays: its start moved where an audible track aligns it, and the track types' chase at that
+    // start as its restart messages.
+    engine::Cycle engineCycle();
     void publish();
     void updateTrackErrors();
     void keepWarmWhileActive();
@@ -279,6 +287,7 @@ private:
     bool clockWhileStopped_ = false;
     std::map<std::string, SyncStatus> syncStatus_;
     QString startReason_;
+    QString cycleReason_;
     bool recording_ = false;
     bool flushPending_ = false;
     core::Ticks stopTicks_ = 0;

@@ -48,6 +48,10 @@ The engine never sees the model. `emerick_app` turns the document into an engine
 
 The engine plays the metronome on the tempo map's beat grid to the sample: a synthesized click, the user's samples, or a drum groove synthesized from kick, snare and hat voices, or it sends the same hits as MIDI notes. Its settings live in the registry's Metronome section, and the controller copies them into the session it publishes. A count-in holds the transport at the record position until its bars end, so the take starts there. Takes record only inputs, and exports build their sessions without the metronome.
 
+## Cycle
+
+The document keeps one cycle region and its on flag, which the ruler's upper half, the transport button and C edit. While the cycle is on and playback crosses its end, the engine jumps to its start inside the block, to the sample: it sends Stop to the clock ports, releases held notes, sends the track types' chase at the start, chases MIDI and sends Start, so a device that ignores Song Position Pointer starts over there. Audio clips play the cycle start from a preload the snapshot builder reads, while their streams read ahead again. Recording plays straight through the end. When an audible track aligns playback, as the Style track does, the cycle starts where that track aligns it, and the transport's start reason says why.
+
 ## Inserts
 
 The engine plays each track's insert effects on its mix before the fader. The snapshot builder makes an effect's state once per insert id at the stream's sample rate, with its delay lines at full length, and later snapshots share it, so an edit keeps reverb tails and delay lines and the params glide to their new values. Effects report no latency, and exports play them through the same engine. A param's id is `<insert id>.<param id>`: an automation lane plays it, and `insert.setParam` takes it in place of the insert param.

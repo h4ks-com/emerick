@@ -57,6 +57,11 @@ struct SetMarkers {
     std::vector<Marker> after;
 };
 
+struct SetCycle {
+    Cycle before;
+    Cycle after;
+};
+
 struct Command;
 
 // Several commands that undo and redo as one step.
@@ -67,7 +72,7 @@ struct Group {
 struct Command {
     std::string name;
     std::variant<AddTrack, RemoveTrack, ReplaceTrack, MoveTrack, SetTempo, SetClockPorts, SetPluginData, SetMarkers,
-                 Group>
+                 SetCycle, Group>
         operation;
 };
 

@@ -318,6 +318,7 @@ void registerProjectActions(Registry& registry, ProjectController& controller, N
     registerAutomationActions(registry, controller, nav);
     registerClipActions(registry, controller, nav);
     registerMarkerActions(registry, controller, nav);
+    registerCycleActions(registry, controller, nav);
     registerExportActions(registry, controller);
     registerMetronome(registry, controller, nav);
     registerProjectFolderActions(registry, controller, nav);

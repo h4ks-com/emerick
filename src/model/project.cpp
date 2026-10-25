@@ -67,6 +67,12 @@ void Project::setMarkers(std::vector<Marker> markers, std::string name) {
     }
 }
 
+void Project::setCycle(const Cycle& cycle, std::string name) {
+    if (cycle != document_.cycle) {
+        execute({std::move(name), SetCycle{document_.cycle, cycle}});
+    }
+}
+
 void Project::group(std::string name, const std::function<void()>& edits) {
     leaveGesture();
     const std::size_t first = next_;

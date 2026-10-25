@@ -36,6 +36,11 @@ GlassPanel {
             iconName: "stop"
         }
         TransportButton {
+            objectName: "cycle.toggle"
+            iconName: "repeat"
+            active: Project.cycle.enabled
+        }
+        TransportButton {
             objectName: "transport.panic"
             iconName: "warning-octagon"
         }

@@ -48,8 +48,10 @@ public:
 private:
     std::shared_ptr<MidiInputPort> inputPort(const std::string& id);
     std::shared_ptr<MidiOutputPort> outputPort(const std::string& id);
-    void addClips(TrackState& state, const Track& track, const core::TempoMap& tempo, const StreamLayout& layout,
+    void addClips(TrackState& state, const Track& track, const Session& session, const StreamLayout& layout,
                   std::vector<SessionError>& errors);
+    std::shared_ptr<const Preload> preload(const std::string& key, const AudioClip& clip, const ClipPlayback& playback,
+                                           Frames cycleStart, double sampleRate);
     std::shared_ptr<const MidiSchedule> midiSchedule(const Track& track, const core::TempoMap& tempo,
                                                      double sampleRate);
     void addRecorder(TrackState& state, const Track& track, const Session& session, const StreamLayout& layout,
@@ -66,6 +68,7 @@ private:
     PollingSet<TakeRecorder>& writer_;
     PollingSet<MidiOutputPort>& sender_;
     std::map<std::string, std::weak_ptr<ClipStream>> clips_;
+    std::map<std::string, std::weak_ptr<const Preload>> preloads_;
     // Holding the clips keeps a later change from writing into them, so the same clips mean the same schedule.
     struct CachedSchedule {
         std::shared_ptr<const std::vector<MidiClip>> clips;

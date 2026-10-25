@@ -14,6 +14,8 @@ namespace emerick::engine {
 namespace {
 
 constexpr double kMillisecondsPerSecond = 1000.0;
+// The reader thread polls every 2 ms, so this leaves it ample time to fill a stream after a cycle jump.
+constexpr double kPreloadSeconds = 0.25;
 
 template <class T, class Make>
 std::shared_ptr<T> cached(std::map<std::string, std::weak_ptr<T>>& cache, const std::string& key, Make make) {
@@ -199,6 +201,21 @@ void collectOutputs(Snapshot& snapshot) {
     addOutput(snapshot, snapshot.metronome.midiOut);
 }
 
+void addCycle(Snapshot& snapshot, const Session& session) {
+    if (session.cycle.end <= session.cycle.start) {
+        return;
+    }
+    snapshot.cycleStart = session.tempo.ticksToFrames(session.cycle.start, snapshot.sampleRate);
+    snapshot.cycleEnd = session.tempo.ticksToFrames(session.cycle.end, snapshot.sampleRate);
+    for (const PortMessage& message : session.cycle.restart) {
+        const auto port = std::ranges::find(snapshot.outputs, message.portId,
+                                            [](const auto& output) -> const std::string& { return output->id(); });
+        if (port != snapshot.outputs.end() && !message.bytes.empty()) {
+            snapshot.cycleRestart.push_back({*port, message.bytes});
+        }
+    }
+}
+
 }  // namespace
 
 SnapshotBuilder::SnapshotBuilder(MidiBackend& midi, TakeInbox& inbox, PollingSet<ClipStream>& reader,
@@ -255,7 +272,7 @@ BuiltSnapshot SnapshotBuilder::build(const Session& session, const StreamLayout&
                                 std::ranges::to<std::vector>();
             addInserts(state, track, layout);
         }
-        addClips(state, track, session.tempo, layout, built.errors);
+        addClips(state, track, session, layout, built.errors);
         state.midi = midiSchedule(track, session.tempo, layout.sampleRate);
         addRecorder(state, track, session, layout, captureOffset);
         snapshot.tracks.push_back(std::move(state));
@@ -265,9 +282,9 @@ BuiltSnapshot SnapshotBuilder::build(const Session& session, const StreamLayout&
     updateSoloPaths(snapshot);
     addMetronome(snapshot, session, layout, built.errors);
     collectOutputs(snapshot);
+    addCycle(snapshot, session);
     snapshot.chaseMidi = session.chaseMidi;
     snapshot.clockWhileStopped = session.clockWhileStopped;
-    snapshot.tailOutputs.resize(static_cast<std::size_t>(layout.outputChannels));
     return built;
 }
 
@@ -338,8 +355,11 @@ std::shared_ptr<const DrumSounds> SnapshotBuilder::drumSounds(const Metronome& m
     return sounds_;
 }
 
-void SnapshotBuilder::addClips(TrackState& state, const Track& track, const core::TempoMap& tempo,
+void SnapshotBuilder::addClips(TrackState& state, const Track& track, const Session& session,
                                const StreamLayout& layout, std::vector<SessionError>& errors) {
+    const core::TempoMap& tempo = session.tempo;
+    const bool cycling = session.cycle.end > session.cycle.start;
+    const Frames cycleStart = tempo.ticksToFrames(session.cycle.start, layout.sampleRate);
     for (std::size_t index = 0; index < track.audioClips.size(); ++index) {
         const AudioClip& clip = track.audioClips[index];
         const Frames start = tempo.ticksToFrames(clip.start, layout.sampleRate);
@@ -359,10 +379,42 @@ void SnapshotBuilder::addClips(TrackState& state, const Track& track, const core
             clips_[key] = stream;
             reader_.add(stream);
         }
-        state.clips.push_back(
-            {std::move(stream), start, length, clip.gain, tempo.ticksToFrames(clip.fadeIn, layout.sampleRate),
-             tempo.ticksToFrames(clip.fadeOut, layout.sampleRate), clip.fadeInCurve, clip.fadeOutCurve});
+        ClipPlayback playback{.stream = std::move(stream),
+                              .start = start,
+                              .length = length,
+                              .gain = clip.gain,
+                              .fadeIn = tempo.ticksToFrames(clip.fadeIn, layout.sampleRate),
+                              .fadeOut = tempo.ticksToFrames(clip.fadeOut, layout.sampleRate),
+                              .fadeInCurve = clip.fadeInCurve,
+                              .fadeOutCurve = clip.fadeOutCurve,
+                              .preload = nullptr};
+        if (cycling) {
+            playback.preload = preload(key, clip, playback, cycleStart, layout.sampleRate);
+        }
+        state.clips.push_back(std::move(playback));
     }
+}
+
+std::shared_ptr<const Preload> SnapshotBuilder::preload(const std::string& key, const AudioClip& clip,
+                                                        const ClipPlayback& playback, Frames cycleStart,
+                                                        double sampleRate) {
+    const Frames from = std::max(cycleStart, playback.start);
+    const Frames to =
+        std::min(cycleStart + std::llround(kPreloadSeconds * sampleRate), playback.start + playback.length);
+    if (from >= to) {
+        return nullptr;
+    }
+    const std::string preloadKey = key + "/" + std::to_string(from) + "/" + std::to_string(to);
+    if (auto alive = preloads_[preloadKey].lock()) {
+        return alive;
+    }
+    auto read = preloadClip(clip.path, sampleRate, clip.sourceOffset, from - playback.start, to - from);
+    if (!read) {
+        return nullptr;
+    }
+    auto made = std::make_shared<const Preload>(*std::move(read));
+    preloads_[preloadKey] = made;
+    return made;
 }
 
 std::shared_ptr<const MidiSchedule> SnapshotBuilder::midiSchedule(const Track& track, const core::TempoMap& tempo,
@@ -432,6 +484,7 @@ std::shared_ptr<MidiOutputPort> SnapshotBuilder::outputPort(const std::string& i
 void SnapshotBuilder::prune() {
     const auto expired = [](const auto& entry) { return entry.second.expired(); };
     std::erase_if(clips_, expired);
+    std::erase_if(preloads_, expired);
     std::erase_if(schedules_, [](const auto& entry) { return entry.second.schedule.expired(); });
     std::erase_if(effects_, expired);
     std::erase_if(compressors_, expired);

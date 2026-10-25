@@ -350,8 +350,7 @@ void ProjectController::chaseTrackTypes(core::Ticks at) {
     }
 }
 
-void ProjectController::alignStart() {
-    const core::Ticks at = engine_.position().ticks;
+std::optional<StartAlignment> ProjectController::earliestAlignment(core::Ticks at) const {
     const PlaybackContext context{.tempo = project_.document().tempo, .folder = folder_};
     std::optional<StartAlignment> earliest;
     for (const model::Track* track : playingTracks()) {
@@ -364,10 +363,43 @@ void ProjectController::alignStart() {
             earliest = std::move(alignment);
         }
     }
+    return earliest;
+}
+
+void ProjectController::alignStart() {
+    const core::Ticks at = engine_.position().ticks;
+    const std::optional<StartAlignment> earliest = earliestAlignment(at);
     startReason_ = earliest ? qs(earliest->reason) : QString{};
     if (earliest && earliest->position != at) {
         locate(earliest->position);
     }
+}
+
+engine::Cycle ProjectController::engineCycle() {
+    const model::Cycle& cycle = project_.document().cycle;
+    QString reason;
+    engine::Cycle played;
+    if (cycle.active()) {
+        played = {.start = cycle.start, .end = cycle.end, .restart = {}};
+        if (const auto aligned = earliestAlignment(cycle.start);
+            aligned && aligned->position != cycle.start && aligned->position < cycle.end) {
+            played.start = aligned->position;
+            reason = qs("Cycle: " + aligned->reason);
+        }
+        const PlaybackContext context{.tempo = project_.document().tempo, .folder = folder_};
+        for (const model::Track* track : playingTracks()) {
+            if (const TrackType* type = registry_.trackType(track->kind); type != nullptr && type->chase) {
+                for (MidiMessage& message : type->chase(*track, played.start, context)) {
+                    played.restart.push_back(
+                        {message.port.empty() ? track->midiOut.portId : message.port, std::move(message.bytes)});
+                }
+            }
+        }
+    }
+    if (std::exchange(cycleReason_, reason) != reason) {
+        emit transportChanged();
+    }
+    return played;
 }
 
 void ProjectController::play() {
@@ -522,6 +554,7 @@ void ProjectController::publish() {
     session.metronome = metronome_;
     session.chaseMidi = chaseMidi_;
     session.clockWhileStopped = clockWhileStopped_;
+    session.cycle = engineCycle();
     applyPasses(session);
     routeErrors_ = dropUnusableDevices(session, engine_.audioDevices(), options_.sampleRate);
     std::set<std::string> ids;
@@ -717,6 +750,13 @@ qint64 ProjectController::placedOn(qint64 ticks, int modifiers, qint64 step) con
 }
 
 QVariantList ProjectController::markers() const { return toVariant(markersState(project_.document())).toList(); }
+
+QVariantMap ProjectController::cycle() const {
+    const model::Cycle& cycle = project_.document().cycle;
+    return {{"enabled", cycle.enabled},
+            {"start", QVariant::fromValue<qint64>(cycle.start)},
+            {"end", QVariant::fromValue<qint64>(cycle.end)}};
+}
 
 QString ProjectController::ticksText(qint64 ticks, bool duration) const {
     const core::TempoMap& tempo = project_.document().tempo;

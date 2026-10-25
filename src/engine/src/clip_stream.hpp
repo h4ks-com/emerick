@@ -7,6 +7,7 @@
 #include <expected>
 #include <filesystem>
 #include <limits>
+#include <optional>
 #include <span>
 #include <string>
 #include <vector>
@@ -26,6 +27,18 @@ struct ClipFile {
 
 std::expected<ClipFile, std::string> openClipFile(const std::filesystem::path& path, double sampleRate);
 
+// Audio of a clip from start on, read while building a snapshot. A cycle jump plays it while the stream reads ahead
+// from its end.
+struct Preload {
+    Frames start = 0;
+    Frames frames = 0;
+    std::vector<float> samples;
+};
+
+// Reads up to frames frames of the clip from local on, or nullopt when the file cannot be read.
+std::optional<Preload> preloadClip(const std::filesystem::path& path, double sampleRate, Frames sourceOffset,
+                                   Frames local, Frames frames);
+
 // We call read and seek on the audio thread and poll on the reader thread, which fills the ring ahead of the playhead.
 class ClipStream {
 public:
@@ -34,8 +47,9 @@ public:
     [[nodiscard]] int channels() const { return channels_; }
     [[nodiscard]] bool buffered() const;
 
-    // Data that arrives late reads as silence.
-    std::span<const float> read(Frames local, Frames count);
+    // Data that arrives late reads as silence. Frames in preload come from it while the stream waits at its end, as
+    // after a cycle jump.
+    std::span<const float> read(Frames local, Frames count, const Preload* preload = nullptr);
     void seek(Frames local);
 
     void poll();

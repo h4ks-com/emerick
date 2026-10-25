@@ -35,6 +35,8 @@ struct ClipPlayback {
     Frames fadeOut = 0;
     core::FadeCurve fadeInCurve;
     core::FadeCurve fadeOutCurve;
+    // Set while a cycle starts inside the clip or just before it.
+    std::shared_ptr<const Preload> preload;
 };
 
 struct ScheduledMidi {
@@ -132,6 +134,11 @@ struct TrackState {
     bool feedsSolo = false;
 };
 
+struct RestartMessage {
+    std::shared_ptr<MidiOutputPort> port;
+    std::vector<std::uint8_t> bytes;
+};
+
 struct MetronomeState {
     Metronome settings;
     std::vector<int> outputs;
@@ -155,10 +162,12 @@ struct Snapshot {
     bool sendStart = true;
     bool chaseMidi = true;
     bool clockWhileStopped = false;
+    // The cycle on frames; an end at or before start plays straight on.
+    Frames cycleStart = 0;
+    Frames cycleEnd = 0;
+    std::vector<RestartMessage> cycleRestart;
     std::vector<std::uint8_t> incoming = std::vector<std::uint8_t>(kMaxIncomingMessage);
     MetronomeState metronome;
-    // Output pointers for the part of a block after a count-in ends, one per stream output.
-    std::vector<float*> tailOutputs;
 };
 
 inline bool anySolo(const Snapshot& snapshot) { return std::ranges::any_of(snapshot.tracks, &TrackState::solo); }

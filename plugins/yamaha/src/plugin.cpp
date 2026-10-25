@@ -151,6 +151,7 @@ std::unique_ptr<ChordInput> registerWith(app::Registry& registry, app::ProjectCo
     registerDeviceProfile(registry);
     registerChartActions(registry, controller, nav);
     registerArrangerActions(registry, controller);
+    registerTemplateActions(registry);
     return std::make_unique<ChordInput>(registry, controller, nav);
 }
 

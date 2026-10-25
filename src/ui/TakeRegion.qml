@@ -57,16 +57,37 @@ Item {
                 visibleRight: (region.viewTo - region.take.start) * region.pixelsPerTick
             }
 
+            // Each frozen segment draws once into its own texture, and only the live chunk repaints as notes arrive.
+            // We count the segments rather than list them, so a new segment keeps the items of the others.
+            Repeater {
+                model: region.take.frozen.length
+                delegate: ClipNotes {
+                    required property int index
+                    readonly property var segment: region.take.frozen[index] ?? {start: 0, length: 0, notes: []}
+                    objectName: "takeFrozenNotes:" + index
+                    x: segment.start * region.pixelsPerTick
+                    width: segment.length * region.pixelsPerTick
+                    height: parent.height
+                    notes: segment.notes
+                    length: segment.length
+                    lowKey: region.take.lowKey
+                    highKey: region.take.highKey
+                    color: Theme.clipInk
+                    textureSize: Theme.notesTexture(width, height)
+                }
+            }
             ClipNotes {
                 objectName: "takeNotes"
                 visible: !region.audio
-                width: parent.width
+                x: region.take.liveFrom * region.pixelsPerTick
+                width: parent.width - x
                 height: parent.height
                 notes: region.take.notes
-                length: region.take.length
+                length: region.take.length - region.take.liveFrom
+                lowKey: region.take.lowKey
+                highKey: region.take.highKey
                 color: Theme.clipInk
-                textureSize: Qt.size(Math.max(1, Math.min(Math.ceil(width), Theme.maxTextureWidth)),
-                                     Math.max(1, Math.ceil(height)))
+                textureSize: Theme.notesTexture(width, height)
             }
         }
     }

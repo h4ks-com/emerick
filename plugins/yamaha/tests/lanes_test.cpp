@@ -167,9 +167,14 @@ TEST_CASE(
     QQuickItem* tiny = block(main, "yamaha.chord", id, 0);
     CHECK(attached(tiny, "ToolTip.text").toString().startsWith("Bbm7b5"));
     CHECK(attached(tiny, "ToolTip.delay").toInt() > 0);
-    auto* label = tiny->childItems().front();
-    CHECK(label->property("elide").toInt() == Qt::ElideRight);
-    CHECK(label->property("contentWidth").toReal() <= label->width() + 1);
+    const auto shownLabel = [&](core::Ticks at) {
+        QString shown;
+        REQUIRE(QMetaObject::invokeMethod(main.item(QString::fromStdString("yamaha.chord.blocks:" + id)), "shownLabel",
+                                          Q_RETURN_ARG(QString, shown), Q_ARG(qint64, at)));
+        return shown;
+    };
+    CHECK(shownLabel(0) != "Bbm7b5");
+    CHECK(shownLabel(240) == "C");
 
     QQuickItem* wide = block(main, "yamaha.chord", id, 240);
     main.hover(wide);

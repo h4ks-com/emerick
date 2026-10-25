@@ -179,8 +179,7 @@ Item {
                     notes: content.clipItem.clip.notes
                     length: content.clipItem.clip.length
                     color: Theme.clipInk
-                    textureSize: Qt.size(Math.max(1, Math.min(Math.ceil(width), Theme.maxTextureWidth)),
-                                         Math.max(1, Math.ceil(height)))
+                    textureSize: Theme.notesTexture(width, height)
                 }
             }
         }

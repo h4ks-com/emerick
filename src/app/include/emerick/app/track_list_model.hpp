@@ -3,9 +3,15 @@
 #include <QAbstractListModel>
 #include <QHash>
 #include <QVariant>
+#include <QVariantList>
 #include <cstdint>
+#include <limits>
+#include <map>
+#include <string>
+#include <utility>
 #include <vector>
 
+#include "emerick/app/project_actions.hpp"
 #include "emerick/app/project_controller.hpp"
 #include "emerick/app/registry.hpp"
 #include "emerick/model/project.hpp"
@@ -78,10 +84,11 @@ private:
     void changed(const model::Change& change);
     // Rows whose controls follow automation update as the playhead moves.
     void transportMoved();
-    void takePreviewChanged(const QString& trackId);
+    void takePreviewChanged(const QString& trackId, bool trackDataChanged);
     // Removes, moves and inserts rows until they match the document's tracks, so views keep their other delegates.
     void syncRows();
 
+    [[nodiscard]] QVariantMap previewEntry(const model::TrackId& id, ClipType type) const;
     [[nodiscard]] QVariantMap clipEntry(const model::Clip& clip, int take) const;
     [[nodiscard]] QVariantList clipList(const model::Track& track) const;
     [[nodiscard]] QVariantList sendList(const model::Track& track) const;
@@ -96,6 +103,15 @@ private:
     std::vector<model::TrackId> rows_;
     std::size_t listener_;
     int revision_ = 0;
+
+    // The notes of a take's frozen chunks, as previewEntry lists them, and the lowest and highest key among them.
+    struct FrozenNotes {
+        std::uint64_t take = 0;
+        std::size_t clips = 0;
+        QVariantList segments;
+        std::pair<int, int> keys{std::numeric_limits<int>::max(), std::numeric_limits<int>::min()};
+    };
+    mutable std::map<std::string, FrozenNotes> frozenNotes_;
 };
 
 }  // namespace emerick::app

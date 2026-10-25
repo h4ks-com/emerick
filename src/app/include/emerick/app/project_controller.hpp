@@ -35,8 +35,13 @@ struct TakePreview {
     core::Ticks length = 0;
     std::filesystem::path audioFile;
     core::Frames frames = 0;
-    engine::RecordedTake recorded;
-    // The track as the take would leave it, for every kind but audio, once the take holds any MIDI.
+    bool heardMidi = false;
+    // The take's events from the chunk the playhead is in, which starts at live.startTick.
+    engine::RecordedTake live;
+    // The track as the chunks before live.startTick leave it, with a clip per chunk on a MIDI track. These chunks never
+    // change again, so an update only redoes the live one.
+    std::optional<model::Track> frozen;
+    // The frozen track with the live chunk added, for every kind but audio, once the take holds any MIDI.
     std::optional<model::Track> track;
 };
 
@@ -203,8 +208,8 @@ signals:
     void healthChanged();
     // The folder, the name or the edited flag changed.
     void fileChanged();
-    // The track's take in progress grew, started or ended.
-    void takePreviewChanged(const QString& trackId);
+    // The track's take in progress grew, started or ended; trackDataChanged says whether its track data changed too.
+    void takePreviewChanged(const QString& trackId, bool trackDataChanged);
     // A take in progress wrote audio with these finest peaks, emitted before the preview that shows them.
     void takePeaks(const std::filesystem::path& file, const emerick::app::Peaks& peaks);
     // An audio take landed, so its peaks now come from the finished file.

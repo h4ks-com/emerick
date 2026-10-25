@@ -193,6 +193,13 @@ QtObject {
         return Qt.hsla(0.62 * (1 - Math.max(0, velocity - 1) / 126), 0.55, 0.82, 1)
     }
 
+    // We round a notes texture's width up to a power of two, so a zoom repaints a clip only when its width doubles or
+    // halves, and the texture scales to the clip in between.
+    function notesTexture(width, height) {
+        return Qt.size(Math.min(Math.pow(2, Math.ceil(Math.log2(Math.max(1, width)))), maxTextureWidth),
+                       Math.max(1, Math.ceil(height)))
+    }
+
     // Track icons are Phosphor names and fade icons are our own; an icon we do not bundle shows as a note.
     readonly property var icons: ["arrows-merge", "automation", "broom", "caret-left", "caret-right", "circle", "copy", "dots-three", "fade-equalPower", "fade-exponential", "fade-linear", "fade-logarithmic", "fade-sCurve", "file", "gear-six", "guitar", "list", "magnet", "magnifying-glass", "metronome", "music-note", "music-notes", "pause", "pencil-simple", "piano-keys", "play", "plus", "sidebar-simple", "skip-back", "sliders", "speaker-slash", "squares-four", "stop", "warning-octagon", "waveform", "x"]
     function iconSource(name) {

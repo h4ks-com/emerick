@@ -8,6 +8,7 @@
 #include <memory>
 #include <mutex>
 #include <optional>
+#include <set>
 #include <vector>
 
 #include "emerick/core/time.hpp"
@@ -64,9 +65,9 @@ signals:
 
 private:
     std::mutex mutex_;
-    std::map<std::filesystem::path, Peaks> live_;
+    std::set<std::filesystem::path> live_;
     // A null entry means the file is loading.
-    std::map<std::filesystem::path, std::unique_ptr<const PeakLevels>> files_;
+    std::map<std::filesystem::path, std::unique_ptr<PeakLevels>> files_;
     // Declared last, so the pool waits for running loads before the map goes away.
     QThreadPool pool_;
 };

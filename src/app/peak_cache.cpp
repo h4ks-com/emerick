@@ -71,18 +71,23 @@ Peaks readAudioPeaks(const std::filesystem::path& audio) {
 
 // libc++ has no std::views::chunk yet, so we step through the groups by hand.
 template <typename Pick>
-std::vector<float> foldValues(const std::vector<float>& finer, Pick pick) {
+void foldValues(const std::vector<float>& finer, std::vector<float>& coarser, std::size_t from, Pick pick) {
     const auto group = static_cast<std::size_t>(kFold);
-    std::vector<float> coarser;
-    coarser.reserve((finer.size() + group - 1) / group);
-    for (std::size_t at = 0; at < finer.size(); at += group) {
+    coarser.resize(from);
+    for (std::size_t at = from * group; at < finer.size(); at += group) {
         coarser.push_back(pick(std::span{finer}.subspan(at, std::min(group, finer.size() - at))));
     }
-    return coarser;
 }
 
-Peaks fold(const Peaks& finer) {
-    return {foldValues(finer.minimum, std::ranges::min), foldValues(finer.maximum, std::ranges::max)};
+// We refold each coarser level from the group holding the first changed finest peak, so a growing take costs its tail.
+void foldLevels(PeakLevels& peaks, std::size_t changed) {
+    for (std::size_t level = 1; level < peaks.levels.size(); ++level) {
+        const Peaks& finer = peaks.levels.at(level - 1);
+        Peaks& coarser = peaks.levels.at(level);
+        changed /= static_cast<std::size_t>(kFold);
+        foldValues(finer.minimum, coarser.minimum, changed, std::ranges::min);
+        foldValues(finer.maximum, coarser.maximum, changed, std::ranges::max);
+    }
 }
 
 std::optional<Peaks> readPeakFile(const std::filesystem::path& file, const AudioStamp& stamp) {
@@ -129,9 +134,7 @@ void writePeakFile(const std::filesystem::path& file, const AudioStamp& stamp, c
 PeakLevels buildLevels(Peaks finest) {
     PeakLevels peaks;
     peaks.levels.front() = std::move(finest);
-    for (std::size_t level = 1; level < peaks.levels.size(); ++level) {
-        peaks.levels.at(level) = fold(peaks.levels.at(level - 1));
-    }
+    foldLevels(peaks, 0);
     return peaks;
 }
 
@@ -178,7 +181,7 @@ const PeakLevels* PeakCache::levels(const std::filesystem::path& file) {
     }
     const auto entry = files_.emplace(file, nullptr).first;
     pool_.start([this, entry] {
-        auto loaded = std::make_unique<const PeakLevels>(loadPeaks(entry->first));
+        auto loaded = std::make_unique<PeakLevels>(loadPeaks(entry->first));
         {
             const std::scoped_lock done{mutex_};
             entry->second = std::move(loaded);
@@ -188,14 +191,19 @@ const PeakLevels* PeakCache::levels(const std::filesystem::path& file) {
     return nullptr;
 }
 
-// We rebuild every level on each call, so a call costs the take's whole length; folding only the new tail would not.
+// We grow a take's levels in place, which is safe because the views read them on this thread.
 void PeakCache::addLive(const std::filesystem::path& file, const Peaks& finest) {
     {
         const std::scoped_lock lock{mutex_};
-        Peaks& peaks = live_[file];
+        std::unique_ptr<PeakLevels>& levels = files_[file];
+        if (live_.insert(file).second || !levels) {
+            levels = std::make_unique<PeakLevels>();
+        }
+        Peaks& peaks = levels->levels.front();
+        const std::size_t changed = peaks.minimum.size();
         peaks.minimum.insert(peaks.minimum.end(), finest.minimum.begin(), finest.minimum.end());
         peaks.maximum.insert(peaks.maximum.end(), finest.maximum.begin(), finest.maximum.end());
-        files_[file] = std::make_unique<const PeakLevels>(buildLevels(peaks));
+        foldLevels(*levels, changed);
     }
     emit loaded();
 }

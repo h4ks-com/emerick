@@ -69,8 +69,18 @@ ApplicationWindow {
         buttons: MessageDialog.Ok | MessageDialog.Cancel
         onAccepted: Registry.runAction(actionId, {confirm: true})
     }
+    MessageDialog {
+        id: noticeDialog
+        buttons: MessageDialog.Ok
+        objectName: "dialog.notice"
+    }
     Connections {
         target: Registry
+        function onNoticeRaised(title, text) {
+            noticeDialog.title = title
+            noticeDialog.text = text
+            noticeDialog.open()
+        }
         function onFileDialogRequested(request) {
             if (request.mode === App.Folder) {
                 folderDialog.actionId = request.id

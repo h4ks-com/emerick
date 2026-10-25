@@ -26,6 +26,9 @@ constexpr const char* kInstallSteps =
     "Press OK to copy the Emerick template to it. Then eject the drive, restart the keyboard, open Menu > MIDI and "
     "pick Emerick on the User tab.";
 
+constexpr const char* kAfterInstall =
+    "Eject the drive, restart the keyboard, open Menu > MIDI and pick Emerick on the User tab.";
+
 bool isKeyboardDrive(const fs::path& folder) {
     std::error_code error;
     return std::ranges::all_of(std::array{"MIDI", "STYLE", "REGIST"},
@@ -98,30 +101,35 @@ void registerTemplateActions(app::Registry& registry) {
                  const fs::path path =
                      registry.checkedPath((*drive / "MIDI" / kTemplateFile).string(), app::PathAccess::Write);
                  writeTemplate(registry, path);
-                 return Json{{"path", path.string()}, {"steps", kInstallSteps}};
+                 return Json{{"path", path.string()},
+                             {"steps", kInstallSteps},
+                             {"message", "Copied the template to " + path.string() + ". " + kAfterInstall}};
              },
          .menus = {kYamahaMenu},
-         .confirm = kInstallSteps});
-    registry.addAction({.id = "yamaha.template.save",
-                        .title = "Save keyboard template",
-                        .description = "Saves the Emerick MIDI template as a file to copy into the MIDI folder of the "
-                                       "keyboard's User drive or a USB stick.",
-                        .aliases = {"export midi template"},
-                        .keywords = {"genos", "yamaha", "mis"},
-                        .category = "Yamaha",
-                        .schema = {{"required", {"path"}}, {"properties", {{"path", {{"type", "string"}}}}}},
-                        .run =
-                            [&registry](const Json& params) {
-                                const fs::path path = registry.checkedPath(app::param<std::string>(params, "path"),
-                                                                           app::PathAccess::Write);
-                                writeTemplate(registry, path);
-                                return Json{{"path", path.string()}};
-                            },
-                        .menus = {kYamahaMenu},
-                        .dialog = app::FileDialog{.param = "path",
-                                                  .mode = app::FileDialogMode::Save,
-                                                  .nameFilter = "MIDI templates (*.mis)",
-                                                  .suffix = "mis"}});
+         .confirm = kInstallSteps,
+         .notifies = true});
+    registry.addAction(
+        {.id = "yamaha.template.save",
+         .title = "Save keyboard template",
+         .description = "Saves the Emerick MIDI template as a file to copy into the MIDI folder of the "
+                        "keyboard's User drive or a USB stick.",
+         .aliases = {"export midi template"},
+         .keywords = {"genos", "yamaha", "mis"},
+         .category = "Yamaha",
+         .schema = {{"required", {"path"}}, {"properties", {{"path", {{"type", "string"}}}}}},
+         .run =
+             [&registry](const Json& params) {
+                 const fs::path path =
+                     registry.checkedPath(app::param<std::string>(params, "path"), app::PathAccess::Write);
+                 writeTemplate(registry, path);
+                 return Json{{"path", path.string()}, {"message", "Saved the template to " + path.string()}};
+             },
+         .menus = {kYamahaMenu},
+         .dialog = app::FileDialog{.param = "path",
+                                   .mode = app::FileDialogMode::Save,
+                                   .nameFilter = "MIDI templates (*.mis)",
+                                   .suffix = "mis"},
+         .notifies = true});
 }
 
 }  // namespace emerick::yamaha

@@ -40,7 +40,8 @@ std::map<int, ButtonFunction> styleButtons();
 struct KeyboardTemplate {
     TemplatePort clock = TemplatePort::Usb1;
     bool startStop = true;
-    TemplatePort controllerPort = TemplatePort::Usb2;
+    // We listen for Style buttons on USB1 because USB2 feeds the Song parts that play the recorded parts back.
+    TemplatePort controllerPort = TemplatePort::Usb1;
     int controllerChannel = 16;
     std::map<int, ButtonFunction> buttons = styleButtons();
 };

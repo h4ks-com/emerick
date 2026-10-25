@@ -32,4 +32,8 @@ TEST_CASE("saving the keyboard template writes it to the chosen file") {
     const std::filesystem::path path = rig.path("Emerick.mis");
     rig.run("yamaha.template.save", {{"path", path.string()}});
     CHECK(fileBytes(path.string()) == encodeKeyboardTemplate({}));
+
+    rig.registry.setSetting("yamaha.controllerChannel", 3);
+    rig.run("yamaha.template.save", {{"path", path.string()}});
+    CHECK(fileBytes(path.string()) == encodeKeyboardTemplate({.controllerChannel = 3}));
 }

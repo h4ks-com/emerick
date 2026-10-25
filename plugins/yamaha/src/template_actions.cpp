@@ -57,8 +57,9 @@ std::optional<fs::path> mountedKeyboardDrive() {
     return std::nullopt;
 }
 
-void writeTemplate(const fs::path& path) {
-    const std::vector<std::uint8_t> bytes = encodeKeyboardTemplate({});
+void writeTemplate(const app::Registry& registry, const fs::path& path) {
+    const std::vector<std::uint8_t> bytes =
+        encodeKeyboardTemplate({.controllerChannel = registry.settingValue(kControllerChannelSetting).get<int>()});
     std::ofstream file(path, std::ios::binary);
     file.write(reinterpret_cast<const char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
     if (!file) {
@@ -96,7 +97,7 @@ void registerTemplateActions(app::Registry& registry) {
                  }
                  const fs::path path =
                      registry.checkedPath((*drive / "MIDI" / kTemplateFile).string(), app::PathAccess::Write);
-                 writeTemplate(path);
+                 writeTemplate(registry, path);
                  return Json{{"path", path.string()}, {"steps", kInstallSteps}};
              },
          .menus = {kYamahaMenu},
@@ -113,7 +114,7 @@ void registerTemplateActions(app::Registry& registry) {
                             [&registry](const Json& params) {
                                 const fs::path path = registry.checkedPath(app::param<std::string>(params, "path"),
                                                                            app::PathAccess::Write);
-                                writeTemplate(path);
+                                writeTemplate(registry, path);
                                 return Json{{"path", path.string()}};
                             },
                         .menus = {kYamahaMenu},

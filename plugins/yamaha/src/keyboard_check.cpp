@@ -20,6 +20,7 @@ namespace {
 // We judge after about four bars of the Style's Bass, Chord, Pad and Phrase notes.
 constexpr int kStyleNotesToJudge = 48;
 constexpr core::Frames kMonitoringFrames = 256;
+constexpr std::string_view kInstallTemplate = "Install the keyboard template from Plugins > Yamaha Arranger";
 
 int channelOf(std::string_view name) { return std::ranges::find(genos2Parts(), name, &Part::name)->channel; }
 
@@ -81,13 +82,10 @@ void KeyboardCheck::judge() {
     input_.reset();
     keyboardHints_.clear();
     if (!channels_.contains(channelOf("Rhythm 1")) && !channels_.contains(channelOf("Rhythm 2"))) {
-        keyboardHints_.emplace_back(
-            "Set Rhythm 1 and Rhythm 2 to transmit on channels 9 and 10 in the keyboard's Menu > MIDI > Edit > "
-            "Transmit");
+        keyboardHints_.push_back(std::string{kInstallTemplate} + " so the keyboard sends its Rhythm parts");
     }
     if (channels_.contains(channelOf("Left")) && !heardChords_) {
-        keyboardHints_.emplace_back(
-            "Turn on Chord System Exclusive Message Transmit in the keyboard's Menu > MIDI > Edit > System");
+        keyboardHints_.push_back(std::string{kInstallTemplate} + " so the keyboard sends its chords");
     }
     emit hintsChanged();
 }
@@ -100,9 +98,9 @@ std::vector<std::string> KeyboardCheck::hints() const {
             return track.kind == "midi" && track.midiOut.portId == buttons->portId &&
                    track.midiOut.channel == buttons->channel;
         })) {
-        result.emplace_back(
-            "Move the keyboard's External Controller to USB1 in Menu > MIDI > Edit > External Controller and the Style "
-            "track's MIDI out to Port 1, so part playback presses no Style buttons");
+        result.push_back(std::string{kInstallTemplate} +
+                         ", then route the parts to the keyboard's Port 2 and the Style track to its Port 1, so part "
+                         "playback presses no Style buttons");
     }
     result.insert(result.end(), keyboardHints_.begin(), keyboardHints_.end());
     if (controller_.engine().layout().maxFrames > kMonitoringFrames) {

@@ -67,13 +67,13 @@ TEST_CASE("setting up the arranger adds Chords, Style and one track per part in 
     CHECK(rig.controller->project().document().tracks.size() == 19);
 }
 
-TEST_CASE("the arranger records from the keyboard port and plays the parts and the Style on its other port") {
+TEST_CASE("the arranger records and presses Style buttons on Port 1 and plays the parts on Port 2") {
     YamahaRig rig({kController, "Other", kKeyboard});
     rig.run("yamaha.setupArranger");
     const auto& document = rig.controller->project().document();
     CHECK(std::ranges::all_of(document.tracks, [](const model::Track& track) {
         return track.midiIn.portId == kKeyboard &&
-               track.midiOut.portId == (track.kind == "yamaha.chord" ? kKeyboard : kController);
+               track.midiOut.portId == (track.kind == "midi" ? kController : kKeyboard);
     }));
     CHECK(document.tracks.at(1).midiOut.channel == 16);
     CHECK(document.clockPorts == std::vector<std::string>{kKeyboard});
@@ -81,7 +81,12 @@ TEST_CASE("the arranger records from the keyboard port and plays the parts and t
 
     rig.run("yamaha.setupArranger", {{"port", kController}});
     CHECK(document.tracks.at(19).midiOut.portId == kController);
+    CHECK(document.tracks.at(21).midiOut.portId == kKeyboard);
     CHECK(document.clockPorts == std::vector<std::string>{kKeyboard, kController});
+
+    rig.registry.setSetting("yamaha.controllerPort", "Other");
+    rig.run("yamaha.setupArranger");
+    CHECK(document.tracks.at(37).midiOut.portId == "Other");
 }
 
 TEST_CASE("the arranger adds a stereo audio track on the keyboard's audio input when it runs at the project rate") {
@@ -258,31 +263,33 @@ TEST_CASE("the Style track presses the keyboard's section buttons on the Externa
     rig.audio->process(48000);
     REQUIRE(processUntil([&] { return rig.controller->engine().midiFlushed(); }));
     rig.run("transport.stop");
-    CHECK(std::ranges::contains(sentTo(rig, kController), Bytes{0xBF, 12, 127}));
-    CHECK(std::ranges::contains(sentTo(rig, kController), Bytes{0xBF, 12, 0}));
+    CHECK(std::ranges::contains(sentTo(rig, kKeyboard), Bytes{0xBF, 12, 127}));
+    CHECK(std::ranges::contains(sentTo(rig, kKeyboard), Bytes{0xBF, 12, 0}));
     CHECK(std::ranges::contains(sentTo(rig, kKeyboard), Bytes{0xF0, 0x43, 0x7E, 0x02, 0x32, 0x08, 0x7F, 0x7F, 0xF7}));
-    CHECK_FALSE(std::ranges::contains(sentTo(rig, kKeyboard), Bytes{0xBF, 12, 127}));
+    CHECK_FALSE(std::ranges::contains(sentTo(rig, kController), Bytes{0xBF, 12, 127}));
 }
 
 TEST_CASE("the keyboard check names the setting for each part the playing Style does not send") {
     YamahaRig rig({kKeyboard, kController});
-    const Json setUp = rig.run("yamaha.setupArranger").at("hints");
-    REQUIRE(setUp.size() == 1);
-    CHECK(setUp.at(0).get<std::string>().starts_with("Move the keyboard's External Controller to USB1"));
+    CHECK(rig.run("yamaha.setupArranger").at("hints").empty());
+    const auto hints = [&] { return rig.run("yamaha.keyboard.check").at("hints"); };
     const std::string style = rig.controller->project().document().tracks.at(1).id.value;
+    rig.run("track.setMidiOut", {{"track", style}, {"port", kController}, {"channel", 16}});
+    REQUIRE(hints().size() == 1);
+    CHECK(hints().at(0).get<std::string>().ends_with("so part playback presses no Style buttons"));
     rig.run("track.setMidiOut", {{"track", style}, {"port", kKeyboard}, {"channel", 16}});
-    CHECK(rig.run("yamaha.keyboard.check").at("hints").empty());
+    CHECK(hints().empty());
+
     const auto play = [&](int channel, int notes) {
         for (int note = 0; note < notes; ++note) {
             rig.midi->inject(kKeyboard, Bytes{core::midi::statusFor(core::midi::kNoteOn, channel), 60, 100}, 0);
         }
     };
-    const auto hints = [&] { return rig.run("yamaha.keyboard.check").at("hints"); };
     play(4, 4);
     play(11, 48);
     REQUIRE(processUntil([&] { return hints().size() == 2; }));
-    CHECK(hints().at(0).get<std::string>().starts_with("Set Rhythm 1 and Rhythm 2 to transmit"));
-    CHECK(hints().at(1).get<std::string>().starts_with("Turn on Chord System Exclusive Message Transmit"));
+    CHECK(hints().at(0).get<std::string>().ends_with("so the keyboard sends its Rhythm parts"));
+    CHECK(hints().at(1).get<std::string>().ends_with("so the keyboard sends its chords"));
 
     rig.run("transport.play");
     rig.run("transport.stop");

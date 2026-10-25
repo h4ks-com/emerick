@@ -104,8 +104,9 @@ void registerSettings(app::Registry& registry, app::ProjectController& controlle
          .title = "External Controller port",
          .aliases = {"section buttons port"},
          .type = app::SettingType::String,
-         .defaultValue = "Digital Keyboard Port 2",
-         .hint = "Pick the port of the keyboard's External Controller. Set up arranger routes the Style track to it",
+         .defaultValue = "",
+         .hint = "Pick the port of the keyboard's External Controller, or leave it empty to use the keyboard port. "
+                 "Set up arranger routes the Style track to it",
          .suggestions = [&controller] { return app::midiOutputChoices(controller); }});
     addSetting(registry, {.id = kControllerChannelSetting,
                           .title = "External Controller channel",

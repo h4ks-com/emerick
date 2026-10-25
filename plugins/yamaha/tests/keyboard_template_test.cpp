@@ -54,9 +54,9 @@ TEST_CASE("the keyboard template sends every part on its default channel, Rhythm
     CHECK(bytes[0x45] == 0xF8);
 }
 
-TEST_CASE("the keyboard template listens for Style buttons on USB2 channel 16") {
+TEST_CASE("the keyboard template listens for Style buttons on USB1 channel 16") {
     const auto bytes = encodeKeyboardTemplate({});
-    CHECK(bytes[kControllerPort] == 4);
+    CHECK(bytes[kControllerPort] == 3);
     CHECK(bytes[kControllerChannel] == 15);
     CHECK(bytes[buttonSlot(0)] == static_cast<std::uint8_t>(ButtonFunction::StyleStartStop));
     CHECK(bytes[buttonSlot(5)] == static_cast<std::uint8_t>(ButtonFunction::FillDown));
@@ -66,8 +66,8 @@ TEST_CASE("the keyboard template listens for Style buttons on USB2 channel 16") 
     CHECK(bytes[buttonSlot(34)] == static_cast<std::uint8_t>(ButtonFunction::FadeInOut));
 
     const auto moved = encodeKeyboardTemplate(
-        {.controllerPort = TemplatePort::Usb1, .controllerChannel = 1, .buttons = {{11, ButtonFunction::MainD}}});
-    CHECK(moved[kControllerPort] == 3);
+        {.controllerPort = TemplatePort::Usb2, .controllerChannel = 1, .buttons = {{11, ButtonFunction::MainD}}});
+    CHECK(moved[kControllerPort] == 4);
     CHECK(moved[kControllerChannel] == 0);
     CHECK(moved[buttonSlot(11)] == static_cast<std::uint8_t>(ButtonFunction::MainD));
     CHECK(moved[buttonSlot(0)] == 0);

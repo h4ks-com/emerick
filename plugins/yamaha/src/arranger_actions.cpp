@@ -36,9 +36,8 @@ bool hasPort(const std::vector<engine::MidiPortInfo>& ports, const std::string& 
     return std::ranges::any_of(ports, [&](const auto& port) { return port.id == id && port.isInput == input; });
 }
 
-// The keyboard port is one the keyboard both sends on and listens to, other than its External Controller port.
-std::optional<std::string> keyboardPort(const app::Registry& registry, app::ProjectController& controller,
-                                        const Json& params) {
+// We take the lowest id among the keyboard's ports to land on Port 1, the one it sends everything on.
+std::optional<std::string> keyboardPort(app::ProjectController& controller, const Json& params) {
     const auto& ports = controller.engine().midiPorts();
     if (const auto requested = app::optionalParam<std::string>(params, "port")) {
         if (!hasPort(ports, *requested, true) || !hasPort(ports, *requested, false)) {
@@ -46,17 +45,15 @@ std::optional<std::string> keyboardPort(const app::Registry& registry, app::Proj
         }
         return requested;
     }
-    const auto controllerPort = registry.settingValue(kControllerPortSetting).get<std::string>();
-    const auto duplex = [&](const engine::MidiPortInfo& port) {
-        return port.isInput && hasPort(ports, port.id, false);
-    };
-    auto found = std::ranges::find_if(ports, [&](const auto& port) {
-        return duplex(port) && port.name.contains(kKeyboardName) && port.id != controllerPort;
-    });
-    if (found == ports.end()) {
-        found = std::ranges::find_if(ports, duplex);
+    auto duplex = ports | std::views::filter([&](const engine::MidiPortInfo& port) {
+                      return port.isInput && hasPort(ports, port.id, false);
+                  });
+    auto keyboards =
+        duplex | std::views::filter([](const engine::MidiPortInfo& port) { return port.name.contains(kKeyboardName); });
+    if (!keyboards.empty()) {
+        return std::ranges::min(keyboards, {}, &engine::MidiPortInfo::id).id;
     }
-    return found == ports.end() ? std::nullopt : std::optional{found->id};
+    return duplex.empty() ? std::nullopt : std::optional{duplex.front().id};
 }
 
 void addTrack(app::ProjectController& controller, model::Track track) {
@@ -73,11 +70,10 @@ std::string partsPort(app::ProjectController& controller, const std::string& key
     return found == ports.end() ? keyboard : found->id;
 }
 
-// The Style track presses section buttons on the External Controller port, or on the parts port without one.
 model::MidiRoute controllerRoute(const app::Registry& registry, app::ProjectController& controller,
-                                 const std::string& fallback) {
+                                 const std::string& keyboard) {
     const auto port = registry.settingValue(kControllerPortSetting).get<std::string>();
-    return {.portId = hasPort(controller.engine().midiPorts(), port, false) ? port : fallback,
+    return {.portId = hasPort(controller.engine().midiPorts(), port, false) ? port : keyboard,
             .channel = registry.settingValue(kControllerChannelSetting).get<int>(),
             .thru = false,
             .sysex = false};
@@ -286,14 +282,15 @@ void registerArrangerActions(app::Registry& registry, app::ProjectController& co
          .schema = {{"properties", {{"port", {{"type", "string"}}}}}},
          .run =
              [&registry, &controller, &check](const Json& params) {
-                 const auto keyboard = keyboardPort(registry, controller, params);
+                 const auto keyboard = keyboardPort(controller, params);
                  if (!keyboard) {
                      throw AppError("no MIDI port with both an input and an output, connect the keyboard or pass port");
                  }
                  const std::string parts = partsPort(controller, *keyboard);
                  controller.project().group("set up arranger", [&] {
                      const std::size_t first = controller.project().document().tracks.size();
-                     addChartTracks(controller, registry, *keyboard, {}, controllerRoute(registry, controller, parts));
+                     addChartTracks(controller, registry, *keyboard, {},
+                                    controllerRoute(registry, controller, *keyboard));
                      for (const Part& part : genos2Parts()) {
                          addTrack(controller, partTrack(part, *keyboard, parts));
                      }
@@ -339,9 +336,8 @@ void registerArrangerActions(app::Registry& registry, app::ProjectController& co
                  const int shiftBars = app::optionalParam<int>(params, "shiftBars").value_or(0);
                  const Chart chart = chartFromTake(sysexOfMidiFile(path), controller.project().document().tempo,
                                                    chartOptions(registry, shiftBars));
-                 const std::string keyboard = keyboardPort(registry, controller, Json::object()).value_or("");
-                 const model::MidiRoute styleOut =
-                     controllerRoute(registry, controller, partsPort(controller, keyboard));
+                 const std::string keyboard = keyboardPort(controller, Json::object()).value_or("");
+                 const model::MidiRoute styleOut = controllerRoute(registry, controller, keyboard);
                  controller.project().group("import chart " + path.filename().string(),
                                             [&] { addChartTracks(controller, registry, keyboard, chart, styleOut); });
                  return app::projectState(controller);

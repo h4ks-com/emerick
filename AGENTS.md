@@ -20,7 +20,9 @@ Emerick is a small native DAW in C++23 and Qt 6.11 QML. It records and plays aud
 - Tests run offscreen and never show a window; agents run the app only inside a VM, never on the machine they build on
 - `make format` / `make format-check` clang-format
 - `make lint` clang-tidy, warnings are errors
-- `make quality` the full gate: format-check, lint, test
+- `make fix` clang-format and clang-tidy --fix on the files the branch changed
+- `make check-fast` format-check and lint the changed files, build, run the tests in parallel; use it while working
+- `make quality` the full gate: format-check, lint, test; run it once before a commit
 - `make docker-build` build the headless image (Qt 6.11, builds the repo, runs ctest)
 - `make e2e` build the Docker image and drive the headless app over MCP
 - `docker run --rm -p 127.0.0.1:8888:8888 emerick-dev` run the headless app; `.mcp.json` registers it as the `emerick` MCP server
@@ -46,4 +48,4 @@ Emerick is a small native DAW in C++23 and Qt 6.11 QML. It records and plays aud
 
 ## Git
 - Work in a worktree branch per task. Commit messages are one line, conventional commits (`feat: add clip fades`), no body, no trailers.
-- Run `make quality` and the `/rev` review before every commit.
+- Run `make quality` before every commit, and the `/rev` review when asked or for risky changes.

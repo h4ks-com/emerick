@@ -1,6 +1,9 @@
-.PHONY: configure build test run format format-check lint quality docker-build e2e clean
+.PHONY: configure build test run format format-check lint quality fix tidy-fix check-fast docker-build e2e clean
 
 SOURCES := $(shell git ls-files --cached --others --exclude-standard '*.cpp' '*.hpp')
+# The C++ files a branch changed since it left main, plus uncommitted and new ones.
+CHANGED := $(sort $(filter $(SOURCES),$(shell git diff --name-only $$(git merge-base HEAD main) 2>/dev/null; git ls-files --others --exclude-standard)))
+JOBS ?= 4
 # We pin LLVM because every release adds clang-tidy checks and changes formatting.
 LLVM_VERSION := 22
 ifeq ($(shell uname),Darwin)
@@ -25,7 +28,7 @@ build: configure
 	cmake --build --preset dev
 
 test: build
-	ctest --preset dev
+	ctest --preset dev -j $(JOBS)
 
 run: build
 	@bin=build/dev/app/emerick; [ -x $$bin ] || bin=build/dev/app/emerick.app/Contents/MacOS/emerick; exec $$bin $(ARGS)
@@ -36,10 +39,28 @@ format:
 format-check:
 	$(CLANG_FORMAT) --dry-run --Werror $(SOURCES)
 
+TIDY_FILES = $(filter-out %_test.cpp $(OTHER_PLATFORM_SOURCES),$(filter %.cpp,$(1)))
+TIDY = printf '%s\n' $(call TIDY_FILES,$(1)) | xargs -P $(JOBS) -n 4 $(CLANG_TIDY) -p build/dev --quiet $(TIDY_ARGS) $(2)
+
 lint: build
-	$(CLANG_TIDY) -p build/dev --quiet $(TIDY_ARGS) $(filter-out %_test.cpp $(OTHER_PLATFORM_SOURCES),$(filter %.cpp,$(SOURCES)))
+	$(call TIDY,$(SOURCES))
 
 quality: format-check lint test
+
+# While working: fix what the tools can fix in the changed files, then check only those files.
+fix: build
+	$(if $(CHANGED),$(CLANG_FORMAT) -i $(CHANGED))
+	$(if $(call TIDY_FILES,$(CHANGED)),$(MAKE) --no-print-directory JOBS=1 tidy-fix)
+	$(if $(CHANGED),$(CLANG_FORMAT) -i $(CHANGED))
+
+# One clang-tidy at a time, so two files never fix the same header at once.
+tidy-fix:
+	$(call TIDY,$(CHANGED),--fix --fix-errors)
+
+check-fast: build
+	$(if $(CHANGED),$(CLANG_FORMAT) --dry-run --Werror $(CHANGED))
+	$(if $(call TIDY_FILES,$(CHANGED)),$(call TIDY,$(CHANGED)))
+	ctest --preset dev -j $(JOBS) --stop-on-failure
 
 docker-build:
 	docker build -t emerick-dev -f docker/Dockerfile .

@@ -77,7 +77,6 @@ QtObject {
     readonly property int splitterGrip: 6
     readonly property int mixerHeight: 320
     readonly property int mixerMinHeight: 200
-    readonly property int stripWidth: 84
     readonly property int faderMinHeight: 64
     readonly property int faderGroove: 3
     readonly property int faderCapWidth: 28
@@ -94,6 +93,7 @@ QtObject {
     readonly property int transportButton: 36
     readonly property int displayHeight: 44
     readonly property int tooltipDelay: 500
+    readonly property int tipWidth: 320
     readonly property int noticeDuration: 10000
     readonly property color displayInset: Qt.rgba(0, 0, 0, 0.35)
     function glow(color) {
@@ -191,6 +191,13 @@ QtObject {
     // A selected note keeps its velocity hue but turns pale, because an amber outline vanishes on the loud notes.
     function selectedNote(velocity) {
         return Qt.hsla(0.62 * (1 - Math.max(0, velocity - 1) / 126), 0.55, 0.82, 1)
+    }
+
+    // We round a notes texture's width up to a power of two, so a zoom repaints a clip only when its width doubles or
+    // halves, and the texture scales to the clip in between.
+    function notesTexture(width, height) {
+        return Qt.size(Math.min(Math.pow(2, Math.ceil(Math.log2(Math.max(1, width)))), maxTextureWidth),
+                       Math.max(1, Math.ceil(height)))
     }
 
     // Track icons are Phosphor names and fade icons are our own; an icon we do not bundle shows as a note.

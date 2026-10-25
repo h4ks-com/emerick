@@ -222,15 +222,10 @@ ApplicationWindow {
                     }
                 }
             }
-            Label {
+            WarningBadge {
                 objectName: "transport.streamError"
                 anchors.verticalCenter: parent.verticalCenter
-                visible: text !== ""
-                text: Project.streamError
-                color: Theme.rec
-                font.pixelSize: Theme.textLabel
-                wrapMode: Text.Wrap
-                width: Theme.labelWidth
+                message: Project.streamError
             }
         }
         Row {

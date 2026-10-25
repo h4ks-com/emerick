@@ -1,20 +1,38 @@
 import QtQuick
 import QtQuick.Controls.Basic
-import QtQuick.Controls.impl
 import Emerick.App
 
-// A warning icon that shows its message in a tooltip on hover.
-IconImage {
+// A warning icon that shows only while message is set, with the whole message in its tooltip.
+ToolButton {
     id: badge
     property string message
 
-    source: Theme.iconSource("warning-octagon")
-    sourceSize: Qt.size(Theme.iconSize, Theme.iconSize)
-    color: Theme.rec
-    HoverHandler {
-        id: hover
+    visible: message !== ""
+    hoverEnabled: true
+    padding: 0
+    implicitWidth: Theme.buttonHeight
+    implicitHeight: Theme.buttonHeight
+    display: AbstractButton.IconOnly
+    icon.source: Theme.iconSource("warning-octagon")
+    icon.width: Theme.iconSize
+    icon.height: Theme.iconSize
+    icon.color: Theme.rec
+    background: null
+    Accessible.name: message
+
+    ToolTip {
+        id: tip
+        objectName: badge.objectName + ":tip"
+        parent: badge
+        text: badge.message
+        visible: badge.hovered || badge.pressed
+        delay: badge.pressed ? 0 : Theme.tooltipDelay
+        width: Math.min(implicitWidth, Theme.tipWidth)
+        contentItem: Text {
+            text: tip.text
+            font: tip.font
+            color: tip.palette.toolTipText
+            wrapMode: Text.Wrap
+        }
     }
-    ToolTip.text: badge.message
-    ToolTip.visible: hover.hovered && badge.message !== ""
-    ToolTip.delay: Theme.tooltipDelay
 }

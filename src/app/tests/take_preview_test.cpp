@@ -1,6 +1,8 @@
 #include <sndfile.h>
 
+#include <algorithm>
 #include <catch2/catch_test_macros.hpp>
+#include <cstdlib>
 #include <filesystem>
 #include <string>
 #include <variant>
@@ -55,6 +57,70 @@ TEST_CASE("a MIDI take shows its notes before stop, and only the landed take add
     REQUIRE(processUntil([&] { return !rig.controller->project().track(id)->clips.empty(); }));
     CHECK(rig.controller->takePreview(id) == nullptr);
     CHECK(rig.controller->project().undoName() == "record take on Keys");
+}
+
+TEST_CASE("a long MIDI take's preview freezes in chunks, keeps a held note across them and lands whole") {
+    ProjectRig rig;
+    const model::TrackId id{rig.run("track.addMidi", {{"name", "Pad"}}).at("id").get<std::string>()};
+    rig.run("track.setArm", {{"track", id.value}, {"value", true}});
+    rig.run("transport.record");
+    // We play the device by hand from here, so every beat lasts exactly its frames.
+    rig.clock.stop();
+    const core::TempoMap& tempo = rig.controller->project().document().tempo;
+    const core::Frames beat = tempo.ticksToFrames(tempo.ticksPerBeat(), kRate);
+    const auto send = [&](std::uint8_t status, std::uint8_t pitch, std::uint8_t velocity) {
+        rig.midi->inject(kMidiPort, std::vector<std::uint8_t>{status, pitch, velocity},
+                         rig.audio->hostTimeAt(rig.audio->processedFrames()));
+    };
+    constexpr int kBeats = 96;
+    constexpr int kHeldFrom = 15;
+    constexpr int kHeldTo = 18;
+    for (int at = 0; at < kBeats; ++at) {
+        const auto pitch = static_cast<std::uint8_t>(60 + at % 12);
+        const bool plays = at < kHeldFrom || at >= kHeldTo;
+        rig.audio->process(beat / 4);
+        if (at == kHeldFrom) {
+            send(0x90, 40, 90);
+        }
+        if (at == kHeldTo) {
+            send(0x80, 40, 0);
+        }
+        if (plays) {
+            send(0x90, pitch, 100);
+        }
+        rig.audio->process(beat / 2);
+        if (plays) {
+            send(0x80, pitch, 0);
+        }
+        rig.audio->process(beat - beat / 4 - beat / 2);
+        processUntil([] { return false; }, 5);
+    }
+    const auto shownNotes = [&] {
+        const TakePreview* preview = rig.controller->takePreview(id);
+        if (preview == nullptr || !preview->frozen) {
+            return std::size_t{0};
+        }
+        std::size_t count = 0;
+        for (const model::Clip& clip : preview->frozen->clips) {
+            count += std::get<model::MidiClip>(clip).notes.size();
+        }
+        return count + previewNotes(*rig.controller, id);
+    };
+    constexpr std::size_t kNotes = kBeats - (kHeldTo - kHeldFrom) + 1;
+    // The held note crosses a chunk's end, so the preview draws it as two bars.
+    REQUIRE(processUntil([&] { return shownNotes() == kNotes + 1; }));
+    const TakePreview* preview = rig.controller->takePreview(id);
+    CHECK(preview->live.startTick - preview->start >= 16 * tempo.ticksPerBar());
+    CHECK(preview->live.midiEvents.size() < kBeats / 2);
+
+    rig.clock.start(1);
+    rig.run("transport.stop");
+    REQUIRE(processUntil([&] { return !rig.controller->project().track(id)->clips.empty(); }));
+    const auto& landed = std::get<model::MidiClip>(rig.controller->project().track(id)->clips.front());
+    CHECK(landed.notes.size() == kNotes);
+    const auto held = std::ranges::find(landed.notes, 40, &model::Note::pitch);
+    REQUIRE(held != landed.notes.end());
+    CHECK(std::abs(held->length - (kHeldTo - kHeldFrom) * tempo.ticksPerBeat()) < tempo.ticksPerBeat() / 8);
 }
 
 TEST_CASE("an audio take's preview grows and sends its peaks before the take lands") {

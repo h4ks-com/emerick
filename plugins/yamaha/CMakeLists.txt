@@ -30,11 +30,11 @@ qt_add_qml_module(emerick_yamaha_plugin
     VERSION 1.0
     QML_FILES ${yamaha_qml}
     RESOURCES qml/warning.svg
-    SOURCES src/lane_blocks.cpp src/lane_blocks.hpp)
+    SOURCES src/block_strip.cpp src/block_strip.hpp src/lane_blocks.cpp src/lane_blocks.hpp)
 target_include_directories(emerick_yamaha_plugin PRIVATE src)
 target_link_libraries(emerick_yamaha_plugin
     PUBLIC emerick_app emerick_yamaha_codec
-    PRIVATE Qt6::Qml libremidi)
+    PRIVATE Qt6::Qml Qt6::Quick libremidi)
 emerick_target(emerick_yamaha_plugin)
 
 if(EMERICK_BUILD_TESTS)

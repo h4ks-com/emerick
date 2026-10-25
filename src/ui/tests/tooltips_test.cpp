@@ -4,6 +4,7 @@
 #include <catch2/catch_test_macros.hpp>
 #include <string>
 
+#include "emerick/model/json.hpp"
 #include "main_window.hpp"
 
 using namespace emerick;
@@ -21,7 +22,15 @@ bool isControl(const QQuickItem& item) {
            item.inherits("QQuickTextArea") || QString{item.metaObject()->className()}.startsWith("DragNumber");
 }
 
-QString toolTip(QQuickItem& item) { return QQmlProperty(&item, "ToolTip.text", qmlContext(&item)).read().toString(); }
+// We also read a ToolTip child, because a tooltip that wraps cannot use the attached one.
+QString toolTip(QQuickItem& item) {
+    for (const QObject* child : item.children()) {
+        if (child->inherits("QQuickToolTip")) {
+            return child->property("text").toString();
+        }
+    }
+    return QQmlProperty(&item, "ToolTip.text", qmlContext(&item)).read().toString();
+}
 
 // The objectName or class of every visible control under root that shows no tooltip.
 void collectUntitled(QQuickItem& root, QStringList& untitled) {
@@ -60,6 +69,39 @@ TEST_CASE("every visible control in the main window and on every settings page s
         CHECK(untitledControls(main) == std::string{});
     }
     main.rig.run("settings.close");
+    MainWindow::settle();
+}
+
+TEST_CASE("a track's route error shows as a warning badge in its header and the inspector, with a wrapping tooltip") {
+    MainWindow& main = MainWindow::instance();
+    model::Document document;
+    model::Track phones;
+    phones.kind = "audio";
+    phones.name = "Phones";
+    phones.audioOut = {"keyboard", {1, 2}};
+    document.tracks = {phones};
+    const auto folder = main.rig.path("errors.erk");
+    model::saveProject(document, folder);
+    main.rig.run("project.open", {{"path", folder.string()}});
+    main.rig.run("track.select", {{"track", phones.id.value}});
+    MainWindow::settle();
+
+    const QString id = QString::fromStdString(phones.id.value);
+    QQuickItem* badge = main.item("track.errors:" + id);
+    CHECK(badge->property("message").toString().startsWith("Digital Keyboard runs at 44100 Hz"));
+    CHECK(main.item("inspector.trackErrors")->property("message") == badge->property("message"));
+    main.hover(badge);
+    auto* tip = badge->findChild<QObject*>("track.errors:" + id + ":tip");
+    REQUIRE(tip != nullptr);
+    REQUIRE(processUntil([&] { return tip->property("opened").toBool(); }));
+    CHECK(tip->property("width").toReal() <= 320);
+    CHECK(tip->property("contentItem").value<QObject*>()->property("lineCount").toInt() > 1);
+
+    main.rig.run("track.setAudioOut", {{"track", phones.id.value}, {"device", "interface"}});
+    MainWindow::settle();
+    CHECK_FALSE(badge->isVisible());
+    CHECK(MainWindow::find(main.window->contentItem(), "inspector.trackErrors") == nullptr);
+    main.rig.run("project.new");
     MainWindow::settle();
 }
 

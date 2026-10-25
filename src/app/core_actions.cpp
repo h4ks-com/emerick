@@ -51,6 +51,7 @@ struct PaneWidth {
 constexpr std::array kPaneWidths{
     PaneWidth{"view.inspectorWidth", "Inspector width", "sidebar width", 260, 200, 640},
     PaneWidth{"view.headerWidth", "Track header width", "piano keyboard width", 240, 180, 480},
+    PaneWidth{"view.stripWidth", "Mixer strip width", "channel strip width", 84, 72, 240},
 };
 
 void registerPaneWidths(Registry& registry) {

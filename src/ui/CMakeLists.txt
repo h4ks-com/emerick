@@ -60,8 +60,8 @@ qt_add_qml_module(emerick_ui
         TrackList.qml
         TransportBar.qml
         TransportDisplay.qml
-        WarningBadge.qml
         VelocityLane.qml
+        WarningBadge.qml
     RESOURCES
         icons/arrows-merge.svg
         icons/automation.svg

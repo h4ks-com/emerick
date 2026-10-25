@@ -294,6 +294,8 @@ Rectangle {
                             item.trackId = Qt.binding(() => row.trackId)
                             item.trackData = Qt.binding(() => row.trackData)
                             item.pixelsPerTick = Qt.binding(() => area.pixelsPerTick)
+                            item.viewFrom = Qt.binding(() => area.scrollTicks)
+                            item.viewTo = Qt.binding(() => area.scrollTicks + area.visibleTicks)
                         }
                     }
                     // We count the clips rather than list them, so an edit keeps the clip items and a drag survives it.
@@ -317,7 +319,8 @@ Rectangle {
                     TakeRegion {
                         objectName: "takePreview:" + row.trackId
                         visible: row.laneComponent === "" && row.takePreview.type !== undefined
-                        take: visible ? row.takePreview : {type: "", start: 0, length: 0, file: "", frames: 0, notes: []}
+                        take: visible ? row.takePreview : {type: "", start: 0, length: 0, file: "", frames: 0, notes: [],
+                                                          frozen: [], liveFrom: 0, lowKey: -1, highKey: -1}
                         title: row.name + "   Take " + (row.clips.length + 1)
                         pixelsPerTick: area.pixelsPerTick
                         viewFrom: area.scrollTicks

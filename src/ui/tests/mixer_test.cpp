@@ -107,6 +107,26 @@ TEST_CASE("a mixer strip adds a send from its bus picker, and a send level drag 
     MainWindow::settle();
 }
 
+TEST_CASE("dragging a mixer strip's edge resizes every strip within its limits and keeps the width as a setting") {
+    MainWindow& main = MainWindow::instance();
+    const std::string vox = main.rig.run("track.addAudio").at("id");
+    main.rig.nav.setMixerOpen(true);
+    MainWindow::settle();
+
+    QQuickItem* edge = inMixer(main, "view.stripWidth:" + qid(vox));
+    QQuickItem* strip = edge->parentItem();
+    const double width = strip->width();
+    main.drag(edge, QPointF{30, 0});
+    CHECK(main.rig.registry.settingValue("view.stripWidth") == static_cast<int>(width) + 30);
+    CHECK(strip->width() == width + 30);
+    main.drag(inMixer(main, "view.stripWidth:" + qid(vox)), QPointF{-500, 0});
+    CHECK(main.rig.registry.settingValue("view.stripWidth") == 72);
+
+    main.rig.registry.setSetting("view.stripWidth", static_cast<int>(width));
+    main.rig.nav.setMixerOpen(false);
+    MainWindow::settle();
+}
+
 TEST_CASE("the piano roll, mixer and console open together leave the track list at least 40 percent of the window") {
     MainWindow& main = MainWindow::instance();
     main.rig.nav.setPianoRollOpen(true);

@@ -16,6 +16,10 @@ Item {
     property Component picker
     property real menuAt: 0
     property real menuTo: 0
+    // The ticks in view, which the block strip draws.
+    property real viewFrom: 0
+    property real viewTo: width / Math.max(pixelsPerTick, Number.MIN_VALUE)
+    property int focusedIndex: -1
     readonly property bool editing: Nav.editingBlock.track === trackId
     readonly property real editAt: editing ? Nav.editingBlock.at : 0
     readonly property string editLabel: blocks.find(block => block.at === editAt)?.label ?? ""
@@ -67,24 +71,53 @@ Item {
         params: ({track: lane.trackId, at: lane.menuAt, to: lane.menuTo})
     }
 
+    // We draw every block in view from one item, so a zoom or an edit repaints the lane once.
+    BlockStrip {
+        // The strip spans two views from a whole number of views in, so a scroll repaints it only past that span.
+        readonly property real span: Math.max(1, lane.viewTo - lane.viewFrom)
+        objectName: lane.actionPrefix + ".blocks:" + lane.trackId
+        x: from * lane.pixelsPerTick
+        width: 2 * span * lane.pixelsPerTick
+        height: lane.height
+        blocks: lane.blocks
+        picked: [lane.blocks[lane.focusedIndex]?.at ?? -1, lane.editing ? lane.editAt : -1]
+        from: Math.floor(lane.viewFrom / span) * span
+        pixelsPerTick: lane.pixelsPerTick
+        style: ({
+            colors: Theme.trackColors,
+            ink: Theme.ink,
+            inkDim: Theme.inkDim,
+            rule: Theme.rule,
+            tape: Theme.tape,
+            radius: Theme.radiusClip,
+            inset: Theme.space1,
+            hairline: Theme.hairline,
+            selectionWidth: Theme.selectionWidth,
+            pixelSize: Theme.textBody,
+            minimumPixelSize: Theme.textSmall
+        })
+    }
+
     // We count the blocks rather than list them, so a drag keeps its block item while the document follows it.
     Repeater {
         id: blockRepeater
         model: lane.blocks.length
-        delegate: Rectangle {
+        delegate: Item {
             id: block
             required property int index
             readonly property var modelData: lane.blocks[index] ?? {at: 0, end: 0, label: "", gap: true, colorIndex: 0}
-            readonly property bool picked: activeFocus || (lane.editing && lane.editAt === modelData.at)
             objectName: lane.actionPrefix + ".move:" + lane.trackId + ":" + modelData.at
             x: modelData.at * lane.pixelsPerTick
             y: Theme.space1
             width: Math.max(2 * Theme.hairline, (modelData.end - modelData.at) * lane.pixelsPerTick - Theme.hairline)
             height: lane.height - 2 * Theme.space1
-            radius: Theme.radiusClip
-            color: modelData.gap ? Theme.clear : Theme.trackColors[modelData.colorIndex]
-            border.width: picked ? Theme.selectionWidth : modelData.gap ? Theme.hairline : 0
-            border.color: picked ? Theme.tape : Theme.rule
+            onActiveFocusChanged: {
+                if (activeFocus) {
+                    lane.focusedIndex = index
+                } else if (lane.focusedIndex === index) {
+                    lane.focusedIndex = -1
+                }
+            }
             Keys.onShortcutOverride: event => event.accepted = lane.deletes(event)
             Keys.onPressed: event => {
                 if (lane.deletes(event)) {
@@ -97,20 +130,6 @@ Item {
             ToolTip.text: modelData.label + "\nClick to change, drag to move"
             ToolTip.visible: blockArea.containsMouse && !blockArea.tipDismissed
             ToolTip.delay: Theme.tooltipDelay
-
-            Text {
-                anchors.fill: parent
-                anchors.leftMargin: Theme.space1 + Theme.hairline
-                anchors.rightMargin: Theme.space1
-                verticalAlignment: Text.AlignVCenter
-                text: block.modelData.label
-                color: block.modelData.gap ? Theme.inkDim : Theme.ink
-                font.pixelSize: Theme.textBody
-                font.weight: Font.Medium
-                fontSizeMode: Text.HorizontalFit
-                minimumPixelSize: Theme.textSmall
-                elide: Text.ElideRight
-            }
 
             MouseArea {
                 id: blockArea

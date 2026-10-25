@@ -1,4 +1,7 @@
+#include <algorithm>
+#include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
+#include <ranges>
 #include <string>
 
 #include "main_window.hpp"
@@ -61,6 +64,26 @@ TEST_CASE("a mixer strip adds a Channel EQ from its empty slot, and dragging a b
     main.click(main.item("insert.closeEditor"));
     CHECK(processUntil([&] { return main.rig.nav.editingInsert().isEmpty(); }));
     main.rig.nav.setMixerOpen(false);
+    MainWindow::settle();
+}
+
+TEST_CASE("the insert editor's title bar shows an open hand and moves the editor while dragged") {
+    MainWindow& main = MainWindow::instance();
+    const std::string vox = main.rig.run("track.addAudio").at("id");
+    main.rig.run("insert.add", {{"track", vox}, {"type", "reverb"}});
+    MainWindow::settle();
+
+    QQuickItem* title = main.item("insertEditor.titleBar");
+    const auto cursors = title->findChildren<QObject*>() | std::views::transform([](QObject* handler) {
+                             return handler->property("cursorShape").toInt();
+                         });
+    CHECK(std::ranges::contains(cursors, Qt::OpenHandCursor));
+    const QPointF before = title->mapToScene({0, 0});
+    main.drag(title, QPointF{-60, -40});
+    const QPointF moved = main.item("insertEditor.titleBar")->mapToScene({0, 0}) - before;
+    CHECK(moved.x() == Catch::Approx(-60).margin(2));
+    CHECK(moved.y() == Catch::Approx(-40).margin(2));
+    main.rig.run("insert.closeEditor");
     MainWindow::settle();
 }
 

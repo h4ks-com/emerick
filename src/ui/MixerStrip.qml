@@ -43,7 +43,7 @@ Rectangle {
         return ""
     }
 
-    implicitWidth: Theme.stripWidth
+    implicitWidth: Registry.settings["view.stripWidth"]
     implicitHeight: column.implicitHeight + 2 * Theme.space1
     border.width: Theme.hairline
     border.color: selected ? Theme.inkDim : Theme.rule
@@ -54,6 +54,13 @@ Rectangle {
 
     TapHandler {
         onTapped: Registry.runAction("track.select", {track: strip.trackId})
+    }
+
+    PaneEdge {
+        settingId: "view.stripWidth"
+        objectName: settingId + ":" + strip.trackId
+        anchors.right: parent.right
+        height: parent.height
     }
 
     ColumnLayout {

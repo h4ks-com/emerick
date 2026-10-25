@@ -41,12 +41,13 @@ const char* clipTypeName(ClipType type) {
     return kNames.at(static_cast<std::size_t>(type));
 }
 
-QVariantList noteList(const model::MidiClip& clip) {
-    return clip.notes | std::views::transform([](const model::Note& note) {
+// We shift each note by from, which places a take chunk's notes within the take.
+QVariantList noteList(const model::MidiClip& clip, core::Ticks from = 0) {
+    return clip.notes | std::views::transform([from](const model::Note& note) {
                return QVariant{QVariantMap{{"id", qs(note.id.value)},
                                            {"pitch", note.pitch},
                                            {"velocity", note.velocity},
-                                           {"start", QVariant::fromValue(note.start)},
+                                           {"start", QVariant::fromValue(from + note.start)},
                                            {"length", QVariant::fromValue(note.length)},
                                            {"channel", note.channel}}};
            }) |
@@ -69,29 +70,72 @@ QVariantList laneList(const model::Track& track) {
            std::ranges::to<QVariantList>();
 }
 
-// The take in progress on a clip lane, as the tracks area draws it, or an empty map.
-QVariantMap previewEntry(const TakePreview* preview, ClipType type) {
+constexpr std::size_t kChunksPerSegment = 8;
+
+const model::MidiClip* midiClip(const std::vector<model::Clip>& clips, std::size_t index) {
+    return index < clips.size() ? std::get_if<model::MidiClip>(&clips[index]) : nullptr;
+}
+
+void widenKeys(std::pair<int, int>& keys, const model::MidiClip& clip) {
+    for (const model::Note& note : clip.notes) {
+        keys = {std::min(keys.first, note.pitch), std::max(keys.second, note.pitch)};
+    }
+}
+
+}  // namespace
+
+// The take in progress on a clip lane, as the tracks area draws it, or an empty map. We keep the frozen chunks' notes
+// in segments of a few chunks, so an update converts only the live chunk's notes and a freeze repaints one segment.
+QVariantMap TrackListModel::previewEntry(const model::TrackId& id, ClipType type) const {
+    const TakePreview* preview = controller_.takePreview(id);
     if (preview == nullptr || type == ClipType::none) {
         return {};
     }
+    const core::Ticks liveFrom = preview->live.startTick - preview->start;
+    FrozenNotes& frozen = frozenNotes_[id.value];
+    if (frozen.take != preview->take) {
+        frozen = FrozenNotes{};
+        frozen.take = preview->take;
+    }
+    if (preview->frozen) {
+        const std::vector<model::Clip>& clips = preview->frozen->clips;
+        for (; frozen.clips < clips.size(); ++frozen.clips) {
+            const model::MidiClip* midi = midiClip(clips, frozen.clips);
+            if (midi == nullptr) {
+                continue;
+            }
+            const core::Ticks at = midi->start - preview->start;
+            if (frozen.clips % kChunksPerSegment == 0) {
+                frozen.segments.append(QVariantMap{{"start", QVariant::fromValue(at)}, {"notes", QVariantList{}}});
+            }
+            QVariantMap segment = frozen.segments.last().toMap();
+            const core::Ticks from = segment["start"].toLongLong();
+            QVariantList notes = segment["notes"].toList();
+            notes.append(noteList(*midi, at - from));
+            segment["notes"] = notes;
+            segment["length"] = QVariant::fromValue(at + midi->length - from);
+            frozen.segments.last() = segment;
+            widenKeys(frozen.keys, *midi);
+        }
+    }
+    std::pair<int, int> keys = frozen.keys;
     QVariantMap entry{{"type", clipTypeName(type)},
                       {"start", QVariant::fromValue(preview->start)},
                       {"length", QVariant::fromValue(preview->length)},
                       {"file", qs(preview->audioFile.string())},
                       {"frames", QVariant::fromValue(preview->frames)},
+                      {"frozen", frozen.segments},
+                      {"liveFrom", QVariant::fromValue(liveFrom)},
                       {"notes", QVariantList{}}};
-    if (preview->track && !preview->track->clips.empty()) {
-        std::visit(core::Overloaded{[](const model::AudioClip&) {},
-                                    [&](const model::MidiClip& midi) {
-                                        entry["notes"] = noteList(midi);
-                                        entry["length"] = QVariant::fromValue(std::max(preview->length, midi.length));
-                                    }},
-                   preview->track->clips.back());
+    if (const model::MidiClip* live = preview->track ? midiClip(preview->track->clips, 0) : nullptr) {
+        entry["notes"] = noteList(*live);
+        entry["length"] = QVariant::fromValue(std::max(preview->length, liveFrom + live->length));
+        widenKeys(keys, *live);
     }
+    entry["lowKey"] = keys.first <= keys.second ? keys.first : -1;
+    entry["highKey"] = keys.first <= keys.second ? keys.second : -1;
     return entry;
 }
-
-}  // namespace
 
 QVariantMap TrackListModel::clipEntry(const model::Clip& clip, int take) const {
     const core::TempoMap& tempo = project_.document().tempo;
@@ -225,11 +269,20 @@ TrackListModel::TrackListModel(ProjectController& controller, const Registry& re
     connect(&controller_, &ProjectController::takePreviewChanged, this, &TrackListModel::takePreviewChanged);
 }
 
-void TrackListModel::takePreviewChanged(const QString& trackId) {
-    const auto row = std::ranges::find(rows_, model::TrackId{trackId.toStdString()});
-    if (row != rows_.end()) {
-        const QModelIndex at = index(static_cast<int>(row - rows_.begin()));
+void TrackListModel::takePreviewChanged(const QString& trackId, bool trackDataChanged) {
+    const model::TrackId id{trackId.toStdString()};
+    if (controller_.takePreview(id) == nullptr) {
+        frozenNotes_.erase(id.value);
+    }
+    const auto row = std::ranges::find(rows_, id);
+    if (row == rows_.end()) {
+        return;
+    }
+    const QModelIndex at = index(static_cast<int>(row - rows_.begin()));
+    if (trackDataChanged) {
         emit dataChanged(at, at, {static_cast<int>(Role::takePreview), static_cast<int>(Role::trackData)});
+    } else {
+        emit dataChanged(at, at, {static_cast<int>(Role::takePreview)});
     }
 }
 
@@ -316,7 +369,7 @@ QVariant TrackListModel::data(const QModelIndex& index, int role) const {
         case Role::recordDelayMs:
             return track.recordDelayMs;
         case Role::takePreview:
-            return previewEntry(controller_.takePreview(track.id), clipTypeOf(type));
+            return previewEntry(track.id, clipTypeOf(type));
     }
     return {};
 }

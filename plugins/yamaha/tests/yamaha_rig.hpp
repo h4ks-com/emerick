@@ -26,10 +26,14 @@ inline std::string readText(const std::string& name) {
     return text.str();
 }
 
+inline Bytes fileBytes(const std::string& path) {
+    std::ifstream file(path, std::ios::binary);
+    return {std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>()};
+}
+
 // The chord and section sysex of the recorded take in tests/data, in core ticks.
 inline std::vector<RawEvent> takeSysex() {
-    std::ifstream file(dataPath("take.mid"), std::ios::binary);
-    const Bytes bytes{std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>()};
+    const Bytes bytes = fileBytes(dataPath("take.mid"));
     libremidi::reader reader(true);
     reader.parse(bytes.data(), bytes.size());
     std::vector<RawEvent> events;

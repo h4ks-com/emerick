@@ -31,6 +31,8 @@ struct FuzzRig : ProjectRig {
     std::unique_ptr<ScriptLibrary> scripts;
 
     FuzzRig() {
+        // Hostile paths would otherwise write files wherever the test runs.
+        registry.setAgentRoots({.read = std::nullopt, .write = dir.path().toStdString()});
         registerCoreActions(registry, nav, {.audio = "null", .midi = "virtual"});
         registerVirtualMidiActions(registry, *midi);
         registerConsoleActions(registry, nav, console);

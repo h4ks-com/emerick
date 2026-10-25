@@ -47,5 +47,6 @@ void registerSettings(app::Registry& registry, app::Nav& nav);
 void registerTrackKinds(app::Registry& registry);
 void registerChartActions(app::Registry& registry, app::ProjectController& controller, app::Nav& nav);
 void registerArrangerActions(app::Registry& registry, app::ProjectController& controller);
+void registerTemplateActions(app::Registry& registry);
 
 }  // namespace emerick::yamaha

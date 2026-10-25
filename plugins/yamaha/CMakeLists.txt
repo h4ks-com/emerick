@@ -1,6 +1,7 @@
 add_library(emerick_yamaha_codec
     src/chart.cpp
     src/chord.cpp
+    src/keyboard_template.cpp
     src/profile.cpp
     src/render.cpp
     src/sysex.cpp)
@@ -15,7 +16,8 @@ qt_add_library(emerick_yamaha_plugin STATIC
     src/chart_actions.cpp
     src/chord_input.cpp
     src/plugin.cpp
-    src/registration.hpp)
+    src/registration.hpp
+    src/template_actions.cpp)
 set(yamaha_qml qml/BlockLane.qml qml/ChordLane.qml qml/StyleLane.qml)
 foreach(file ${yamaha_qml})
     get_filename_component(name ${file} NAME)
@@ -36,6 +38,7 @@ if(EMERICK_BUILD_TESTS)
     emerick_test(emerick_yamaha_codec_tests
         tests/chart_test.cpp
         tests/chord_test.cpp
+        tests/keyboard_template_test.cpp
         tests/profile_test.cpp
         tests/render_test.cpp
         tests/sysex_test.cpp)
@@ -46,7 +49,8 @@ if(EMERICK_BUILD_TESTS)
         tests/plugin_test.cpp
         tests/arranger_test.cpp
         tests/hostile_params_test.cpp
-        tests/lane_edit_test.cpp)
+        tests/lane_edit_test.cpp
+        tests/template_actions_test.cpp)
     target_include_directories(emerick_yamaha_plugin_tests PRIVATE ${PROJECT_SOURCE_DIR}/src/app/tests)
     target_link_libraries(emerick_yamaha_plugin_tests PRIVATE emerick_yamaha_plugin libremidi)
     target_compile_definitions(emerick_yamaha_plugin_tests PRIVATE TEST_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}/tests/data")

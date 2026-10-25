@@ -68,3 +68,37 @@ TEST_CASE("a fill presses Fill Self, Fill Up, Fill Down or the Main it leads to,
                    {8 * kBar, Section::Main, 3}}) == std::vector<int>{11, 6, 9, 5, 14});
     CHECK(pressed({{0, Section::FillTo, 2}}) == std::vector<int>{13});
 }
+
+TEST_CASE("chase selects the section a position plays, and a fill selects the Main it leads to") {
+    const std::vector<SectionEvent> sections{
+        {kBar, Section::Intro, 0},    {2 * kBar, Section::Main, 0},   {4 * kBar + kBeat, Section::Fill, 0},
+        {5 * kBar, Section::Main, 0}, {6 * kBar, Section::FillTo, 1}, {7 * kBar, Section::Break, 0}};
+    const auto chased = [&](emerick::core::Ticks at) { return chaseSection(sections, at); };
+    CHECK_FALSE(chased(0));
+    CHECK(chased(kBar)->kind == Section::Intro);
+    CHECK(chased(3 * kBar)->kind == Section::Main);
+    CHECK(chased(4 * kBar + 2 * kBeat) == SectionEvent{4 * kBar + kBeat, Section::Main, 0});
+    CHECK(chased(6 * kBar + kBeat)->kind == Section::Main);
+    CHECK(chased(6 * kBar + kBeat)->variation == 1);
+    CHECK(chased(7 * kBar)->variation == 1);
+    CHECK(sectionPress(*chased(6 * kBar), 16) == std::vector<Bytes>{{0xBF, 12, 127}, {0xBF, 12, 0}});
+    CHECK(buttonPress(kStartStopCc, 1) == std::vector<Bytes>{{0xB0, 0, 127}, {0xB0, 0, 0}});
+}
+
+TEST_CASE("a Main's pattern repeats every pass from its first downbeat, and an Intro or Ending plays once") {
+    const std::vector<SectionEvent> sections{{0, Section::Intro, 0},
+                                             {2 * kBar, Section::Main, 1, 4},
+                                             {12 * kBar, Section::Main, 2},
+                                             {14 * kBar, Section::Ending, 0}};
+    const auto at = [&](emerick::core::Ticks position) { return *patternAt(sections, position, kBar); };
+    CHECK(at(kBar + kBeat).passStart == 0);
+    CHECK(at(kBar + kBeat).bar == 2);
+    CHECK(at(kBar + kBeat).bars == 0);
+    CHECK(at(8 * kBar + kBeat).passStart == 6 * kBar);
+    CHECK(at(8 * kBar + kBeat).bar == 3);
+    CHECK(at(8 * kBar + kBeat).bars == 4);
+    CHECK(at(13 * kBar + 3 * kBeat).passStart == 13 * kBar);
+    CHECK(at(13 * kBar + 3 * kBeat).bars == 1);
+    CHECK(at(15 * kBar).passStart == 14 * kBar);
+    CHECK_FALSE(patternAt({{kBar, Section::Main, 0}}, 0, kBar));
+}

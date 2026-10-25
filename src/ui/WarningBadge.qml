@@ -13,7 +13,8 @@ ToolButton {
     implicitWidth: Theme.buttonHeight
     implicitHeight: Theme.buttonHeight
     display: AbstractButton.IconOnly
-    icon.source: Theme.iconSource("warning-octagon")
+    // A plugin's QML would resolve the relative icon path against its own module, so we resolve it here.
+    icon.source: Qt.resolvedUrl(Theme.iconSource("warning-octagon"))
     icon.width: Theme.iconSize
     icon.height: Theme.iconSize
     icon.color: Theme.rec

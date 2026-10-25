@@ -1,8 +1,10 @@
 #include "emerick/yamaha/plugin.hpp"
 
 #include <QQmlEngine>
-#include <QtLogging>
+#include <cstdint>
+#include <iterator>
 #include <memory>
+#include <optional>
 #include <ranges>
 #include <string>
 #include <utility>
@@ -13,6 +15,7 @@
 #include "emerick/app/session_mapping.hpp"
 #include "emerick/yamaha/profile.hpp"
 #include "emerick/yamaha/render.hpp"
+#include "emerick/yamaha/sysex.hpp"
 #include "registration.hpp"
 
 namespace emerick::yamaha {
@@ -49,15 +52,28 @@ engine::Track withRendered(const model::Track& track, const std::vector<RawEvent
     return result;
 }
 
-// A damaged project still opens, so a track whose data we cannot read plays nothing.
-template <class Event>
-std::vector<Event> playableEvents(const model::Track& track) {
-    try {
-        return eventsOf<Event>(track.data);
-    } catch (const app::AppError& error) {
-        qWarning("%s on %s", error.what(), track.name.c_str());
-        return {};
+int buttonChannel(const app::Registry& registry, const model::Track& style) {
+    return style.midiOut.channel != 0 ? style.midiOut.channel
+                                      : registry.settingValue(kControllerChannelSetting).get<int>();
+}
+
+std::vector<app::MidiMessage> toTrackOutput(const std::vector<std::vector<std::uint8_t>>& messages) {
+    return messages | std::views::transform([](const std::vector<std::uint8_t>& bytes) {
+               return app::MidiMessage{.port = {}, .bytes = bytes};
+           }) |
+           std::ranges::to<std::vector>();
+}
+
+std::optional<app::StartAlignment> styleStart(const model::Track& style, core::Ticks position,
+                                              const core::TempoMap& tempo) {
+    const auto pattern = patternAt(playableEvents<SectionEvent>(style), position, tempo.ticksPerBar());
+    if (!pattern) {
+        return std::nullopt;
     }
+    return app::StartAlignment{.position = pattern->passStart,
+                               .reason = "Style starts at bar " +
+                                         std::to_string(tempo.toBarBeatTick(pattern->passStart).bar) + ", " +
+                                         sectionName(pattern->section)};
 }
 
 void addSetting(app::Registry& registry, app::Setting setting) {
@@ -76,6 +92,28 @@ void registerDeviceProfile(app::Registry& registry) {
 }
 
 }  // namespace
+
+std::optional<std::vector<SectionEvent>> playingStyle(const model::Document& document) {
+    for (const model::Track& track : document.tracks) {
+        if (track.kind == kStyleKind && !track.mute && !track.midiOut.portId.empty()) {
+            if (auto sections = playableEvents<SectionEvent>(track); !sections.empty()) {
+                return sections;
+            }
+        }
+    }
+    return std::nullopt;
+}
+
+std::optional<Chord> chordIn(const model::Track& chords, core::Ticks position) {
+    const std::vector<ChordEvent> events = playableEvents<ChordEvent>(chords);
+    const auto after = std::ranges::upper_bound(events, position, {}, &ChordEvent::at);
+    return after == events.begin() ? std::nullopt : std::optional{std::prev(after)->chord};
+}
+
+std::optional<Chord> chordAt(const model::Document& document, core::Ticks position) {
+    const auto chords = std::ranges::find(document.tracks, std::string{kChordKind}, &model::Track::kind);
+    return chords == document.tracks.end() ? std::nullopt : chordIn(*chords, position);
+}
 
 ChartOptions chartOptions(const app::Registry& registry, int shiftBars) {
     return {.shiftBars = shiftBars,
@@ -118,7 +156,7 @@ void registerSettings(app::Registry& registry, app::ProjectController& controlle
                           .hint = "Channel the Style track presses the keyboard's section buttons on"});
 }
 
-void registerTrackKinds(app::Registry& registry) {
+void registerTrackKinds(app::Registry& registry, const StyleSync& sync) {
     registry.addTrackType(
         {.kind = kChordKind,
          .title = "Chords",
@@ -140,6 +178,11 @@ void registerTrackKinds(app::Registry& registry) {
                             return app::Marker{.at = event.at, .text = event.chord.name()};
                         }) |
                         std::ranges::to<std::vector>();
+             },
+         .chase =
+             [](const model::Track& track, core::Ticks position, const app::PlaybackContext&) {
+                 const auto chord = chordIn(track, position);
+                 return chord ? toTrackOutput({encodeChordControl(*chord)}) : std::vector<app::MidiMessage>{};
              }});
     registry.addTrackType(
         {.kind = kStyleKind,
@@ -150,11 +193,9 @@ void registerTrackKinds(app::Registry& registry) {
          .routes = {.midi = true},
          .toEngine =
              [&registry](const model::Track& track, const app::PlaybackContext& context) {
-                 const int channel = track.midiOut.channel != 0
-                                         ? track.midiOut.channel
-                                         : registry.settingValue(kControllerChannelSetting).get<int>();
-                 return withRendered(
-                     track, sectionPresses(playableEvents<SectionEvent>(track), channel, context.tempo.ticksPerBeat()));
+                 return withRendered(track,
+                                     sectionPresses(playableEvents<SectionEvent>(track), buttonChannel(registry, track),
+                                                    context.tempo.ticksPerBeat()));
              },
          .fromTake =
              [&registry](model::Track& track, const engine::RecordedTake& take, const app::TakeContext& context) {
@@ -167,11 +208,27 @@ void registerTrackKinds(app::Registry& registry) {
                             return app::Marker{.at = event.at, .text = sectionName(event)};
                         }) |
                         std::ranges::to<std::vector>();
-             }});
+             },
+         // The Start/Stop button toggles, so we press it only to stop a Style that runs.
+         .panic =
+             [&registry, &sync](const model::Track& track) {
+                 return sync.styleRunning() ? toTrackOutput(buttonPress(kStartStopCc, buttonChannel(registry, track)))
+                                            : std::vector<app::MidiMessage>{};
+             },
+         .chase =
+             [&registry](const model::Track& track, core::Ticks position, const app::PlaybackContext&) {
+                 const auto section = chaseSection(playableEvents<SectionEvent>(track), position);
+                 return section ? toTrackOutput(sectionPress(*section, buttonChannel(registry, track)))
+                                : std::vector<app::MidiMessage>{};
+             },
+         .alignStart = [](const model::Track& track, core::Ticks position,
+                          const app::PlaybackContext& context) { return styleStart(track, position, context.tempo); }});
 }
 
 Listeners::Listeners(app::Registry& registry, app::ProjectController& controller, app::Nav& nav)
-    : chordInput(registry, controller, nav), keyboardCheck(std::make_unique<KeyboardCheck>(controller)) {
+    : chordInput(registry, controller, nav),
+      keyboardCheck(std::make_unique<KeyboardCheck>(controller)),
+      styleSync(std::make_unique<StyleSync>(controller)) {
     qmlRegisterSingletonInstance("Emerick.Yamaha", 1, 0, "KeyboardCheck", keyboardCheck.get());
 }
 
@@ -179,10 +236,10 @@ Listeners::~Listeners() = default;
 
 std::unique_ptr<Listeners> registerWith(app::Registry& registry, app::ProjectController& controller, app::Nav& nav) {
     registerSettings(registry, controller, nav);
-    registerTrackKinds(registry);
+    auto listeners = std::make_unique<Listeners>(registry, controller, nav);
+    registerTrackKinds(registry, *listeners->styleSync);
     registerDeviceProfile(registry);
     registerChartActions(registry, controller, nav);
-    auto listeners = std::make_unique<Listeners>(registry, controller, nav);
     registerArrangerActions(registry, controller, *listeners->keyboardCheck);
     registerTemplateActions(registry);
     return listeners;

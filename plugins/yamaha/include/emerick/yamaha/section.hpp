@@ -35,12 +35,18 @@ inline constexpr std::array kSections{
 };
 inline constexpr std::uint8_t kFillDownCc = 5;
 inline constexpr std::uint8_t kFillUpCc = 9;
+inline constexpr std::uint8_t kStartStopCc = 0;
 static_assert(kSections.size() == static_cast<std::size_t>(Section::Ending) + 1);
 static_assert(std::ranges::all_of(std::views::iota(std::size_t{0}, kSections.size()), [](std::size_t index) {
     return kSections[index].kind == static_cast<Section>(index);
 }));
 
 constexpr const SectionInfo& sectionInfo(Section kind) { return kSections[static_cast<std::size_t>(kind)]; }
+
+// A Main, Intro or Ending begins at a bar line and plays a pattern; a fill or a break leads into one.
+constexpr bool startsSection(Section kind) {
+    return kind == Section::Main || kind == Section::Intro || kind == Section::Ending;
+}
 
 constexpr int variationCount(const SectionInfo& info) { return std::max(1, static_cast<int>(info.variations.size())); }
 

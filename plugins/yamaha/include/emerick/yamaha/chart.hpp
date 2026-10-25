@@ -17,11 +17,13 @@ struct ChordEvent {
     bool operator==(const ChordEvent&) const = default;
 };
 
-// Fill is a fill that returns to the same Main, FillTo a fill that lands on Main `variation`.
+// Fill is a fill that returns to the same Main, FillTo a fill that lands on Main `variation`. A Main's pattern
+// repeats every `bars` bars from its start; 0 means we do not know, and we treat it as one bar.
 struct SectionEvent {
     core::Ticks at = 0;
     Section kind = Section::Main;
     int variation = 0;
+    int bars = 0;
     bool operator==(const SectionEvent&) const = default;
 };
 

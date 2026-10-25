@@ -121,7 +121,8 @@ QVariantList LaneBlocks::sectionBlocks(const QVariant& data) {
         const int base = kSectionColors.at(static_cast<std::size_t>(event.kind));
         return QVariantMap{{"label", app::qs(sectionName(event))},
                            {"gap", false},
-                           {"colorIndex", event.kind == Section::Main ? base + event.variation : base}};
+                           {"colorIndex", event.kind == Section::Main ? base + event.variation : base},
+                           {"patternBars", event.bars}};
     });
 }
 

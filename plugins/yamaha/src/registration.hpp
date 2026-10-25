@@ -1,7 +1,9 @@
 #pragma once
 
+#include <QtLogging>
 #include <algorithm>
 #include <nlohmann/json.hpp>
+#include <optional>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -11,6 +13,7 @@
 #include "emerick/app/registry.hpp"
 #include "emerick/yamaha/chart.hpp"
 #include "keyboard_check.hpp"
+#include "style_sync.hpp"
 
 namespace emerick::yamaha {
 
@@ -52,10 +55,27 @@ inline std::optional<model::MidiRoute> styleButtons(const model::Document& docum
                                                                            : std::optional{style->midiOut};
 }
 
+// A damaged project still opens, so a track whose data we cannot read plays nothing.
+template <class Event>
+std::vector<Event> playableEvents(const model::Track& track) {
+    try {
+        return eventsOf<Event>(track.data);
+    } catch (const app::AppError& error) {
+        qWarning("%s on %s", error.what(), track.name.c_str());
+        return {};
+    }
+}
+
+// A Style track plays when it is unmuted, routed to an output and holds sections.
+std::optional<std::vector<SectionEvent>> playingStyle(const model::Document& document);
+std::optional<Chord> chordIn(const model::Track& chords, core::Ticks position);
+// We read the first Chords track.
+std::optional<Chord> chordAt(const model::Document& document, core::Ticks position);
+
 ChartOptions chartOptions(const app::Registry& registry, int shiftBars = 0);
 
 void registerSettings(app::Registry& registry, app::ProjectController& controller, app::Nav& nav);
-void registerTrackKinds(app::Registry& registry);
+void registerTrackKinds(app::Registry& registry, const StyleSync& sync);
 void registerChartActions(app::Registry& registry, app::ProjectController& controller, app::Nav& nav);
 void registerArrangerActions(app::Registry& registry, app::ProjectController& controller, KeyboardCheck& check);
 void registerTemplateActions(app::Registry& registry);

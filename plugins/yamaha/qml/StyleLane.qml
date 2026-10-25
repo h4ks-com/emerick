@@ -24,4 +24,22 @@ BlockLane {
             Component.onCompleted: Qt.callLater(open)
         }
     }
+
+    Repeater {
+        model: styleLane.blocks.filter(block => block.patternBars > 0)
+        delegate: Repeater {
+            id: passes
+            required property var modelData
+            readonly property real passTicks: modelData.patternBars * Project.ticksPerBar
+            model: Math.max(0, Math.ceil((modelData.end - modelData.at) / passTicks) - 1)
+            delegate: Rectangle {
+                required property int index
+                x: (passes.modelData.at + (index + 1) * passes.passTicks) * styleLane.pixelsPerTick
+                y: Theme.space1
+                width: Theme.hairline
+                height: styleLane.height - 2 * Theme.space1
+                color: Theme.clipInk
+            }
+        }
+    }
 }

@@ -1,5 +1,6 @@
 #include "emerick/yamaha/profile.hpp"
 
+#include <algorithm>
 #include <array>
 #include <charconv>
 #include <fstream>
@@ -94,6 +95,8 @@ const std::array<Part, 16>& genos2Parts() {
     }};
     return parts;
 }
+
+int partChannel(std::string_view name) { return std::ranges::find(genos2Parts(), name, &Part::name)->channel; }
 
 std::vector<Voice> parseVoices(std::string_view text) {
     std::vector<Voice> voices;

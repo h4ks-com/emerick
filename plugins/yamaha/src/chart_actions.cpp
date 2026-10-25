@@ -1,7 +1,9 @@
 #include <algorithm>
+#include <array>
 #include <functional>
 #include <iterator>
 #include <optional>
+#include <ranges>
 #include <string>
 #include <utility>
 #include <vector>
@@ -256,6 +258,39 @@ void registerChartActions(app::Registry& registry, app::ProjectController& contr
                                                             [&](auto& events) { placeAt(events, event); });
                         }});
     registerBlockActions<SectionEvent>(registry, controller, nav, kSectionEvents);
+    registry.addAction(
+        {.id = "yamaha.section.setBars",
+         .title = "Set pattern length",
+         .aliases = {"pattern bars", "loop length"},
+         .category = "Yamaha",
+         .schema = {{"required", {"track", "at", "bars"}}, {"properties", {{"bars", {{"type", "integer"}}}}}},
+         .run =
+             [&controller](const Json& params) {
+                 const model::TrackId id = kindTrack(controller, params, kSectionEvents);
+                 const core::Ticks at = positionOf(controller, params, "at");
+                 const int bars = app::param<int>(params, "bars");
+                 if (bars < 1) {
+                     throw AppError("bars must be 1 or more");
+                 }
+                 const auto& tempo = controller.project().document().tempo;
+                 return editEvents<SectionEvent>(controller, id, "set pattern length", [&](auto& events) {
+                     const auto section = eventAt(events, at, kSectionEvents, tempo);
+                     if (section->kind != Section::Main) {
+                         throw AppError("only a Main repeats a pattern, pick a Main block");
+                     }
+                     section->bars = bars;
+                 });
+             },
+         .menus = {kSectionContextMenu},
+         .submenu =
+             [] {
+                 return std::array{1, 2, 4, 8} | std::views::transform([](int bars) {
+                            return app::MenuChoice{.id = std::to_string(bars),
+                                                   .title = std::to_string(bars) + (bars == 1 ? " bar" : " bars"),
+                                                   .params = {{"bars", bars}}};
+                        }) |
+                        std::ranges::to<std::vector>();
+             }});
     registry.addAction({.id = "yamaha.section.addMarkers",
                         .title = "Add markers from style sections",
                         .aliases = {"sections to markers", "mark sections"},

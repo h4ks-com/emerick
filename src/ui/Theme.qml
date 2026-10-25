@@ -77,7 +77,6 @@ QtObject {
     readonly property int splitterGrip: 6
     readonly property int mixerHeight: 320
     readonly property int mixerMinHeight: 200
-    readonly property int stripWidth: 84
     readonly property int faderMinHeight: 64
     readonly property int faderGroove: 3
     readonly property int faderCapWidth: 28

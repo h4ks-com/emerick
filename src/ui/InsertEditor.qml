@@ -27,20 +27,44 @@ Popup {
             spacing: Theme.space2
             Layout.fillWidth: true
 
-            Label {
-                text: editor.insert.title ?? ""
-                color: Theme.ink
-                font.pixelSize: Theme.textTitle
-                font.weight: Font.Medium
-            }
-            Label {
-                text: editor.insert.trackName ?? ""
-                color: Theme.inkDim
-                font.pixelSize: Theme.textLabel
-                elide: Text.ElideRight
+            RowLayout {
+                objectName: "insertEditor.titleBar"
+                spacing: Theme.space2
                 Layout.fillWidth: true
 
+                Grid {
+                    columns: 2
+                    spacing: Theme.hairline * 2
+                    Repeater {
+                        model: 6
+                        Rectangle {
+                            width: Theme.hairline * 2
+                            height: width
+                            radius: width / 2
+                            color: titleHover.hovered || titleDrag.active ? Theme.ink : Theme.inkDim
+                        }
+                    }
+                }
+                Label {
+                    text: editor.insert.title ?? ""
+                    color: Theme.ink
+                    font.pixelSize: Theme.textTitle
+                    font.weight: Font.Medium
+                }
+                Label {
+                    text: editor.insert.trackName ?? ""
+                    color: Theme.inkDim
+                    font.pixelSize: Theme.textLabel
+                    elide: Text.ElideRight
+                    Layout.fillWidth: true
+                }
+
+                HoverHandler {
+                    id: titleHover
+                    cursorShape: titleDrag.active ? Qt.ClosedHandCursor : Qt.OpenHandCursor
+                }
                 DragHandler {
+                    id: titleDrag
                     target: null
                     property point start
                     onActiveChanged: if (active) start = Qt.point(editor.x, editor.y)
@@ -49,6 +73,9 @@ Popup {
                         editor.y = start.y + translation.y
                     }
                 }
+                ToolTip.text: "Drag to move"
+                ToolTip.visible: titleHover.hovered && !titleDrag.active
+                ToolTip.delay: Theme.tooltipDelay
             }
             ChromeButton {
                 objectName: "insert.setBypass:" + (editor.insert.id ?? "") + ":editor"

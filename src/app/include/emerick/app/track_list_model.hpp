@@ -42,6 +42,7 @@ public:
         clips,
         trackData,
         laneComponent,
+        headerComponent,
         clipType,
         automationMode,
         automation,

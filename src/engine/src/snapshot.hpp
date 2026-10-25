@@ -101,6 +101,8 @@ struct TrackState {
     bool claimsSysex = false;
     std::vector<ClipPlayback> clips;
     std::vector<ScheduledMidi> midiEvents;
+    // The bank, program, controller and pitch bend events among midiEvents, which a chase sends.
+    std::vector<ScheduledMidi> chaseEvents;
     std::vector<std::uint8_t> midiBytes;
     std::array<std::bitset<kMidiNotes>, kMidiChannels> soundingNotes{};
     std::shared_ptr<TakeRecorder> recorder;
@@ -141,7 +143,11 @@ struct Snapshot {
     // Track indices with every track before the buses it plays into, so a bus mixes after all its sources.
     std::vector<std::size_t> mixOrder;
     std::vector<std::shared_ptr<MidiOutputPort>> clockPorts;
+    // Every output port the tracks, the clock and the metronome use, once each.
+    std::vector<std::shared_ptr<MidiOutputPort>> outputs;
     std::vector<std::shared_ptr<MidiInputPort>> inputs;
+    bool chaseMidi = true;
+    bool clockWhileStopped = false;
     std::vector<std::uint8_t> incoming = std::vector<std::uint8_t>(kMaxIncomingMessage);
     MetronomeState metronome;
     // Output pointers for the part of a block after a count-in ends, one per stream output.

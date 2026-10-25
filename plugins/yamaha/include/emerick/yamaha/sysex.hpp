@@ -21,7 +21,5 @@ struct SectionPress {
 std::optional<Chord> decodeChordControl(std::span<const std::uint8_t> message);
 std::optional<SectionPress> decodeSectionControl(std::span<const std::uint8_t> message);
 std::vector<std::uint8_t> encodeChordControl(const Chord& chord);
-// Throws std::invalid_argument for a Fill, which has no switch of its own.
-std::vector<std::uint8_t> encodeSectionControl(const SectionPress& press);
 
 }  // namespace emerick::yamaha

@@ -4,9 +4,12 @@
     3.1  F
     3.2  [Fill]
     4.1  G7
+    4.1  [Main A]
     4.3  Dm7
     5.2  [Main B (fill)]
     6.1  Bbmaj7
+    6.1  [Main B]
     7.2  [Break]
     8.1  C
+    8.1  [Main B]
     9.3  [Ending 1]

@@ -31,10 +31,13 @@ void addOnce(std::vector<std::string>& ids, const std::string& id) {
 
 bool listensToAudioInput(const Track& track) { return track.armed || track.monitor; }
 
-// Live MIDI passes through the audio callback, so a MIDI input keeps the stream running as an armed track does.
+// Live MIDI and clock while stopped pass through the audio callback, so they keep the stream running as an armed
+// track does.
 bool listensLive(const Session& session) {
-    return std::ranges::any_of(
-        session.tracks, [](const Track& track) { return listensToAudioInput(track) || !track.midiIn.portId.empty(); });
+    return (session.clockWhileStopped && !session.clockPorts.empty()) ||
+           std::ranges::any_of(session.tracks, [](const Track& track) {
+               return listensToAudioInput(track) || !track.midiIn.portId.empty();
+           });
 }
 
 bool sameDevices(const StreamRequest& left, const StreamRequest& right) {
@@ -181,6 +184,23 @@ struct Engine::Impl {
         if (tempoChanged) {
             push({.type = Command::Type::locate, .ticks = playhead});
             ++locatesRequested;
+        }
+    }
+
+    void sendMidi(std::string_view portId, std::span<const std::uint8_t> bytes) {
+        if (portId.size() + bytes.size() > kMaxIncomingMessage) {
+            throw std::invalid_argument("a MIDI message and its port id must fit in 64 KiB");
+        }
+        std::vector<std::uint8_t> record(portId.begin(), portId.end());
+        record.insert(record.end(), bytes.begin(), bytes.end());
+        if (!writeRecord(
+                rt.outgoingMidi,
+                OutgoingMidiHeader{static_cast<std::uint32_t>(portId.size()), static_cast<std::uint32_t>(bytes.size())},
+                std::span<const std::uint8_t>(record))) {
+            throw std::runtime_error("engine MIDI queue is full");
+        }
+        if (!streamOpen) {
+            runIdleBlock();
         }
     }
 
@@ -374,6 +394,10 @@ void Engine::locate(Ticks ticks) {
     impl_->push({.type = Command::Type::locate, .ticks = ticks});
     ++impl_->locatesRequested;
 }
+
+void Engine::sendMidi(std::string_view portId, std::span<const std::uint8_t> bytes) { impl_->sendMidi(portId, bytes); }
+
+void Engine::panic() { impl_->push({.type = Command::Type::panic}); }
 
 void Engine::setRecording(bool on) { impl_->push({.type = Command::Type::record, .on = on}); }
 

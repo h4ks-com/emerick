@@ -95,8 +95,22 @@ TEST_CASE("the first main starts the chart and a fill to the same main is a self
     CHECK(chart.sections == std::vector<SectionEvent>{{0, Section::Main, 1},
                                                       {kBar, Section::Fill, 1},
                                                       {2 * kBar, Section::FillTo, 2},
+                                                      {3 * kBar, Section::Main, 2},
                                                       {4 * kBar, Section::Main, 3},
                                                       {5 * kBar, Section::Break, 0}});
+}
+
+TEST_CASE(
+    "a Main pressed while playing reads as its fill and then the Main, and the Main the keyboard stops on is dropped") {
+    const auto chart = chartFromTake({section(0, 0x0B, 0x00), section(0, 0x10), section(kBar, 0x10, 0x00),
+                                      section(kBar, 0x08), section(3 * kBar, 0x08, 0x00), section(3 * kBar, 0x20),
+                                      section(5 * kBar, 0x20, 0x00), section(5 * kBar, 0x0B), section(7 * kBar, 0x09)},
+                                     kTempo, {});
+    CHECK(chart.sections == std::vector<SectionEvent>{{0, Section::Main, 3},
+                                                      {0, Section::FillTo, 0},
+                                                      {kBar, Section::Main, 0},
+                                                      {3 * kBar, Section::Ending, 0},
+                                                      {7 * kBar, Section::Main, 1}});
 }
 
 TEST_CASE("button releases do not make sections") {

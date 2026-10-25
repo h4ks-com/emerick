@@ -10,6 +10,8 @@ Rectangle {
     property string trackId
     property string name
     property string icon
+    // A plugin's track kind can show its own items beside the track name.
+    property string headerComponent
     property color trackColor
     property bool mute
     property bool solo
@@ -173,6 +175,12 @@ Rectangle {
                     onActiveFocusChanged: if (!activeFocus && visible) Nav.renamingTrack = ""
                     Keys.onEscapePressed: Nav.renamingTrack = ""
                 }
+            }
+
+            Loader {
+                active: header.headerComponent !== ""
+                source: header.headerComponent
+                onLoaded: item.trackId = Qt.binding(() => header.trackId)
             }
 
             WarningBadge {

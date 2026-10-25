@@ -58,6 +58,22 @@ struct MainWindow {
     }
 };
 
+// A Repeater's delegates sit in the item tree, and a model change removes the old ones from it at once.
+const QQuickItem* visibleItem(const QQuickItem* root, const QString& objectName) {
+    if (!root->isVisible()) {
+        return nullptr;
+    }
+    if (root->objectName() == objectName) {
+        return root;
+    }
+    for (const QQuickItem* child : root->childItems()) {
+        if (const QQuickItem* found = visibleItem(child, objectName)) {
+            return found;
+        }
+    }
+    return nullptr;
+}
+
 }  // namespace
 
 TEST_CASE("the play button toggles play and pause, and the display shows the located position") {
@@ -103,4 +119,21 @@ TEST_CASE("the metronome button toggles the click, lights up and opens its menu 
     REQUIRE(menu != nullptr);
     CHECK(processUntil([&] { return menu->property("visible").toBool(); }));
     QTest::keyClick(main.window, Qt::Key_Escape);
+}
+
+TEST_CASE("a sync status shows its label, or a warning icon with the details when the device does not follow") {
+    MainWindow& main = MainWindow::instance();
+    const auto details = [&] {
+        const QQuickItem* sync = visibleItem(main.window->contentItem(), "transport.sync.test");
+        return sync == nullptr ? QString{} : sync->property("details").toString();
+    };
+    main.rig.controller->setSyncStatus("test", {.label = "Main B 3/4", .detail = "Cmaj7"});
+    CHECK(processUntil([&] { return details() == "Main B 3/4\nCmaj7"; }));
+    main.rig.controller->setSyncStatus("test", {.label = "No clock", .ok = false});
+    CHECK(processUntil([&] { return details() == "No clock"; }));
+    main.rig.controller->setSyncStatus("test", {});
+    CHECK(processUntil([&] { return details().isEmpty(); }));
+    // A delegate deleted after QApplication tears down crashes at exit, so we delete the removed ones now.
+    QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
+    CHECK(main.item("transport.panic")->isVisible());
 }

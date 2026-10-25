@@ -26,10 +26,14 @@ inline std::string readText(const std::string& name) {
     return text.str();
 }
 
+inline Bytes fileBytes(const std::string& path) {
+    std::ifstream file(path, std::ios::binary);
+    return {std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>()};
+}
+
 // The chord and section sysex of the recorded take in tests/data, in core ticks.
 inline std::vector<RawEvent> takeSysex() {
-    std::ifstream file(dataPath("take.mid"), std::ios::binary);
-    const Bytes bytes{std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>()};
+    const Bytes bytes = fileBytes(dataPath("take.mid"));
     libremidi::reader reader(true);
     reader.parse(bytes.data(), bytes.size());
     std::vector<RawEvent> events;
@@ -52,9 +56,9 @@ inline std::vector<RawEvent> takeSysex() {
 struct YamahaRig : app::test::ProjectRig {
     explicit YamahaRig(const std::vector<std::string>& midiPorts = {app::test::kMidiPort},
                        double sampleRate = app::test::kRate)
-        : ProjectRig(midiPorts, sampleRate), chordInput(registerWith(registry, *controller, nav)) {}
+        : ProjectRig(midiPorts, sampleRate), listeners(registerWith(registry, *controller, nav)) {}
 
-    std::unique_ptr<ChordInput> chordInput;
+    std::unique_ptr<Listeners> listeners;
 
     [[nodiscard]] const model::Track& track(const std::string& id) const {
         return *controller->project().track(model::TrackId{id});

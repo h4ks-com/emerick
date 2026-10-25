@@ -60,7 +60,7 @@ TEST_CASE("the plugin lists its settings under the Plugins group and its actions
     const QVariantMap submenu = menus.value("Plugins").toList().front().toMap();
     CHECK(submenu.value("title").toString() == "Yamaha Arranger");
     CHECK(submenu.value("row").toInt() == static_cast<int>(app::MenuRow::Menu));
-    CHECK(menus.value("Plugins/Yamaha Arranger").toList().size() == 5);
+    CHECK(menus.value("Plugins/Yamaha Arranger").toList().size() == 8);
 }
 
 TEST_CASE("a recorded take becomes the chord list and the section list") {
@@ -128,15 +128,19 @@ TEST_CASE("a chord track plays Chord Control sysex and no notes, whatever its MI
     CHECK(events.at(2) == engine::MidiEvent{2 * kBar, chordSysex(0, 0x35, 0x13).bytes});
 }
 
-TEST_CASE("a style track presses Section Control switches") {
+TEST_CASE("a style track presses External Controller buttons on its MIDI out channel or the plugin's channel") {
     YamahaRig rig;
     const std::string id = rig.addTrack("yamaha.style");
     rig.run("yamaha.section.set", {{"track", id}, {"at", 0}, {"kind", "main"}, {"variation", 1}});
     rig.run("yamaha.section.set", {{"track", id}, {"at", kBar}, {"name", "Ending 2"}});
-    CHECK(bytesOf(played(rig, id)) == std::vector<Bytes>{{0xF0, 0x43, 0x7E, 0x00, 0x09, 0x7F, 0xF7},
-                                                         {0xF0, 0x43, 0x7E, 0x00, 0x09, 0x00, 0xF7},
-                                                         {0xF0, 0x43, 0x7E, 0x00, 0x21, 0x7F, 0xF7},
-                                                         {0xF0, 0x43, 0x7E, 0x00, 0x21, 0x00, 0xF7}});
+    CHECK(bytesOf(played(rig, id)) ==
+          std::vector<Bytes>{{0xBF, 12, 127}, {0xBF, 12, 0}, {0xBF, 32, 127}, {0xBF, 32, 0}});
+    CHECK(played(rig, id).midiClips.at(0).events.at(2).tick == kBar - core::kTicksPerQuarter);
+
+    rig.registry.setSetting("yamaha.controllerChannel", 2);
+    CHECK(bytesOf(played(rig, id)).front() == Bytes{0xB1, 12, 127});
+    rig.run("track.setMidiOut", {{"track", id}, {"port", app::test::kMidiPort}, {"channel", 5}});
+    CHECK(bytesOf(played(rig, id)).front() == Bytes{0xB4, 12, 127});
 }
 
 TEST_CASE("a MIDI export turns chords and sections into markers and chords into Chord Control sysex") {

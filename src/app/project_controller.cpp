@@ -319,8 +319,62 @@ void ProjectController::startEngine() {
     }
 }
 
+std::vector<const model::Track*> ProjectController::playingTracks() const {
+    const auto& tracks = project_.document().tracks;
+    const bool soloActive = std::ranges::any_of(tracks, &model::Track::solo);
+    return tracks | std::views::filter([&](const model::Track& track) {
+               return !track.mute && (!soloActive || track.solo) && !track.midiOut.portId.empty();
+           }) |
+           std::views::transform([](const model::Track& track) { return &track; }) | std::ranges::to<std::vector>();
+}
+
+void ProjectController::sendTrackMidi(const model::Track& track, const std::vector<MidiMessage>& messages) {
+    for (const MidiMessage& message : messages) {
+        try {
+            engine_.sendMidi(message.port.empty() ? track.midiOut.portId : message.port, message.bytes);
+        } catch (const std::invalid_argument& error) {
+            qWarning("cannot send MIDI for track %s: %s", track.name.c_str(), error.what());
+        } catch (const std::runtime_error& error) {
+            qWarning("cannot send MIDI for track %s: %s", track.name.c_str(), error.what());
+        }
+    }
+}
+
+void ProjectController::chaseTrackTypes(core::Ticks at) {
+    const PlaybackContext context{.tempo = project_.document().tempo, .folder = folder_};
+    for (const model::Track* track : playingTracks()) {
+        if (const TrackType* type = registry_.trackType(track->kind); type != nullptr && type->chase) {
+            sendTrackMidi(*track, type->chase(*track, at, context));
+        }
+    }
+}
+
+void ProjectController::alignStart() {
+    const core::Ticks at = engine_.position().ticks;
+    const PlaybackContext context{.tempo = project_.document().tempo, .folder = folder_};
+    std::optional<StartAlignment> earliest;
+    for (const model::Track* track : playingTracks()) {
+        const TrackType* type = registry_.trackType(track->kind);
+        if (type == nullptr || !type->alignStart) {
+            continue;
+        }
+        if (auto alignment = type->alignStart(*track, at, context);
+            alignment && (!earliest || alignment->position < earliest->position)) {
+            earliest = std::move(alignment);
+        }
+    }
+    startReason_ = earliest ? qs(earliest->reason) : QString{};
+    if (earliest && earliest->position != at) {
+        locate(earliest->position);
+    }
+}
+
 void ProjectController::play() {
     flush();
+    if (!engine_.playing()) {
+        alignStart();
+        chaseTrackTypes(engine_.position().ticks);
+    }
     emit aboutToPlay();
     startEngine();
     waitForEngine([this] { return engine_.playing(); });
@@ -328,6 +382,7 @@ void ProjectController::play() {
 
 void ProjectController::stop() {
     engine_.stop();
+    startReason_.clear();
     if (recording_) {
         engine_.setRecording(false);
         recording_ = false;
@@ -350,6 +405,9 @@ void ProjectController::record() {
             pendingAudioTakes_.insert(track.id.value);
         }
     }
+    if (!engine_.playing()) {
+        chaseTrackTypes(engine_.position().ticks);
+    }
     engine_.setRecording(true);
     emit aboutToPlay();
     try {
@@ -369,11 +427,42 @@ void ProjectController::locate(core::Ticks ticks) {
     const double rate = engine_.layout().sampleRate;
     const core::Frames frames = project_.document().tempo.ticksToFrames(target, rate);
     const auto window = static_cast<core::Frames>(rate * kLocateWindowSeconds);
+    if (engine_.playing()) {
+        chaseTrackTypes(target);
+    }
     engine_.locate(target);
     waitForEngine([&] {
         const core::Frames at = engine_.position().frames;
         return at >= frames && at - frames < window;
     });
+}
+
+void ProjectController::panic() {
+    flush();
+    for (const model::Track& track : project_.document().tracks) {
+        if (const TrackType* type = registry_.trackType(track.kind); type != nullptr && type->panic) {
+            sendTrackMidi(track, type->panic(track));
+        }
+    }
+    engine_.panic();
+}
+
+void ProjectController::setSyncStatus(const std::string& source, SyncStatus status) {
+    if (status.label.empty()) {
+        syncStatus_.erase(source);
+    } else {
+        syncStatus_[source] = std::move(status);
+    }
+    emit syncChanged();
+}
+
+QVariantList ProjectController::syncBadges() const {
+    QVariantList badges;
+    for (const auto& [source, status] : syncStatus_) {
+        badges.push_back(QVariantMap{
+            {"source", qs(source)}, {"label", qs(status.label)}, {"detail", qs(status.detail)}, {"ok", status.ok}});
+    }
+    return badges;
 }
 
 void ProjectController::setLiveMute(const model::TrackId& id, bool value) {
@@ -412,6 +501,14 @@ void ProjectController::panLawChanged(engine::PanLaw law) {
     }
 }
 
+void ProjectController::midiSyncChanged(bool chase, bool clockWhileStopped) {
+    if (chase != chaseMidi_ || clockWhileStopped != clockWhileStopped_) {
+        chaseMidi_ = chase;
+        clockWhileStopped_ = clockWhileStopped;
+        scheduleFlush();
+    }
+}
+
 void ProjectController::setMetronome(const engine::Metronome& metronome) {
     if (metronome != metronome_) {
         metronome_ = metronome;
@@ -422,6 +519,8 @@ void ProjectController::setMetronome(const engine::Metronome& metronome) {
 void ProjectController::publish() {
     engine::Session session = toSession(project_.document(), registry_, folder_);
     session.metronome = metronome_;
+    session.chaseMidi = chaseMidi_;
+    session.clockWhileStopped = clockWhileStopped_;
     applyPasses(session);
     routeErrors_ = dropUnusableDevices(session, engine_.audioDevices(), options_.sampleRate);
     std::set<std::string> ids;

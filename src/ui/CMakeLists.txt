@@ -96,7 +96,7 @@ qt_add_qml_module(emerick_ui
         icons/speaker-slash.svg
         icons/squares-four.svg
         icons/stop.svg
-        icons/warning.svg
+        icons/warning-octagon.svg
         icons/waveform.svg
         icons/x.svg)
 

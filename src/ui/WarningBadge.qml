@@ -13,7 +13,7 @@ ToolButton {
     implicitWidth: Theme.buttonHeight
     implicitHeight: Theme.buttonHeight
     display: AbstractButton.IconOnly
-    icon.source: Theme.iconSource("warning")
+    icon.source: Theme.iconSource("warning-octagon")
     icon.width: Theme.iconSize
     icon.height: Theme.iconSize
     icon.color: Theme.rec

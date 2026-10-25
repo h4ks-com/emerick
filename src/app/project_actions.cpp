@@ -16,6 +16,8 @@ namespace emerick::app {
 
 namespace {
 
+constexpr const char* kChaseMidiSetting = "midi.chase";
+constexpr const char* kClockWhileStoppedSetting = "midi.clockWhileStopped";
 constexpr double kMinBpm = 20.0;
 constexpr double kMaxBpm = 400.0;
 constexpr std::array kDenominators{1, 2, 4, 8, 16};
@@ -219,6 +221,19 @@ void registerTransportActions(Registry& registry, ProjectController& controller)
                             controller.project().setClockPorts(std::move(clockPorts));
                             return Json{{"clockOut", controller.project().document().clockPorts}};
                         }});
+    registry.addAction({.id = "transport.panic",
+                        .title = "Send MIDI panic",
+                        .description = "Stops clock ports and sends sustain off, all sound off and all notes off on "
+                                       "every channel of every MIDI output in use",
+                        .aliases = {"all notes off", "stuck notes", "reset midi"},
+                        .category = "Transport",
+                        .shortcut = "Ctrl+Shift+P",
+                        .run =
+                            [&controller](const Json&) {
+                                controller.panic();
+                                return transportState(controller);
+                            },
+                        .menus = {kTransportMenu}});
     registry.addAction({.id = "meters.resetClips",
                         .title = "Reset clip indicators",
                         .description = "Clears the clip lights of track, or of every track without it",
@@ -270,9 +285,31 @@ void registerProjectActions(Registry& registry, ProjectController& controller, N
          .choices = kPanLaws | std::views::transform(&NamedPanLaw::name) | std::ranges::to<Json::array_t>(),
          .hint = "How much a centered track drops on each side, in playback, exports and meters",
          .location = "settings.audio"});
-    QObject::connect(&registry, &Registry::settingsChanged, &controller,
-                     [&registry, &controller] { controller.panLawChanged(panLawFromSettings(registry)); });
-    controller.panLawChanged(panLawFromSettings(registry));
+    registry.addSetting({.id = kChaseMidiSetting,
+                         .title = "Chase MIDI on play",
+                         .aliases = {"midi chase", "send program changes on play"},
+                         .category = "Settings / MIDI",
+                         .type = SettingType::Boolean,
+                         .defaultValue = true,
+                         .hint = "Send each MIDI track's last program, controllers and pitch bend before the playhead "
+                                 "when playback starts",
+                         .location = "settings.midi"});
+    registry.addSetting({.id = kClockWhileStoppedSetting,
+                         .title = "Send MIDI clock while stopped",
+                         .aliases = {"free running clock", "clock always"},
+                         .category = "Settings / MIDI",
+                         .type = SettingType::Boolean,
+                         .defaultValue = false,
+                         .hint = "Keep clock running on clock ports, so a keyboard can start its Style at the project "
+                                 "tempo",
+                         .location = "settings.midi"});
+    const auto playbackSettingsChanged = [&registry, &controller] {
+        controller.panLawChanged(panLawFromSettings(registry));
+        controller.midiSyncChanged(registry.settingValue(kChaseMidiSetting).get<bool>(),
+                                   registry.settingValue(kClockWhileStoppedSetting).get<bool>());
+    };
+    QObject::connect(&registry, &Registry::settingsChanged, &controller, playbackSettingsChanged);
+    playbackSettingsChanged();
 
     registerProjectFileActions(registry, controller);
     registerProjectEditActions(registry, controller);

@@ -4,34 +4,14 @@ import Emerick.App
 
 // A bar per note as tall as its velocity. Dragging a bar up or down sets the velocity of its note, or of every selected
 // note when its note is selected.
-Rectangle {
+Item {
     id: lane
 
     required property PianoRoll roll
 
-    color: Theme.slate
-
-    Rectangle {
-        width: parent.width
-        height: Theme.hairline
-        color: Theme.rule
-    }
-
-    Text {
-        x: Theme.space3
-        y: Theme.space2
-        text: "Velocity"
-        color: Theme.inkDim
-        font.pixelSize: Theme.textSmall
-    }
-
     Item {
         id: bars
-        x: lane.roll.headerWidth
-        y: Theme.space1
-        width: lane.width - x
-        height: lane.height - 2 * Theme.space1
-        clip: true
+        anchors.fill: parent
 
         Repeater {
             model: lane.roll.notes.length

@@ -248,6 +248,7 @@ void registerNoteActions(Registry& registry, ProjectController& controller, Nav&
     auto defaults = std::make_shared<NoteDefaults>(NoteDefaults{.length = gridTicks(registry)});
     registerNoteEdits(registry, controller, nav, defaults);
     registerNoteClipboard(registry, controller, nav);
+    registerControlActions(registry, controller, nav);
 }
 
 }  // namespace emerick::app

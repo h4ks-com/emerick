@@ -8,6 +8,7 @@ inline constexpr std::uint8_t kNoteOff = 0x80;
 inline constexpr std::uint8_t kNoteOn = 0x90;
 inline constexpr std::uint8_t kControlChange = 0xB0;
 inline constexpr std::uint8_t kProgramChange = 0xC0;
+inline constexpr std::uint8_t kChannelPressure = 0xD0;
 inline constexpr std::uint8_t kPitchBend = 0xE0;
 inline constexpr std::uint8_t kSysexStart = 0xF0;
 inline constexpr std::uint8_t kSysexEnd = 0xF7;

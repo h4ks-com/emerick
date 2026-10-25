@@ -2,6 +2,7 @@ add_library(emerick_model
     automation.cpp
     clip_edit.cpp
     command.cpp
+    controls.cpp
     document.cpp
     json.cpp
     midi_notes.cpp
@@ -11,6 +12,6 @@ target_link_libraries(emerick_model PUBLIC emerick_core nlohmann_json::nlohmann_
 emerick_target(emerick_model)
 
 if(EMERICK_BUILD_TESTS)
-    emerick_test(emerick_model_tests tests/automation_test.cpp tests/clip_edit_test.cpp tests/midi_notes_test.cpp tests/model_test.cpp)
+    emerick_test(emerick_model_tests tests/automation_test.cpp tests/clip_edit_test.cpp tests/controls_test.cpp tests/midi_notes_test.cpp tests/model_test.cpp)
     target_link_libraries(emerick_model_tests PRIVATE emerick_model)
 endif()

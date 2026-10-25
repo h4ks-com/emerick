@@ -11,6 +11,7 @@
 #include "emerick/core/overloaded.hpp"
 #include "emerick/engine/effects.hpp"
 #include "emerick/model/automation.hpp"
+#include "emerick/model/controls.hpp"
 
 namespace emerick::app {
 
@@ -168,6 +169,15 @@ Json clipState(const model::Clip& clip, const core::TempoMap& tempo, bool includ
                                  result["events"] = Json::array();
                                  for (const model::MidiEvent& event : midi.events) {
                                      result["events"].push_back({{"at", event.at}, {"bytes", event.bytes}});
+                                 }
+                                 result["controls"] = Json::object();
+                                 for (const model::Control control : model::controlsIn(midi)) {
+                                     result["controls"][model::controlId(control)] =
+                                         model::controlPoints(midi, control) |
+                                         std::views::transform([](const model::ControlPoint& point) {
+                                             return Json{{"at", point.at}, {"value", point.value}};
+                                         }) |
+                                         std::ranges::to<Json::array_t>();
                                  }
                              }
                              return result;

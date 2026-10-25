@@ -43,5 +43,10 @@ Json notesResult(const ProjectController& controller, const model::ClipId& clip,
 void registerPianoRollActions(Registry& registry, ProjectController& controller, Nav& nav);
 // Copy and paste of notes within a clip.
 void registerNoteClipboard(Registry& registry, ProjectController& controller, Nav& nav);
+// The controller lanes under the piano roll notes and the edits of their values.
+void registerControlActions(Registry& registry, ProjectController& controller, Nav& nav);
+// The lanes the piano roll offers for the clip as {id, title, hasData}: the standard lanes, then any other controller
+// the clip holds.
+Json laneChoices(const model::MidiClip& clip);
 
 }  // namespace emerick::app

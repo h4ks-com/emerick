@@ -15,11 +15,13 @@
 #include <variant>
 
 #include "emerick/app/automation_params.hpp"
+#include "emerick/app/note_edit.hpp"
 #include "emerick/app/project_actions.hpp"
 #include "emerick/app/project_state.hpp"
 #include "emerick/core/overloaded.hpp"
 #include "emerick/model/automation.hpp"
 #include "emerick/model/clip_edit.hpp"
+#include "emerick/model/controls.hpp"
 
 namespace emerick::app {
 
@@ -195,6 +197,29 @@ QVariantMap TrackListModel::clip(const QString& id) const {
                   {"trackName", qs(found->track->name)},
                   {"colorIndex", found->track->color}});
     return entry;
+}
+
+const model::MidiClip* TrackListModel::midiClipWithId(const QString& id) const {
+    const auto found = project_.findClip(model::ClipId{id.toStdString()});
+    return found ? std::get_if<model::MidiClip>(found->clip) : nullptr;
+}
+
+QList<double> TrackListModel::controlPoints(const QString& clip, const QString& lane) const {
+    const model::MidiClip* midi = midiClipWithId(clip);
+    const auto control = model::parseControl(lane.toStdString());
+    if (midi == nullptr || !control) {
+        return {};
+    }
+    QList<double> flat;
+    for (const model::ControlPoint& point : model::controlPoints(*midi, *control)) {
+        flat << static_cast<double>(point.at) << point.value;
+    }
+    return flat;
+}
+
+QVariantList TrackListModel::laneChoices(const QString& clip) const {
+    const model::MidiClip* midi = midiClipWithId(clip);
+    return midi == nullptr ? QVariantList{} : toVariant(app::laneChoices(*midi)).toList();
 }
 
 bool TrackListModel::sameAcross(const QStringList& ids, const QString& role) const {

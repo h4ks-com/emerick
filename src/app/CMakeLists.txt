@@ -12,6 +12,8 @@ qt_add_library(emerick_app STATIC
     console.cpp
     console_actions.cpp
     console_completion.cpp
+    control_actions.cpp
+    control_curve.cpp
     core_actions.cpp
     effect_catalog.cpp
     fade_actions.cpp
@@ -24,6 +26,7 @@ qt_add_library(emerick_app STATIC
     include/emerick/app/code_highlighter.hpp
     include/emerick/app/console.hpp
     include/emerick/app/console_completion.hpp
+    include/emerick/app/control_curve.hpp
     include/emerick/app/core_actions.hpp
     include/emerick/app/effect_catalog.hpp
     include/emerick/app/enums.hpp

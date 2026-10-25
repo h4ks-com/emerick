@@ -103,6 +103,14 @@ Json midiRoute(const model::MidiRoute& route) {
     return {{"port", route.portId}, {"channel", route.channel}, {"thru", route.thru}, {"sysex", route.sysex}};
 }
 
+Json syncState(const ProjectController& controller) {
+    Json badges = Json::array();
+    for (const auto& [source, status] : controller.syncStatus()) {
+        badges.push_back({{"source", source}, {"label", status.label}, {"detail", status.detail}, {"ok", status.ok}});
+    }
+    return badges;
+}
+
 }  // namespace
 
 std::string audioRouteText(const model::AudioRoute& route, std::span<const engine::AudioDeviceInfo> devices) {
@@ -290,6 +298,8 @@ Json transportState(const ProjectController& controller) {
             {"recording", controller.recording()},
             {"position", positionState(controller.positionTicks(), controller.project().document().tempo)},
             {"streamError", controller.streamError().toStdString()},
+            {"startReason", controller.startReason().toStdString()},
+            {"sync", syncState(controller)},
             {"meters", controller.meters().state()},
             {"stream", streamState(controller.engine())}};
 }

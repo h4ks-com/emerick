@@ -7,6 +7,7 @@
 #include <QUrl>
 #include <QVariant>
 #include <array>
+#include <cstdint>
 #include <filesystem>
 #include <functional>
 #include <map>
@@ -170,6 +171,20 @@ struct TakeContext {
     double sampleRate = 0.0;
 };
 
+// A message a track type sends; an empty port means the track's MIDI output. We drop a message for a port that no
+// track, clock or metronome uses.
+struct MidiMessage {
+    std::string port = {};
+    std::vector<std::uint8_t> bytes = {};
+};
+
+// Where a track type starts playback in place of the playhead, with the reason the transport shows, such as "Style
+// starts at bar 33, Main B".
+struct StartAlignment {
+    core::Ticks position = 0;
+    std::string reason = {};
+};
+
 struct TrackType {
     std::string kind = {};
     std::string title = {};
@@ -181,6 +196,18 @@ struct TrackType {
     std::function<void(model::Track&, const engine::RecordedTake&, const TakeContext&)> fromTake = {};
     // Names along the timeline, such as chords, that a MIDI export writes as markers.
     std::function<std::vector<Marker>(const model::Track&)> markers = {};
+    // Messages the MIDI panic sends first, for every track of the type, playing or not.
+    std::function<std::vector<MidiMessage>(const model::Track&)> panic = {};
+    // The hooks below run only for a track that plays: unmuted, not silenced by another track's solo, with a MIDI
+    // output. A project without them plays as plain MIDI.
+    // Messages that put the track's device in its state at position. We send them before Start on play and record,
+    // and before a locate while playing, ahead of the core chase of programs and controllers.
+    std::function<std::vector<MidiMessage>(const model::Track&, core::Ticks position, const PlaybackContext&)> chase =
+        {};
+    // Where play from position starts, or nullopt when the track has nothing there to align. Play starts at the
+    // earliest answer of all tracks; record never moves.
+    std::function<std::optional<StartAlignment>(const model::Track&, core::Ticks position, const PlaybackContext&)>
+        alignStart = {};
 };
 
 struct MidiDeviceProfile {

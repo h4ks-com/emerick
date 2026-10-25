@@ -19,7 +19,7 @@ MidiInputPort::MidiInputPort(MidiBackend& backend, const std::string& portId)
       })) {}
 
 MidiOutputPort::MidiOutputPort(MidiBackend& backend, const std::string& portId)
-    : ring_(kMidiRingBytes), output_(backend.openOutput(portId)) {}
+    : id_(portId), ring_(kMidiRingBytes), output_(backend.openOutput(portId)) {}
 
 bool MidiOutputPort::queue(std::span<const std::uint8_t> bytes, std::int64_t timestampNs) {
     unsent_.fetch_add(1, std::memory_order_relaxed);

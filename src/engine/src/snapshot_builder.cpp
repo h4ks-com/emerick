@@ -3,8 +3,11 @@
 #include <algorithm>
 #include <cmath>
 #include <ranges>
+#include <span>
 #include <stdexcept>
 #include <utility>
+
+#include "emerick/core/midi.hpp"
 
 namespace emerick::engine {
 
@@ -153,6 +156,49 @@ void addLanes(Snapshot& snapshot, const Session& session) {
     }
 }
 
+// Data entry and RPN or NRPN selects only make sense in their order, and mode messages act at once, so we leave them
+// out.
+bool chasedController(std::uint8_t controller) {
+    constexpr std::uint8_t kDataEntry = 6;
+    constexpr std::uint8_t kDataEntryLsb = 38;
+    constexpr std::uint8_t kFirstParameterCc = 96;
+    constexpr std::uint8_t kLastParameterCc = 101;
+    return controller != kDataEntry && controller != kDataEntryLsb &&
+           (controller < kFirstParameterCc || controller > kLastParameterCc) && controller < core::midi::kAllSoundOffCc;
+}
+
+bool chases(std::span<const std::uint8_t> bytes) {
+    if (bytes.empty() || !core::midi::isChannelMessage(bytes[0])) {
+        return false;
+    }
+    switch (bytes[0] & 0xF0) {
+        case core::midi::kControlChange:
+            return bytes.size() == 3 && chasedController(bytes[1]);
+        case core::midi::kProgramChange:
+            return bytes.size() == 2;
+        case core::midi::kPitchBend:
+            return bytes.size() == 3;
+        default:
+            return false;
+    }
+}
+
+void addOutput(Snapshot& snapshot, const std::shared_ptr<MidiOutputPort>& port) {
+    if (port && std::ranges::find(snapshot.outputs, port) == snapshot.outputs.end()) {
+        snapshot.outputs.push_back(port);
+    }
+}
+
+void collectOutputs(Snapshot& snapshot) {
+    for (const TrackState& track : snapshot.tracks) {
+        addOutput(snapshot, track.midiOut);
+    }
+    for (const auto& port : snapshot.clockPorts) {
+        addOutput(snapshot, port);
+    }
+    addOutput(snapshot, snapshot.metronome.midiOut);
+}
+
 }  // namespace
 
 SnapshotBuilder::SnapshotBuilder(MidiBackend& midi, TakeInbox& inbox, PollingSet<ClipStream>& reader,
@@ -217,6 +263,9 @@ BuiltSnapshot SnapshotBuilder::build(const Session& session, const StreamLayout&
     addLanes(snapshot, session);
     updateSoloPaths(snapshot);
     addMetronome(snapshot, session, layout, built.errors);
+    collectOutputs(snapshot);
+    snapshot.chaseMidi = session.chaseMidi;
+    snapshot.clockWhileStopped = session.clockWhileStopped;
     snapshot.tailOutputs.resize(static_cast<std::size_t>(layout.outputChannels));
     return built;
 }
@@ -328,6 +377,12 @@ void SnapshotBuilder::addMidiEvents(TrackState& state, const Track& track, const
         }
     }
     std::ranges::stable_sort(state.midiEvents, {}, &ScheduledMidi::frame);
+    if (track.kind == TrackKind::midi) {
+        state.chaseEvents = state.midiEvents | std::views::filter([&](const ScheduledMidi& event) {
+                                return chases(std::span(state.midiBytes).subspan(event.offset, event.size));
+                            }) |
+                            std::ranges::to<std::vector>();
+    }
 }
 
 void SnapshotBuilder::addRecorder(TrackState& state, const Track& track, const Session& session,

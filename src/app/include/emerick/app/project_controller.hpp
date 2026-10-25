@@ -40,6 +40,14 @@ struct TakePreview {
     std::optional<model::Track> track;
 };
 
+// How a device follows playback, as a plugin reports it. The transport shows the short label, such as "Main B 3/4",
+// or a warning icon when it is not ok, with the label and the multiline detail in a tooltip.
+struct SyncStatus {
+    std::string label;
+    std::string detail;
+    bool ok = true;
+};
+
 class ProjectController : public QObject {
     Q_OBJECT
     Q_PROPERTY(QString positionText READ positionText NOTIFY transportChanged)
@@ -47,6 +55,8 @@ class ProjectController : public QObject {
     Q_PROPERTY(bool playing READ playing NOTIFY transportChanged)
     Q_PROPERTY(bool recording READ recording NOTIFY transportChanged)
     Q_PROPERTY(QString streamError READ streamError NOTIFY transportChanged)
+    Q_PROPERTY(QString startReason READ startReason NOTIFY transportChanged)
+    Q_PROPERTY(QVariantList syncBadges READ syncBadges NOTIFY syncChanged)
     Q_PROPERTY(QString tempoText READ tempoText NOTIFY projectChanged)
     Q_PROPERTY(qint64 ticksPerBeat READ ticksPerBeat NOTIFY projectChanged)
     Q_PROPERTY(qint64 ticksPerBar READ ticksPerBar NOTIFY projectChanged)
@@ -103,6 +113,14 @@ public:
     void stop();
     void record();
     void locate(core::Ticks ticks);
+    // Sends every track type's panic messages, then the engine's panic. It works while stopped.
+    void panic();
+    // A plugin reports under its own source name; the transport shows each status, and an empty label removes it.
+    void setSyncStatus(const std::string& source, SyncStatus status);
+    [[nodiscard]] const std::map<std::string, SyncStatus>& syncStatus() const { return syncStatus_; }
+    // Why play started where it did, from a track type's alignStart, until the transport stops.
+    [[nodiscard]] QString startReason() const { return startReason_; }
+    [[nodiscard]] QVariantList syncBadges() const;
 
     // Live toggles reach the engine at the next block, before the rebuilt session does.
     void setLiveMute(const model::TrackId& id, bool value);
@@ -122,6 +140,8 @@ public:
     void setMetronome(const engine::Metronome& metronome);
     // Playback and exports read the pan law from the registry; a new law reaches playback at the next flush.
     void panLawChanged(engine::PanLaw law);
+    // MIDI chase and clock while stopped reach the engine at the next flush.
+    void midiSyncChanged(bool chase, bool clockWhileStopped);
 
     // Returns how many finished takes it added, one undo step each.
     int collectTakes();
@@ -176,6 +196,7 @@ signals:
     // Play and record emit this just before the engine starts, so a listener can still send MIDI ahead of Start.
     void aboutToPlay();
     void transportChanged();
+    void syncChanged();
     void projectChanged();
     void devicesChanged();
     void trackErrorsChanged();
@@ -212,6 +233,10 @@ private:
     void settleTakes();
     void waitForEngine(const std::function<bool()>& reached);
     void startEngine();
+    [[nodiscard]] std::vector<const model::Track*> playingTracks() const;
+    void sendTrackMidi(const model::Track& track, const std::vector<MidiMessage>& messages);
+    void chaseTrackTypes(core::Ticks at);
+    void alignStart();
     void publish();
     void updateTrackErrors();
     void keepWarmWhileActive();
@@ -243,6 +268,10 @@ private:
     std::vector<engine::SessionError> routeErrors_;
     engine::Metronome metronome_;
     engine::PanLaw panLaw_ = engine::PanLaw::compensated;
+    bool chaseMidi_ = true;
+    bool clockWhileStopped_ = false;
+    std::map<std::string, SyncStatus> syncStatus_;
+    QString startReason_;
     bool recording_ = false;
     bool flushPending_ = false;
     core::Ticks stopTicks_ = 0;

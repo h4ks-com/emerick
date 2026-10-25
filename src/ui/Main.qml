@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Controls.Basic
+import QtQuick.Controls.impl
 import QtQuick.Dialogs
 import QtQuick.Layouts
 import Emerick.App
@@ -175,6 +176,51 @@ ApplicationWindow {
             }
             TransportDisplay {
                 anchors.verticalCenter: parent.verticalCenter
+            }
+            IconImage {
+                id: startReason
+                objectName: "transport.startReason"
+                anchors.verticalCenter: parent.verticalCenter
+                visible: Project.startReason !== ""
+                source: Theme.iconSource("magnet")
+                sourceSize: Qt.size(Theme.iconSize, Theme.iconSize)
+                color: Theme.inkDim
+                HoverHandler {
+                    id: startReasonHover
+                }
+                ToolTip.text: Project.startReason
+                ToolTip.visible: startReasonHover.hovered
+                ToolTip.delay: Theme.tooltipDelay
+            }
+            Repeater {
+                model: Project.syncBadges
+                Item {
+                    id: sync
+                    required property var modelData
+                    readonly property string details: modelData.label + (modelData.detail ? "\n" + modelData.detail : "")
+                    objectName: "transport.sync." + modelData.source
+                    anchors.verticalCenter: parent.verticalCenter
+                    implicitWidth: modelData.ok ? syncLabel.implicitWidth : syncWarning.implicitWidth
+                    implicitHeight: modelData.ok ? syncLabel.implicitHeight : syncWarning.implicitHeight
+                    Label {
+                        id: syncLabel
+                        visible: sync.modelData.ok
+                        text: sync.modelData.label
+                        color: Theme.inkDim
+                        font.pixelSize: Theme.textSmall
+                        HoverHandler {
+                            id: syncHover
+                        }
+                        ToolTip.text: sync.details
+                        ToolTip.visible: syncHover.hovered
+                        ToolTip.delay: Theme.tooltipDelay
+                    }
+                    WarningBadge {
+                        id: syncWarning
+                        visible: !sync.modelData.ok
+                        message: sync.details
+                    }
+                }
             }
             Label {
                 objectName: "transport.streamError"

@@ -3,6 +3,7 @@
 #include <chrono>
 #include <cstddef>
 #include <memory>
+#include <span>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -81,6 +82,12 @@ public:
     void play();
     void stop();
     void locate(Ticks ticks);
+    // Queues bytes on an output port the session uses, ahead of whatever the next play or locate sends, so a chase
+    // reaches the device before Start. A port the session does not use drops them; a message over 64 KiB throws.
+    void sendMidi(std::string_view portId, std::span<const std::uint8_t> bytes);
+    // Sends Stop to the clock ports, releases the notes the tracks hold, and sends sustain off, all sound off and all
+    // notes off on every channel of every output port the session uses. It works while stopped.
+    void panic();
     void setRecording(bool on);
     void setMute(std::string_view trackId, bool mute);
     void setSolo(std::string_view trackId, bool solo);

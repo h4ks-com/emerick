@@ -152,6 +152,7 @@ void registerCoreActions(Registry& registry, Nav& nav, const Backends& backends)
                           }});
     addSettingsSection(registry, nav, {.key = "general", .title = "General"});
     addSettingsSection(registry, nav, {.key = "audio", .title = "Audio"});
+    addSettingsSection(registry, nav, {.key = "midi", .title = "MIDI"});
     addSettingsSection(registry, nav,
                        {.key = "keys", .title = "Key Commands", .shortcut = "Alt+K", .menus = {kSettingsMenu}});
     registry.addAction({.id = "keys.setShortcut",

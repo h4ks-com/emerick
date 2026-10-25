@@ -133,6 +133,7 @@ if(EMERICK_BUILD_TESTS)
         tests/script_library_test.cpp
         tests/send_test.cpp
         tests/take_preview_test.cpp
+        tests/track_hooks_test.cpp
         tests/transport_test.cpp)
     target_link_libraries(emerick_app_tests
         PRIVATE emerick_app Qt6::Network Qt6::Qml Qt6::QuickControls2 PkgConfig::SNDFILE libremidi)

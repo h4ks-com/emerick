@@ -119,7 +119,7 @@ void startTransport(RealtimeState& state, Snapshot& snapshot, std::int64_t times
 }
 
 void sendPendingStart(RealtimeState& state, const Snapshot& snapshot, std::int64_t timestampNs) {
-    if (std::exchange(state.startPending, false)) {
+    if (std::exchange(state.startPending, false) && snapshot.sendStart) {
         sendToClockPorts(snapshot, core::midi::kStart, timestampNs);
     }
 }

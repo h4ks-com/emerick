@@ -21,6 +21,7 @@ constexpr const char* kSyncSource = "yamaha";
 // ponytail: a fixed window; a Style with only long held notes and no drums can read as stopped.
 constexpr auto kRunningWindow = std::chrono::seconds{4};
 constexpr auto kStartGrace = std::chrono::seconds{1};
+constexpr auto kStopGrace = std::chrono::seconds{2};
 
 bool isStyleNote(std::span<const std::uint8_t> bytes) {
     return bytes.size() == 3 && (bytes[0] & 0xF0) == core::midi::kNoteOn && bytes[2] > 0 &&
@@ -41,12 +42,15 @@ std::string patternText(const PatternPosition& pattern) {
 
 }  // namespace
 
-StyleSync::StyleSync(app::ProjectController& controller) : controller_(controller) {
+StyleSync::StyleSync(app::ProjectController& controller, const app::Registry& registry)
+    : controller_(controller), registry_(registry) {
     QObject::connect(&controller_, &app::ProjectController::projectChanged, this, &StyleSync::follow);
+    QObject::connect(&controller_, &app::ProjectController::projectChanged, this, &StyleSync::silenceMutedStyle);
     QObject::connect(&controller_, &app::ProjectController::devicesChanged, this, &StyleSync::follow);
     QObject::connect(&controller_, &app::ProjectController::transportChanged, this, &StyleSync::report);
     QObject::connect(&controller_, &app::ProjectController::aboutToPlay, this, [this] {
         playStarted_ = Clock::now();
+        lastStop_ = {};
         keyboardMain_.reset();
     });
     follow();
@@ -70,9 +74,33 @@ void StyleSync::follow() {
 void StyleSync::receive(const std::vector<std::uint8_t>& bytes) {
     if (isStyleNote(bytes)) {
         lastStyleNote_ = Clock::now();
+        silenceMutedStyle();
     } else if (const auto press = decodeSectionControl(bytes); press && press->on && press->kind == Section::Main) {
         keyboardMain_ = press->variation;
     }
+}
+
+// MIDI Start makes the keyboard play its Style, so a muted Style track stops it with the Start/Stop button.
+void StyleSync::silenceMutedStyle() {
+    if (!controller_.playing() || !styleRunning() || Clock::now() - lastStop_ < kStopGrace) {
+        return;
+    }
+    const model::Track* style = mutedStyle(controller_.project().document());
+    const app::TrackType* type = registry_.trackType(kStyleKind);
+    if (style == nullptr || type == nullptr || !type->panic) {
+        return;
+    }
+    for (const app::MidiMessage& message : type->panic(*style)) {
+        try {
+            controller_.engine().sendMidi(message.port.empty() ? style->midiOut.portId : message.port, message.bytes);
+        } catch (const std::invalid_argument& error) {
+            qWarning("cannot stop the Style: %s", error.what());
+        } catch (const std::runtime_error& error) {
+            qWarning("cannot stop the Style: %s", error.what());
+        }
+    }
+    lastStop_ = Clock::now();
+    lastStyleNote_ = {};
 }
 
 void StyleSync::report() {

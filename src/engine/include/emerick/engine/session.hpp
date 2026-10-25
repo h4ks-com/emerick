@@ -164,6 +164,8 @@ struct Session {
     bool chaseMidi = true;
     // Clock ports get clock while stopped too, so a device that follows it runs at the project tempo.
     bool clockWhileStopped = false;
+    // Play sends Start to the clock ports, which a device that starts on Start needs to withhold.
+    bool sendStart = true;
 };
 
 // A clip we skipped because its file is missing or at another sample rate.

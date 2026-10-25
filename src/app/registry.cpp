@@ -746,12 +746,22 @@ void Registry::activate(const QString& id) {
 }
 
 std::optional<Json> Registry::runFromUi(const std::string& id, const Json& params) const {
+    const Action* found = action(id);
+    const auto notify = [&](const QString& text) {
+        if (found != nullptr && found->notifies) {
+            emit noticeRaised(qs(found->title), text);
+        }
+    };
     try {
-        return run(id, params, ActionSource::Ui);
+        Json result = run(id, params, ActionSource::Ui);
+        notify(qs(result.value("message", std::string{})));
+        return result;
     } catch (const AppError& error) {
         qWarning() << error.what();
+        notify(qs(error.what()));
     } catch (const Json::exception& error) {
         qWarning() << error.what();
+        notify(qs(error.what()));
     }
     return std::nullopt;
 }

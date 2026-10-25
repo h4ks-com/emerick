@@ -211,6 +211,7 @@ BuiltSnapshot SnapshotBuilder::build(const Session& session, const StreamLayout&
     snapshot.tempo = session.tempo;
     snapshot.sampleRate = layout.sampleRate;
     snapshot.panLaw = session.panLaw;
+    snapshot.sendStart = session.sendStart;
     for (const std::string& id : session.clockPorts) {
         snapshot.clockPorts.push_back(outputPort(id));
     }

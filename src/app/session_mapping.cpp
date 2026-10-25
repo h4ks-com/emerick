@@ -172,6 +172,10 @@ engine::Session toSession(const model::Document& document, const Registry& regis
         session.tracks.push_back(kept.at(track.id.value).converted);
         session.tracks.back().automation = engineLanes(registry, document, track);
     }
+    session.sendStart = std::ranges::none_of(document.tracks, [&](const model::Track& track) {
+        const TrackType* type = registry.trackType(track.kind);
+        return type != nullptr && type->holdsStart && type->holdsStart(document);
+    });
     cache.tracks = std::move(kept);
     return session;
 }

@@ -31,6 +31,8 @@ BlockLane {
                     missingText: "Root"
                     acceptsText: true
                     toolTip: "Pick the root, or type a chord such as Bbm7/D"
+                    deletesWhenUntouched: true
+                    onDeleteRequested: chordLane.deleteEdited()
                     onPicked: entry => {
                         const quality = chordPicker.parts.quality === "N.C." ? "" : chordPicker.parts.quality
                         chordPicker.pick(entry.id, quality, chordPicker.parts.bass)
@@ -49,6 +51,8 @@ BlockLane {
                     model: LaneBlocks.chordQualities()
                     currentId: chordPicker.parts.quality
                     toolTip: "Pick the chord type"
+                    deletesWhenUntouched: true
+                    onDeleteRequested: chordLane.deleteEdited()
                     onPicked: entry => {
                         chordPicker.pick(chordPicker.parts.root, entry.id, chordPicker.parts.bass)
                         if (entry.id === "N.C.") {
@@ -65,6 +69,8 @@ BlockLane {
                     model: LaneBlocks.chordBasses()
                     currentId: chordPicker.parts.bass
                     toolTip: "Pick a bass note under the chord"
+                    deletesWhenUntouched: true
+                    onDeleteRequested: chordLane.deleteEdited()
                     onPicked: entry => {
                         chordPicker.pick(chordPicker.parts.root, chordPicker.parts.quality, entry.id)
                         chordLane.closePicker()

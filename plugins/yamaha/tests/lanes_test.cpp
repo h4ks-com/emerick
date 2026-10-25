@@ -159,6 +159,48 @@ TEST_CASE("a right click selects a block and opens its menu, and Backspace or De
     removeTrack(main, id);
 }
 
+TEST_CASE("a block's context menu splits at the playhead inside the block and at the click outside it") {
+    MainWindow& main = yamahaWindow();
+    const std::string id =
+        addTrack(main, "yamaha.chord", Json::parse(R"([{"at":0,"chord":"C"},{"at":7680,"chord":"F"}])"));
+    QObject* lane = main.item("yamaha.chord.edit:" + qid(id));
+    QObject* menu = lane->findChild<QObject*>("menu.yamaha.chord.context");
+    REQUIRE(menu != nullptr);
+    const auto menuToAfterRightClick = [&] {
+        main.click(block(main, "yamaha.chord", id, 0), Qt::RightButton);
+        REQUIRE(opened(menu));
+        QMetaObject::invokeMethod(menu, "close");
+        REQUIRE(processUntil([&] { return !menu->property("visible").toBool(); }));
+        return lane->property("menuTo").toLongLong();
+    };
+    main.rig.run("transport.locate", {{"position", 1000}});
+    MainWindow::settle();
+    CHECK(menuToAfterRightClick() == 1000);
+    main.rig.run("transport.locate", {{"position", 9000}});
+    MainWindow::settle();
+    CHECK(menuToAfterRightClick() != 9000);
+    removeTrack(main, id);
+}
+
+TEST_CASE("Delete in the picker of a clicked block deletes it until something is typed") {
+    MainWindow& main = yamahaWindow();
+    const std::string id =
+        addTrack(main, "yamaha.chord", Json::parse(R"([{"at":0,"chord":"C"},{"at":3840,"chord":"F"}])"));
+    main.click(block(main, "yamaha.chord", id, 0));
+    REQUIRE(opened(popupOf(main.item("yamaha.chord.set:" + qid(id) + ":root"))));
+    QTest::keyClick(main.window, Qt::Key_Delete);
+    CHECK(processUntil([&] { return dataOf(main, id) == Json::parse(R"([{"at":3840,"chord":"F"}])"); }));
+    CHECK(processUntil([&] { return main.rig.nav.editingBlock().isEmpty(); }));
+
+    main.click(block(main, "yamaha.chord", id, kBar));
+    REQUIRE(opened(popupOf(main.item("yamaha.chord.set:" + qid(id) + ":root"))));
+    type(main, "b");
+    QTest::keyClick(main.window, Qt::Key_Backspace);
+    QTest::keyClick(main.window, Qt::Key_Backspace);
+    CHECK(dataOf(main, id).size() == 1);
+    removeTrack(main, id);
+}
+
 TEST_CASE(
     "a block's tooltip names the whole chord, waits for a hover and hides from a press until the pointer leaves") {
     MainWindow& main = yamahaWindow();

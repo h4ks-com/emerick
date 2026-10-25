@@ -19,7 +19,7 @@ class StyleSync : public QObject {
     Q_OBJECT
 
 public:
-    explicit StyleSync(app::ProjectController& controller);
+    StyleSync(app::ProjectController& controller, const app::Registry& registry);
 
     [[nodiscard]] bool styleRunning() const;
 
@@ -29,11 +29,14 @@ private:
     void follow();
     void receive(const std::vector<std::uint8_t>& bytes);
     void report();
+    void silenceMutedStyle();
     void show(app::SyncStatus status);
 
     app::ProjectController& controller_;
+    const app::Registry& registry_;
     std::string port_;
     Clock::time_point lastStyleNote_;
+    Clock::time_point lastStop_;
     Clock::time_point playStarted_;
     std::optional<int> keyboardMain_;
     app::SyncStatus shown_;

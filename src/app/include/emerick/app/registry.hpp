@@ -105,6 +105,8 @@ struct Action {
     bool quiet = false;
     // An action that runs Lua, which MCP refuses when it serves without lua.eval.
     bool runsLua = false;
+    // A UI run tells the user the outcome: the result's message, or the error text when it fails.
+    bool notifies = false;
 };
 
 struct Marker {
@@ -198,6 +200,8 @@ struct TrackType {
     std::function<std::vector<Marker>(const model::Track&)> markers = {};
     // Messages the MIDI panic sends first, for every track of the type, playing or not.
     std::function<std::vector<MidiMessage>(const model::Track&)> panic = {};
+    // True when a project holds MIDI Start back from the clock ports; play then sends clock only.
+    std::function<bool(const model::Document&)> holdsStart = {};
     // The hooks below run only for a track that plays: unmuted, not silenced by another track's solo, with a MIDI
     // output. A project without them plays as plain MIDI.
     // Messages that put the track's device in its state at position. We send them before Start on play and record,
@@ -339,6 +343,7 @@ signals:
     void menusChanged();
     void fileDialogRequested(const QVariantMap& request);
     void confirmRequested(const QVariantMap& request);
+    void noticeRaised(const QString& title, const QString& text) const;
     void gesturingChanged();
     void actionRan(const std::string& id, const nlohmann::json& params, emerick::app::ActionSource source) const;
 

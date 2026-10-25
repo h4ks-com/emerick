@@ -202,12 +202,13 @@ TEST_CASE("the settings page reads its sections and rows from the registry") {
     addSettingsSection(registry, nav, {.key = "late", .title = "Late"});
 
     const QVariantList sections = registry.sections("settings");
-    REQUIRE(sections.size() == 5);
+    REQUIRE(sections.size() == 6);
     CHECK(sections.at(0).toMap().value("id").toString() == "settings.general");
     CHECK(sections.at(1).toMap().value("title").toString() == "Audio");
-    CHECK(sections.at(3).toMap().value("title").toString() == "Late");
-    CHECK(sections.at(4).toMap().value("group").toString() == "Plugins");
-    CHECK(sections.at(4).toMap().value("title").toString() == "Tape Machine");
+    CHECK(sections.at(2).toMap().value("title").toString() == "MIDI");
+    CHECK(sections.at(4).toMap().value("title").toString() == "Late");
+    CHECK(sections.at(5).toMap().value("group").toString() == "Plugins");
+    CHECK(sections.at(5).toMap().value("title").toString() == "Tape Machine");
     const QVariantList audio = registry.settingsAt("settings.audio");
     REQUIRE(audio.size() == 3);
     CHECK(audio.front().toMap().value("type").toInt() == static_cast<int>(SettingType::Choice));

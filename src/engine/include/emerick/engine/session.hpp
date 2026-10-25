@@ -157,6 +157,11 @@ struct Session {
     std::filesystem::path takeFolder;     // recorded audio takes are written here
     Metronome metronome;
     PanLaw panLaw = PanLaw::compensated;
+    // Play and a locate while playing send each audible MIDI track's last bank, program, controllers and pitch bend
+    // before the playhead, so its device starts in the state the song left it in there.
+    bool chaseMidi = true;
+    // Clock ports get clock while stopped too, so a device that follows it runs at the project tempo.
+    bool clockWhileStopped = false;
 };
 
 // A clip we skipped because its file is missing or at another sample rate.

@@ -104,13 +104,17 @@ void locate(RealtimeState& state, Snapshot& snapshot, Ticks ticks, std::int64_t 
             clip.stream->seek(std::clamp<Frames>(state.frame - clip.start, 0, clip.length));
         }
     }
+    if (state.transportPlaying) {
+        chaseMidi(snapshot, state.frame, timestampNs);
+    }
     updateTake(state, snapshot);
     state.locatesApplied.fetch_add(1, std::memory_order_release);
 }
 
-void startTransport(RealtimeState& state, Snapshot& snapshot) {
+void startTransport(RealtimeState& state, Snapshot& snapshot, std::int64_t timestampNs) {
     state.transportPlaying = true;
     state.startPending = true;
+    chaseMidi(snapshot, state.frame, timestampNs);
     updateTake(state, snapshot);
 }
 
@@ -130,7 +134,7 @@ void apply(RealtimeState& state, Snapshot& snapshot, const Command& command, con
             if (state.recordEnabled && snapshot.metronome.countInFrames > 0) {
                 state.countInLeft = snapshot.metronome.countInFrames;
             } else {
-                startTransport(state, snapshot);
+                startTransport(state, snapshot, block.hostTimeNs);
             }
             break;
         case Command::Type::stop:
@@ -178,6 +182,9 @@ void apply(RealtimeState& state, Snapshot& snapshot, const Command& command, con
             if (track != nullptr) {
                 track->pan = command.pan;
             }
+            break;
+        case Command::Type::panic:
+            sendPanic(snapshot, block.hostTimeNs);
             break;
     }
 }
@@ -427,7 +434,7 @@ Frames countIn(RealtimeState& state, Snapshot& snapshot, const AudioBlock& block
     if (state.countInLeft > 0) {
         return block.frames;
     }
-    startTransport(state, snapshot);
+    startTransport(state, snapshot, block.hostTimeNs + framesToNs(frames, snapshot.sampleRate));
     return frames;
 }
 
@@ -490,8 +497,10 @@ void processBlock(RealtimeState& state, const AudioBlock& block) {
         state.voiceSounds = snapshot.metronome.sounds.get();
         state.metronomeVoices = {};
     }
+    sendOutgoingMidi(state, snapshot, block.hostTimeNs);
     Command command;
     while (state.commands.try_dequeue(command)) {
+        sendOutgoingMidi(state, snapshot, block.hostTimeNs);
         apply(state, snapshot, command, block);
     }
     const Frames rollFrom = countIn(state, snapshot, block);
@@ -503,6 +512,9 @@ void processBlock(RealtimeState& state, const AudioBlock& block) {
         sendClock(snapshot, state.frame, rolling);
         playAudioClips(snapshot, state.frame, rollFrom, rolling.frames);
         playMetronome(state, snapshot, block, rollFrom, state.frame);
+    } else if (snapshot.clockWhileStopped) {
+        sendClock(snapshot, state.stoppedClockFrame, block);
+        state.stoppedClockFrame += block.frames;
     }
     renderMetronome(state, snapshot, block);
     monitorAndRecordAudio(snapshot, block, rollFrom);

@@ -37,9 +37,11 @@ public:
 
     bool queue(std::span<const std::uint8_t> bytes, std::int64_t timestampNs);
     void poll();
+    [[nodiscard]] const std::string& id() const { return id_; }
     [[nodiscard]] bool flushed() const { return unsent_.load(std::memory_order_acquire) == 0; }
 
 private:
+    std::string id_;
     SpscRing ring_;
     std::unique_ptr<MidiOutput> output_;
     std::multimap<std::int64_t, std::vector<std::uint8_t>> waiting_;

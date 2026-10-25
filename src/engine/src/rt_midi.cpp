@@ -127,6 +127,66 @@ void countLostMidi(Snapshot& snapshot, const RealtimeState& state, MidiInputPort
     }
 }
 
+// What a chase found on one channel; kUnset marks a value no event set.
+struct ChasedChannel {
+    static constexpr std::uint8_t kUnset = 0xFF;
+    static constexpr std::uint16_t kUnsetBend = 0xFFFF;
+    std::array<std::uint8_t, kMidiNotes> controllers{};
+    std::uint8_t program = kUnset;
+    std::uint16_t bend = kUnsetBend;
+
+    ChasedChannel() { controllers.fill(kUnset); }
+};
+
+void chaseTrack(const TrackState& track, Frames frame, std::int64_t timestampNs) {
+    std::array<ChasedChannel, kMidiChannels> chased{};
+    for (const ScheduledMidi& event : track.chaseEvents) {
+        if (event.frame >= frame) {
+            break;
+        }
+        std::array<std::uint8_t, 3> rewritten{};
+        const auto bytes =
+            onChannel(std::span(track.midiBytes).subspan(event.offset, event.size), track.outChannel, rewritten);
+        ChasedChannel& channel = chased[bytes[0] & 0x0F];
+        switch (bytes[0] & 0xF0) {
+            case core::midi::kControlChange:
+                channel.controllers[bytes[1] & 0x7F] = bytes[2] & 0x7F;
+                break;
+            case core::midi::kProgramChange:
+                channel.program = bytes[1] & 0x7F;
+                break;
+            default:
+                channel.bend = static_cast<std::uint16_t>((bytes[1] & 0x7F) | ((bytes[2] & 0x7F) << 7));
+                break;
+        }
+    }
+    const auto send = [&](std::span<const std::uint8_t> bytes) { track.midiOut->queue(bytes, timestampNs); };
+    for (std::size_t index = 0; index < kMidiChannels; ++index) {
+        const ChasedChannel& channel = chased[index];
+        const auto status = [&](std::uint8_t type) { return static_cast<std::uint8_t>(type | index); };
+        const auto sendController = [&](std::size_t controller) {
+            if (channel.controllers[controller] != ChasedChannel::kUnset) {
+                send(std::array{status(core::midi::kControlChange), static_cast<std::uint8_t>(controller),
+                                channel.controllers[controller]});
+            }
+        };
+        sendController(core::midi::kBankSelectCc);
+        sendController(core::midi::kBankSelectLsbCc);
+        if (channel.program != ChasedChannel::kUnset) {
+            send(std::array{status(core::midi::kProgramChange), channel.program});
+        }
+        for (std::size_t controller = 0; controller < kMidiNotes; ++controller) {
+            if (controller != core::midi::kBankSelectCc && controller != core::midi::kBankSelectLsbCc) {
+                sendController(controller);
+            }
+        }
+        if (channel.bend != ChasedChannel::kUnsetBend) {
+            send(std::array{status(core::midi::kPitchBend), static_cast<std::uint8_t>(channel.bend & 0x7F),
+                            static_cast<std::uint8_t>(channel.bend >> 7)});
+        }
+    }
+}
+
 }  // namespace
 
 void receiveMidi(Snapshot& snapshot, const RealtimeState& state, const AudioBlock& block, Frames blockStartFrame) {
@@ -215,6 +275,53 @@ void sendAllNotesOff(const Snapshot& snapshot, std::int64_t timestampNs) {
             const std::array<std::uint8_t, 3> message{core::midi::statusFor(core::midi::kControlChange, channel),
                                                       core::midi::kAllNotesOffCc, 0};
             track.midiOut->queue(message, timestampNs);
+        }
+    }
+}
+
+void chaseMidi(const Snapshot& snapshot, Frames frame, std::int64_t timestampNs) {
+    if (!snapshot.chaseMidi) {
+        return;
+    }
+    const bool soloActive = anySolo(snapshot);
+    for (const TrackState& track : snapshot.tracks) {
+        if (track.midiOut && !track.chaseEvents.empty() && audible(track, soloActive)) {
+            chaseTrack(track, frame, timestampNs);
+        }
+    }
+}
+
+void sendPanic(Snapshot& snapshot, std::int64_t timestampNs) {
+    sendToClockPorts(snapshot, core::midi::kStop, timestampNs);
+    releaseNotes(snapshot, timestampNs);
+    for (const auto& port : snapshot.outputs) {
+        for (std::size_t channel = 0; channel < kMidiChannels; ++channel) {
+            const auto status = static_cast<std::uint8_t>(core::midi::kControlChange | channel);
+            for (const std::uint8_t controller :
+                 {core::midi::kSustainCc, core::midi::kAllSoundOffCc, core::midi::kAllNotesOffCc}) {
+                port->queue(std::array<std::uint8_t, 3>{status, controller, 0}, timestampNs);
+            }
+        }
+    }
+}
+
+void sendOutgoingMidi(RealtimeState& state, Snapshot& snapshot, std::int64_t timestampNs) {
+    OutgoingMidiHeader header;
+    while (readValue(state.outgoingMidi, header)) {
+        const std::size_t size = std::size_t{header.portIdSize} + header.size;
+        if (size > snapshot.incoming.size()) {
+            state.outgoingMidi.skip(size);
+            continue;
+        }
+        const auto record = std::span(snapshot.incoming).first(size);
+        readInto(state.outgoingMidi, record);
+        const auto portId = record.first(header.portIdSize);
+        const auto port = std::ranges::find_if(snapshot.outputs, [&](const auto& output) {
+            return std::ranges::equal(portId, output->id(), {}, {},
+                                      [](char letter) { return static_cast<std::uint8_t>(letter); });
+        });
+        if (port != snapshot.outputs.end()) {
+            (*port)->queue(record.subspan(header.portIdSize), timestampNs);
         }
     }
 }

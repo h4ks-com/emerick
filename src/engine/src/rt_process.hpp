@@ -10,6 +10,7 @@
 
 #include "emerick/engine/audio_backend.hpp"
 #include "snapshot.hpp"
+#include "spsc_ring.hpp"
 
 namespace emerick::engine {
 
@@ -17,9 +18,16 @@ inline constexpr std::size_t kCommandCapacity = 1024;
 inline constexpr std::size_t kRetiredCapacity = 64;
 inline constexpr std::size_t kMaxTrackIdLength = 64;
 inline constexpr std::size_t kMetronomeVoices = 16;
+inline constexpr std::size_t kOutgoingMidiBytes = std::size_t{1} << 18;
+
+// A message the UI thread sends to an output port, followed by the port id and the message bytes.
+struct OutgoingMidiHeader {
+    std::uint32_t portIdSize = 0;
+    std::uint32_t size = 0;
+};
 
 struct Command {
-    enum class Type : std::uint8_t { play, stop, locate, record, mute, solo, arm, gain, pan };
+    enum class Type : std::uint8_t { play, stop, locate, record, mute, solo, arm, gain, pan, panic };
     Type type = Type::play;
     std::array<char, kMaxTrackIdLength> trackId{};
     std::size_t trackIdLength = 0;
@@ -46,6 +54,8 @@ struct RealtimeState {
     std::atomic<Frames> publishedFrame{0};
     std::atomic<bool> publishedPlaying{false};
     std::atomic<std::uint64_t> locatesApplied{0};
+    // The UI thread writes messages here before the command that should follow them.
+    SpscRing outgoingMidi{kOutgoingMidiBytes};
 
     // The audio thread owns everything below while the stream is open.
     Snapshot* current = nullptr;
@@ -58,6 +68,8 @@ struct RealtimeState {
     bool taking = false;
     Frames takeStartFrame = 0;
     Frames countInLeft = 0;
+    // Counts frames while stopped, so the clock we send then keeps its pulse spacing.
+    Frames stoppedClockFrame = 0;
     std::array<MetronomeVoice, kMetronomeVoices> metronomeVoices{};
     const DrumSounds* voiceSounds = nullptr;
 };

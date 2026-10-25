@@ -36,6 +36,10 @@ GlassPanel {
             iconName: "stop"
         }
         TransportButton {
+            objectName: "transport.panic"
+            iconName: "warning-octagon"
+        }
+        TransportButton {
             id: metronomeButton
             objectName: "metronome.toggle"
             iconName: "metronome"

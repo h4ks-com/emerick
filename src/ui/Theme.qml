@@ -173,8 +173,9 @@ QtObject {
 
     readonly property int pianoRollHeight: 320
     readonly property int pianoRollMinHeight: 200
-    readonly property int velocityLaneHeight: 64
-    readonly property real velocityLaneShare: 0.2
+    readonly property int controlLaneHeight: 64
+    readonly property real controlLanesShare: 0.4
+    readonly property int controlPointSlack: 6
     readonly property int velocityBar: 4
     readonly property int noteGrip: 6
     readonly property int minGridSpacing: 6

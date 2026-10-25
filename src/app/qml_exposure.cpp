@@ -4,6 +4,7 @@
 
 #include "emerick/app/clip_notes.hpp"
 #include "emerick/app/code_highlighter.hpp"
+#include "emerick/app/control_curve.hpp"
 #include "emerick/app/effect_catalog.hpp"
 #include "emerick/app/enums.hpp"
 #include "emerick/app/transport_clock.hpp"
@@ -32,6 +33,7 @@ void exposeToQml(QQmlEngine& engine, Registry& registry, Nav& nav, ProjectContro
     }
     qmlRegisterType<ClipNotes>("Emerick.App", 1, 0, "ClipNotes");
     qmlRegisterType<CodeHighlighter>("Emerick.App", 1, 0, "CodeHighlighter");
+    qmlRegisterType<ControlCurve>("Emerick.App", 1, 0, "ControlCurve");
     qmlRegisterType<Waveform>("Emerick.App", 1, 0, "Waveform");
 }
 

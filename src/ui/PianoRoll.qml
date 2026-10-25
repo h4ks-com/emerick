@@ -2,7 +2,7 @@ import QtQuick
 import QtQuick.Controls.Basic
 import Emerick.App
 
-// The piano roll's clip as notes over a keyboard, on the timeline's zoom and scroll, with a velocity lane below.
+// The piano roll's clip as notes over a keyboard, on the timeline's zoom and scroll, with controller lanes below.
 DockPanel {
     id: roll
     objectName: "pianoRoll"
@@ -21,8 +21,13 @@ DockPanel {
     readonly property int keysTop: Theme.rulerHeight
     readonly property int headerWidth: Registry.settings["view.headerWidth"]
     readonly property real gridWidth: Math.max(0, width - roll.headerWidth)
-    readonly property real velocityHeight: Math.min(Theme.velocityLaneHeight, height * Theme.velocityLaneShare)
-    readonly property real gridHeight: Math.max(0, height - keysTop - velocityHeight)
+    readonly property var lanes: Registry.settings["midi.lanes"] ?? []
+    readonly property var laneChoices: Tracks.revision >= 0 && hasClip ? Tracks.laneChoices(clipId) : []
+    // The range a drag selected on a controller lane, as {lane, from, to} in ticks from the clip start, which Delete
+    // clears in place of the selected notes.
+    property var controlRange: null
+    readonly property real lanesHeight: Math.min(lanes.length * Theme.controlLaneHeight, height * Theme.controlLanesShare)
+    readonly property real gridHeight: Math.max(0, height - keysTop - lanesHeight)
     readonly property real contentHeight: 128 * keyHeight
     readonly property int barStep: {
         let step = 1
@@ -113,7 +118,10 @@ DockPanel {
         Nav.keyHeight = height
     }
     readonly property string clipId: Nav.pianoRollClip
-    onClipIdChanged: Qt.callLater(showNotes)
+    onClipIdChanged: {
+        controlRange = null
+        Qt.callLater(showNotes)
+    }
     Component.onCompleted: Qt.callLater(showNotes)
 
     readonly property var keyActions: ({
@@ -121,9 +129,13 @@ DockPanel {
         [Qt.Key_Down]: event => ({id: "midi.moveNotes", params: {pitch: event.modifiers & Qt.ShiftModifier ? -12 : -1}}),
         [Qt.Key_Left]: () => ({id: "midi.moveNotes", params: {by: -roll.gridTicks}}),
         [Qt.Key_Right]: () => ({id: "midi.moveNotes", params: {by: roll.gridTicks}}),
-        [Qt.Key_Delete]: () => ({id: "midi.deleteNotes", params: {}}),
-        [Qt.Key_Backspace]: () => ({id: "midi.deleteNotes", params: {}})
+        [Qt.Key_Delete]: () => roll.deleteAction(),
+        [Qt.Key_Backspace]: () => roll.deleteAction()
     })
+    function deleteAction() {
+        return controlRange ? {id: "midi.setControl", params: {lane: controlRange.lane, from: controlRange.from, to: controlRange.to}}
+                            : {id: "midi.deleteNotes", params: {}}
+    }
     readonly property var commandActions: ({
         [Qt.Key_C]: () => ({id: "midi.copyNotes", params: {}}),
         [Qt.Key_V]: () => ({id: "midi.pasteNotes", params: {}}),
@@ -256,6 +268,7 @@ DockPanel {
 
             onPressed: mouse => {
                 roll.forceActiveFocus()
+                roll.controlRange = null
                 pressAt = Qt.point(mouse.x, mouse.y)
                 pressNote = roll.noteAt(mouse.x, mouse.y)
                 if (pressNote) {
@@ -339,11 +352,24 @@ DockPanel {
         roll: roll
     }
 
-    VelocityLane {
+    Column {
+        id: laneColumn
+        // The delegates' own roll property hides the roll id, so they reach the piano roll through here.
+        readonly property PianoRoll pianoRoll: roll
         y: roll.keysTop + roll.gridHeight
         width: roll.width
-        height: roll.velocityHeight
-        roll: roll
+        Repeater {
+            model: roll.lanes
+            delegate: ControllerLane {
+                required property string modelData
+                required property int index
+                width: laneColumn.width
+                height: laneColumn.pianoRoll.lanesHeight / laneColumn.pianoRoll.lanes.length
+                roll: laneColumn.pianoRoll
+                lane: modelData
+                last: index === laneColumn.pianoRoll.lanes.length - 1
+            }
+        }
     }
 
     Rectangle {

@@ -5,6 +5,7 @@
 #include <string>
 #include <variant>
 
+#include "emerick/model/controls.hpp"
 #include "main_window.hpp"
 
 using namespace emerick;
@@ -127,6 +128,43 @@ TEST_CASE("dragging a velocity bar up raises the note's velocity") {
     roll.main.drag(roll.main.item("midi.setVelocity:" + qid(id)), {0, -20});
     CHECK(roll.note(id).velocity > before);
     CHECK(roll.main.rig.controller->project().undoName() == "set note velocity");
+}
+
+TEST_CASE("the controller lane picker shows what each lane holds, marks lanes with data and draws with the pencil") {
+    Roll roll;
+    roll.add(60, 0);
+    roll.main.rig.run("midi.setControl",
+                      {{"clip", roll.clip}, {"lane", "cc1"}, {"points", {{{"at", 0}, {"value", 64}}}}});
+    MainWindow::settle();
+    roll.main.click(roll.main.item("midi.addLane"));
+    REQUIRE(processUntil([&] { return roll.main.rig.registry.settingValue("midi.lanes") == Json{"velocity", "cc1"}; }));
+    MainWindow::settle();
+
+    QQuickItem* picker = roll.main.item("midi.changeLane:cc1");
+    REQUIRE(picker != nullptr);
+    CHECK(picker->property("text").toString() == "Modulation");
+    roll.main.click(picker);
+    auto* menu = picker->property("menu").value<QObject*>();
+    REQUIRE(processUntil([&] { return menu->property("opened").toBool(); }));
+    CHECK(itemTitles(menu) ==
+          std::vector<QString>{"Velocity", "Modulation", "Pitch bend", "Sustain", "Expression", "Aftertouch"});
+    CHECK(menuItem(menu, "Modulation")->property("iconName").toString() == "circle");
+    CHECK(menuItem(menu, "Velocity")->property("iconName").toString() == "circle");
+    CHECK(menuItem(menu, "Pitch bend")->property("iconName").toString().isEmpty());
+    QMetaObject::invokeMethod(menuItem(menu, "Pitch bend")->property("action").value<QObject*>(), "trigger");
+    REQUIRE(processUntil([&] { return !menu->property("visible").toBool(); }));
+    CHECK(roll.main.rig.registry.settingValue("midi.lanes") == Json{"velocity", "pitchBend"});
+    MainWindow::settle();
+
+    roll.main.drag(roll.main.item("midi.setControl:pitchBend"), {{30, -10}, {60, 10}}, Qt::ControlModifier);
+    constexpr model::Control kBend{.kind = model::ControlKind::pitchBend};
+    CHECK(model::controlPoints(roll.midi(), kBend).size() > 2);
+    CHECK(roll.main.rig.controller->project().undoName() == "edit controller");
+    roll.main.rig.run("project.undo");
+    CHECK(model::controlPoints(roll.midi(), kBend).empty());
+
+    roll.main.rig.registry.setSetting("midi.lanes", Json{"velocity"});
+    MainWindow::settle();
 }
 
 TEST_CASE("Delete in the focused piano roll removes the selected notes and keeps the clip") {

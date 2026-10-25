@@ -15,6 +15,8 @@ qt_add_qml_module(emerick_ui
         ClipBody.qml
         ClipItem.qml
         CommandPalette.qml
+        ControlLane.qml
+        ControllerLane.qml
         ConsolePanel.qml
         DockPanel.qml
         DragGroup.qml

@@ -5,6 +5,7 @@
 #include <variant>
 #include <vector>
 
+#include "emerick/app/note_edit.hpp"
 #include "emerick/app/session_mapping.hpp"
 #include "emerick/model/json.hpp"
 #include "midi_file.hpp"
@@ -40,6 +41,10 @@ struct NoteRig {
     Json run(const std::string& id, Json params) const {
         params["clip"] = clip;
         return rig.run(id, params);
+    }
+
+    [[nodiscard]] Json controls(const std::string& lane) const {
+        return rig.run("project.clipEvents", {{"clip", clip}}).at("controls").value(lane, Json::array());
     }
 };
 
@@ -206,6 +211,82 @@ TEST_CASE("a project saved before notes had ids opens with the same notes and pl
     CHECK((notes[0].pitch == 60 && notes[0].velocity == 90 && notes[0].length == 480));
     CHECK(toSession(loaded, keys.rig.registry, {}).tracks.at(0).midiClips.at(0).events ==
           toSession(document, keys.rig.registry, {}).tracks.at(0).midiClips.at(0).events);
+}
+
+TEST_CASE("drawing controller values edits the clip's events as one undo step and playback sends them") {
+    NoteRig keys;
+    keys.add(60, 0);
+    const Json drawn = keys.run("midi.setControl", {{"lane", "cc1"},
+                                                    {"points",
+                                                     {{{"at", 0}, {"value", 10}},
+                                                      {{"at", 10}, {"value", 10}},
+                                                      {{"at", 20}, {"value", 90}},
+                                                      {{"at", 30}, {"value", 90}}}}});
+    CHECK(drawn.at("pointCount") == 2);
+    CHECK(keys.rig.controller->project().undoName() == "edit controller");
+    keys.run("midi.setControl", {{"lane", "pitchBend"}, {"points", {{{"at", 40}, {"value", -8192}}}}});
+    CHECK(keys.controls("cc1") == Json{{{"at", 0}, {"value", 10}}, {{"at", 20}, {"value", 90}}});
+
+    const engine::Session session =
+        toSession(keys.rig.controller->project().document(), keys.rig.registry, keys.rig.controller->folder());
+    CHECK(session.tracks.at(0).midiClips.at(0).events ==
+          std::vector<engine::MidiEvent>{
+              {0, {0xB0, 1, 10}}, {0, {0x90, 60, 100}}, {20, {0xB0, 1, 90}}, {40, {0xE0, 0, 0}}, {240, {0x80, 60, 0}}});
+
+    keys.run("midi.setControl", {{"lane", "cc1"}, {"from", 0}, {"to", 15}});
+    CHECK(keys.controls("cc1").size() == 1);
+    keys.rig.run("project.undo");
+    keys.rig.run("project.undo");
+    keys.rig.run("project.undo");
+    CHECK(keys.midi().events.empty());
+
+    CHECK_THROWS_AS(keys.run("midi.setControl", {{"lane", "cc1"}, {"points", {{{"at", 0}, {"value", 128}}}}}),
+                    AppError);
+    CHECK_THROWS_AS(keys.run("midi.setControl", {{"lane", "cc1"}, {"points", {{{"at", 3840}, {"value", 1}}}}}),
+                    AppError);
+    CHECK_THROWS_AS(keys.run("midi.setControl", {{"lane", "velocity"}}), AppError);
+}
+
+TEST_CASE("dragging a controller point is one undo step that ends where the drag ends") {
+    NoteRig keys;
+    keys.run("midi.setControl", {{"lane", "cc11"}, {"points", {{{"at", 100}, {"value", 40}}}}});
+    const auto drag = [&](int at, int value) {
+        keys.rig.registry.updateGesture(
+            "Edit controller values",
+            {QVariantMap{
+                {"id", "midi.setControl"},
+                {"params", QVariantMap{{"clip", qs(keys.clip)},
+                                       {"lane", "cc11"},
+                                       {"from", 100},
+                                       {"to", 100},
+                                       {"points", QVariantList{QVariantMap{{"at", at}, {"value", value}}}}}}}});
+    };
+    for (const int at : {110, 120, 130}) {
+        drag(at, at - 50);
+    }
+    keys.rig.registry.endGesture();
+    CHECK(keys.controls("cc11") == Json{{{"at", 130}, {"value", 80}}});
+    keys.rig.run("project.undo");
+    CHECK(keys.controls("cc11") == Json{{{"at", 100}, {"value", 40}}});
+}
+
+TEST_CASE("the piano roll shows the controller lanes the setting lists and marks the lanes with data") {
+    NoteRig keys;
+    CHECK(keys.rig.registry.settingValue("midi.lanes") == Json{"velocity"});
+    CHECK(keys.rig.run("midi.addLane").at("lanes") == Json{"velocity", "cc1"});
+    CHECK(keys.rig.run("midi.addLane", {{"lane", "cc7"}}).at("lanes") == Json{"velocity", "cc1", "cc7"});
+    CHECK(keys.rig.run("midi.changeLane", {{"lane", "cc7"}, {"to", "cc1"}}).at("lanes") == Json{"velocity", "cc1"});
+    CHECK(keys.rig.run("midi.removeLane", {{"lane", "velocity"}}).at("lanes") == Json{"cc1"});
+    CHECK_THROWS_AS(keys.rig.run("midi.removeLane", {{"lane", "cc1"}}), AppError);
+    CHECK_THROWS_AS(keys.rig.run("midi.addLane", {{"lane", "cc200"}}), AppError);
+
+    keys.run("midi.setControl", {{"lane", "cc74"}, {"points", {{{"at", 0}, {"value", 5}}}}});
+    const Json lanes = laneChoices(keys.midi());
+    REQUIRE(lanes.size() == 7);
+    CHECK((lanes.at(0).at("id") == "velocity" && lanes.at(0).at("hasData") == false));
+    CHECK((lanes.at(3).at("title") == "Sustain" && lanes.at(3).at("switched") == true));
+    CHECK((lanes.at(2).at("minimum") == -8192 && lanes.at(2).at("maximum") == 8191));
+    CHECK((lanes.at(6).at("id") == "cc74" && lanes.at(6).at("title") == "CC 74" && lanes.at(6).at("hasData") == true));
 }
 
 TEST_CASE("the piano roll opens on the selected MIDI clip and state shows notes only on request") {

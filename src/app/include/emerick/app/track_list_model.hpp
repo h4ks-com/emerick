@@ -72,6 +72,10 @@ public:
     [[nodiscard]] int revision() const { return revision_; }
     // The clip as a track row lists it, with its track's id, name and color, or an empty map when it is gone.
     Q_INVOKABLE QVariantMap clip(const QString& id) const;
+    // The MIDI clip's points on a controller lane, flat as at, value, at, value, or empty for any other lane.
+    Q_INVOKABLE QList<double> controlPoints(const QString& clip, const QString& lane) const;
+    // The controller lanes the piano roll offers for the MIDI clip as {id, title, hasData}.
+    Q_INVOKABLE QVariantList laneChoices(const QString& clip) const;
     // The insert as project state lists it, with its track's id and name, or an empty map when it is gone.
     Q_INVOKABLE QVariantMap insert(const QString& id) const;
     // Whether every listed track has the same value of the named role, so a view can show "Mixed" where they differ.
@@ -88,6 +92,7 @@ private:
     // Removes, moves and inserts rows until they match the document's tracks, so views keep their other delegates.
     void syncRows();
 
+    [[nodiscard]] const model::MidiClip* midiClipWithId(const QString& id) const;
     [[nodiscard]] QVariantMap previewEntry(const model::TrackId& id, ClipType type) const;
     [[nodiscard]] QVariantMap clipEntry(const model::Clip& clip, int take) const;
     [[nodiscard]] QVariantList clipList(const model::Track& track) const;

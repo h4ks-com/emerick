@@ -43,6 +43,14 @@ struct ScheduledMidi {
     std::size_t size = 0;
 };
 
+// A track's MIDI clips placed on frames. Snapshots share it while the clips, the tempo and the rate stay the same.
+struct MidiSchedule {
+    std::vector<ScheduledMidi> events;
+    // The bank, program, controller and pitch bend events among events, which a chase sends.
+    std::vector<ScheduledMidi> chaseEvents;
+    std::vector<std::uint8_t> bytes;
+};
+
 // The audio thread raises the peaks and the clip flag, and the UI thread reads and resets them.
 struct LevelMeter {
     std::array<std::atomic<float>, kMeterChannels> peaks{};
@@ -100,10 +108,8 @@ struct TrackState {
     bool thru = false;
     bool claimsSysex = false;
     std::vector<ClipPlayback> clips;
-    std::vector<ScheduledMidi> midiEvents;
-    // The bank, program, controller and pitch bend events among midiEvents, which a chase sends.
-    std::vector<ScheduledMidi> chaseEvents;
-    std::vector<std::uint8_t> midiBytes;
+    // Never null.
+    std::shared_ptr<const MidiSchedule> midi;
     std::array<std::bitset<kMidiNotes>, kMidiChannels> soundingNotes{};
     std::shared_ptr<TakeRecorder> recorder;
     Frames recordDelay = 0;

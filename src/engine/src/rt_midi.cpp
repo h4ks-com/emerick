@@ -140,13 +140,13 @@ struct ChasedChannel {
 
 void chaseTrack(const TrackState& track, Frames frame, std::int64_t timestampNs) {
     std::array<ChasedChannel, kMidiChannels> chased{};
-    for (const ScheduledMidi& event : track.chaseEvents) {
+    for (const ScheduledMidi& event : track.midi->chaseEvents) {
         if (event.frame >= frame) {
             break;
         }
         std::array<std::uint8_t, 3> rewritten{};
         const auto bytes =
-            onChannel(std::span(track.midiBytes).subspan(event.offset, event.size), track.outChannel, rewritten);
+            onChannel(std::span(track.midi->bytes).subspan(event.offset, event.size), track.outChannel, rewritten);
         ChasedChannel& channel = chased[bytes[0] & 0x0F];
         switch (bytes[0] & 0xF0) {
             case core::midi::kControlChange:
@@ -231,11 +231,11 @@ void playMidiClips(Snapshot& snapshot, Frames frame, const AudioBlock& block) {
         if (!track.midiOut || !audible(track, soloActive)) {
             continue;
         }
-        const auto first = std::ranges::lower_bound(track.midiEvents, frame, {}, &ScheduledMidi::frame);
-        for (auto event = first; event != track.midiEvents.end() && event->frame < frame + block.frames; ++event) {
+        const auto first = std::ranges::lower_bound(track.midi->events, frame, {}, &ScheduledMidi::frame);
+        for (auto event = first; event != track.midi->events.end() && event->frame < frame + block.frames; ++event) {
             std::array<std::uint8_t, 3> rewritten{};
-            const auto sent =
-                onChannel(std::span(track.midiBytes).subspan(event->offset, event->size), track.outChannel, rewritten);
+            const auto sent = onChannel(std::span(track.midi->bytes).subspan(event->offset, event->size),
+                                        track.outChannel, rewritten);
             track.midiOut->queue(sent, timeAt(block, snapshot.sampleRate, event->frame - frame));
             rememberNote(track, sent);
         }
@@ -285,7 +285,7 @@ void chaseMidi(const Snapshot& snapshot, Frames frame, std::int64_t timestampNs)
     }
     const bool soloActive = anySolo(snapshot);
     for (const TrackState& track : snapshot.tracks) {
-        if (track.midiOut && !track.chaseEvents.empty() && audible(track, soloActive)) {
+        if (track.midiOut && !track.midi->chaseEvents.empty() && audible(track, soloActive)) {
             chaseTrack(track, frame, timestampNs);
         }
     }

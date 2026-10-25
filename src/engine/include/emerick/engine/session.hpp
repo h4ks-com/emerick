@@ -9,6 +9,7 @@
 
 #include "emerick/core/automation.hpp"
 #include "emerick/core/fade.hpp"
+#include "emerick/core/shared_vector.hpp"
 #include "emerick/core/time.hpp"
 #include "emerick/engine/effects.hpp"
 
@@ -114,7 +115,8 @@ struct Track {
     std::vector<Send> sends;
     std::vector<Insert> inserts;
     std::vector<AudioClip> audioClips;
-    std::vector<MidiClip> midiClips;
+    // Sessions share the clips, so the snapshot builder reuses a track's schedule while its clips stay the same.
+    core::SharedVector<MidiClip> midiClips;
     std::vector<AutomationLane> automation;
 };
 

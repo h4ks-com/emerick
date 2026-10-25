@@ -255,7 +255,7 @@ BuiltSnapshot SnapshotBuilder::build(const Session& session, const StreamLayout&
             addInserts(state, track, layout);
         }
         addClips(state, track, session.tempo, layout, built.errors);
-        addMidiEvents(state, track, session.tempo, layout.sampleRate);
+        state.midi = midiSchedule(track, session.tempo, layout.sampleRate);
         addRecorder(state, track, session, layout, captureOffset);
         snapshot.tracks.push_back(std::move(state));
     }
@@ -364,25 +364,34 @@ void SnapshotBuilder::addClips(TrackState& state, const Track& track, const core
     }
 }
 
-void SnapshotBuilder::addMidiEvents(TrackState& state, const Track& track, const core::TempoMap& tempo,
-                                    double sampleRate) {
+std::shared_ptr<const MidiSchedule> SnapshotBuilder::midiSchedule(const Track& track, const core::TempoMap& tempo,
+                                                                  double sampleRate) {
+    CachedSchedule& cache = schedules_[track.id];
+    const auto clips = track.midiClips.shared();
+    if (auto alive = cache.schedule.lock(); alive && cache.clips == clips && cache.tempo == tempo &&
+                                            cache.sampleRate == sampleRate && cache.kind == track.kind) {
+        return alive;
+    }
+    auto schedule = std::make_shared<MidiSchedule>();
     for (const MidiClip& clip : track.midiClips) {
         for (const MidiEvent& event : clip.events) {
             if (event.bytes.empty()) {
                 continue;
             }
-            state.midiEvents.push_back(
-                {tempo.ticksToFrames(clip.start + event.tick, sampleRate), state.midiBytes.size(), event.bytes.size()});
-            state.midiBytes.insert(state.midiBytes.end(), event.bytes.begin(), event.bytes.end());
+            schedule->events.push_back(
+                {tempo.ticksToFrames(clip.start + event.tick, sampleRate), schedule->bytes.size(), event.bytes.size()});
+            schedule->bytes.insert(schedule->bytes.end(), event.bytes.begin(), event.bytes.end());
         }
     }
-    std::ranges::stable_sort(state.midiEvents, {}, &ScheduledMidi::frame);
+    std::ranges::stable_sort(schedule->events, {}, &ScheduledMidi::frame);
     if (track.kind == TrackKind::midi) {
-        state.chaseEvents = state.midiEvents | std::views::filter([&](const ScheduledMidi& event) {
-                                return chases(std::span(state.midiBytes).subspan(event.offset, event.size));
-                            }) |
-                            std::ranges::to<std::vector>();
+        schedule->chaseEvents = schedule->events | std::views::filter([&](const ScheduledMidi& event) {
+                                    return chases(std::span(schedule->bytes).subspan(event.offset, event.size));
+                                }) |
+                                std::ranges::to<std::vector>();
     }
+    cache = {.clips = clips, .tempo = tempo, .sampleRate = sampleRate, .kind = track.kind, .schedule = schedule};
+    return schedule;
 }
 
 void SnapshotBuilder::addRecorder(TrackState& state, const Track& track, const Session& session,
@@ -422,6 +431,7 @@ std::shared_ptr<MidiOutputPort> SnapshotBuilder::outputPort(const std::string& i
 void SnapshotBuilder::prune() {
     const auto expired = [](const auto& entry) { return entry.second.expired(); };
     std::erase_if(clips_, expired);
+    std::erase_if(schedules_, [](const auto& entry) { return entry.second.schedule.expired(); });
     std::erase_if(effects_, expired);
     std::erase_if(compressors_, expired);
     std::erase_if(recorders_, expired);

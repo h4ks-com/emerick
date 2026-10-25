@@ -64,30 +64,30 @@ std::vector<SectionEvent> collectSections(const std::vector<RawEvent>& events, c
     std::vector<SectionEvent> sections;
     const auto firstMain = std::ranges::find_if(presses, [](const auto& p) { return p.second.kind == Section::Main; });
     int current = -1;
-    bool filled = false;
     if (firstMain != presses.end()) {
         current = firstMain->second.variation;
         sections.push_back({0, Section::Main, current});
     }
+    // While playing, the keyboard reports a Main press as the fill to that Main and then the Main at the next bar line,
+    // and after an Ending it reports the Main it stops on.
+    bool awaitingStop = false;
     for (const auto& [at, press] : presses) {
         if (!press.on) {
             continue;
         }
         switch (press.kind) {
             case Section::Main:
-                if (press.variation != current && !filled) {
+                if (!awaitingStop && (sections.empty() || sections.back().kind != Section::Main ||
+                                      sections.back().variation != press.variation)) {
                     sections.push_back({at, Section::Main, press.variation});
                 }
                 current = press.variation;
-                filled = false;
                 break;
             case Section::FillTo:
                 sections.push_back({at, press.variation == current ? Section::Fill : Section::FillTo, press.variation});
-                filled = true;
                 break;
             case Section::Break:
                 sections.push_back({at, Section::Break, 0});
-                filled = true;
                 break;
             case Section::Intro:
             case Section::Ending:
@@ -95,6 +95,7 @@ std::vector<SectionEvent> collectSections(const std::vector<RawEvent>& events, c
                 sections.push_back({at, press.kind, press.variation});
                 break;
         }
+        awaitingStop = press.kind == Section::Ending;
     }
     return sections;
 }

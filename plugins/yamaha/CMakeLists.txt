@@ -14,10 +14,12 @@ qt_add_library(emerick_yamaha_plugin STATIC
     src/arranger_actions.cpp
     src/chart_actions.cpp
     src/chord_input.cpp
+    src/keyboard_check.cpp
+    src/keyboard_check.hpp
     src/plugin.cpp
     src/registration.hpp)
-set(yamaha_qml qml/BlockLane.qml qml/ChordLane.qml qml/StyleLane.qml)
-foreach(file ${yamaha_qml})
+set(yamaha_qml qml/BlockLane.qml qml/ChordLane.qml qml/StyleHeader.qml qml/StyleLane.qml qml/WarningBadge.qml)
+foreach(file ${yamaha_qml} qml/warning.svg)
     get_filename_component(name ${file} NAME)
     set_source_files_properties(${file} PROPERTIES QT_RESOURCE_ALIAS ${name})
 endforeach()
@@ -25,6 +27,7 @@ qt_add_qml_module(emerick_yamaha_plugin
     URI Emerick.Yamaha
     VERSION 1.0
     QML_FILES ${yamaha_qml}
+    RESOURCES qml/warning.svg
     SOURCES src/lane_blocks.cpp src/lane_blocks.hpp)
 target_include_directories(emerick_yamaha_plugin PRIVATE src)
 target_link_libraries(emerick_yamaha_plugin

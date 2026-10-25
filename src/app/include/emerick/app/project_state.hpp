@@ -30,6 +30,8 @@ Json markersState(const model::Document& document);
 Json projectState(ProjectController& controller);
 Json transportState(const ProjectController& controller);
 Json devicesState(const ProjectController& controller);
+// The MIDI output ports as the {id, name} entries a String setting suggests.
+Json midiOutputChoices(const ProjectController& controller);
 // Reads "11.6 ms round trip, 5.8 ms output", as Logic shows it.
 std::string latencyText(const engine::StreamLayout& layout);
 

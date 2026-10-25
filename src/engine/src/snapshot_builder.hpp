@@ -50,7 +50,8 @@ private:
     std::shared_ptr<MidiOutputPort> outputPort(const std::string& id);
     void addClips(TrackState& state, const Track& track, const core::TempoMap& tempo, const StreamLayout& layout,
                   std::vector<SessionError>& errors);
-    static void addMidiEvents(TrackState& state, const Track& track, const core::TempoMap& tempo, double sampleRate);
+    std::shared_ptr<const MidiSchedule> midiSchedule(const Track& track, const core::TempoMap& tempo,
+                                                     double sampleRate);
     void addRecorder(TrackState& state, const Track& track, const Session& session, const StreamLayout& layout,
                      Frames captureOffset);
     void addInserts(TrackState& state, const Track& track, const StreamLayout& layout);
@@ -65,6 +66,15 @@ private:
     PollingSet<TakeRecorder>& writer_;
     PollingSet<MidiOutputPort>& sender_;
     std::map<std::string, std::weak_ptr<ClipStream>> clips_;
+    // Holding the clips keeps a later change from writing into them, so the same clips mean the same schedule.
+    struct CachedSchedule {
+        std::shared_ptr<const std::vector<MidiClip>> clips;
+        core::TempoMap tempo;
+        double sampleRate = 0.0;
+        TrackKind kind = TrackKind::audio;
+        std::weak_ptr<const MidiSchedule> schedule;
+    };
+    std::map<std::string, CachedSchedule> schedules_;
     std::map<std::string, std::weak_ptr<TakeRecorder>> recorders_;
     std::map<std::string, std::weak_ptr<Effect>> effects_;
     std::map<std::string, std::weak_ptr<Effect>> compressors_;

@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 #include <functional>
+#include <map>
 #include <optional>
 #include <ranges>
 #include <string>
@@ -145,22 +146,40 @@ engine::Track midiEngineTrack(const model::Track& track) {
 }
 
 engine::Session toSession(const model::Document& document, const Registry& registry,
-                          const std::filesystem::path& folder) {
+                          const std::filesystem::path& folder, EngineTrackCache& cache) {
     engine::Session session{.tempo = document.tempo,
                             .tracks = {},
                             .clockPorts = document.clockPorts,
                             .takeFolder = folder / "audio",
                             .metronome = {},
                             .panLaw = panLawFromSettings(registry)};
+    if (cache.tempo != document.tempo || cache.folder != folder) {
+        cache = {.tempo = document.tempo, .folder = folder, .tracks = {}};
+    }
     const PlaybackContext context{.tempo = document.tempo, .folder = folder};
+    std::map<std::string, EngineTrackCache::Entry> kept;
     for (const model::Track& track : document.tracks) {
         const TrackType* type = registry.trackType(track.kind);
-        if (type != nullptr && type->toEngine) {
-            session.tracks.push_back(type->toEngine(track, context));
-            session.tracks.back().automation = engineLanes(registry, document, track);
+        if (type == nullptr || !type->toEngine) {
+            continue;
         }
+        auto entry = cache.tracks.extract(track.id.value);
+        if (entry.empty() || entry.mapped().source != track) {
+            kept.insert_or_assign(track.id.value, EngineTrackCache::Entry{track, type->toEngine(track, context)});
+        } else {
+            kept.insert(std::move(entry));
+        }
+        session.tracks.push_back(kept.at(track.id.value).converted);
+        session.tracks.back().automation = engineLanes(registry, document, track);
     }
+    cache.tracks = std::move(kept);
     return session;
+}
+
+engine::Session toSession(const model::Document& document, const Registry& registry,
+                          const std::filesystem::path& folder) {
+    EngineTrackCache cache;
+    return toSession(document, registry, folder, cache);
 }
 
 std::vector<engine::SessionError> dropUnusableDevices(engine::Session& session,

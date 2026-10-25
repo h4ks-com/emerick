@@ -90,6 +90,7 @@ ProjectController::ProjectController(const Registry& registry, std::unique_ptr<e
         setEdited(true);
         scheduleFlush();
     });
+    connect(&registry_, &Registry::settingsChanged, this, [this] { engineTracks_ = {}; });
     autosaveTimer_.setSingleShot(true);
     autosaveTimer_.setInterval(kAutosaveDelay);
     connect(&autosaveTimer_, &QTimer::timeout, this, &ProjectController::autosave);
@@ -517,7 +518,7 @@ void ProjectController::setMetronome(const engine::Metronome& metronome) {
 }
 
 void ProjectController::publish() {
-    engine::Session session = toSession(project_.document(), registry_, folder_);
+    engine::Session session = toSession(project_.document(), registry_, folder_, engineTracks_);
     session.metronome = metronome_;
     session.chaseMidi = chaseMidi_;
     session.clockWhileStopped = clockWhileStopped_;

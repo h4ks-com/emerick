@@ -137,6 +137,27 @@ TEST_CASE("notes copy and paste within the clip with new ids at the playhead") {
     CHECK(keys.rig.nav.selectedNotes().size() == 2);
 }
 
+TEST_CASE("an edit to one track converts only that track again and reuses the other tracks") {
+    NoteRig keys;
+    keys.add(60, 0);
+    const std::string other = keys.rig.run("track.addMidi", {{"name", "Bass"}}).at("id");
+    const std::string otherClip = keys.rig.run("midi.addClip", {{"track", other}, {"at", 0}}).at("id");
+    keys.rig.run("midi.addNote", {{"clip", otherClip}, {"pitch", 40}, {"start", 0}});
+    const auto convert = [&](EngineTrackCache& cache) {
+        return toSession(keys.rig.controller->project().document(), keys.rig.registry, keys.rig.controller->folder(),
+                         cache);
+    };
+    EngineTrackCache cache;
+    const engine::Session before = convert(cache);
+
+    keys.add(64, 480);
+    const engine::Session after = convert(cache);
+
+    CHECK(after.tracks.at(0).midiClips.shared() != before.tracks.at(0).midiClips.shared());
+    CHECK(after.tracks.at(0).midiClips.at(0).events.size() == 4);
+    CHECK(after.tracks.at(1).midiClips.shared() == before.tracks.at(1).midiClips.shared());
+}
+
 TEST_CASE("notes play and export as the note-ons and note-offs they came from") {
     NoteRig keys;
     keys.add(60, 0, 480, 90);

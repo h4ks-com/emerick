@@ -19,6 +19,7 @@
 
 #include "emerick/app/peak_cache.hpp"
 #include "emerick/app/registry.hpp"
+#include "emerick/app/session_mapping.hpp"
 #include "emerick/app/track_meters.hpp"
 #include "emerick/engine/engine.hpp"
 #include "emerick/model/project.hpp"
@@ -265,6 +266,7 @@ private:
     bool untitled_ = false;
     bool edited_ = false;
     QTimer autosaveTimer_;
+    EngineTrackCache engineTracks_;
     std::set<std::string> sessionTracks_;
     std::set<std::string> sessionAudioTracks_;
     std::set<std::string> pendingAudioTakes_;

@@ -2,7 +2,9 @@
 
 #include <array>
 #include <filesystem>
+#include <map>
 #include <span>
+#include <string>
 #include <vector>
 
 #include "emerick/app/registry.hpp"
@@ -34,8 +36,23 @@ engine::Track audioEngineTrack(const model::Track& track, const std::filesystem:
 engine::Track midiEngineTrack(const model::Track& track);
 engine::Track busEngineTrack(const model::Track& track);
 
+// Each track's TrackType::toEngine result while the track, the tempo and the folder stay the same. A settings change
+// must clear it, since toEngine may read settings.
+struct EngineTrackCache {
+    struct Entry {
+        model::Track source;
+        engine::Track converted;
+    };
+    core::TempoMap tempo;
+    std::filesystem::path folder;
+    std::map<std::string, Entry> tracks;
+};
+
 // Each track plays through its TrackType; a kind without one stays silent. Relative clip files resolve against the
-// project folder, and takes go to <folder>/audio.
+// project folder, and takes go to <folder>/audio. With a cache, only the tracks that changed since the last call
+// convert again.
+engine::Session toSession(const model::Document& document, const Registry& registry,
+                          const std::filesystem::path& folder, EngineTrackCache& cache);
 engine::Session toSession(const model::Document& document, const Registry& registry,
                           const std::filesystem::path& folder);
 

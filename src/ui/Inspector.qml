@@ -270,15 +270,10 @@ Rectangle {
                     route: panel.midiOut
                     mixed: inspector.mixed("midiOut")
                 }
-                Label {
+                WarningBadge {
                     objectName: "inspector.trackErrors"
-                    visible: text !== ""
-                    text: Project.trackErrors[panel.trackId] ?? ""
-                    color: Theme.rec
-                    font.pixelSize: Theme.textLabel
-                    wrapMode: Text.Wrap
+                    message: Project.trackErrors[panel.trackId] ?? ""
                     Layout.topMargin: Theme.space2
-                    Layout.fillWidth: true
                 }
 
                 Loader {

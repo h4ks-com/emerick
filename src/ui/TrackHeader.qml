@@ -175,6 +175,12 @@ Rectangle {
                 }
             }
 
+            WarningBadge {
+                objectName: "track.errors:" + header.trackId
+                message: Project.trackErrors[header.trackId] ?? ""
+                implicitWidth: Theme.headerButton
+                implicitHeight: Theme.headerButton
+            }
             ChromeButton {
                 objectName: "track.showMenu:" + header.trackId
                 actionId: "track.showMenu"

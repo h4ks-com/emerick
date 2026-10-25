@@ -94,6 +94,7 @@ QtObject {
     readonly property int transportButton: 36
     readonly property int displayHeight: 44
     readonly property int tooltipDelay: 500
+    readonly property int tipWidth: 320
     readonly property int noticeDuration: 10000
     readonly property color displayInset: Qt.rgba(0, 0, 0, 0.35)
     function glow(color) {
@@ -194,7 +195,7 @@ QtObject {
     }
 
     // Track icons are Phosphor names and fade icons are our own; an icon we do not bundle shows as a note.
-    readonly property var icons: ["arrows-merge", "automation", "broom", "caret-left", "caret-right", "circle", "copy", "dots-three", "fade-equalPower", "fade-exponential", "fade-linear", "fade-logarithmic", "fade-sCurve", "file", "gear-six", "guitar", "list", "magnet", "magnifying-glass", "metronome", "music-note", "music-notes", "pause", "pencil-simple", "piano-keys", "play", "plus", "sidebar-simple", "skip-back", "sliders", "speaker-slash", "squares-four", "stop", "waveform", "x"]
+    readonly property var icons: ["arrows-merge", "automation", "broom", "caret-left", "caret-right", "circle", "copy", "dots-three", "fade-equalPower", "fade-exponential", "fade-linear", "fade-logarithmic", "fade-sCurve", "file", "gear-six", "guitar", "list", "magnet", "magnifying-glass", "metronome", "music-note", "music-notes", "pause", "pencil-simple", "piano-keys", "play", "plus", "sidebar-simple", "skip-back", "sliders", "speaker-slash", "squares-four", "stop", "warning", "waveform", "x"]
     function iconSource(name) {
         return "icons/" + (icons.indexOf(name) >= 0 ? name : "music-note") + ".svg"
     }

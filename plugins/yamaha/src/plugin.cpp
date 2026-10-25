@@ -104,6 +104,19 @@ std::optional<std::vector<SectionEvent>> playingStyle(const model::Document& doc
     return std::nullopt;
 }
 
+const model::Track* mutedStyle(const model::Document& document) {
+    const model::Track* muted = nullptr;
+    for (const model::Track& track : document.tracks) {
+        if (track.kind == kStyleKind && !track.midiOut.portId.empty()) {
+            if (!track.mute) {
+                return nullptr;
+            }
+            muted = &track;
+        }
+    }
+    return muted;
+}
+
 std::optional<Chord> chordIn(const model::Track& chords, core::Ticks position) {
     const std::vector<ChordEvent> events = playableEvents<ChordEvent>(chords);
     const auto after = std::ranges::upper_bound(events, position, {}, &ChordEvent::at);
@@ -215,6 +228,7 @@ void registerTrackKinds(app::Registry& registry, const StyleSync& sync) {
                  return sync.styleRunning() ? toTrackOutput(buttonPress(kStartStopCc, buttonChannel(registry, track)))
                                             : std::vector<app::MidiMessage>{};
              },
+         .holdsStart = [](const model::Document& document) { return mutedStyle(document) != nullptr; },
          .chase =
              [&registry](const model::Track& track, core::Ticks position, const app::PlaybackContext&) {
                  const auto section = chaseSection(playableEvents<SectionEvent>(track), position);
@@ -228,7 +242,7 @@ void registerTrackKinds(app::Registry& registry, const StyleSync& sync) {
 Listeners::Listeners(app::Registry& registry, app::ProjectController& controller, app::Nav& nav)
     : chordInput(registry, controller, nav),
       keyboardCheck(std::make_unique<KeyboardCheck>(controller)),
-      styleSync(std::make_unique<StyleSync>(controller)) {
+      styleSync(std::make_unique<StyleSync>(controller, registry)) {
     qmlRegisterSingletonInstance("Emerick.Yamaha", 1, 0, "KeyboardCheck", keyboardCheck.get());
 }
 

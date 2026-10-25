@@ -152,6 +152,7 @@ struct Snapshot {
     // Every output port the tracks, the clock and the metronome use, once each.
     std::vector<std::shared_ptr<MidiOutputPort>> outputs;
     std::vector<std::shared_ptr<MidiInputPort>> inputs;
+    bool sendStart = true;
     bool chaseMidi = true;
     bool clockWhileStopped = false;
     std::vector<std::uint8_t> incoming = std::vector<std::uint8_t>(kMaxIncomingMessage);

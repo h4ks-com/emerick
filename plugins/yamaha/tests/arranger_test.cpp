@@ -349,3 +349,48 @@ TEST_CASE("the panic stops the keyboard's Style only while it runs") {
     settle();
     CHECK(stopPressed());
 }
+
+TEST_CASE("a muted Chords track sends no chords and a muted Style track presses only Stop on a running Style") {
+    YamahaRig rig({kKeyboard, kController});
+    rig.run("yamaha.setupArranger");
+    rig.run("track.armAll", {{"value", false}});
+    const auto& tracks = rig.controller->project().document().tracks;
+    const std::string chords = tracks.at(0).id.value;
+    const std::string style = tracks.at(1).id.value;
+    rig.run("yamaha.chord.set", {{"track", chords}, {"at", 0}, {"chord", "Dm"}});
+    rig.run("yamaha.section.set", {{"track", style}, {"at", 0}, {"name", "Main B"}});
+    const auto settle = [] { processUntil([] { return false; }, 100); };
+    const auto sentAny = [&](const Bytes& message) {
+        return std::ranges::contains(sentTo(rig, kKeyboard), message) ||
+               std::ranges::contains(sentTo(rig, kController), message);
+    };
+    const auto stopPressed = [&] { return sentAny(Bytes{0xBF, 0, 127}); };
+    const Bytes chordSysex{0xF0, 0x43, 0x7E, 0x02, 0x32, 0x08, 0x7F, 0x7F, 0xF7};
+
+    rig.run("track.setMute", {{"track", chords}, {"value", true}});
+    rig.run("track.setMute", {{"track", style}, {"value", true}});
+    rig.midi->clearSent();
+    rig.run("transport.play");
+    rig.audio->process(48000);
+    settle();
+    CHECK_FALSE(sentAny(Bytes{0xFA}));
+    CHECK_FALSE(sentAny(chordSysex));
+    CHECK_FALSE(sentAny(Bytes{0xBF, 11, 127}));
+    CHECK_FALSE(stopPressed());
+    rig.midi->inject(kKeyboard, Bytes{0x9A, 36, 100}, 0);
+    CHECK(processUntil([&] { return stopPressed(); }));
+    rig.run("transport.stop");
+
+    rig.run("track.setMute", {{"track", style}, {"value", false}});
+    rig.midi->clearSent();
+    rig.run("transport.play");
+    rig.midi->inject(kKeyboard, Bytes{0x9A, 36, 100}, 0);
+    settle();
+    rig.audio->process(4800);
+    settle();
+    CHECK(sentAny(Bytes{0xFA}));
+    CHECK_FALSE(stopPressed());
+    rig.run("track.setMute", {{"track", style}, {"value", true}});
+    CHECK(processUntil([&] { return stopPressed(); }));
+    rig.run("transport.stop");
+}

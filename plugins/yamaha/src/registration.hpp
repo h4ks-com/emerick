@@ -68,6 +68,9 @@ std::vector<Event> playableEvents(const model::Track& track) {
 
 // A Style track plays when it is unmuted, routed to an output and holds sections.
 std::optional<std::vector<SectionEvent>> playingStyle(const model::Document& document);
+
+// The last routed Style track when every routed Style track is muted, else null.
+const model::Track* mutedStyle(const model::Document& document);
 std::optional<Chord> chordIn(const model::Track& chords, core::Ticks position);
 // We read the first Chords track.
 std::optional<Chord> chordAt(const model::Document& document, core::Ticks position);

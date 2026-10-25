@@ -299,3 +299,53 @@ TEST_CASE("the keyboard check names the setting for each part the playing Style 
     play(12, 48);
     REQUIRE(processUntil([&] { return hints().empty(); }));
 }
+
+TEST_CASE("play from inside a pattern starts at its pass with the section and chord chased and shows the bar") {
+    YamahaRig rig({kKeyboard, kController});
+    rig.run("yamaha.setupArranger");
+    rig.run("track.armAll", {{"value", false}});
+    const auto& tracks = rig.controller->project().document().tracks;
+    const std::string chords = tracks.at(0).id.value;
+    const std::string style = tracks.at(1).id.value;
+    const core::Ticks bar = rig.controller->ticksPerBar();
+    rig.run("yamaha.section.set", {{"track", style}, {"at", 0}, {"name", "Main A"}});
+    rig.run("yamaha.section.setBars", {{"track", style}, {"at", 0}, {"bars", 4}});
+    rig.run("yamaha.section.set", {{"track", style}, {"at", 8 * bar}, {"name", "Main B"}});
+    rig.run("yamaha.chord.set", {{"track", chords}, {"at", 0}, {"chord", "Dm"}});
+    rig.run("yamaha.chord.set", {{"track", chords}, {"at", 6 * bar}, {"chord", "G7"}});
+
+    rig.run("transport.locate", {{"position", (6 * bar) + 100}});
+    rig.midi->clearSent();
+    rig.run("transport.play");
+    CHECK(rig.controller->startReason() == "Style starts at bar 5, Main A");
+    const std::vector<Bytes> sent = sentTo(rig, kKeyboard);
+    CHECK(std::ranges::contains(sent, Bytes{0xBF, 11, 127}));
+    CHECK(std::ranges::contains(sent, Bytes{0xF0, 0x43, 0x7E, 0x02, 0x32, 0x08, 0x7F, 0x7F, 0xF7}));
+    rig.audio->process(4800);
+    REQUIRE(processUntil([&] { return rig.controller->syncStatus().contains("yamaha"); }));
+    CHECK(rig.controller->syncStatus().at("yamaha").label == "Main A 1/4 Dm");
+    rig.run("transport.stop");
+    REQUIRE(processUntil([&] { return !rig.controller->syncStatus().contains("yamaha"); }));
+
+    rig.run("track.setMute", {{"track", style}, {"value", true}});
+    rig.run("transport.locate", {{"position", (6 * bar) + 100}});
+    rig.run("transport.play");
+    CHECK(rig.controller->startReason().isEmpty());
+    rig.run("transport.stop");
+}
+
+TEST_CASE("the panic stops the keyboard's Style only while it runs") {
+    YamahaRig rig({kKeyboard, kController});
+    rig.run("yamaha.setupArranger");
+    const auto stopPressed = [&] {
+        rig.midi->clearSent();
+        rig.run("transport.panic");
+        return processUntil([&] { return std::ranges::contains(sentTo(rig, kKeyboard), Bytes{0xBF, 0, 127}); }, 300);
+    };
+    const auto settle = [] { processUntil([] { return false; }, 100); };
+    settle();
+    CHECK_FALSE(stopPressed());
+    rig.midi->inject(kKeyboard, Bytes{0x9A, 36, 100}, 0);
+    settle();
+    CHECK(stopPressed());
+}

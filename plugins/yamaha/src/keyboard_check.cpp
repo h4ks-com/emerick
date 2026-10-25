@@ -11,6 +11,7 @@
 #include "emerick/core/midi.hpp"
 #include "emerick/yamaha/profile.hpp"
 #include "emerick/yamaha/sysex.hpp"
+#include "midi_listener.hpp"
 #include "registration.hpp"
 
 namespace emerick::yamaha {
@@ -21,8 +22,6 @@ namespace {
 constexpr int kStyleNotesToJudge = 48;
 constexpr core::Frames kMonitoringFrames = 256;
 constexpr std::string_view kInstallTemplate = "Install the keyboard template from Plugins > Yamaha Arranger";
-
-int channelOf(std::string_view name) { return std::ranges::find(genos2Parts(), name, &Part::name)->channel; }
 
 bool isNoteOn(std::span<const std::uint8_t> bytes) {
     return bytes.size() == 3 && (bytes[0] & 0xF0) == core::midi::kNoteOn && bytes[2] > 0;
@@ -47,17 +46,8 @@ void KeyboardCheck::listen(const std::string& port) {
     channels_.clear();
     heardChords_ = false;
     styleNotes_ = 0;
-    try {
-        input_ = controller_.engine().midi().openInput(port, [this](std::span<const std::uint8_t> bytes, std::int64_t) {
-            QMetaObject::invokeMethod(
-                this, [this, message = std::vector(bytes.begin(), bytes.end())] { receive(message); },
-                Qt::QueuedConnection);
-        });
-    } catch (const std::invalid_argument& error) {
-        qWarning("%s", error.what());
-    } catch (const std::runtime_error& error) {
-        qWarning("%s", error.what());
-    }
+    input_ =
+        listenOnPort(controller_, port, *this, [this](const std::vector<std::uint8_t>& message) { receive(message); });
 }
 
 void KeyboardCheck::receive(const std::vector<std::uint8_t>& bytes) {
@@ -70,7 +60,7 @@ void KeyboardCheck::receive(const std::vector<std::uint8_t>& bytes) {
     }
     const int channel = (bytes[0] & 0x0F) + 1;
     channels_.insert(channel);
-    if (channel >= channelOf("Bass")) {
+    if (channel >= partChannel("Bass")) {
         ++styleNotes_;
     }
     if (styleNotes_ >= kStyleNotesToJudge) {
@@ -81,10 +71,10 @@ void KeyboardCheck::receive(const std::vector<std::uint8_t>& bytes) {
 void KeyboardCheck::judge() {
     input_.reset();
     keyboardHints_.clear();
-    if (!channels_.contains(channelOf("Rhythm 1")) && !channels_.contains(channelOf("Rhythm 2"))) {
+    if (!channels_.contains(partChannel("Rhythm 1")) && !channels_.contains(partChannel("Rhythm 2"))) {
         keyboardHints_.push_back(std::string{kInstallTemplate} + " so the keyboard sends its Rhythm parts");
     }
-    if (channels_.contains(channelOf("Left")) && !heardChords_) {
+    if (channels_.contains(partChannel("Left")) && !heardChords_) {
         keyboardHints_.push_back(std::string{kInstallTemplate} + " so the keyboard sends its chords");
     }
     emit hintsChanged();

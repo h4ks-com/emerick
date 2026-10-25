@@ -92,10 +92,10 @@ TEST_CASE("the first main starts the chart and a fill to the same main is a self
     const auto chart = chartFromTake({section(0, 0x09), section(kBar, 0x11), section(2 * kBar, 0x12),
                                       section(3 * kBar, 0x0A), section(4 * kBar, 0x0B), section(5 * kBar, 0x18)},
                                      kTempo, {});
-    CHECK(chart.sections == std::vector<SectionEvent>{{0, Section::Main, 1},
+    CHECK(chart.sections == std::vector<SectionEvent>{{0, Section::Main, 1, 3},
                                                       {kBar, Section::Fill, 1},
                                                       {2 * kBar, Section::FillTo, 2},
-                                                      {3 * kBar, Section::Main, 2},
+                                                      {3 * kBar, Section::Main, 2, 1},
                                                       {4 * kBar, Section::Main, 3},
                                                       {5 * kBar, Section::Break, 0}});
 }
@@ -106,22 +106,22 @@ TEST_CASE(
                                       section(kBar, 0x08), section(3 * kBar, 0x08, 0x00), section(3 * kBar, 0x20),
                                       section(5 * kBar, 0x20, 0x00), section(5 * kBar, 0x0B), section(7 * kBar, 0x09)},
                                      kTempo, {});
-    CHECK(chart.sections == std::vector<SectionEvent>{{0, Section::Main, 3},
+    CHECK(chart.sections == std::vector<SectionEvent>{{0, Section::Main, 3, 1},
                                                       {0, Section::FillTo, 0},
-                                                      {kBar, Section::Main, 0},
+                                                      {kBar, Section::Main, 0, 2},
                                                       {3 * kBar, Section::Ending, 0},
                                                       {7 * kBar, Section::Main, 1}});
 }
 
 TEST_CASE("button releases do not make sections") {
     const auto chart = chartFromTake({section(0, 0x08), section(10, 0x08, 0x00), section(kBar, 0x00)}, kTempo, {});
-    CHECK(chart.sections == std::vector<SectionEvent>{{0, Section::Main, 0}, {kBar, Section::Intro, 0}});
+    CHECK(chart.sections == std::vector<SectionEvent>{{0, Section::Main, 0, 1}, {kBar, Section::Intro, 0}});
 }
 
 TEST_CASE("charts round trip through json") {
     const std::vector<ChordEvent> chords{{0, *Chord::parse("Dm7")}, {kBar, *Chord::parse("C/E")}};
     const std::vector<SectionEvent> sections{
-        {0, Section::Main, 2}, {kBar, Section::FillTo, 1}, {2 * kBar, Section::Break, 0}};
+        {0, Section::Main, 2, 4}, {kBar, Section::FillTo, 1}, {2 * kBar, Section::Break, 0}};
     CHECK(nlohmann::json(chords).get<std::vector<ChordEvent>>() == chords);
     CHECK(nlohmann::json(sections).get<std::vector<SectionEvent>>() == sections);
     CHECK(nlohmann::json(chords)[0]["chord"] == "Dm7");

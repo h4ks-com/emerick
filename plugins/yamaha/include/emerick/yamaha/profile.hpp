@@ -19,6 +19,8 @@ struct Part {
 
 // Channels 1 to 16 as the Genos2 transmits them; icons are Phosphor names.
 const std::array<Part, 16>& genos2Parts();
+// The channel of a part genos2Parts names.
+int partChannel(std::string_view name);
 inline constexpr std::string_view kChordsIcon = "music-notes-simple";
 inline constexpr std::string_view kStyleIcon = "metronome";
 

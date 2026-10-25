@@ -47,7 +47,7 @@ TEST_CASE("a block's context menu changes, splits and deletes it") {
     CHECK(menuTitles(rig.registry, "Chord context") ==
           std::vector<QString>{"Change chord", "Split chord", "Delete chord"});
     CHECK(menuTitles(rig.registry, "Section context") ==
-          std::vector<QString>{"Change section", "Split section", "Delete section"});
+          std::vector<QString>{"Change section", "Split section", "Delete section", "Set pattern length"});
 
     const std::string id = rig.addTrack("yamaha.chord");
     rig.run("yamaha.chord.set", {{"track", id}, {"at", 0}, {"chord", "C"}});

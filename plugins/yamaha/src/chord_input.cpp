@@ -10,6 +10,7 @@
 #include "emerick/core/midi.hpp"
 #include "emerick/yamaha/profile.hpp"
 #include "emerick/yamaha/sysex.hpp"
+#include "midi_listener.hpp"
 #include "registration.hpp"
 
 namespace emerick::yamaha {
@@ -41,25 +42,12 @@ void ChordInput::follow() {
     }
 }
 
-namespace {
-
-// The keyboard plays its chords with the left hand, so a Chords track that listens on every channel reads that part.
-int leftHandChannel() { return std::ranges::find(genos2Parts(), "Left", &Part::name)->channel; }
-
-}  // namespace
-
 void ChordInput::listen(const model::Track& track) {
-    channel_ = track.midiIn.channel != 0 ? track.midiIn.channel : leftHandChannel();
-    try {
-        input_ = controller_.engine().midi().openInput(
-            track.midiIn.portId, [this](std::span<const std::uint8_t> bytes, std::int64_t) {
-                QMetaObject::invokeMethod(
-                    &context_, [this, message = std::vector(bytes.begin(), bytes.end())] { receive(message); },
-                    Qt::QueuedConnection);
-            });
-    } catch (const std::invalid_argument& error) {
-        qWarning("%s", error.what());
-    }
+    // The keyboard plays its chords with the left hand, so a Chords track that listens on every channel reads that
+    // part.
+    channel_ = track.midiIn.channel != 0 ? track.midiIn.channel : partChannel("Left");
+    input_ = listenOnPort(controller_, track.midiIn.portId, context_,
+                          [this](const std::vector<std::uint8_t>& message) { receive(message); });
 }
 
 void ChordInput::receive(const std::vector<std::uint8_t>& bytes) {

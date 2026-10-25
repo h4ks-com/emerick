@@ -4,7 +4,9 @@
 #include <array>
 #include <cmath>
 #include <format>
+#include <iterator>
 #include <map>
+#include <numeric>
 #include <stdexcept>
 #include <string_view>
 
@@ -13,6 +15,7 @@ namespace emerick::yamaha {
 namespace {
 
 using ChordKey = std::array<std::uint8_t, 4>;
+constexpr std::size_t kMainVariations = sectionInfo(Section::Main).variations.size();
 
 core::Ticks nearestBeat(core::Ticks tick, core::Ticks beat) {
     return static_cast<core::Ticks>(std::nearbyint(static_cast<double>(tick) / static_cast<double>(beat))) * beat;
@@ -51,6 +54,30 @@ std::vector<ChordEvent> collectChords(const std::vector<RawEvent>& events, const
         chords.push_back({at, chord});
     }
     return chords;
+}
+
+// The keyboard never tells a pattern's length, so we take the largest one every played stretch of a Main fits in
+// whole: the greatest common divisor of their lengths in bars. A stretch runs to the next Main, Intro or Ending,
+// since the fill or break that ends it still belongs to its last pass.
+// ponytail: a single long stretch reads as one long pattern; read the Style file's pattern lengths if that misleads.
+void estimatePatternBars(std::vector<SectionEvent>& sections, core::Ticks bar) {
+    std::array<int, kMainVariations> patterns{};
+    for (auto section = sections.begin(); section != sections.end(); ++section) {
+        const auto next = std::find_if(std::next(section), sections.end(),
+                                       [](const SectionEvent& event) { return startsSection(event.kind); });
+        if (section->kind != Section::Main || next == sections.end()) {
+            continue;
+        }
+        if (const auto played = static_cast<int>((next->at - section->at) / bar); played > 0) {
+            auto& pattern = patterns.at(static_cast<std::size_t>(section->variation));
+            pattern = std::gcd(pattern, played);
+        }
+    }
+    for (SectionEvent& section : sections) {
+        if (section.kind == Section::Main) {
+            section.bars = patterns.at(static_cast<std::size_t>(section.variation));
+        }
+    }
 }
 
 std::vector<SectionEvent> collectSections(const std::vector<RawEvent>& events, const core::TempoMap& tempo,
@@ -97,6 +124,7 @@ std::vector<SectionEvent> collectSections(const std::vector<RawEvent>& events, c
         }
         awaitingStop = press.kind == Section::Ending;
     }
+    estimatePatternBars(sections, tempo.ticksPerBar());
     return sections;
 }
 
@@ -126,6 +154,9 @@ void from_json(const nlohmann::json& json, ChordEvent& event) {
 
 void to_json(nlohmann::json& json, const SectionEvent& event) {
     json = {{"at", event.at}, {"kind", sectionInfo(event.kind).json}, {"variation", event.variation}};
+    if (event.bars > 0) {
+        json["bars"] = event.bars;
+    }
 }
 
 void from_json(const nlohmann::json& json, SectionEvent& event) {
@@ -134,7 +165,10 @@ void from_json(const nlohmann::json& json, SectionEvent& event) {
     if (found == kSections.end()) {
         throw std::invalid_argument("unknown section: " + kind);
     }
-    event = {json.at("at").get<core::Ticks>(), found->kind, json.at("variation").get<int>()};
+    event = {json.at("at").get<core::Ticks>(), found->kind, json.at("variation").get<int>(), json.value("bars", 0)};
+    if (event.bars < 0) {
+        throw std::invalid_argument("a pattern length must be positive");
+    }
 }
 
 Chart chartFromTake(const std::vector<RawEvent>& events, const core::TempoMap& tempo, const ChartOptions& options) {

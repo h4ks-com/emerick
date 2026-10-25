@@ -30,6 +30,11 @@ Item {
         return Math.max(0, Project.placed(Math.round(x / pixelsPerTick), modifiers))
     }
 
+    function splitAt(modelData, x, modifiers) {
+        const playhead = Project.positionTicks
+        return playhead > modelData.at && playhead < modelData.end ? playhead : ticksAt(x, modifiers)
+    }
+
     function run(action, params) {
         params.track = trackId
         Registry.runAction(actionPrefix + "." + action, params)
@@ -42,6 +47,12 @@ Item {
 
     function closePicker() {
         Nav.editingBlock = {}
+    }
+
+    function deleteEdited() {
+        const at = editAt
+        closePicker()
+        run("delete", {at: at})
     }
 
     function deletes(event) {
@@ -152,7 +163,7 @@ Item {
                     context = Theme.isContextClick(mouse)
                     if (context) {
                         lane.menuAt = pressAt
-                        lane.menuTo = lane.ticksAt(block.x + mouse.x, mouse.modifiers)
+                        lane.menuTo = lane.splitAt(block.modelData, block.x + mouse.x, mouse.modifiers)
                         blockMenu.popup()
                         return
                     }

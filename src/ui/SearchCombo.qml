@@ -15,6 +15,9 @@ Item {
     property string missingText: currentId
     // Several edited items differ in this value.
     property bool mixed: false
+    // Delete or Backspace before any typing emits deleteRequested instead of editing the empty search.
+    property bool deletesWhenUntouched: false
+    property bool touched: false
     readonly property var current: model.find(entry => entry.id === currentId)
     readonly property string displayText: mixed ? "Mixed" : current !== undefined ? current.name : missingText
     readonly property alias popup: popup
@@ -32,6 +35,7 @@ Item {
 
     signal picked(var entry)
     signal typed(string text)
+    signal deleteRequested
 
     implicitWidth: Theme.labelWidth
     implicitHeight: Theme.buttonHeight
@@ -41,6 +45,7 @@ Item {
             return
         }
         field.text = ""
+        touched = false
         field.forceActiveFocus()
         popup.open()
         list.currentIndex = Math.max(0, matches.findIndex(entry => entry.id === control.currentId))
@@ -88,6 +93,7 @@ Item {
         ToolTip.delay: Theme.tooltipDelay
         onPressed: control.open()
         onTextEdited: {
+            control.touched = true
             if (!popup.opened) {
                 popup.open()
             }
@@ -98,6 +104,13 @@ Item {
         Keys.onUpPressed: list.decrementCurrentIndex()
         Keys.onReturnPressed: popup.opened ? control.accept() : control.open()
         Keys.onEnterPressed: popup.opened ? control.accept() : control.open()
+        Keys.onPressed: event => {
+            const deletes = event.key === Qt.Key_Delete || event.key === Qt.Key_Backspace
+            if (deletes && control.deletesWhenUntouched && !control.touched && field.text === "") {
+                event.accepted = true
+                control.deleteRequested()
+            }
+        }
         Keys.onEscapePressed: event => {
             event.accepted = popup.opened
             control.close()

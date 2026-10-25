@@ -17,6 +17,8 @@ BlockLane {
             currentId: styleLane.editLabel
             missingText: "Section"
             toolTip: "Pick the section"
+            deletesWhenUntouched: true
+            onDeleteRequested: styleLane.deleteEdited()
             onPicked: entry => {
                 styleLane.set({name: entry.id})
                 styleLane.closePicker()

@@ -10,6 +10,7 @@
 #include "emerick/app/action_params.hpp"
 #include "emerick/app/core_actions.hpp"
 #include "emerick/app/project_actions.hpp"
+#include "emerick/app/project_state.hpp"
 #include "emerick/app/session_mapping.hpp"
 
 namespace emerick::app {
@@ -169,14 +170,6 @@ Json audioOutputs(const ProjectController& controller) {
     return outputs;
 }
 
-Json midiOutputs(const ProjectController& controller) {
-    return controller.engine().midiPorts() |
-           std::views::filter([](const engine::MidiPortInfo& port) { return !port.isInput; }) |
-           std::views::transform(
-               [](const engine::MidiPortInfo& port) { return Json{{"id", port.id}, {"name", port.name}}; }) |
-           std::ranges::to<Json::array_t>();
-}
-
 std::function<Json(const Json&, const Json&)> samplePath(const Registry& registry) {
     return [&registry](const Json&, const Json& change) {
         if (!change.is_string() || change.get<std::string>().empty()) {
@@ -283,7 +276,7 @@ void registerSettings(Registry& registry, const ProjectController& controller, N
                           .type = SettingType::String,
                           .defaultValue = "",
                           .hint = "Port the MIDI sounds send notes to",
-                          .suggestions = [&controller] { return midiOutputs(controller); }});
+                          .suggestions = [&controller] { return midiOutputChoices(controller); }});
     addSetting(registry, {.id = kMidiChannel,
                           .title = "MIDI channel",
                           .type = SettingType::Integer,

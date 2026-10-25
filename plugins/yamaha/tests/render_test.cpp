@@ -1,7 +1,6 @@
 #include "emerick/yamaha/render.hpp"
 
 #include <catch2/catch_test_macros.hpp>
-#include <stdexcept>
 
 #include "emerick/yamaha/sysex.hpp"
 
@@ -10,9 +9,21 @@ using Bytes = std::vector<std::uint8_t>;
 
 namespace {
 
+constexpr emerick::core::Ticks kBeat = 960;
+constexpr emerick::core::Ticks kBar = 4 * kBeat;
+
 ChordEvent chordAt(emerick::core::Ticks at, const char* name) { return {at, *Chord::parse(name)}; }
 
-Bytes section(std::uint8_t code, std::uint8_t on) { return {0xF0, 0x43, 0x7E, 0x00, code, on, 0xF7}; }
+std::vector<int> pressed(const std::vector<SectionEvent>& sections) {
+    std::vector<int> buttons;
+    for (const RawEvent& event : sectionPresses(sections, 16, kBeat)) {
+        CHECK(event.bytes.at(0) == 0xBF);
+        if (event.bytes.at(2) == 127) {
+            buttons.push_back(event.bytes.at(1));
+        }
+    }
+    return buttons;
+}
 
 }  // namespace
 
@@ -26,31 +37,34 @@ TEST_CASE("chords play as Chord Control sysex and never as notes") {
     }
 }
 
-TEST_CASE("each section presses its Section Control switch, On then Off ten ticks later") {
-    const auto events = sectionControls({{0, Section::Main, 1}, {3840, Section::Break, 0}});
-    CHECK(events == std::vector<RawEvent>{{0, section(0x09, 0x7F)},
-                                          {10, section(0x09, 0x00)},
-                                          {3840, section(0x18, 0x7F)},
-                                          {3850, section(0x18, 0x00)}});
+TEST_CASE("a Main presses its button a beat before its bar and a break presses at once, down then up") {
+    const auto events = sectionPresses(
+        {{0, Section::Main, 0}, {2 * kBar, Section::Main, 1}, {3 * kBar + kBeat, Section::Break, 0}}, 16, kBeat);
+    CHECK(events == std::vector<RawEvent>{{0, Bytes{0xBF, 11, 127}},
+                                          {10, Bytes{0xBF, 11, 0}},
+                                          {2 * kBar - kBeat, Bytes{0xBF, 12, 127}},
+                                          {2 * kBar - kBeat + 10, Bytes{0xBF, 12, 0}},
+                                          {3 * kBar + kBeat, Bytes{0xBF, 8, 127}},
+                                          {3 * kBar + kBeat + 10, Bytes{0xBF, 8, 0}}});
+    CHECK(sectionPresses({{0, Section::Main, 3}}, 1, kBeat).front().bytes == Bytes{0xB0, 14, 127});
 }
 
-TEST_CASE("every section kind sends the switch the keyboard records for it") {
-    const auto on = [](const std::vector<SectionEvent>& sections) {
-        std::vector<Bytes> pressed;
-        for (const RawEvent& event : sectionControls(sections)) {
-            if (event.bytes[5] == 0x7F) {
-                pressed.push_back(event.bytes);
-            }
-        }
-        return pressed;
-    };
-    CHECK(on({{0, Section::Intro, 2}, {1, Section::Main, 3}, {2, Section::FillTo, 2}, {3, Section::Ending, 1}}) ==
-          std::vector<Bytes>{section(0x02, 0x7F), section(0x0B, 0x7F), section(0x12, 0x7F), section(0x21, 0x7F)});
-    CHECK(on({{0, Section::Fill, 0}, {100, Section::Main, 2}, {200, Section::Fill, 0}}) ==
-          std::vector<Bytes>{section(0x10, 0x7F), section(0x0A, 0x7F), section(0x12, 0x7F)});
-    CHECK(on({{0, Section::FillTo, 3}, {100, Section::Fill, 0}}).back() == section(0x13, 0x7F));
+TEST_CASE("every section kind presses the External Controller button the keyboard assigns to it") {
+    CHECK(pressed({{0, Section::Intro, 2}, {kBar, Section::Main, 3}, {2 * kBar, Section::Ending, 1}}) ==
+          std::vector<int>{23, 14, 32});
+    CHECK(pressed({{0, Section::Intro, 0}, {kBar, Section::Ending, 0}, {2 * kBar, Section::Main, 2}}) ==
+          std::vector<int>{21, 31, 13});
 }
 
-TEST_CASE("a Fill has no Section Control switch of its own") {
-    CHECK_THROWS_AS(encodeSectionControl({Section::Fill, 0, true}), std::invalid_argument);
+TEST_CASE("a fill presses Fill Self, Fill Up, Fill Down or the Main it leads to, and its Main needs no press") {
+    CHECK(pressed({{0, Section::Main, 0},
+                   {kBar, Section::Fill, 0},
+                   {2 * kBar, Section::Main, 0},
+                   {3 * kBar, Section::FillTo, 1},
+                   {4 * kBar, Section::Main, 1},
+                   {5 * kBar, Section::FillTo, 0},
+                   {6 * kBar, Section::Main, 0},
+                   {7 * kBar, Section::FillTo, 3},
+                   {8 * kBar, Section::Main, 3}}) == std::vector<int>{11, 6, 9, 5, 14});
+    CHECK(pressed({{0, Section::FillTo, 2}}) == std::vector<int>{13});
 }

@@ -294,6 +294,14 @@ Json transportState(const ProjectController& controller) {
             {"stream", streamState(controller.engine())}};
 }
 
+Json midiOutputChoices(const ProjectController& controller) {
+    return controller.engine().midiPorts() |
+           std::views::filter([](const engine::MidiPortInfo& port) { return !port.isInput; }) |
+           std::views::transform(
+               [](const engine::MidiPortInfo& port) { return Json{{"id", port.id}, {"name", port.name}}; }) |
+           std::ranges::to<Json::array_t>();
+}
+
 Json devicesState(const ProjectController& controller) {
     Json audio = Json::array();
     Json inputs = Json::array();

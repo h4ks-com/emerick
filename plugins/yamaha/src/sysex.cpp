@@ -79,18 +79,4 @@ std::vector<std::uint8_t> encodeChordControl(const Chord& chord) {
             bass,        kNone,     kSysexEnd};
 }
 
-std::vector<std::uint8_t> encodeSectionControl(const SectionPress& press) {
-    const auto family = sectionInfo(press.kind).sysexFamily;
-    if (!family) {
-        throw std::invalid_argument("a Fill has no Section Control switch, send the Fill In of its Main");
-    }
-    return {kSysexStart,
-            kYamahaId,
-            kStyleGroup,
-            kSectionControl,
-            static_cast<std::uint8_t>(*family + press.variation),
-            press.on ? kOn : std::uint8_t{0},
-            kSysexEnd};
-}
-
 }  // namespace emerick::yamaha

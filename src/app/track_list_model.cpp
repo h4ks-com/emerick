@@ -303,6 +303,8 @@ QVariant TrackListModel::data(const QModelIndex& index, int role) const {
         }
         case Role::laneComponent:
             return qs(type != nullptr ? type->laneComponent : std::string{});
+        case Role::headerComponent:
+            return qs(type != nullptr ? type->headerComponent : std::string{});
         case Role::clipType:
             return qs(clipTypeName(clipTypeOf(type)));
         case Role::automationMode:
@@ -320,7 +322,7 @@ QVariant TrackListModel::data(const QModelIndex& index, int role) const {
 }
 
 QHash<int, QByteArray> TrackListModel::roleNames() const {
-    static constexpr std::array<std::pair<Role, const char*>, 30> kNames{{{Role::id, "trackId"},
+    static constexpr std::array<std::pair<Role, const char*>, 31> kNames{{{Role::id, "trackId"},
                                                                           {Role::name, "name"},
                                                                           {Role::kind, "kind"},
                                                                           {Role::icon, "icon"},
@@ -344,6 +346,7 @@ QHash<int, QByteArray> TrackListModel::roleNames() const {
                                                                           {Role::clips, "clips"},
                                                                           {Role::trackData, "trackData"},
                                                                           {Role::laneComponent, "laneComponent"},
+                                                                          {Role::headerComponent, "headerComponent"},
                                                                           {Role::clipType, "clipType"},
                                                                           {Role::automationMode, "automationMode"},
                                                                           {Role::automation, "automation"},

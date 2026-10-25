@@ -1,5 +1,6 @@
 #include "emerick/yamaha/plugin.hpp"
 
+#include <QQmlEngine>
 #include <QtLogging>
 #include <memory>
 #include <ranges>
@@ -8,6 +9,7 @@
 #include <vector>
 
 #include "emerick/app/core_actions.hpp"
+#include "emerick/app/project_state.hpp"
 #include "emerick/app/session_mapping.hpp"
 #include "emerick/yamaha/profile.hpp"
 #include "emerick/yamaha/render.hpp"
@@ -81,7 +83,7 @@ ChartOptions chartOptions(const app::Registry& registry, int shiftBars) {
             .anticipation = registry.settingValue(kAnticipationSetting).get<bool>()};
 }
 
-void registerSettings(app::Registry& registry, app::Nav& nav) {
+void registerSettings(app::Registry& registry, app::ProjectController& controller, app::Nav& nav) {
     app::addSettingsSection(registry, nav, {.key = "yamaha", .title = "Yamaha Arranger", .group = app::kPluginsGroup});
     addSetting(
         registry,
@@ -96,6 +98,23 @@ void registerSettings(app::Registry& registry, app::Nav& nav) {
                           .aliases = {"voice table"},
                           .type = app::SettingType::Boolean,
                           .defaultValue = true});
+    addSetting(
+        registry,
+        {.id = kControllerPortSetting,
+         .title = "External Controller port",
+         .aliases = {"section buttons port"},
+         .type = app::SettingType::String,
+         .defaultValue = "Digital Keyboard Port 2",
+         .hint = "Pick the port of the keyboard's External Controller. Set up arranger routes the Style track to it",
+         .suggestions = [&controller] { return app::midiOutputChoices(controller); }});
+    addSetting(registry, {.id = kControllerChannelSetting,
+                          .title = "External Controller channel",
+                          .aliases = {"section buttons channel"},
+                          .type = app::SettingType::Integer,
+                          .defaultValue = kControllerChannel,
+                          .minimum = 1,
+                          .maximum = app::kMidiChannels,
+                          .hint = "Channel the Style track presses the keyboard's section buttons on"});
 }
 
 void registerTrackKinds(app::Registry& registry) {
@@ -125,11 +144,16 @@ void registerTrackKinds(app::Registry& registry) {
         {.kind = kStyleKind,
          .title = "Style",
          .icon = std::string(kStyleIcon),
+         .headerComponent = "qrc:/qt/qml/Emerick/Yamaha/StyleHeader.qml",
          .laneComponent = "qrc:/qt/qml/Emerick/Yamaha/StyleLane.qml",
          .routes = {.midi = true},
          .toEngine =
-             [](const model::Track& track, const app::PlaybackContext&) {
-                 return withRendered(track, sectionControls(playableEvents<SectionEvent>(track)));
+             [&registry](const model::Track& track, const app::PlaybackContext& context) {
+                 const int channel = track.midiOut.channel != 0
+                                         ? track.midiOut.channel
+                                         : registry.settingValue(kControllerChannelSetting).get<int>();
+                 return withRendered(
+                     track, sectionPresses(playableEvents<SectionEvent>(track), channel, context.tempo.ticksPerBeat()));
              },
          .fromTake =
              [&registry](model::Track& track, const engine::RecordedTake& take, const app::TakeContext& context) {
@@ -145,14 +169,22 @@ void registerTrackKinds(app::Registry& registry) {
              }});
 }
 
-std::unique_ptr<ChordInput> registerWith(app::Registry& registry, app::ProjectController& controller, app::Nav& nav) {
-    registerSettings(registry, nav);
+Listeners::Listeners(app::Registry& registry, app::ProjectController& controller, app::Nav& nav)
+    : chordInput(registry, controller, nav), keyboardCheck(std::make_unique<KeyboardCheck>(controller)) {
+    qmlRegisterSingletonInstance("Emerick.Yamaha", 1, 0, "KeyboardCheck", keyboardCheck.get());
+}
+
+Listeners::~Listeners() = default;
+
+std::unique_ptr<Listeners> registerWith(app::Registry& registry, app::ProjectController& controller, app::Nav& nav) {
+    registerSettings(registry, controller, nav);
     registerTrackKinds(registry);
     registerDeviceProfile(registry);
     registerChartActions(registry, controller, nav);
-    registerArrangerActions(registry, controller);
+    auto listeners = std::make_unique<Listeners>(registry, controller, nav);
+    registerArrangerActions(registry, controller, *listeners->keyboardCheck);
     registerTemplateActions(registry);
-    return std::make_unique<ChordInput>(registry, controller, nav);
+    return listeners;
 }
 
 }  // namespace emerick::yamaha

@@ -18,18 +18,23 @@ struct SectionInfo {
     std::string_view display;
     std::string_view variations;
     std::optional<std::uint8_t> sysexFamily;
+    std::uint8_t controllerCc = 0;
 };
 
-// We put the variation's character where display says {}, and the Section Control switch is sysexFamily plus the
-// variation. A Fill has no switch of its own: the keyboard plays it as the fill of the Main that is playing.
+// We put the variation's character where display says {}. The keyboard reports a section as the Section Control
+// switch sysexFamily plus the variation, and we press its External Controller button controllerCc plus the variation.
+// A Fill has no switch of its own: the keyboard reports it as the fill of the Main that is playing. A FillTo has no
+// button of its own: we press Fill Up, Fill Down or the button of the Main it leads to.
 inline constexpr std::array kSections{
-    SectionInfo{Section::Main, "main", "Main {}", "ABCD", 0x08},
-    SectionInfo{Section::Fill, "fill", "Fill", "", std::nullopt},
-    SectionInfo{Section::FillTo, "fillTo", "Main {} (fill)", "ABCD", 0x10},
-    SectionInfo{Section::Break, "break", "Break", "", 0x18},
-    SectionInfo{Section::Intro, "intro", "Intro {}", "123", 0x00},
-    SectionInfo{Section::Ending, "ending", "Ending {}", "123", 0x20},
+    SectionInfo{Section::Main, "main", "Main {}", "ABCD", 0x08, 11},
+    SectionInfo{Section::Fill, "fill", "Fill", "", std::nullopt, 6},
+    SectionInfo{Section::FillTo, "fillTo", "Main {} (fill)", "ABCD", 0x10, 11},
+    SectionInfo{Section::Break, "break", "Break", "", 0x18, 8},
+    SectionInfo{Section::Intro, "intro", "Intro {}", "123", 0x00, 21},
+    SectionInfo{Section::Ending, "ending", "Ending {}", "123", 0x20, 31},
 };
+inline constexpr std::uint8_t kFillDownCc = 5;
+inline constexpr std::uint8_t kFillUpCc = 9;
 static_assert(kSections.size() == static_cast<std::size_t>(Section::Ending) + 1);
 static_assert(std::ranges::all_of(std::views::iota(std::size_t{0}, kSections.size()), [](std::size_t index) {
     return kSections[index].kind == static_cast<Section>(index);

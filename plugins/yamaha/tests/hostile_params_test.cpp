@@ -10,7 +10,7 @@ using namespace emerick;
 namespace {
 
 struct YamahaFuzzRig : app::test::FuzzRig {
-    YamahaFuzzRig() : chordInput(yamaha::registerWith(registry, *controller, nav)) {}
+    YamahaFuzzRig() : listeners(yamaha::registerWith(registry, *controller, nav)) {}
 
     void populate() {
         FuzzRig::populate();
@@ -22,7 +22,7 @@ struct YamahaFuzzRig : app::test::FuzzRig {
         }
     }
 
-    std::unique_ptr<yamaha::ChordInput> chordInput;
+    std::unique_ptr<yamaha::Listeners> listeners;
 };
 
 }  // namespace

@@ -20,9 +20,9 @@ using Bytes = std::vector<std::uint8_t>;
 constexpr core::Ticks kBar = 4 * core::kTicksPerQuarter;
 
 MainWindow& yamahaWindow() {
-    static std::unique_ptr<yamaha::ChordInput> chordInput;
+    static std::unique_ptr<yamaha::Listeners> listeners;
     static auto* main = new MainWindow(
-        [](ProjectRig& rig) { chordInput = yamaha::registerWith(rig.registry, *rig.controller, rig.nav); });
+        [](ProjectRig& rig) { listeners = yamaha::registerWith(rig.registry, *rig.controller, rig.nav); });
     return *main;
 }
 

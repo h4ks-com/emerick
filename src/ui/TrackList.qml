@@ -230,6 +230,7 @@ Rectangle {
             required property var clips
             required property var trackData
             required property string laneComponent
+            required property string headerComponent
             required property string clipType
             required property string automationMode
             required property var automation
@@ -345,6 +346,7 @@ Rectangle {
                 trackId: row.trackId
                 name: row.name
                 icon: row.icon
+                headerComponent: row.headerComponent
                 trackColor: row.trackColor
                 mute: row.mute
                 solo: row.solo

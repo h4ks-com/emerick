@@ -5,6 +5,10 @@ set_target_properties(emerick PROPERTIES
     MACOSX_BUNDLE_BUNDLE_NAME Emerick
     MACOSX_BUNDLE_GUI_IDENTIFIER org.emerick.app)
 emerick_target(emerick)
+# The app runs the plugin scanner from its own folder.
+add_dependencies(emerick emerick-clap-scanner)
+add_custom_command(TARGET emerick POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:emerick-clap-scanner> $<TARGET_FILE_DIR:emerick>)
 target_link_libraries(emerick PRIVATE Qt6::Gui Qt6::Qml Qt6::Quick emerick_app emerick_uiplugin emerick_yamaha_plugin
     emerick_yamaha_pluginplugin)
 

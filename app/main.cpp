@@ -20,6 +20,8 @@
 #include "emerick/app/mcp_tools.hpp"
 #include "emerick/app/nav.hpp"
 #include "emerick/app/peak_cache.hpp"
+#include "emerick/app/plugin_actions.hpp"
+#include "emerick/app/plugin_catalog.hpp"
 #include "emerick/app/project_actions.hpp"
 #include "emerick/app/project_controller.hpp"
 #include "emerick/app/qml_exposure.hpp"
@@ -104,6 +106,14 @@ int run(int argc, char** argv) {
         profileFolder.isEmpty() ? std::filesystem::path{}
                                 : std::filesystem::path{profileFolder.toStdString()} / "projects");
     registerProjectActions(registry, controller, nav);
+    PluginCatalog plugins(
+        {.cacheFolder =
+             (profileFolder.isEmpty() ? QStandardPaths::writableLocation(QStandardPaths::CacheLocation) : profileFolder)
+                 .toStdString(),
+         .scanner = (QCoreApplication::applicationDirPath() + "/emerick-clap-scanner").toStdString(),
+         .folders = clapSearchFolders()});
+    registerPluginActions(registry, nav, plugins);
+    registerInstrumentActions(registry, controller, nav, plugins);
     const auto yamaha = emerick::yamaha::registerWith(registry, controller, nav);
     TrackListModel tracks(controller, registry);
     FileOpenFilter fileOpen(registry);

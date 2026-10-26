@@ -4,6 +4,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -11,6 +12,7 @@
 #include "emerick/core/fade.hpp"
 #include "emerick/core/shared_vector.hpp"
 #include "emerick/core/time.hpp"
+#include "emerick/engine/clap_instrument.hpp"
 #include "emerick/engine/effects.hpp"
 
 namespace emerick::engine {
@@ -118,6 +120,9 @@ struct Track {
     // Sessions share the clips, so the snapshot builder reuses a track's schedule while its clips stay the same.
     core::SharedVector<MidiClip> midiClips;
     std::vector<AutomationLane> automation;
+    // A MIDI track with an instrument plays its MIDI through it, and its audio mixes like an audio track's. The app
+    // owns the instrument; a snapshot shares it until it retires on the UI thread.
+    std::shared_ptr<ClapInstrument> instrument;
 };
 
 // Click and sample play one sound per beat, a groove plays a drum pattern, and the MIDI modes send either as notes.

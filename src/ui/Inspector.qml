@@ -126,6 +126,9 @@ Rectangle {
                 required property bool audioRoutes
                 required property bool midiRoutes
                 required property bool busRoutes
+                required property bool instrumentRoutes
+                required property string instrumentName
+                readonly property bool playsAudio: audioRoutes || busRoutes || instrumentRoutes
                 required property var sends
                 required property var inserts
                 required property var audioIn
@@ -217,6 +220,29 @@ Rectangle {
                     Layout.fillWidth: true
                 }
 
+                RouteLabel { text: "Instrument"; visible: panel.instrumentRoutes }
+                RowLayout {
+                    visible: panel.instrumentRoutes
+                    spacing: Theme.space1
+                    Layout.fillWidth: true
+                    Label {
+                        objectName: "inspector.instrumentName"
+                        text: panel.instrumentName
+                        color: Theme.ink
+                        font.pixelSize: Theme.textLabel
+                        elide: Text.ElideRight
+                        Layout.fillWidth: true
+                    }
+                    ChromeButton {
+                        objectName: "instrument.showEditor:" + panel.trackId + ":inspector"
+                        actionId: "instrument.showEditor"
+                        params: ({track: panel.trackId})
+                        iconName: "sliders"
+                        implicitWidth: Theme.headerButton
+                        implicitHeight: Theme.headerButton
+                    }
+                }
+
                 RouteLabel { text: "Audio input"; visible: panel.audioRoutes }
                 AudioRoute {
                     visible: panel.audioRoutes
@@ -226,9 +252,9 @@ Rectangle {
                     route: panel.audioIn
                     mixed: inspector.mixed("audioIn")
                 }
-                RouteLabel { text: "Audio output"; visible: panel.audioRoutes || panel.busRoutes }
+                RouteLabel { text: "Audio output"; visible: panel.playsAudio }
                 AudioRoute {
-                    visible: panel.audioRoutes || panel.busRoutes
+                    visible: panel.playsAudio
                     actionId: "track.setAudioOut"
                     trackId: panel.trackId
                     devices: Project.routeDevices.audioOut
@@ -236,17 +262,17 @@ Rectangle {
                     mixed: inspector.mixed("audioOut")
                 }
 
-                RouteLabel { text: "Inserts"; visible: panel.audioRoutes || panel.busRoutes }
+                RouteLabel { text: "Inserts"; visible: panel.playsAudio }
                 InsertList {
-                    visible: panel.audioRoutes || panel.busRoutes
+                    visible: panel.playsAudio
                     trackId: panel.trackId
                     inserts: panel.inserts
                     Layout.fillWidth: true
                 }
 
-                RouteLabel { text: "Sends"; visible: panel.audioRoutes || panel.busRoutes }
+                RouteLabel { text: "Sends"; visible: panel.playsAudio }
                 SendList {
-                    visible: panel.audioRoutes || panel.busRoutes
+                    visible: panel.playsAudio
                     trackId: panel.trackId
                     sends: panel.sends
                     Layout.fillWidth: true

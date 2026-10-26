@@ -31,6 +31,7 @@ qt_add_library(emerick_app STATIC
     include/emerick/app/effect_catalog.hpp
     include/emerick/app/enums.hpp
     include/emerick/app/event_wait.hpp
+    include/emerick/app/instruments.hpp
     include/emerick/app/introspector.hpp
     include/emerick/app/key_focus.hpp
     include/emerick/app/lua_host.hpp
@@ -43,6 +44,8 @@ qt_add_library(emerick_app STATIC
     include/emerick/app/params.hpp
     include/emerick/app/path_access.hpp
     include/emerick/app/peak_cache.hpp
+    include/emerick/app/plugin_actions.hpp
+    include/emerick/app/plugin_catalog.hpp
     include/emerick/app/project_actions.hpp
     include/emerick/app/project_bundle.hpp
     include/emerick/app/project_controller.hpp
@@ -59,6 +62,8 @@ qt_add_library(emerick_app STATIC
     include/emerick/app/ui_api.hpp
     include/emerick/app/waveform.hpp
     insert_actions.cpp
+    instrument_actions.cpp
+    instruments.cpp
     introspector.cpp
     key_focus.cpp
     lua_host.cpp
@@ -74,6 +79,8 @@ qt_add_library(emerick_app STATIC
     path_access.cpp
     peak_cache.cpp
     piano_roll_actions.cpp
+    plugin_actions.cpp
+    plugin_catalog.cpp
     project_actions.cpp
     project_bundle.cpp
     project_controller.cpp
@@ -122,6 +129,7 @@ if(EMERICK_BUILD_TESTS)
         tests/health_test.cpp
         tests/hostile_params_test.cpp
         tests/insert_test.cpp
+        tests/instrument_test.cpp
         tests/introspector_test.cpp
         tests/lua_host_test.cpp
         tests/marker_test.cpp
@@ -130,6 +138,7 @@ if(EMERICK_BUILD_TESTS)
         tests/metronome_test.cpp
         tests/path_access_test.cpp
         tests/peak_cache_test.cpp
+        tests/plugin_catalog_test.cpp
         tests/project_file_test.cpp
         tests/project_test.cpp
         tests/random_edits_test.cpp
@@ -141,5 +150,5 @@ if(EMERICK_BUILD_TESTS)
         tests/track_hooks_test.cpp
         tests/transport_test.cpp)
     target_link_libraries(emerick_app_tests
-        PRIVATE emerick_app Qt6::Network Qt6::Qml Qt6::QuickControls2 PkgConfig::SNDFILE libremidi)
+        PRIVATE emerick_app emerick_test_clap Qt6::Network Qt6::Qml Qt6::QuickControls2 PkgConfig::SNDFILE libremidi)
 endif()

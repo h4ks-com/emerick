@@ -154,7 +154,7 @@ void ProjectController::createUntitled() {
 
 void ProjectController::write() {
     try {
-        model::saveProject(project_.document(), folder_);
+        model::saveProject(instruments_.withStates(project_.document()), folder_);
     } catch (const std::runtime_error& error) {
         throw AppError(error.what());
     }
@@ -550,7 +550,9 @@ void ProjectController::setMetronome(const engine::Metronome& metronome) {
 }
 
 void ProjectController::publish() {
+    instruments_.sync(project_.document());
     engine::Session session = toSession(project_.document(), registry_, folder_, engineTracks_);
+    instruments_.attach(session);
     session.metronome = metronome_;
     session.chaseMidi = chaseMidi_;
     session.clockWhileStopped = clockWhileStopped_;
@@ -620,7 +622,8 @@ void ProjectController::keepWarmWhileActive() {
 
 void ProjectController::updateTrackErrors() {
     QVariantMap errors;
-    for (const auto* list : {&engine_.sessionErrors(), &std::as_const(routeErrors_), &std::as_const(takeErrors_)}) {
+    for (const auto* list : {&engine_.sessionErrors(), &std::as_const(routeErrors_), &std::as_const(takeErrors_),
+                             &instruments_.errors()}) {
         for (const engine::SessionError& error : *list) {
             const QString id = QString::fromStdString(error.trackId);
             const QString previous = errors.value(id).toString();
@@ -645,6 +648,9 @@ void ProjectController::poll() {
     updatePreviews();
     updateTrackErrors();
     readLevels();
+    if (instruments_.idle()) {
+        setEdited(true);
+    }
     const core::Ticks ticks = engine_.position().ticks;
     const bool isPlaying = engine_.playing();
     const bool stalled = engine_.streamStalled();

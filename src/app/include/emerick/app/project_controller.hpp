@@ -17,6 +17,7 @@
 #include <string_view>
 #include <vector>
 
+#include "emerick/app/instruments.hpp"
 #include "emerick/app/peak_cache.hpp"
 #include "emerick/app/registry.hpp"
 #include "emerick/app/session_mapping.hpp"
@@ -193,6 +194,8 @@ public:
     // Points (progress, gain) along a fade in of the shape and curve, from 0 to 1, for a clip to draw.
     Q_INVOKABLE static QVariantList fadeCurve(const QString& shape, double curve);
     Q_INVOKABLE static double curveThroughMidpoint(const QString& shape, double gain);
+    // Each instrument track's live CLAP instrument; a save writes their current states into the project.
+    [[nodiscard]] Instruments& instruments() { return instruments_; }
     [[nodiscard]] TrackMeters& meters() { return meters_; }
     [[nodiscard]] const TrackMeters& meters() const { return meters_; }
     // Per track id, the reasons its routes do not play, one per line.
@@ -269,6 +272,7 @@ private:
     engine::Engine::Options options_;
     engine::Engine engine_;
     model::Project project_;
+    Instruments instruments_;
     std::filesystem::path projectsFolder_;
     std::filesystem::path folder_;
     bool untitled_ = false;

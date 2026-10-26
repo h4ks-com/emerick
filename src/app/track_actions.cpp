@@ -315,6 +315,19 @@ void registerMidiKind(Registry& registry, ProjectController& controller, Nav& na
     registry.addAction(std::move(add));
 }
 
+void registerInstrumentKind(Registry& registry) {
+    registry.addTrackType(
+        {.kind = "instrument",
+         .title = "Instrument",
+         .icon = "music-notes",
+         .routes = {.midi = true, .instrument = true},
+         .toEngine = [](const model::Track& track, const PlaybackContext&) { return instrumentEngineTrack(track); },
+         .fromTake =
+             [](model::Track& track, const engine::RecordedTake& take, const TakeContext& context) {
+                 track.clips.emplace_back(midiClipFromTake(take, context.stopTicks));
+             }});
+}
+
 void registerRouteActions(Registry& registry, ProjectController& controller, const Nav& nav) {
     const auto addAudioRoute = [&](const char* actionId, const char* title, Direction direction,
                                    model::AudioRoute model::Track::* field) {
@@ -381,6 +394,20 @@ Json trackResult(const ProjectController& controller, const model::TrackId& id) 
                : Json::object();
 }
 
+Json addInstrumentTrack(const Registry& registry, ProjectController& controller, Nav& nav, model::PluginSlot slot,
+                        const Json& params) {
+    model::Track track;
+    track.name = slot.name;
+    track.midiIn =
+        mergeMidiRoute(controller, defaultMidiInput(controller), routeParams(params, "midiIn"), Direction::input);
+    const auto* output = std::ranges::find(kAudioDefaults, Direction::output, &AudioDefault::direction);
+    track.audioOut = mergeAudioRoute(controller, newTrackRoute(registry, controller, *output),
+                                     routeParams(params, "audioOut"), Direction::output);
+    track.monitor = true;
+    track.instrument = std::move(slot);
+    return addTrack(controller, nav, *registry.trackType("instrument"), std::move(track), params);
+}
+
 Json editTrack(ProjectController& controller, const model::TrackId& id, std::string name,
                const std::function<void(model::Track&)>& edit) {
     controller.project().editTrack(id, std::move(name), edit);
@@ -391,6 +418,7 @@ void registerTrackActions(Registry& registry, ProjectController& controller, Nav
     registerAudioKind(registry, controller, nav);
     registerMidiKind(registry, controller, nav);
     registerBusKind(registry, controller, nav);
+    registerInstrumentKind(registry);
     registerTrackEditActions(registry, controller, nav);
     registerSendActions(registry, controller, nav);
     registerInsertActions(registry, controller, nav);

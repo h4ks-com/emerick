@@ -63,7 +63,8 @@ engine::Track commonFields(const model::Track& track, engine::TrackKind kind) {
             .inserts = {},
             .audioClips = {},
             .midiClips = {},
-            .automation = {}};
+            .automation = {},
+            .instrument = {}};
 }
 
 // An insert of a type this build does not know stays silent, and a param it does not know is ignored.
@@ -142,6 +143,12 @@ engine::Track midiEngineTrack(const model::Track& track) {
                                     [&](const model::MidiClip& midi) { result.midiClips.push_back(toEngine(midi)); }},
                    clip);
     }
+    return result;
+}
+
+engine::Track instrumentEngineTrack(const model::Track& track) {
+    engine::Track result = midiEngineTrack(track);
+    addBusRoutes(result, track);
     return result;
 }
 

@@ -146,6 +146,17 @@ struct AutomationLane {
 // its last value until the transport stops.
 enum class AutomationMode : std::uint8_t { off, read, touch, latch };
 
+// A CLAP plugin a track plays its MIDI through. The model keeps the plugin's saved state as bytes it never reads, so
+// a project keeps the state while the plugin is missing.
+struct PluginSlot {
+    std::string pluginId;
+    std::string bundle;  // where the plugin was found when it was picked
+    std::string name;
+    std::vector<std::uint8_t> state;
+
+    bool operator==(const PluginSlot&) const = default;
+};
+
 struct Track {
     TrackId id = TrackId::make();
     std::string name;
@@ -173,6 +184,7 @@ struct Track {
     // instrument whose audio or MIDI reaches us late.
     double recordDelayMs = 0.0;
     nlohmann::json data;  // plugin-owned, the model never interprets it
+    std::optional<PluginSlot> instrument;
 
     bool operator==(const Track&) const = default;
 };

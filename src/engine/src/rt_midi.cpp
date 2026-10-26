@@ -39,6 +39,18 @@ std::span<const std::uint8_t> onChannel(std::span<const std::uint8_t> bytes, int
     return std::span(rewritten).first(bytes.size());
 }
 
+bool sendsMidi(const TrackState& track) { return track.midiOut || track.instrument; }
+
+// A track's MIDI goes to its output port and to its instrument.
+void sendToTrack(const TrackState& track, std::span<const std::uint8_t> bytes, std::int64_t timestampNs) {
+    if (track.midiOut) {
+        track.midiOut->queue(bytes, timestampNs);
+    }
+    if (track.instrument) {
+        track.instrument->queueMidi(bytes, timestampNs);
+    }
+}
+
 void rememberNote(TrackState& track, std::span<const std::uint8_t> sent) {
     if (sent.size() != 3 || !isChannelMessage(sent[0])) {
         return;
@@ -54,7 +66,7 @@ void rememberNote(TrackState& track, std::span<const std::uint8_t> sent) {
 }
 
 void releaseTrackNotes(TrackState& track, std::int64_t timestampNs) {
-    if (!track.midiOut) {
+    if (!sendsMidi(track)) {
         return;
     }
     for (std::size_t channel = 0; channel < kMidiChannels; ++channel) {
@@ -63,7 +75,7 @@ void releaseTrackNotes(TrackState& track, std::int64_t timestampNs) {
             if (notes.test(note)) {
                 const std::array<std::uint8_t, 3> off{static_cast<std::uint8_t>(core::midi::kNoteOff | channel),
                                                       static_cast<std::uint8_t>(note), 0};
-                track.midiOut->queue(off, timestampNs);
+                sendToTrack(track, off, timestampNs);
                 notes.reset(note);
             }
         }
@@ -73,12 +85,18 @@ void releaseTrackNotes(TrackState& track, std::int64_t timestampNs) {
 void route(Snapshot& snapshot, const RealtimeState& state, const MidiInputPort* port,
            std::span<const std::uint8_t> bytes, std::int64_t timestampNs, Frames eventFrame) {
     const bool sysex = bytes[0] == core::midi::kSysexStart;
-    for (const TrackState& track : snapshot.tracks) {
+    const bool soloActive = anySolo(snapshot);
+    for (TrackState& track : snapshot.tracks) {
         const bool accepts =
             sysex ? track.midiIn.get() == port && track.claimsSysex : acceptsMessage(track, port, bytes);
         if (track.thru && track.midiOut && accepts) {
             std::array<std::uint8_t, 3> rewritten{};
             track.midiOut->queue(onChannel(bytes, track.outChannel, rewritten), timestampNs);
+        }
+        // An instrument plays what the player plays while its track is armed or monitored, as Logic's does.
+        if (track.instrument && accepts && (track.armed || track.monitor) && audible(track, soloActive)) {
+            track.instrument->queueMidi(bytes, timestampNs);
+            rememberNote(track, bytes);
         }
     }
     if (!state.taking) {
@@ -160,7 +178,7 @@ void chaseTrack(const TrackState& track, Frames frame, std::int64_t timestampNs)
                 break;
         }
     }
-    const auto send = [&](std::span<const std::uint8_t> bytes) { track.midiOut->queue(bytes, timestampNs); };
+    const auto send = [&](std::span<const std::uint8_t> bytes) { sendToTrack(track, bytes, timestampNs); };
     for (std::size_t index = 0; index < kMidiChannels; ++index) {
         const ChasedChannel& channel = chased[index];
         const auto status = [&](std::uint8_t type) { return static_cast<std::uint8_t>(type | index); };
@@ -228,7 +246,7 @@ void sendClock(const Snapshot& snapshot, Frames frame, const AudioBlock& block) 
 void playMidiClips(Snapshot& snapshot, Frames frame, const AudioBlock& block) {
     const bool soloActive = anySolo(snapshot);
     for (TrackState& track : snapshot.tracks) {
-        if (!track.midiOut || !audible(track, soloActive)) {
+        if (!sendsMidi(track) || !audible(track, soloActive)) {
             continue;
         }
         const auto first = std::ranges::lower_bound(track.midi->events, frame, {}, &ScheduledMidi::frame);
@@ -236,7 +254,7 @@ void playMidiClips(Snapshot& snapshot, Frames frame, const AudioBlock& block) {
             std::array<std::uint8_t, 3> rewritten{};
             const auto sent = onChannel(std::span(track.midi->bytes).subspan(event->offset, event->size),
                                         track.outChannel, rewritten);
-            track.midiOut->queue(sent, timeAt(block, snapshot.sampleRate, event->frame - frame));
+            sendToTrack(track, sent, timeAt(block, snapshot.sampleRate, event->frame - frame));
             rememberNote(track, sent);
         }
     }
@@ -266,7 +284,7 @@ void releaseInaudibleNotes(Snapshot& snapshot, std::int64_t timestampNs) {
 
 void sendAllNotesOff(const Snapshot& snapshot, std::int64_t timestampNs) {
     for (const TrackState& track : snapshot.tracks) {
-        if (track.kind != TrackKind::midi || !track.midiOut) {
+        if (track.kind != TrackKind::midi || !sendsMidi(track)) {
             continue;
         }
         const int first = track.outChannel == 0 ? 1 : track.outChannel;
@@ -274,7 +292,7 @@ void sendAllNotesOff(const Snapshot& snapshot, std::int64_t timestampNs) {
         for (int channel = first; channel <= last; ++channel) {
             const std::array<std::uint8_t, 3> message{core::midi::statusFor(core::midi::kControlChange, channel),
                                                       core::midi::kAllNotesOffCc, 0};
-            track.midiOut->queue(message, timestampNs);
+            sendToTrack(track, message, timestampNs);
         }
     }
 }
@@ -285,7 +303,7 @@ void chaseMidi(const Snapshot& snapshot, Frames frame, std::int64_t timestampNs)
     }
     const bool soloActive = anySolo(snapshot);
     for (const TrackState& track : snapshot.tracks) {
-        if (track.midiOut && !track.midi->chaseEvents.empty() && audible(track, soloActive)) {
+        if (sendsMidi(track) && !track.midi->chaseEvents.empty() && audible(track, soloActive)) {
             chaseTrack(track, frame, timestampNs);
         }
     }
@@ -294,13 +312,21 @@ void chaseMidi(const Snapshot& snapshot, Frames frame, std::int64_t timestampNs)
 void sendPanic(Snapshot& snapshot, std::int64_t timestampNs) {
     sendToClockPorts(snapshot, core::midi::kStop, timestampNs);
     releaseNotes(snapshot, timestampNs);
-    for (const auto& port : snapshot.outputs) {
+    const auto silence = [&](const auto& send) {
         for (std::size_t channel = 0; channel < kMidiChannels; ++channel) {
             const auto status = static_cast<std::uint8_t>(core::midi::kControlChange | channel);
             for (const std::uint8_t controller :
                  {core::midi::kSustainCc, core::midi::kAllSoundOffCc, core::midi::kAllNotesOffCc}) {
-                port->queue(std::array<std::uint8_t, 3>{status, controller, 0}, timestampNs);
+                send(std::array<std::uint8_t, 3>{status, controller, 0});
             }
+        }
+    };
+    for (const auto& port : snapshot.outputs) {
+        silence([&](std::span<const std::uint8_t> bytes) { port->queue(bytes, timestampNs); });
+    }
+    for (const TrackState& track : snapshot.tracks) {
+        if (track.instrument) {
+            silence([&](std::span<const std::uint8_t> bytes) { track.instrument->queueMidi(bytes, timestampNs); });
         }
     }
 }

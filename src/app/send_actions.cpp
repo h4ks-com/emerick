@@ -31,7 +31,7 @@ model::TrackId sourceParam(const Registry& registry, const ProjectController& co
                            const Json& params) {
     const model::TrackId track = targetTrack(controller, nav, params);
     const TrackType* type = typeOf(registry, controller, track);
-    if (type == nullptr || !(type->routes.audio || type->routes.bus)) {
+    if (type == nullptr || !type->routes.playsAudio()) {
         throw AppError("track " + controller.project().track(track)->name + " plays no audio to send");
     }
     return track;

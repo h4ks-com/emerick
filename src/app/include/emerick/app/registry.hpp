@@ -154,11 +154,15 @@ struct UndoSteps {
 };
 
 // Audio routes an input and an output and holds audio clips; bus routes only an output, holds no clips and takes
-// sends.
+// sends. An instrument track holds MIDI clips and plays them through its CLAP instrument to an audio output.
 struct RouteSections {
     bool audio = false;
     bool midi = false;
     bool bus = false;
+    bool instrument = false;
+
+    // Tracks that play audio have a fader, pan, inserts, sends and an audio output.
+    [[nodiscard]] bool playsAudio() const { return audio || bus || instrument; }
 };
 
 struct PlaybackContext {

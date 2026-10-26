@@ -10,6 +10,7 @@
 #include <string_view>
 #include <variant>
 
+#include "emerick/core/base64.hpp"
 #include "emerick/core/overloaded.hpp"
 #include "emerick/model/automation.hpp"
 #include "emerick/model/midi_notes.hpp"
@@ -174,6 +175,28 @@ Clip clipFromJson(const nlohmann::json& json) {
     return found->fromJson(json);
 }
 
+nlohmann::json slotToJson(const std::optional<PluginSlot>& slot) {
+    if (!slot) {
+        return nullptr;
+    }
+    return {{"pluginId", slot->pluginId},
+            {"bundle", slot->bundle},
+            {"name", slot->name},
+            {"state", core::toBase64(slot->state)}};
+}
+
+std::optional<PluginSlot> slotFromJson(const nlohmann::json& json) {
+    if (json.is_null()) {
+        return std::nullopt;
+    }
+    const auto& encoded = json.at("state").get_ref<const std::string&>();
+    auto state = core::fromBase64(encoded);
+    if (!state) {
+        throw std::runtime_error("instrument state is not base64");
+    }
+    return PluginSlot{json.at("pluginId"), json.at("bundle"), json.at("name"), *std::move(state)};
+}
+
 nlohmann::json trackToJson(const Track& track) {
     nlohmann::json clips = nlohmann::json::array();
     for (const Clip& clip : track.clips) {
@@ -203,7 +226,8 @@ nlohmann::json trackToJson(const Track& track) {
         {"automation",
          track.automation | std::views::transform(laneToJson) | std::ranges::to<nlohmann::json::array_t>()},
         {"recordDelayMs", track.recordDelayMs},
-        {"data", track.data}};
+        {"data", track.data},
+        {"instrument", slotToJson(track.instrument)}};
 }
 
 Track trackFromJson(const nlohmann::json& json) {
@@ -232,7 +256,8 @@ Track trackFromJson(const nlohmann::json& json) {
                 json.value("automation", nlohmann::json::array()) | std::views::transform(laneFromJson) |
                     std::ranges::to<std::vector>(),
                 json.value("recordDelayMs", 0.0),
-                json.at("data")};
+                json.at("data"),
+                slotFromJson(json.value("instrument", nlohmann::json{}))};
     for (const auto& clip : json.at("clips")) {
         track.clips.push_back(clipFromJson(clip));
     }

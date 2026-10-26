@@ -368,6 +368,9 @@ void mixTracks(Snapshot& snapshot, const AudioBlock& block, const BlockTime& tim
             if (!track.lanes.empty()) {
                 applyLanes(track, time.at(block.frames));
             }
+            if (track.instrument) {
+                track.instrument->processBlock(track.mixPointers, block.frames, block.hostTimeNs);
+            }
             for (InsertState& insert : track.inserts) {
                 insert.effect->process(track.mixPointers, block.frames, insert.params, insert.bypass,
                                        snapshot.tempo.bpm);

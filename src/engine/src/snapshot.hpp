@@ -122,6 +122,7 @@ struct TrackState {
     std::vector<std::vector<float>> mix;
     std::vector<float*> mixPointers;
     std::vector<InsertState> inserts;
+    std::shared_ptr<ClapInstrument> instrument;
     // The gain per channel that the last block ended on, so we ramp from it and a fader move never clicks.
     std::vector<float> outputGains;
     std::vector<SendState> sends;

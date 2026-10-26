@@ -137,7 +137,9 @@ PluginCatalog::Bundle PluginCatalog::runScanner(const std::filesystem::path& bun
         return result;
     }
     try {
-        result.plugins = descriptorsFromJson(Json::parse(process.readAllStandardOutput().toStdString()).at("plugins"));
+        // A plugin may print to stdout while it loads, so we read the list from the scanner's last line.
+        const QList<QByteArray> lines = process.readAllStandardOutput().trimmed().split('\n');
+        result.plugins = descriptorsFromJson(Json::parse(lines.back().toStdString()).at("plugins"));
     } catch (const Json::exception& error) {
         result.blockedReason = std::string{"printed no plugin list: "} + error.what();
     }

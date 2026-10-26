@@ -272,6 +272,12 @@ BuiltSnapshot SnapshotBuilder::build(const Session& session, const StreamLayout&
                                 std::ranges::to<std::vector>();
             addInserts(state, track, layout);
         }
+        if (track.instrument && track.instrument->activate(layout.sampleRate, layout.maxFrames)) {
+            state.instrument = track.instrument;
+        } else if (track.instrument) {
+            built.errors.push_back({track.id, track.instrument->name() + " cannot play at " +
+                                                  std::to_string(std::lround(layout.sampleRate)) + " Hz"});
+        }
         addClips(state, track, session, layout, built.errors);
         state.midi = midiSchedule(track, session.tempo, layout.sampleRate);
         addRecorder(state, track, session, layout, captureOffset);

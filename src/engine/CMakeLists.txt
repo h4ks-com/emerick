@@ -1,5 +1,6 @@
 add_library(emerick_engine
     src/audio_backend.cpp
+    src/clap_instrument.cpp
     src/clap_library.cpp
     src/clap_scan.cpp
     src/clip_stream.cpp
@@ -9,6 +10,7 @@ add_library(emerick_engine
     src/libremidi_backend.cpp
     src/metronome_sounds.cpp
     src/midi_ports.cpp
+    src/rt_clap.cpp
     src/rt_metronome.cpp
     src/rt_effects.cpp
     src/rt_midi.cpp

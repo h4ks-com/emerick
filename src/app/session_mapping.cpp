@@ -63,7 +63,8 @@ engine::Track commonFields(const model::Track& track, engine::TrackKind kind) {
             .inserts = {},
             .audioClips = {},
             .midiClips = {},
-            .automation = {}};
+            .automation = {},
+            .instrument = {}};
 }
 
 // An insert of a type this build does not know stays silent, and a param it does not know is ignored.

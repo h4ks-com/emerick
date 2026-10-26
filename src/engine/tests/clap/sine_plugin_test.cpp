@@ -5,6 +5,7 @@
 
 #include <chrono>
 #include <cmath>
+#include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <numbers>
@@ -182,6 +183,8 @@ bool init(const char*) {
 #elif defined(EMERICK_TEST_HANG)
     std::this_thread::sleep_for(std::chrono::hours(1));
 #endif
+    // Some real plugins print while they load, as ZynAddSubFX does, and the scanner must survive that.
+    std::puts("test sine loaded");
     return true;
 }
 

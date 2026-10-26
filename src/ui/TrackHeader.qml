@@ -21,6 +21,8 @@ Rectangle {
     property real pan
     // A bus has no input, so it hides its arm and monitor buttons but keeps their room to line up with the tracks.
     property bool records: true
+    // An instrument track shows a button that opens its plugin's editor.
+    property bool instrument: false
     // The row a drag would move this track to, or -1 while no drag runs.
     property int dropIndex: -1
     property string automationMode
@@ -183,6 +185,17 @@ Rectangle {
                 onLoaded: item.trackId = Qt.binding(() => header.trackId)
             }
 
+            ChromeButton {
+                objectName: "instrument.showEditor:" + header.trackId
+                actionId: "instrument.showEditor"
+                params: ({track: header.trackId})
+                iconName: "sliders"
+                iconColor: Theme.inkDim
+                visible: header.instrument
+                implicitWidth: Theme.headerButton
+                implicitHeight: Theme.headerButton
+                Layout.preferredWidth: Theme.headerButton
+            }
             WarningBadge {
                 objectName: "track.errors:" + header.trackId
                 message: Project.trackErrors[header.trackId] ?? ""

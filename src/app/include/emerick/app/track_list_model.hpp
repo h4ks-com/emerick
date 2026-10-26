@@ -42,6 +42,8 @@ public:
         audioRoutes,
         midiRoutes,
         busRoutes,
+        instrumentRoutes,
+        instrumentName,
         sends,
         inserts,
         outputBusName,

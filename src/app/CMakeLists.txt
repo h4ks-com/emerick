@@ -31,6 +31,7 @@ qt_add_library(emerick_app STATIC
     include/emerick/app/effect_catalog.hpp
     include/emerick/app/enums.hpp
     include/emerick/app/event_wait.hpp
+    include/emerick/app/instruments.hpp
     include/emerick/app/introspector.hpp
     include/emerick/app/key_focus.hpp
     include/emerick/app/lua_host.hpp
@@ -61,6 +62,8 @@ qt_add_library(emerick_app STATIC
     include/emerick/app/ui_api.hpp
     include/emerick/app/waveform.hpp
     insert_actions.cpp
+    instrument_actions.cpp
+    instruments.cpp
     introspector.cpp
     key_focus.cpp
     lua_host.cpp
@@ -126,6 +129,7 @@ if(EMERICK_BUILD_TESTS)
         tests/health_test.cpp
         tests/hostile_params_test.cpp
         tests/insert_test.cpp
+        tests/instrument_test.cpp
         tests/introspector_test.cpp
         tests/lua_host_test.cpp
         tests/marker_test.cpp

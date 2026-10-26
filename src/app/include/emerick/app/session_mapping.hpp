@@ -35,6 +35,8 @@ engine::PanLaw panLawFromSettings(const Registry& registry);
 engine::Track audioEngineTrack(const model::Track& track, const std::filesystem::path& folder);
 engine::Track midiEngineTrack(const model::Track& track);
 engine::Track busEngineTrack(const model::Track& track);
+// A MIDI track with an audio output, sends and inserts; the app attaches the instrument itself.
+engine::Track instrumentEngineTrack(const model::Track& track);
 
 // Each track's TrackType::toEngine result while the track, the tempo and the folder stay the same. A settings change
 // must clear it, since toEngine may read settings.

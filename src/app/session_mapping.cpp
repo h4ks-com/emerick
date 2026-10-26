@@ -146,6 +146,12 @@ engine::Track midiEngineTrack(const model::Track& track) {
     return result;
 }
 
+engine::Track instrumentEngineTrack(const model::Track& track) {
+    engine::Track result = midiEngineTrack(track);
+    addBusRoutes(result, track);
+    return result;
+}
+
 engine::Session toSession(const model::Document& document, const Registry& registry,
                           const std::filesystem::path& folder, EngineTrackCache& cache) {
     engine::Session session{.tempo = document.tempo,

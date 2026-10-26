@@ -117,7 +117,7 @@ model::TrackId audioTrack(const Registry& registry, const ProjectController& con
                           const Json& params) {
     const model::TrackId track = targetTrack(controller, nav, params);
     const TrackType* type = registry.trackType(controller.project().track(track)->kind);
-    if (type == nullptr || !(type->routes.audio || type->routes.bus)) {
+    if (type == nullptr || !type->routes.playsAudio()) {
         throw AppError("track " + controller.project().track(track)->name +
                        " plays no audio, add inserts to an audio track or a bus");
     }

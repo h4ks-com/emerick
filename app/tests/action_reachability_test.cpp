@@ -77,6 +77,7 @@ TEST_CASE("every action has a menu entry, a shortcut or a control") {
     registerScriptActions(rig.registry, scripts);
     PluginCatalog plugins({.cacheFolder = rig.path("cache"), .scanner = {}, .folders = {}});
     registerPluginActions(rig.registry, rig.nav, plugins);
+    registerInstrumentActions(rig.registry, *rig.controller, rig.nav, plugins);
     const auto yamaha = emerick::yamaha::registerWith(rig.registry, *rig.controller, rig.nav);
 
     const std::string qml = qmlSource();

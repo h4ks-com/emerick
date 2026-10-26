@@ -113,6 +113,7 @@ int run(int argc, char** argv) {
          .scanner = (QCoreApplication::applicationDirPath() + "/emerick-clap-scanner").toStdString(),
          .folders = clapSearchFolders()});
     registerPluginActions(registry, nav, plugins);
+    registerInstrumentActions(registry, controller, nav, plugins);
     const auto yamaha = emerick::yamaha::registerWith(registry, controller, nav);
     TrackListModel tracks(controller, registry);
     FileOpenFilter fileOpen(registry);

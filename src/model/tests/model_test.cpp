@@ -110,6 +110,27 @@ TEST_CASE("inserts round trip in order, and a format 6 project loads with none")
     }
 }
 
+TEST_CASE("an instrument and its state round trip, and a format 9 project loads with none") {
+    Document document = sampleDocument();
+    document.tracks[1].instrument = PluginSlot{.pluginId = "org.example.synth",
+                                               .bundle = "/plugins/Synth.clap",
+                                               .name = "Synth",
+                                               .state = {0, 1, 2, 0xFE, 0xFF}};
+    const auto json = toJson(document);
+    CHECK(json["tracks"][1]["instrument"]["state"] == "AAEC/v8=");
+    CHECK(documentFromJson(json).tracks[1].instrument == document.tracks[1].instrument);
+    CHECK_FALSE(documentFromJson(json).tracks[0].instrument.has_value());
+
+    auto old = json;
+    old["format"] = 9;
+    for (auto& track : old["tracks"]) {
+        track.erase("instrument");
+    }
+    for (const Track& track : documentFromJson(old).tracks) {
+        CHECK_FALSE(track.instrument.has_value());
+    }
+}
+
 TEST_CASE("clip mute and record delay round trip, and a format 7 project loads with neither") {
     Document document = sampleDocument();
     document.tracks[0].recordDelayMs = -12.5;

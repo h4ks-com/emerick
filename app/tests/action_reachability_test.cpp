@@ -11,6 +11,7 @@
 #include "emerick/app/console.hpp"
 #include "emerick/app/core_actions.hpp"
 #include "emerick/app/lua_host.hpp"
+#include "emerick/app/plugin_actions.hpp"
 #include "emerick/app/script_library.hpp"
 #include "emerick/app/ui_api.hpp"
 #include "emerick/yamaha/plugin.hpp"
@@ -74,6 +75,8 @@ TEST_CASE("every action has a menu entry, a shortcut or a control") {
     registerConsoleActions(rig.registry, rig.nav, console);
     ScriptLibrary scripts(rig.registry, console, rig.path("scripts"));
     registerScriptActions(rig.registry, scripts);
+    PluginCatalog plugins({.cacheFolder = rig.path("cache"), .scanner = {}, .folders = {}});
+    registerPluginActions(rig.registry, rig.nav, plugins);
     const auto yamaha = emerick::yamaha::registerWith(rig.registry, *rig.controller, rig.nav);
 
     const std::string qml = qmlSource();

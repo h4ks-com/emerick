@@ -46,7 +46,19 @@ FetchContent_Declare(Catch2
     GIT_TAG v3.16.1
     GIT_SHALLOW TRUE)
 
-FetchContent_MakeAvailable(nlohmann_json readerwriterqueue libremidi sol2 Catch2)
+FetchContent_Declare(clap
+    GIT_REPOSITORY https://github.com/free-audio/clap.git
+    GIT_TAG 1.2.9
+    GIT_SHALLOW TRUE
+    SYSTEM)
+
+# clap-helpers publishes no release tags, so we pin a commit.
+FetchContent_Declare(clap_helpers
+    GIT_REPOSITORY https://github.com/free-audio/clap-helpers.git
+    GIT_TAG a380c978f429103e08afc1d17e9efbf3e3c96ee2
+    SYSTEM)
+
+FetchContent_MakeAvailable(nlohmann_json readerwriterqueue libremidi sol2 Catch2 clap clap_helpers)
 
 # miniaudio ships a single source file; we compile it once as our own target. macOS talks to CoreAudio directly.
 if(NOT APPLE)

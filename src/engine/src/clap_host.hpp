@@ -4,6 +4,7 @@
 
 #include <array>
 #include <atomic>
+#include <chrono>
 #include <clap/helpers/host.hh>
 #include <clap/helpers/plugin-proxy.hh>
 #include <cstddef>
@@ -32,6 +33,12 @@ struct QueuedMidi {
     std::uint8_t size = 0;
 };
 
+struct PluginTimer {
+    clap_id id = 0;
+    std::chrono::milliseconds period{};
+    std::chrono::steady_clock::time_point due;
+};
+
 struct PortBuffers {
     std::vector<std::vector<float>> channels;
     std::vector<float*> pointers;
@@ -57,6 +64,12 @@ struct ClapInstrument::Impl final : ClapHostBase {
     [[nodiscard]] bool implementsGui() const noexcept override { return true; }
     bool guiRequestResize(std::uint32_t width, std::uint32_t height) noexcept override;
     void guiClosed(bool wasDestroyed) noexcept override;
+    [[nodiscard]] bool implementsTimerSupport() const noexcept override { return true; }
+    bool timerSupportRegisterTimer(std::uint32_t periodMs, clap_id* timerId) noexcept override;
+    bool timerSupportUnregisterTimer(clap_id timerId) noexcept override;
+
+    // Main thread: idle calls this as often as it runs, so a timer fires at most once per idle.
+    void fireDueTimers();
 
     // Main thread, holding the audio guard: stops processing as the audio thread, then deactivates.
     void deactivate();
@@ -95,6 +108,8 @@ struct ClapInstrument::Impl final : ClapHostBase {
     // Main thread only.
     bool editorOpen = false;
     bool editorClosedByPlugin = false;
+    std::vector<PluginTimer> timers;
+    clap_id nextTimerId = 1;
 };
 
 // Takes the audio guard for the main thread, waiting out the block the audio thread may be processing.

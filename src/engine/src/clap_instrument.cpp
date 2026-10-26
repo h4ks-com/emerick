@@ -9,7 +9,9 @@
 
 #include <algorithm>
 #include <cstring>
+#include <new>
 #include <ranges>
+#include <stdexcept>
 #include <utility>
 
 #include "clap_host.hpp"
@@ -108,6 +110,41 @@ bool ClapInstrument::Impl::guiRequestResize(std::uint32_t width, std::uint32_t h
     return true;
 }
 
+bool ClapInstrument::Impl::timerSupportRegisterTimer(std::uint32_t periodMs, clap_id* timerId) noexcept {
+    if (!threadCheckIsMainThread()) {
+        return false;
+    }
+    const auto period = std::chrono::milliseconds{periodMs};
+    try {
+        timers.push_back({.id = nextTimerId++, .period = period, .due = std::chrono::steady_clock::now() + period});
+    } catch (const std::bad_alloc&) {
+        return false;
+    } catch (const std::length_error&) {
+        return false;
+    }
+    *timerId = timers.back().id;
+    return true;
+}
+
+bool ClapInstrument::Impl::timerSupportUnregisterTimer(clap_id timerId) noexcept {
+    return std::erase_if(timers, [timerId](const PluginTimer& timer) { return timer.id == timerId; }) > 0;
+}
+
+void ClapInstrument::Impl::fireDueTimers() {
+    const auto now = std::chrono::steady_clock::now();
+    // A timer callback can unregister timers, so we collect the due ids before calling any.
+    std::vector<clap_id> due;
+    for (PluginTimer& timer : timers) {
+        if (timer.due <= now) {
+            due.push_back(timer.id);
+            timer.due = now + timer.period;
+        }
+    }
+    for (const clap_id id : due) {
+        proxy->timerSupportOnTimer(id);
+    }
+}
+
 void ClapInstrument::Impl::guiClosed(bool wasDestroyed) noexcept {
     editorClosedByPlugin = !wasDestroyed;
     editorOpen = false;
@@ -192,6 +229,9 @@ bool ClapInstrument::idle() {
     }
     if (std::exchange(impl.editorClosedByPlugin, false)) {
         impl.proxy->guiDestroy();
+    }
+    if (impl.proxy->canUseTimerSupport()) {
+        impl.fireDueTimers();
     }
     return impl.stateDirty.exchange(false, std::memory_order_relaxed);
 }

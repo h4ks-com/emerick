@@ -1,9 +1,12 @@
-qt_add_executable(emerick MACOSX_BUNDLE main.cpp)
+qt_add_executable(emerick MACOSX_BUNDLE main.cpp icons/emerick.icns)
+set_source_files_properties(icons/emerick.icns PROPERTIES MACOSX_PACKAGE_LOCATION Resources)
+qt_add_resources(emerick app_icon PREFIX / FILES icons/emerick.png)
 # Info.plist declares .erk bundles as Emerick document packages, so Finder shows one as a file.
 set_target_properties(emerick PROPERTIES
     MACOSX_BUNDLE_INFO_PLIST ${CMAKE_CURRENT_SOURCE_DIR}/Info.plist.in
     MACOSX_BUNDLE_BUNDLE_NAME Emerick
-    MACOSX_BUNDLE_GUI_IDENTIFIER org.emerick.app)
+    MACOSX_BUNDLE_GUI_IDENTIFIER org.emerick.app
+    MACOSX_BUNDLE_ICON_FILE emerick.icns)
 emerick_target(emerick)
 # The app runs the plugin scanner from its own folder.
 add_dependencies(emerick emerick-clap-scanner)

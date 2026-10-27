@@ -136,7 +136,13 @@ TEST_CASE("the controller lane picker shows what each lane holds, marks lanes wi
     roll.main.rig.run("midi.setControl",
                       {{"clip", roll.clip}, {"lane", "cc1"}, {"points", {{{"at", 0}, {"value", 64}}}}});
     MainWindow::settle();
-    roll.main.click(roll.main.item("midi.addLane"));
+    QQuickItem* add = roll.main.item("midi.addLane");
+    roll.main.click(add);
+    auto* addMenu = add->property("menu").value<QObject*>();
+    REQUIRE(processUntil([&] { return addMenu->property("opened").toBool(); }));
+    CHECK(itemTitles(addMenu) ==
+          std::vector<QString>{"Modulation", "Pitch bend", "Sustain", "Expression", "Aftertouch"});
+    QMetaObject::invokeMethod(menuItem(addMenu, "Modulation")->property("action").value<QObject*>(), "trigger");
     REQUIRE(processUntil([&] { return roll.main.rig.registry.settingValue("midi.lanes") == Json{"velocity", "cc1"}; }));
     MainWindow::settle();
 

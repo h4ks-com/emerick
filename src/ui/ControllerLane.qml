@@ -74,7 +74,25 @@ Rectangle {
             implicitHeight: Theme.headerButton
             iconName: "plus"
             iconColor: Theme.inkDim
-            params: ({})
+            menu: GlassMenu {
+                id: addMenu
+                objectName: "midi.addLane:menu"
+
+                Instantiator {
+                    model: laneItem.roll.laneChoices.filter(entry => !laneItem.roll.lanes.includes(entry.id))
+                    delegate: ActionMenuItem {
+                        required property var modelData
+                        objectName: "midi.addLane:" + modelData.id
+                        actionId: "midi.addLane"
+                        title: modelData.title
+                        iconName: modelData.hasData ? "circle" : ""
+                        params: ({lane: modelData.id})
+                    }
+                    onObjectAdded: (index, object) => addMenu.insertItem(index, object)
+                    onObjectRemoved: (index, object) => addMenu.removeItem(object)
+                }
+            }
+            hint: "Pick a controller lane to add; dotted ones hold data in this clip"
         }
     }
 

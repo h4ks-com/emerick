@@ -259,9 +259,11 @@ Rectangle {
                     }
                 }
 
-                // The model is a count, so a new value keeps each param's control, and a drag on it, alive.
+                // The model is a count, so a new value keeps each param's control, and a drag on it, alive. A plugin with
+                // its own editor shows its settings there.
                 Repeater {
-                    model: panel.midiRoutes && panel.instrument !== undefined ? panel.instrument.params.length : 0
+                    model: panel.midiRoutes && panel.instrument !== undefined && !panel.instrument.editor
+                           ? panel.instrument.params.length : 0
                     ColumnLayout {
                         id: setting
                         required property int index

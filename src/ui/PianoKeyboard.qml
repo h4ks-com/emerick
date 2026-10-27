@@ -2,13 +2,15 @@ import QtQuick
 import QtQuick.Controls.Basic
 import Emerick.App
 
-// The piano roll's keys, drawn as a real keyboard and labeled on each C. Pressing a key plays it on the track's MIDI
-// output while held.
+// The piano roll's keys, drawn as a real keyboard and labeled on each C. Pressing a key plays it on the track's
+// instrument and MIDI output while held.
 Rectangle {
     id: keyboard
 
     required property PianoRoll roll
     property int playing: -1
+    // The note-off goes where its note-on went, even after the piano roll switched clips.
+    property var playingOn: ({})
 
     readonly property real blackWidth: width * Theme.blackKeyLength
     readonly property var pitches: Array.from({length: 128}, (_, pitch) => pitch)
@@ -26,19 +28,23 @@ Rectangle {
         const band = whiteBands[pitch % 12]
         return (band[1] - band[0]) * roll.keyHeight
     }
-    // Lights the key and plays it on the track's MIDI output, releasing the one before; -1 releases it.
+    // Lights the key and plays it on the track, releasing the one before; -1 releases it.
     function play(pitch) {
         if (pitch === playing) {
             return
         }
         if (playing >= 0) {
-            keys.send(playing, false)
+            Registry.runAction("midi.audition", Object.assign({pitch: playing, on: false}, playingOn))
         }
         playing = pitch
         if (pitch >= 0) {
-            keys.send(pitch, true)
+            playingOn = {track: roll.clip.trackId, clip: Nav.pianoRollClip}
+            Registry.runAction("midi.audition", Object.assign({pitch: pitch, on: true}, playingOn))
         }
     }
+
+    Component.onDestruction: play(-1)
+
     function keyAt(x, y) {
         const pitch = roll.pitchAt(y)
         if (roll.isBlack(pitch) && x <= blackWidth) {
@@ -110,11 +116,6 @@ Rectangle {
         ToolTip.visible: containsMouse && !pressed
         ToolTip.delay: Theme.tooltipDelay
         ToolTip.text: "Play " + keyboard.roll.noteName(keyboard.keyAt(mouseX, mouseY))
-
-        function send(pitch, on) {
-            Registry.runAction("midi.audition",
-                               {track: keyboard.roll.clip.trackId, clip: Nav.pianoRollClip, pitch: pitch, on: on})
-        }
 
         onPressed: mouse => keyboard.play(keyboard.keyAt(mouse.x, mouse.y))
         onPositionChanged: mouse => {

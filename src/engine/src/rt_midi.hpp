@@ -21,7 +21,8 @@ void sendAllNotesOff(const Snapshot& snapshot, std::int64_t timestampNs);
 // chases.
 void chaseMidi(const Snapshot& snapshot, Frames frame, std::int64_t timestampNs);
 void sendPanic(Snapshot& snapshot, std::int64_t timestampNs);
-// Queues the messages the UI thread sent on the ports the snapshot uses and drops those for any other port.
+// Queues the messages the UI thread sent on the ports the snapshot uses and on the instruments of audible tracks, and
+// drops the rest.
 void sendOutgoingMidi(RealtimeState& state, Snapshot& snapshot, std::int64_t timestampNs);
 
 }  // namespace emerick::engine

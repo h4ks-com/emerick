@@ -2,11 +2,13 @@
 #include <algorithm>
 #include <cstdint>
 #include <iterator>
+#include <map>
 #include <memory>
 #include <optional>
 #include <ranges>
 #include <stdexcept>
 #include <string>
+#include <utility>
 #include <variant>
 #include <vector>
 
@@ -50,10 +52,12 @@ std::optional<model::ClipId> firstSelectedMidiClip(const ProjectController& cont
     return found == ids.end() ? std::nullopt : std::optional{*found};
 }
 
-// We keep the last output open, so a key's note-off reaches the port its note-on went to without reopening it.
+// We keep the last output open, so a key's note-off reaches the port its note-on went to without reopening it, and
+// keep each held key's channel, so its note-off matches its note-on after the clip changed.
 struct Audition {
     std::string port;
     std::unique_ptr<engine::MidiOutput> output;
+    std::map<std::pair<std::string, int>, int> heldChannels;
 };
 
 // Playback keeps each note's own channel when the output names none, so a key plays on the channel of the clip's notes.
@@ -77,25 +81,40 @@ Json audition(ProjectController& controller, Audition& open, const Json& params)
         throw AppError("pitch must be from 0 to 127");
     }
     const std::string& port = track.midiOut.portId;
-    if (port.empty()) {
+    const bool instrument = controller.instruments().find(track.id) != nullptr;
+    if (port.empty() && !instrument) {
         return {{"sent", false}};
     }
     const bool on = optionalParam<bool>(params, "on").value_or(true);
-    const int channel = auditionChannel(controller, track, params);
+    const auto key = std::pair{track.id.value, pitch};
+    const auto held = open.heldChannels.find(key);
+    const int channel =
+        !on && held != open.heldChannels.end() ? held->second : auditionChannel(controller, track, params);
+    if (on) {
+        open.heldChannels[key] = channel;
+    } else if (held != open.heldChannels.end()) {
+        open.heldChannels.erase(held);
+    }
     const std::vector<std::uint8_t> bytes{
         core::midi::statusFor(on ? core::midi::kNoteOn : core::midi::kNoteOff, channel),
         static_cast<std::uint8_t>(pitch), static_cast<std::uint8_t>(on ? NoteDefaults{}.velocity : 0)};
     try {
-        if (open.port != port || !open.output) {
-            open.output = controller.engine().midi().openOutput(port);
-            open.port = port;
+        if (instrument) {
+            controller.engine().sendInstrumentMidi(track.id.value, bytes);
         }
-        open.output->send(bytes, 0);
+        if (!port.empty()) {
+            if (open.port != port || !open.output) {
+                open.output = controller.engine().midi().openOutput(port);
+                open.port = port;
+            }
+            open.output->send(bytes, 0);
+        }
     } catch (const std::runtime_error& error) {
-        open = {};
+        open.port.clear();
+        open.output.reset();
         throw AppError(error.what());
     }
-    return {{"sent", true}, {"port", port}, {"bytes", bytes}};
+    return {{"sent", true}, {"port", port}, {"instrument", instrument}, {"bytes", bytes}};
 }
 
 Json addMidiClip(const Registry& registry, ProjectController& controller, Nav& nav, const Json& params) {
@@ -223,8 +242,8 @@ void registerPianoRollActions(Registry& registry, ProjectController& controller,
     auto open = std::make_shared<Audition>();
     registry.addAction({.id = "midi.audition",
                         .title = "Play piano roll key",
-                        .description = "Sends a note-on, or a note-off with on false, to the track's MIDI output "
-                                       "when it has one, on the channel the clip's notes play on.",
+                        .description = "Sends a note-on, or a note-off with on false, to the track's instrument and "
+                                       "MIDI output when it has them, on the channel the clip's notes play on.",
                         .category = "MIDI",
                         .schema = {{"required", {"track", "pitch"}},
                                    {"properties",

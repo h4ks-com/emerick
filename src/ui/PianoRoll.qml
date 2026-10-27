@@ -280,6 +280,9 @@ DockPanel {
                 if (Registry.settings["midi.pencil"] === true || (mouse.modifiers & Qt.ControlModifier)) {
                     pressNote = addNote(mouse)
                     mode = pressNote ? "resize" : ""
+                    if (pressNote) {
+                        keys.play(pressNote.pitch)
+                    }
                     return
                 }
                 pressSelection = mouse.modifiers & Qt.ShiftModifier ? Array.from(Nav.selectedNotes) : []

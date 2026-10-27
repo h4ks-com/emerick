@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <array>
 #include <span>
+#include <string_view>
 
 #include "clock.hpp"
 #include "emerick/core/midi.hpp"
@@ -332,22 +333,33 @@ void sendPanic(Snapshot& snapshot, std::int64_t timestampNs) {
 }
 
 void sendOutgoingMidi(RealtimeState& state, Snapshot& snapshot, std::int64_t timestampNs) {
+    const auto named = [](std::span<const std::uint8_t> id, std::string_view name) {
+        return std::ranges::equal(id, name, {}, {}, [](char letter) { return static_cast<std::uint8_t>(letter); });
+    };
     OutgoingMidiHeader header;
     while (readValue(state.outgoingMidi, header)) {
-        const std::size_t size = std::size_t{header.portIdSize} + header.size;
+        const std::size_t size = std::size_t{header.targetIdSize} + header.size;
         if (size > snapshot.incoming.size()) {
             state.outgoingMidi.skip(size);
             continue;
         }
         const auto record = std::span(snapshot.incoming).first(size);
         readInto(state.outgoingMidi, record);
-        const auto portId = record.first(header.portIdSize);
-        const auto port = std::ranges::find_if(snapshot.outputs, [&](const auto& output) {
-            return std::ranges::equal(portId, output->id(), {}, {},
-                                      [](char letter) { return static_cast<std::uint8_t>(letter); });
-        });
+        const auto targetId = record.first(header.targetIdSize);
+        const auto bytes = record.subspan(header.targetIdSize);
+        if (header.toInstrument) {
+            const auto track = std::ranges::find_if(
+                snapshot.tracks, [&](const TrackState& candidate) { return named(targetId, candidate.id); });
+            if (track != snapshot.tracks.end() && track->instrument && audible(*track, anySolo(snapshot))) {
+                track->instrument->queueMidi(bytes, timestampNs);
+                rememberNote(*track, bytes);
+            }
+            continue;
+        }
+        const auto port =
+            std::ranges::find_if(snapshot.outputs, [&](const auto& output) { return named(targetId, output->id()); });
         if (port != snapshot.outputs.end()) {
-            (*port)->queue(record.subspan(header.portIdSize), timestampNs);
+            (*port)->queue(bytes, timestampNs);
         }
     }
 }

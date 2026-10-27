@@ -187,16 +187,17 @@ struct Engine::Impl {
         }
     }
 
-    void sendMidi(std::string_view portId, std::span<const std::uint8_t> bytes) {
-        if (portId.size() + bytes.size() > kMaxIncomingMessage) {
+    void sendMidi(std::string_view targetId, std::span<const std::uint8_t> bytes, bool toInstrument) {
+        if (targetId.size() + bytes.size() > kMaxIncomingMessage) {
             throw std::invalid_argument("a MIDI message and its port id must fit in 64 KiB");
         }
-        std::vector<std::uint8_t> record(portId.begin(), portId.end());
+        std::vector<std::uint8_t> record(targetId.begin(), targetId.end());
         record.insert(record.end(), bytes.begin(), bytes.end());
-        if (!writeRecord(
-                rt.outgoingMidi,
-                OutgoingMidiHeader{static_cast<std::uint32_t>(portId.size()), static_cast<std::uint32_t>(bytes.size())},
-                std::span<const std::uint8_t>(record))) {
+        if (!writeRecord(rt.outgoingMidi,
+                         OutgoingMidiHeader{.targetIdSize = static_cast<std::uint32_t>(targetId.size()),
+                                            .size = static_cast<std::uint32_t>(bytes.size()),
+                                            .toInstrument = toInstrument},
+                         std::span<const std::uint8_t>(record))) {
             throw std::runtime_error("engine MIDI queue is full");
         }
         if (!streamOpen) {
@@ -395,7 +396,13 @@ void Engine::locate(Ticks ticks) {
     ++impl_->locatesRequested;
 }
 
-void Engine::sendMidi(std::string_view portId, std::span<const std::uint8_t> bytes) { impl_->sendMidi(portId, bytes); }
+void Engine::sendMidi(std::string_view portId, std::span<const std::uint8_t> bytes) {
+    impl_->sendMidi(portId, bytes, false);
+}
+
+void Engine::sendInstrumentMidi(std::string_view trackId, std::span<const std::uint8_t> bytes) {
+    impl_->sendMidi(trackId, bytes, true);
+}
 
 void Engine::panic() { impl_->push({.type = Command::Type::panic}); }
 

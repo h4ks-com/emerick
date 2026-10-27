@@ -107,6 +107,27 @@ TEST_CASE("a MIDI track sends MIDI out until it loads an instrument, which plays
     CHECK(loudest(rig.audio->output("interface", 1)) > 0.4F);
 }
 
+TEST_CASE("a piano roll key plays through the track's instrument until its note-off") {
+    InstrumentRig rig;
+    const model::TrackId id = rig.addSynth();
+    rig.controller->flush();
+    rig.controller->engine().keepWarm(true);
+    const Json key = {{"track", id.value}, {"pitch", 69}};
+    const Json played = rig.run("midi.audition", key);
+    CHECK(played.at("sent") == true);
+    CHECK(played.at("instrument") == true);
+    const auto held = static_cast<std::size_t>(rig.audio->processedFrames());
+    rig.audio->process(kBlock * 16);
+    rig.run("midi.audition", {{"track", id.value}, {"pitch", 69}, {"on", false}});
+    const auto released = static_cast<std::size_t>(rig.audio->processedFrames());
+    rig.audio->process(kBlock * 16);
+
+    const std::vector<float> output = rig.audio->output("interface", 1);
+    CHECK(loudest({output.begin() + static_cast<std::ptrdiff_t>(held),
+                   output.begin() + static_cast<std::ptrdiff_t>(released)}) > 0.4F);
+    CHECK(loudest({output.begin() + static_cast<std::ptrdiff_t>(released), output.end()}) == 0.0F);
+}
+
 TEST_CASE("instrument.remove clears the slot and the track plays no audio again") {
     InstrumentRig rig;
     const model::TrackId id = rig.addSynth();

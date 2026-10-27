@@ -20,10 +20,12 @@ inline constexpr std::size_t kMaxTrackIdLength = 64;
 inline constexpr std::size_t kMetronomeVoices = 16;
 inline constexpr std::size_t kOutgoingMidiBytes = std::size_t{1} << 18;
 
-// A message the UI thread sends to an output port, followed by the port id and the message bytes.
+// A message the UI thread sends to an output port or a track's instrument, followed by the port or track id and the
+// message bytes.
 struct OutgoingMidiHeader {
-    std::uint32_t portIdSize = 0;
+    std::uint32_t targetIdSize = 0;
     std::uint32_t size = 0;
+    bool toInstrument = false;
 };
 
 struct Command {

@@ -274,9 +274,9 @@ bool ClapInstrument::editorOpen() const { return impl_->editorOpen; }
 
 bool ClapInstrument::openFloatingEditor(const std::string& title) {
     ClapPluginProxy& proxy = *impl_->proxy;
-    if (impl_->editorOpen) {
-        return proxy.guiShow();
-    }
+    // Some plugins never report that the user closed their window, and showing it again then shows nothing, so we
+    // always create it anew.
+    closeEditor();
     if (!proxy.canUseGui() || !proxy.guiIsApiSupported(kEditorApi, true) || !proxy.guiCreate(kEditorApi, true)) {
         return false;
     }

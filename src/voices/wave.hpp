@@ -16,12 +16,12 @@ struct Wave {
     [[nodiscard]] bool looped() const { return loopEnd > loopStart && loopEnd <= samples.size(); }
 };
 
-// Decodes a store wave blob: a FORM YTWV holding 16-bit linear audio in COMM and SSND chunks. We cannot decode the
-// WXC1 compressed blobs yet, so those give nullopt.
+// Decodes a store wave blob: a FORM YTWV holding 16-bit linear audio in COMM and SSND chunks, or WXC1 compressed audio
+// up to its first frame in a mode we cannot decode.
 std::optional<Wave> decodeWave(std::span<const std::uint8_t> blob);
 std::optional<Wave> loadWave(const std::filesystem::path& path);
 
-// True when the blob at this path holds audio decodeWave reads; it reads the chunk headers only.
+// True when the blob at this path holds audio decodeWave reads at least partly; it reads the chunk headers only.
 bool isDecodableWave(const std::filesystem::path& path);
 
 }  // namespace emerick::voices

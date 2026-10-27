@@ -1,5 +1,6 @@
 #pragma once
 
+#include <array>
 #include <cstdint>
 #include <filesystem>
 #include <optional>
@@ -35,8 +36,22 @@ std::vector<std::int16_t> sine(double frequency, double sampleRate, std::size_t 
 // A FORM YTWV blob of 16-bit linear audio, with a sustain loop when one is given.
 std::vector<std::uint8_t> linearBlob(const std::vector<std::int16_t>& samples, double sampleRate,
                                      std::optional<std::pair<std::uint32_t, std::uint32_t>> loop = std::nullopt);
-// A FORM YTWV blob whose audio is WXC1 compressed, which the instrument cannot decode.
-std::vector<std::uint8_t> compressedBlob();
+// What a WXC1 frame tells the decoder about the frame after it.
+struct WxcParams {
+    std::array<int, 3> coefficients{};
+    int scale = 0;
+    int mode = 0;
+};
+
+// One WXC1 frame: per word, a 12-bit residual code with the scale boost in bit 15.
+struct WxcFrame {
+    std::array<std::uint16_t, 16> codes{};
+    WxcParams next;
+};
+
+// A FORM YTWV blob of WXC1 compressed audio whose first frame decodes with `first`.
+std::vector<std::uint8_t> wxc1Blob(double sampleRate, const WxcParams& first, const std::vector<WxcFrame>& frames,
+                                   std::pair<std::uint32_t, std::uint32_t> loop = {0xFFFFFFFFU, 0});
 
 // An Expansion Manager store in a fresh temporary folder, deleted with the object.
 class SyntheticStore {

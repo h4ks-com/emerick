@@ -70,6 +70,18 @@ void putMarker(Bytes& mark, std::uint32_t id, std::uint32_t position, std::strin
     }
 }
 
+std::array<std::uint16_t, 3> packed(const WxcParams& params) {
+    const auto [a1, a2, a3] = params.coefficients;
+    const auto scale = static_cast<unsigned>(params.scale);
+    return {
+        static_cast<std::uint16_t>((static_cast<unsigned>(a1) << 3U) | (scale >> 3U)),
+        static_cast<std::uint16_t>((static_cast<unsigned>(a2) << 3U) | (scale & 7U)),
+        static_cast<std::uint16_t>(((static_cast<unsigned>(a3) & 0xFFFU) << 3U) | static_cast<unsigned>(params.mode))};
+}
+
+// The scramble only mixes the low 12 bits into the top four, so the same function undoes it.
+std::uint32_t scrambled(unsigned word) { return ((word ^ (word << 6U) ^ (word << 12U)) & 0xF000U) | (word & 0x0FFFU); }
+
 void write(const fs::path& path, std::string_view text) { std::ofstream(path, std::ios::binary) << text; }
 
 std::string zoneXml(const SyntheticZone& zone, std::size_t number) {
@@ -143,12 +155,37 @@ Bytes linearBlob(const std::vector<std::int16_t>& samples, double sampleRate,
     return form({{"COMM", comm}, {"MARK", mark}, {"INST", inst}, {"SSND", ssnd}});
 }
 
-Bytes compressedBlob() {
+Bytes wxc1Blob(double sampleRate, const WxcParams& first, const std::vector<WxcFrame>& frames,
+               std::pair<std::uint32_t, std::uint32_t> loop) {
     Bytes apcp;
     putText(apcp, "WXCC");
+    put32(apcp, 0);
+    const auto rate = std::bit_cast<std::uint64_t>(sampleRate);
+    put32(apcp, static_cast<std::uint32_t>(rate >> 32U));
+    put32(apcp, static_cast<std::uint32_t>(rate & 0xFFFFFFFFU));
     apcp.resize(36, 0);
-    Bytes wxc1{0x08, 0x00, 0x01, 0x01, 0x00, 0x02, 0xFF, 0xFF, 0xFF, 0xFF, 0x00, 0x00, 0x00, 0x01};
-    wxc1.resize(wxc1.size() + 54 + 64, 0x5A);
+    Bytes wxc1(6, 0);
+    put32(wxc1, loop.first);
+    put32(wxc1, loop.second);
+    wxc1.resize(22, 0);
+    for (const std::uint16_t field : packed(first)) {
+        put16(wxc1, field);
+    }
+    wxc1.resize(68, 0);
+    for (const WxcFrame& frame : frames) {
+        const std::array<std::uint16_t, 3> next = packed(frame.next);
+        for (std::size_t word = 0; word < frame.codes.size(); ++word) {
+            unsigned value = frame.codes.at(word) & 0x8FFFU;
+            if (word < 13) {
+                for (std::size_t field = 0; field < 3; ++field) {
+                    value |= ((next.at(field) >> (15 - word)) & 1U) << (14 - field);
+                }
+            } else {
+                value |= (next.at(std::array<std::size_t, 3>{2, 0, 1}.at(word - 13)) & 7U) << 12U;
+            }
+            put16(wxc1, scrambled(value));
+        }
+    }
     return form({{"APCp", apcp}, {"WXC1", wxc1}});
 }
 

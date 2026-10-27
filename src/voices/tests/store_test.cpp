@@ -36,8 +36,55 @@ TEST_CASE("a linear wave blob decodes to its samples and sustain loop") {
     CHECK_FALSE(plain->looped());
 }
 
-TEST_CASE("a compressed WXC1 blob is not decoded") {
-    CHECK_FALSE(decodeWave(compressedBlob()).has_value());
+namespace {
+
+std::vector<WxcFrame> crackedFrames() {
+    WxcFrame first{.next = {.coefficients = {-100, 30, 5}, .scale = 30, .mode = 3}};
+    WxcFrame second{.next = {.scale = 10, .mode = 5}};
+    for (std::uint16_t word = 0; word < 16; ++word) {
+        first.codes.at(word) =
+            static_cast<std::uint16_t>(((word * 0x9E5U + 0x123U) & 0xFFFU) | (word % 3 == 0 ? 0x8000U : 0U));
+        second.codes.at(word) =
+            static_cast<std::uint16_t>(((word * 0x3B7U + 0x55U) & 0xFFFU) | (word % 2 == 1 ? 0x8000U : 0U));
+    }
+    return {first, second};
+}
+
+constexpr WxcParams kFirstParams{.coefficients = {200, -60, 10}, .scale = 20, .mode = 0};
+
+int sampleValue(const Wave& wave, std::size_t index) { return static_cast<int>(wave.samples.at(index) * 32768.0F); }
+
+}  // namespace
+
+TEST_CASE("WXC1 frames in cracked modes decode bit-exactly") {
+    const auto wave = decodeWave(wxc1Blob(8000.0, kFirstParams, crackedFrames(), {10, 100}));
+    REQUIRE(wave.has_value());
+    REQUIRE(wave->samples.size() == 128);
+    CHECK(sampleValue(*wave, 0) == -15);
+    CHECK(sampleValue(*wave, 7) == -35);
+    CHECK(sampleValue(*wave, 59) == -84);
+    CHECK(sampleValue(*wave, 95) == 83);
+    CHECK(sampleValue(*wave, 96) == 151);
+    CHECK(sampleValue(*wave, 101) == 368);
+    CHECK(sampleValue(*wave, 119) == -513);
+    CHECK(sampleValue(*wave, 127) == -740);
+    CHECK(wave->looped());
+}
+
+TEST_CASE("a WXC1 wave ends with a fade at its first frame in an unknown mode") {
+    std::vector<WxcFrame> frames = crackedFrames();
+    frames.push_back(WxcFrame{});
+    const auto wave = decodeWave(wxc1Blob(8000.0, kFirstParams, frames, {10, 200}));
+    REQUIRE(wave.has_value());
+    REQUIRE(wave->samples.size() == 128);
+    CHECK(sampleValue(*wave, 87) == -42);
+    CHECK(wave->samples[101] == Catch::Approx(368.0F / 32768.0F * 26.0F / 40.0F));
+    CHECK(wave->samples.back() == 0.0F);
+    CHECK_FALSE(wave->looped());
+}
+
+TEST_CASE("a WXC1 wave whose first frame is in an unknown mode is not decoded") {
+    CHECK_FALSE(decodeWave(wxc1Blob(8000.0, {.mode = 7}, crackedFrames())).has_value());
     CHECK_FALSE(decodeWave(std::vector<std::uint8_t>{1, 2, 3}).has_value());
 }
 
@@ -80,18 +127,21 @@ TEST_CASE("the store reads each voice's pack, name, address and zones") {
     CHECK(zone.rightWave.empty());
 }
 
-TEST_CASE("the store leaves out voices whose waves are compressed or missing") {
+TEST_CASE("the store leaves out voices whose waves are undecodable or missing") {
     SyntheticStore store;
     const std::string linear = store.addWave(linearBlob(sine(440.0, 44100.0, 441), 44100.0));
-    const std::string compressed = store.addWave(compressedBlob());
+    const std::string partial = store.addWave(wxc1Blob(44100.0, kFirstParams, crackedFrames()));
+    const std::string compressed = store.addWave(wxc1Blob(44100.0, {.mode = 4}, crackedFrames()));
     store.addPack("Pack", {SyntheticVoice{.name = "Plays", .zones = {SyntheticZone{.wave = linear}}},
+                           SyntheticVoice{.name = "Partly", .zones = {SyntheticZone{.wave = partial}}},
                            SyntheticVoice{.name = "Compressed",
                                           .zones = {SyntheticZone{.keyHi = "C3", .wave = linear},
                                                     SyntheticZone{.keyLo = "C#3", .wave = compressed}}},
                            SyntheticVoice{.name = "Missing", .zones = {SyntheticZone{.wave = std::string(40, 'f')}}}});
     const Store loaded = loadStore(store.folder());
-    REQUIRE(loaded.voices.size() == 1);
-    CHECK(loaded.voices[0].name == "Plays");
+    REQUIRE(loaded.voices.size() == 2);
+    CHECK(loaded.voices[0].name == "Partly");
+    CHECK(loaded.voices[1].name == "Plays");
 }
 
 TEST_CASE("a missing or empty store folder is an empty store") {

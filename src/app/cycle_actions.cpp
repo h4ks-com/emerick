@@ -81,8 +81,9 @@ void registerCycleActions(Registry& registry, ProjectController& controller, Nav
                         .run = [&controller](const Json& params) { return setLocators(controller, params); }});
     registry.addAction({.id = "cycle.setFromClips",
                         .title = "Set cycle to selected clips",
-                        .aliases = {"loop selection", "cycle selection"},
+                        .aliases = {"loop selection", "cycle selection", "loop clip region"},
                         .category = "Transport",
+                        .shortcut = "Ctrl+U",
                         .schema = {{"properties", {{"clip", {{"type", "string"}}}}}},
                         .run = [&controller, &nav](const Json& params) { return cycleClips(controller, nav, params); },
                         .menus = {kTransportMenu, kClipContextMenu}});

@@ -59,13 +59,18 @@ QVariantMap ArrangerStyles::info(const QString& trackId) {
         return result;
     }
     QVariantList sections;
+    QVariantList group;
     std::optional<Section> previous;
     for (const StyleSlot& slot : kStyleSlots) {
-        sections.append(QVariantMap{{"label", app::qs(std::string{slot.label})},
-                                    {"present", stylePlays(summary->style, slot.kind, slot.variation)},
-                                    {"separated", previous.has_value() && previous != slot.kind}});
+        if (previous.has_value() && previous != slot.kind) {
+            sections.append(QVariant{group});
+            group.clear();
+        }
+        group.append(QVariantMap{{"label", app::qs(std::string{slot.label})},
+                                 {"present", stylePlays(summary->style, slot.kind, slot.variation)}});
         previous = slot.kind;
     }
+    sections.append(QVariant{group});
     QStringList missing;
     for (const Section kind :
          {Section::Intro, Section::Main, Section::Fill, Section::FillTo, Section::Break, Section::Ending}) {

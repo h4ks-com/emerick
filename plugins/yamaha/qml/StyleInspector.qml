@@ -71,26 +71,39 @@ ColumnLayout {
     Flow {
         objectName: "arranger.style.sections:" + styleInspector.trackId
         visible: styleInspector.info.loaded === true
-        spacing: Theme.space2
+        spacing: Theme.space4
         Layout.fillWidth: true
         Repeater {
             model: styleInspector.info.sections ?? []
-            Row {
-                id: slot
+            Item {
+                id: group
                 required property var modelData
-                spacing: Theme.space2
+                width: sectionRow.width
+                height: sectionRow.height
+                // We draw the separator in the gap before the group, so it never changes how the groups wrap.
                 Label {
-                    visible: slot.modelData.separated
+                    visible: group.x > 0
+                    x: -(Theme.space4 + width) / 2
                     text: "·"
                     color: Theme.inkDim
                     font.pixelSize: Theme.textLabel
                 }
-                Label {
-                    objectName: "arranger.style.section:" + styleInspector.trackId + ":" + slot.modelData.label
-                    text: slot.modelData.label
-                    color: slot.modelData.present ? Theme.ink : Theme.inkDim
-                    opacity: slot.modelData.present ? 1 : 0.5
-                    font.pixelSize: Theme.textLabel
+                Row {
+                    id: sectionRow
+                    spacing: Theme.space2
+                    Repeater {
+                        model: group.modelData
+                        Label {
+                            id: section
+                            required property var modelData
+                            objectName: "arranger.style.section:" + styleInspector.trackId + ":"
+                                        + section.modelData.label
+                            text: section.modelData.label
+                            color: section.modelData.present ? Theme.ink : Theme.inkDim
+                            opacity: section.modelData.present ? 1 : 0.5
+                            font.pixelSize: Theme.textLabel
+                        }
+                    }
                 }
             }
         }

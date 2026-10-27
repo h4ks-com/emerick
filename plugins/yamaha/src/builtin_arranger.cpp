@@ -64,7 +64,8 @@ void loadPartInstrument(app::Registry& registry, app::ProjectController& control
              true}}.dump();
         app::editTrack(controller, id, "pick voice",
                        [&](model::Track& track) { track.instrument->state.assign(state.begin(), state.end()); });
-        controller.flush();
+        // The project holds back change notices inside an undo group, so we sync the instruments ourselves.
+        controller.instruments().sync(controller.project().document());
         const Json described = controller.instruments().describe(id);
         const auto found = described.is_null() ? std::nullopt : std::optional{described.at("params")};
         const bool plays = found && std::ranges::any_of(*found, [](const Json& param) {
@@ -75,6 +76,33 @@ void loadPartInstrument(app::Registry& registry, app::ProjectController& control
         }
     }
     registry.run("instrument.load", {{"track", id.value}, {"plugin", app::kGeneralMidiPluginId}});
+}
+
+std::optional<model::TrackId> partTrack(const model::Document& document, const model::TrackId& style, int channel) {
+    const auto found = std::ranges::find_if(document.tracks, [&](const model::Track& track) {
+        return track.midiIn.sourceTrack == style && track.midiIn.channel == channel;
+    });
+    return found == document.tracks.end() ? std::nullopt : std::optional{found->id};
+}
+
+// A part track follows the style while it plays General MIDI or Expansion Voices; any other instrument is the user's.
+void followStyle(app::Registry& registry, app::ProjectController& controller, const model::TrackId& style,
+                 const StyleSummary& summary) {
+    for (std::size_t part = 0; part < arranger::kParts; ++part) {
+        const auto id = partTrack(controller.project().document(), style, genos2Parts().at(kFirstPart + part).channel);
+        if (!id) {
+            continue;
+        }
+        const std::optional<model::PluginSlot>& instrument = controller.project().track(*id)->instrument;
+        if (!instrument) {
+            continue;
+        }
+        const std::optional<arranger::PartVoice>& voice = summary.style.voices.at(part);
+        const std::string plugin = instrument->pluginId;
+        if (plugin == kVoicesPluginId || (plugin == app::kGeneralMidiPluginId && voice)) {
+            loadPartInstrument(registry, controller, *id, voice);
+        }
+    }
 }
 
 model::TrackId arrangerTrack(const app::ProjectController& controller, const app::Nav& nav, const Json& params) {
@@ -94,14 +122,9 @@ Json setup(app::Registry& registry, app::ProjectController& controller) {
             registry.run("instrument.load", {{"track", style.value}, {"plugin", kArrangerPluginId}});
         }
         const auto summary = loadedStyle(*controller.project().track(style));
-        const auto takesStyle = [&](const model::Track& track, int channel) {
-            return track.midiIn.sourceTrack == style && track.midiIn.channel == channel;
-        };
         for (std::size_t part = 0; part < arranger::kParts; ++part) {
             const Part& info = genos2Parts().at(kFirstPart + part);
-            const auto& tracks = controller.project().document().tracks;
-            if (std::ranges::any_of(tracks,
-                                    [&](const model::Track& track) { return takesStyle(track, info.channel); })) {
+            if (partTrack(controller.project().document(), style, info.channel)) {
                 continue;
             }
             const model::TrackId id{registry.run("track.addMidi", {{"name", std::string{info.name}}}).at("id")};
@@ -118,7 +141,8 @@ Json setup(app::Registry& registry, app::ProjectController& controller) {
     return app::projectState(controller);
 }
 
-Json loadStyle(app::ProjectController& controller, const model::TrackId& id, const std::filesystem::path& path) {
+Json loadStyle(app::Registry& registry, app::ProjectController& controller, const model::TrackId& id,
+               const std::filesystem::path& path) {
     const auto summary = readStyle(path);
     if (!summary) {
         throw AppError("cannot read " + path.string() + " as a style, pick a .sty, .prs or .sst file");
@@ -130,8 +154,11 @@ Json loadStyle(app::ProjectController& controller, const model::TrackId& id, con
     ArrangerState state = *current;
     state.style = path.string();
     state.hash = summary->hash;
-    app::editTrack(controller, id, "load style " + summary->name,
-                   [&](model::Track& track) { track.instrument.value().state = stateBytes(state); });
+    controller.project().group("load style " + summary->name, [&] {
+        app::editTrack(controller, id, "load style " + summary->name,
+                       [&](model::Track& track) { track.instrument.value().state = stateBytes(state); });
+        followStyle(registry, controller, id, *summary);
+    });
     Json result = summaryJson(*summary);
     result["track"] = id.value;
     result["message"] = "Loaded " + summary->name;
@@ -154,7 +181,8 @@ void registerBuiltinArranger(app::Registry& registry, app::ProjectController& co
     registry.addAction(
         {.id = "arranger.style.load",
          .title = "Choose style",
-         .description = "Loads a style file into the Style track's Arranger as one undo step.",
+         .description = "Loads a style file into the Style track's Arranger and switches each part track between "
+                        "Expansion Voices and General MIDI to match the style's voices, as one undo step.",
          .aliases = {"load style", "open style"},
          .category = "Yamaha",
          .schema = {{"required", {"path"}},
@@ -162,7 +190,7 @@ void registerBuiltinArranger(app::Registry& registry, app::ProjectController& co
          .run =
              [&registry, &controller, &nav](const Json& params) {
                  const model::TrackId id = arrangerTrack(controller, nav, params);
-                 return loadStyle(controller, id,
+                 return loadStyle(registry, controller, id,
                                   registry.checkedPath(app::param<std::string>(params, "path"), app::PathAccess::Read));
              },
          .menus = {kYamahaMenu},

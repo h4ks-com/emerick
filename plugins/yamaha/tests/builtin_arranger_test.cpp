@@ -1,4 +1,6 @@
+#include <QByteArray>
 #include <algorithm>
+#include <array>
 #include <catch2/catch_test_macros.hpp>
 #include <chrono>
 #include <filesystem>
@@ -11,6 +13,7 @@
 #include "emerick/app/plugin_catalog.hpp"
 #include "emerick/app/session_mapping.hpp"
 #include "style_builder.hpp"
+#include "synthetic_store.hpp"
 #include "yamaha_rig.hpp"
 
 using namespace emerick;
@@ -57,7 +60,81 @@ struct ArrangerRig : YamahaRig {
     }
 };
 
+// Expansion Voices reads its store under HOME, so we point HOME at a folder of our own while a test runs.
+class HomeFolder {
+public:
+    explicit HomeFolder(const std::filesystem::path& folder) : saved_(qgetenv("HOME")) {
+        std::filesystem::create_directories(folder);
+        qputenv("HOME", QByteArray::fromStdString(folder.string()));
+    }
+    ~HomeFolder() { qputenv("HOME", saved_); }
+    HomeFolder(const HomeFolder&) = delete;
+    HomeFolder& operator=(const HomeFolder&) = delete;
+    HomeFolder(HomeFolder&&) = delete;
+    HomeFolder& operator=(HomeFolder&&) = delete;
+
+private:
+    QByteArray saved_;
+};
+
+// The demo style with its bass on another program, which no store in these tests holds.
+std::filesystem::path otherBassStyle(const ArrangerRig& rig) {
+    Bytes bytes = arranger::test::demoStyle();
+    const std::array<std::uint8_t, 2> bassProgram{0xC0 | arranger::test::kBass, 33};
+    const auto found = std::ranges::search(bytes, bassProgram);
+    REQUIRE_FALSE(found.empty());
+    found[1] = 34;
+    const std::filesystem::path path = rig.path("Other.sty");
+    std::ofstream(path, std::ios::binary)
+        .write(reinterpret_cast<const char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
+    return path;
+}
+
 }  // namespace
+
+TEST_CASE("choosing a style switches the part tracks it has voices for between Expansion Voices and General MIDI") {
+    ArrangerRig rig;
+    const HomeFolder home{rig.path("home")};
+    voices::test::SyntheticStore store;
+    const std::string wave = store.addWave(voices::test::linearBlob(voices::test::sine(440.0, 44100.0, 441), 44100.0));
+    store.addPack("Pack", {voices::test::SyntheticVoice{
+                              .name = "Bass", .msb = 0, .lsb = 0, .program = 33, .zones = {{.wave = wave}}}});
+    const std::filesystem::path packs = rig.path("home") / "Library/Application Support/Yamaha/Expansion Manager/Packs";
+    std::filesystem::create_directories(packs.parent_path());
+    std::filesystem::create_directory_symlink(store.folder(), packs);
+
+    rig.run("arranger.setup");
+    const std::string style = rig.trackOfKind("yamaha.style");
+    const auto part = [&](std::size_t index) { return rig.document().tracks.at(index + 2).id.value; };
+    const auto plugin = [&](std::size_t index) {
+        const auto& instrument = rig.track(part(index)).instrument;
+        return instrument ? instrument->pluginId : std::string{};
+    };
+    rig.run("instrument.remove", {{"track", part(3)}});
+
+    rig.run("arranger.style.load", {{"track", style}, {"path", rig.demo.string()}});
+#ifdef __APPLE__
+    const std::string bassPlugin = "org.emerick.voices";
+    REQUIRE(plugin(2) == bassPlugin);
+    CHECK(Json::parse(rig.track(part(2)).instrument->state).at("followProgramChanges") == true);
+#else
+    const std::string bassPlugin = "org.emerick.gm";
+#endif
+    CHECK(plugin(0) == "org.emerick.gm");
+    CHECK(plugin(1) == "org.emerick.gm");
+    CHECK(plugin(2) == bassPlugin);
+    CHECK(plugin(3).empty());
+
+    rig.run("project.undo");
+    CHECK(rig.track(style).instrument->state.empty());
+    CHECK(plugin(2) == "org.emerick.gm");
+
+    rig.run("project.redo");
+    CHECK(plugin(2) == bassPlugin);
+    rig.run("arranger.style.load", {{"track", style}, {"path", otherBassStyle(rig).string()}});
+    CHECK(plugin(2) == "org.emerick.gm");
+    CHECK(plugin(3).empty());
+}
 
 TEST_CASE("set up built-in arranger adds the Chords and Style tracks, the Arranger and a track per part in one step") {
     ArrangerRig rig;

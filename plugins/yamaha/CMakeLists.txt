@@ -61,9 +61,10 @@ if(EMERICK_BUILD_TESTS)
         tests/builtin_arranger_test.cpp
         tests/hostile_params_test.cpp
         tests/lane_edit_test.cpp
-        tests/template_actions_test.cpp)
+        tests/template_actions_test.cpp
+        ${PROJECT_SOURCE_DIR}/src/voices/tests/synthetic_store.cpp)
     target_include_directories(emerick_yamaha_plugin_tests PRIVATE
-        ${PROJECT_SOURCE_DIR}/src/app/tests ${PROJECT_SOURCE_DIR}/src/arranger/tests)
+        ${PROJECT_SOURCE_DIR}/src/app/tests ${PROJECT_SOURCE_DIR}/src/arranger/tests ${PROJECT_SOURCE_DIR}/src/voices/tests)
     target_link_libraries(emerick_yamaha_plugin_tests PRIVATE emerick_yamaha_plugin libremidi
         emerick_test_clap emerick_gm_clap emerick_voices_clap emerick_arranger_clap)
     target_compile_definitions(emerick_yamaha_plugin_tests PRIVATE TEST_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}/tests/data")

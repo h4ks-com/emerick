@@ -107,7 +107,7 @@ QtObject {
     readonly property int iconSize: 18
     readonly property int headerButton: 20
     readonly property int clipLabelHeight: 16
-    readonly property int clipGrip: 6
+    readonly property int clipGrip: 8
     readonly property int fadeHandle: 8
     readonly property int selectionWidth: 2
     readonly property int playheadCap: 10

@@ -382,6 +382,14 @@ Item {
         }
         onReleased: Registry.endGesture()
         onCanceled: content.clipItem.cancelDrag()
+        Rectangle {
+            anchors.centerIn: parent
+            width: 2 * Theme.hairline
+            height: Math.min(parent.height - 2 * Theme.space1, Theme.clipLabelHeight)
+            radius: Theme.hairline
+            color: Theme.ink
+            visible: hover.hovered || parent.pressed
+        }
     }
 
     // A MIDI clip's right edge resizes its content below the middle and drags its loop above it, as in Logic. A looped
@@ -408,6 +416,14 @@ Item {
         }
         onReleased: Registry.endGesture()
         onCanceled: content.clipItem.cancelDrag()
+        Rectangle {
+            anchors.centerIn: parent
+            width: 2 * Theme.hairline
+            height: Math.min(parent.height - 2 * Theme.space1, Theme.clipLabelHeight)
+            radius: Theme.hairline
+            color: Theme.ink
+            visible: hover.hovered || parent.pressed
+        }
     }
 
     MouseArea {

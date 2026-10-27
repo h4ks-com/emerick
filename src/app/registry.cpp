@@ -734,12 +734,12 @@ void Registry::activate(const QString& id) {
         emit confirmRequested({{"id", id}, {"title", qs(found->title)}, {"text", qs(found->confirm)}});
         return;
     }
+    if (found != nullptr) {
+        runFromUi(id.toStdString(), Json::object());
+        return;
+    }
     try {
-        if (found != nullptr) {
-            run(id.toStdString(), Json::object(), ActionSource::Ui);
-        } else {
-            reveal(id.toStdString());
-        }
+        reveal(id.toStdString());
     } catch (const AppError& error) {
         qWarning() << error.what();
     }

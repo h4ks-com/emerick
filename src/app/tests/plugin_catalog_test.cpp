@@ -55,6 +55,15 @@ TEST_CASE("listing plugins scans each bundle in a child and blocks the bundles t
     CHECK(reasonFor(listed.at("blocked"), "hang").starts_with("did not load within"));
 }
 
+TEST_CASE("listing plugins from the menu shows what it found as a notice") {
+    CatalogRig rig;
+    QString notice;
+    QObject::connect(&rig.registry, &Registry::noticeRaised,
+                     [&](const QString& title, const QString& text) { notice = title + ": " + text; });
+    rig.registry.activate("plugins.list");
+    CHECK(notice == "List plugins: Found 1 CLAP plugins, 2 bundles blocked");
+}
+
 TEST_CASE("a later scan reads unchanged bundles from the cache and keeps blocked bundles blocked") {
     CatalogRig rig;
     rig.registry.run("plugins.list");

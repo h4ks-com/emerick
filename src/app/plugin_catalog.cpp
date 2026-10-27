@@ -180,16 +180,26 @@ void PluginCatalog::save() const {
     }
 }
 
-std::vector<std::filesystem::path> clapSearchFolders() {
+std::filesystem::path bundledClapFolder(const std::filesystem::path& appFolder) {
+#ifdef Q_OS_MACOS
+    return appFolder.parent_path() / "PlugIns";
+#else
+    return appFolder / "clap";
+#endif
+}
+
+std::vector<std::filesystem::path> clapSearchFolders(const std::filesystem::path& appFolder) {
     const std::filesystem::path home = QDir::homePath().toStdString();
 #ifdef Q_OS_MACOS
-    std::vector<std::filesystem::path> folders{home / "Library/Audio/Plug-Ins/CLAP", "/Library/Audio/Plug-Ins/CLAP"};
+    std::vector<std::filesystem::path> folders{bundledClapFolder(appFolder), home / "Library/Audio/Plug-Ins/CLAP",
+                                               "/Library/Audio/Plug-Ins/CLAP"};
 #elifdef Q_OS_WIN
     std::vector<std::filesystem::path> folders{
+        bundledClapFolder(appFolder),
         std::filesystem::path{qEnvironmentVariable("LOCALAPPDATA").toStdWString()} / "Programs/Common/CLAP",
         std::filesystem::path{qEnvironmentVariable("COMMONPROGRAMFILES").toStdWString()} / "CLAP"};
 #else
-    std::vector<std::filesystem::path> folders{home / ".clap", "/usr/lib/clap"};
+    std::vector<std::filesystem::path> folders{bundledClapFolder(appFolder), home / ".clap", "/usr/lib/clap"};
 #endif
     for (const QString& folder : qEnvironmentVariable("CLAP_PATH").split(QDir::listSeparator(), Qt::SkipEmptyParts)) {
         folders.emplace_back(folder.toStdString());

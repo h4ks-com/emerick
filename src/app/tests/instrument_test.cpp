@@ -4,6 +4,7 @@
 #include <catch2/catch_test_macros.hpp>
 #include <chrono>
 #include <cmath>
+#include <filesystem>
 #include <fstream>
 #include <ranges>
 #include <span>
@@ -222,4 +223,18 @@ TEST_CASE("showing the editor of an instrument without one says so") {
     }
     CHECK_THROWS_AS(rig.run("instrument.load", {{"track", rig.run("track.addAudio").at("id")}, {"plugin", kSine}}),
                     AppError);
+}
+
+TEST_CASE("a new General MIDI instrument plays the SoundFont the setting names, and keeps it in its state") {
+    InstrumentRig rig;
+    rig.registry.setSetting(kClapFoldersSetting, Json::array({bundledClapFolder(EMERICK_GM_APP_FOLDER).string()}));
+    const std::filesystem::path soundFont = rig.path("Mine.sf2");
+    std::ofstream{soundFont} << "sf2";
+    rig.registry.setSetting(kGeneralMidiSoundFontSetting, soundFont.string());
+    const Json added = rig.run("track.addInstrument", {{"plugin", kGeneralMidiPluginId}});
+    const model::Track& track = *rig.controller->project().track(model::TrackId{added.at("id").get<std::string>()});
+    REQUIRE(track.instrument.has_value());
+    CHECK(track.name == "General MIDI");
+    const std::string state(track.instrument->state.begin(), track.instrument->state.end());
+    CHECK(std::filesystem::equivalent(state, soundFont));
 }

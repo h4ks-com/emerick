@@ -1,5 +1,6 @@
 #pragma once
 
+#include <functional>
 #include <string>
 #include <vector>
 
@@ -36,5 +37,8 @@ inline constexpr const char* kPluginsGroup = "Plugins";
 // A settings page section at location settings.<key>, with its settings.show.<key> action. Sections show in the order
 // they are added, the ungrouped ones first and then each group under its heading.
 void addSettingsSection(Registry& registry, Nav& nav, const SettingsSection& section);
+
+// The merge of a String setting that holds a file path, which checks an agent may read the file; empty stays empty.
+std::function<Json(const Json&, const Json&)> readablePath(const Registry& registry);
 
 }  // namespace emerick::app

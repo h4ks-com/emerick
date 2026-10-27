@@ -6,6 +6,7 @@ qt_standard_project_setup(REQUIRES 6.11)
 
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(SNDFILE REQUIRED IMPORTED_TARGET sndfile)
+pkg_check_modules(FLUIDSYNTH REQUIRED IMPORTED_TARGET fluidsynth)
 
 FetchContent_Declare(nlohmann_json
     GIT_REPOSITORY https://github.com/nlohmann/json.git
@@ -77,6 +78,18 @@ FetchContent_Declare(lua
     URL https://www.lua.org/ftp/lua-5.4.8.tar.gz
     URL_HASH SHA256=4f18ddae154e793e46eeab727c59ef1c0c0c2b744e7b94219710d76f530629ae)
 FetchContent_MakeAvailable(lua)
+
+# The General MIDI instrument plays GeneralUser GS v2.0.3, which its license lets us redistribute.
+set(generaluser_gs_commit 684543d5e5efaef08d02be50dcda8d552478fa60)
+FetchContent_Declare(generaluser_gs
+    URL https://raw.githubusercontent.com/mrbumpy409/GeneralUser-GS/${generaluser_gs_commit}/GeneralUser-GS.sf2
+    URL_HASH SHA256=9575028c7a1f589f5770fccc8cff2734566af40cd26ed836944e9a5152688cfe
+    DOWNLOAD_NO_EXTRACT TRUE)
+FetchContent_Declare(generaluser_gs_license
+    URL https://raw.githubusercontent.com/mrbumpy409/GeneralUser-GS/${generaluser_gs_commit}/documentation/LICENSE.txt
+    URL_HASH SHA256=7b32efefdf95ce38a043799f0659853ddc00fbaa14d8c50f0aca16b9b8b405be
+    DOWNLOAD_NO_EXTRACT TRUE)
+FetchContent_MakeAvailable(generaluser_gs generaluser_gs_license)
 file(GLOB lua_sources ${lua_SOURCE_DIR}/src/*.c)
 list(REMOVE_ITEM lua_sources ${lua_SOURCE_DIR}/src/lua.c ${lua_SOURCE_DIR}/src/luac.c)
 add_library(lua54 STATIC ${lua_sources})

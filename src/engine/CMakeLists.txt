@@ -37,7 +37,7 @@ target_link_libraries(emerick-clap-scanner PRIVATE emerick_engine nlohmann_json:
 emerick_target(emerick-clap-scanner)
 
 if(EMERICK_BUILD_TESTS)
-    emerick_test(emerick_engine_tests tests/automation_test.cpp tests/bus_test.cpp tests/clap_test.cpp tests/effects_test.cpp tests/engine_test.cpp tests/fade_test.cpp tests/interleaved_io_test.cpp
+    emerick_test(emerick_engine_tests tests/automation_test.cpp tests/bus_test.cpp tests/clap_test.cpp tests/effects_test.cpp tests/engine_test.cpp tests/fade_test.cpp tests/gm_test.cpp tests/interleaved_io_test.cpp
         tests/metronome_test.cpp tests/cycle_test.cpp tests/midi_chase_test.cpp
         tests/recording_test.cpp tests/stream_health_test.cpp tests/take_progress_test.cpp)
     target_include_directories(emerick_engine_tests PRIVATE src)
@@ -65,5 +65,5 @@ if(EMERICK_BUILD_TESTS)
     add_dependencies(emerick_test_clap emerick_test_sine emerick_test_crash emerick_test_hang emerick-clap-scanner)
     target_compile_definitions(emerick_test_clap INTERFACE EMERICK_TEST_CLAP_FOLDER="${test_clap_folder}"
         EMERICK_TEST_SINE_CLAP="${test_sine_clap}" EMERICK_CLAP_SCANNER="$<TARGET_FILE:emerick-clap-scanner>")
-    target_link_libraries(emerick_engine_tests PRIVATE emerick_engine emerick_test_clap PkgConfig::SNDFILE)
+    target_link_libraries(emerick_engine_tests PRIVATE emerick_engine emerick_test_clap emerick_gm_clap PkgConfig::SNDFILE)
 endif()

@@ -19,7 +19,13 @@ model::PluginSlot slotFor(const Registry& registry, PluginCatalog& catalog, cons
     if (!found) {
         throw AppError("no CLAP plugin " + id + ", run plugins.list for plugin ids");
     }
-    return {.pluginId = id, .bundle = found->bundle.string(), .name = found->descriptor.name, .state = {}};
+    model::PluginSlot slot{
+        .pluginId = id, .bundle = found->bundle.string(), .name = found->descriptor.name, .state = {}};
+    if (id == kGeneralMidiPluginId) {
+        const auto soundFont = registry.settingValue(kGeneralMidiSoundFontSetting).get<std::string>();
+        slot.state.assign(soundFont.begin(), soundFont.end());
+    }
+    return slot;
 }
 
 std::vector<MenuChoice> instrumentChoices(const Registry& registry, PluginCatalog& catalog) {

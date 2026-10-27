@@ -1,7 +1,6 @@
 #include <algorithm>
 #include <array>
 #include <charconv>
-#include <functional>
 #include <ranges>
 #include <string>
 #include <string_view>
@@ -170,15 +169,6 @@ Json audioOutputs(const ProjectController& controller) {
     return outputs;
 }
 
-std::function<Json(const Json&, const Json&)> samplePath(const Registry& registry) {
-    return [&registry](const Json&, const Json& change) {
-        if (!change.is_string() || change.get<std::string>().empty()) {
-            return change;
-        }
-        return Json(registry.checkedPath(change.get<std::string>(), PathAccess::Read).string());
-    };
-}
-
 void addSetting(Registry& registry, Setting setting) {
     setting.category = "Settings / Metronome";
     setting.location = "settings.metronome";
@@ -263,13 +253,13 @@ void registerSettings(Registry& registry, const ProjectController& controller, N
                           .type = SettingType::String,
                           .defaultValue = "",
                           .hint = "Path of a short WAV for accented beats in the Sample sound",
-                          .merge = samplePath(registry)});
+                          .merge = readablePath(registry)});
     addSetting(registry, {.id = kBeatSample,
                           .title = "Beat sample",
                           .type = SettingType::String,
                           .defaultValue = "",
                           .hint = "Path of a short WAV for the other beats in the Sample sound",
-                          .merge = samplePath(registry)});
+                          .merge = readablePath(registry)});
     addSetting(registry, {.id = kMidiPort,
                           .title = "MIDI port",
                           .aliases = {"metronome midi output"},

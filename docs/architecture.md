@@ -13,6 +13,7 @@ Each layer is one CMake target. A layer only depends on the layers above it in t
 | `emerick_engine` | no | audio and MIDI backends, transport, playback graph, recording to disk, MIDI capture, offline render and export |
 | `emerick_app` | yes | the registry, document and engine controllers, QML models, navigation and reveal, introspection, MCP server, Lua host, settings |
 | `emerick_ui` | yes | the QML module `Emerick.Ui`: theme tokens and every view |
+| `emerick_gm` | no | the General MIDI CLAP instrument the app ships, built on FluidSynth |
 | `plugins/*` | both | one folder per plugin; pure C++ parts in their own target with tests |
 | `emerick` | yes | the executable: parses flags, wires backends, loads plugins |
 
@@ -74,6 +75,8 @@ An engine track can play its MIDI through a `ClapInstrument`: its clips, chase, 
 
 A MIDI track has an optional `instrument` slot that names a CLAP plugin by id and bundle path, with its saved state. Without one the track plays to its MIDI output only; with one it also has an audio output, fader, pan, meters, inserts and sends. `instrument.load` and `instrument.remove` fill and clear the slot, and `track.addInstrument` adds a MIDI track with the plugin loaded. A format 10 project that names such a track's kind `instrument` loads it as a MIDI track. The app keeps one live instrument per slot while the slot names the same plugin, attaches it to the session it publishes, and writes each instrument's current state into the slot, as base64, whenever it saves the project; a plugin that marks its state dirty schedules an autosave. A slot whose plugin does not load keeps its state, and the track shows why in its warning badge. `instrument.showEditor` opens the plugin's own floating window, or embeds its editor in a window Emerick creates.
 
+The app ships its own CLAP bundles in `Contents/PlugIns` on macOS and in `clap/` beside the executable elsewhere, and every scan searches that folder first. `src/gm` builds the first one, General MIDI (`org.emerick.gm`): it plays all 16 channels through FluidSynth, with notes, program changes, bank select, controllers, pressure and pitch bend, and channel 10 plays drums. Its CLAP state is the path of the SoundFont it plays; an empty state plays GeneralUser GS, which the build downloads at a pinned hash and puts with its license in the bundle's `Resources`. A new General MIDI instrument takes the `plugins.generalMidiSoundFont` setting as its state.
+
 ## Agent interface
 
 The app serves MCP over streamable HTTP on loopback (`--mcp-port`). Tools: `ui.tree`, `ui.find`, `ui.reveal`, `ui.invoke`, `ui.set`, `actions.list`, `actions.run`, `actions.batch`, `settings.get`, `settings.set`, `state.get`, `lua.eval`, `console.log`, `screenshot`. Every tool returns the state after the change. An action that fails leaves the document and its undo history as they were. `actions.batch` and `emerick.batch` run up to 1000 calls, each as its own undo step. With `--agent-read-root` and `--agent-write-root`, every path an MCP or Lua request names goes through one check that resolves symlinks and `..` and refuses a path outside the root; paths from the person using the UI stay open. Lua (5.4 through sol2) sees the same document and registry, and its `ui` functions and the `ui.*` tools both go through `UiApi`, so a script and an agent can do anything a click can.
@@ -97,6 +100,7 @@ The console (Cmd+\`) runs Lua in the same sandboxed host on the UI thread. `Regi
 | Audio IO | the CoreAudio HAL on macOS, miniaudio elsewhere |
 | MIDI IO and MIDI files | libremidi |
 | Audio files | libsndfile |
+| General MIDI sounds | FluidSynth and the GeneralUser GS SoundFont |
 | Queues | moodycamel readerwriterqueue |
 | JSON | nlohmann_json |
 | Lua | Lua 5.4 and sol2 |

@@ -58,7 +58,10 @@ private:
     bool scanned_ = false;
 };
 
-// The standard CLAP folders of this platform, then each folder in CLAP_PATH.
-std::vector<std::filesystem::path> clapSearchFolders();
+// The folder of CLAP bundles that ship with the app whose executable sits in appFolder.
+std::filesystem::path bundledClapFolder(const std::filesystem::path& appFolder);
+
+// The app's bundled CLAP folder, the standard CLAP folders of this platform, then each folder in CLAP_PATH.
+std::vector<std::filesystem::path> clapSearchFolders(const std::filesystem::path& appFolder);
 
 }  // namespace emerick::app

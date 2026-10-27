@@ -138,6 +138,15 @@ void addSettingsSection(Registry& registry, Nav& nav, const SettingsSection& sec
                         .menus = section.menus});
 }
 
+std::function<Json(const Json&, const Json&)> readablePath(const Registry& registry) {
+    return [&registry](const Json&, const Json& change) {
+        if (!change.is_string() || change.get<std::string>().empty()) {
+            return change;
+        }
+        return Json(registry.checkedPath(change.get<std::string>(), PathAccess::Read).string());
+    };
+}
+
 void registerCoreActions(Registry& registry, Nav& nav, const Backends& backends) {
     registry.addStateProvider("nav", [&nav] { return nav.toJson(); });
     // Copies of the provider share these names, so copying the provider never allocates.

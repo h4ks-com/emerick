@@ -113,7 +113,7 @@ int run(int argc, char** argv) {
              (profileFolder.isEmpty() ? QStandardPaths::writableLocation(QStandardPaths::CacheLocation) : profileFolder)
                  .toStdString(),
          .scanner = (QCoreApplication::applicationDirPath() + "/emerick-clap-scanner").toStdString(),
-         .folders = clapSearchFolders()});
+         .folders = clapSearchFolders(QCoreApplication::applicationDirPath().toStdString())});
     registerPluginActions(registry, nav, plugins);
     registerInstrumentActions(registry, controller, nav, plugins);
     const auto yamaha = emerick::yamaha::registerWith(registry, controller, nav);

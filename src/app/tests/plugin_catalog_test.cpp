@@ -74,6 +74,20 @@ TEST_CASE("a later scan reads unchanged bundles from the cache and keeps blocked
     CHECK_THROWS_AS(cached.scan({EMERICK_TEST_CLAP_FOLDER}, true), AppError);
 }
 
+TEST_CASE("the catalog always searches the app's bundled folder first and lists the General MIDI instrument there") {
+    QTemporaryDir dir;
+    const std::filesystem::path bundled = bundledClapFolder(EMERICK_GM_APP_FOLDER);
+    CHECK(clapSearchFolders(EMERICK_GM_APP_FOLDER).front() == bundled);
+    PluginCatalog::Options options = catalogOptions(dir, EMERICK_CLAP_SCANNER);
+    options.folders = {bundled};
+    PluginCatalog catalog(options);
+    catalog.scan({}, false);
+    const auto found = catalog.find(kGeneralMidiPluginId);
+    REQUIRE(found.has_value());
+    CHECK(found->descriptor.name == "General MIDI");
+    CHECK(std::ranges::contains(found->descriptor.features, std::string{"instrument"}));
+}
+
 TEST_CASE("rescanning loads every bundle again") {
     CatalogRig rig;
     rig.registry.run("plugins.list");

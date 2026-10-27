@@ -3,7 +3,7 @@ FROM ubuntu:24.04 AS toolchain
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y --no-install-recommends \
         ca-certificates build-essential g++-14 cmake ninja-build ccache git pkg-config curl python3 python3-pip jq \
-        libsndfile1-dev liblua5.4-dev libasound2-dev \
+        libsndfile1-dev libfluidsynth-dev liblua5.4-dev libasound2-dev \
         libgl1-mesa-dev libgl1-mesa-dri libegl1 libglx-mesa0 libxkbcommon0 libfontconfig1 libdbus-1-3 libglib2.0-0t64 \
         fontconfig fonts-dejavu-core fonts-inter \
     && rm -rf /var/lib/apt/lists/*

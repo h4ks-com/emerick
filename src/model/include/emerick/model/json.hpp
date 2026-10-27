@@ -9,10 +9,11 @@ namespace emerick::model {
 
 // Format 2 added markers, format 3 track pan, fade shapes and fade curves, format 4 buses, sends and output buses,
 // format 5 MIDI notes apart from the other MIDI events, format 6 automation, format 7 insert effects, format 8 clip
-// mute and track record delay, format 9 the cycle and format 10 track instruments with their state in base64, so older
-// projects load with no markers, centered tracks, linear fades, no sends, notes gathered from events, no automation in
-// Read mode, no inserts, every clip playing, no record delay, no cycle and no instruments.
-inline constexpr int kFormatVersion = 10;
+// mute and track record delay, format 9 the cycle, format 10 track instruments with their state in base64 and format 11
+// MIDI clip loops, so older projects load with no markers, centered tracks, linear fades, no sends, notes gathered from
+// events, no automation in Read mode, no inserts, every clip playing, no record delay, no cycle, no instruments and no
+// loops.
+inline constexpr int kFormatVersion = 11;
 
 nlohmann::json toJson(const Document& document);
 

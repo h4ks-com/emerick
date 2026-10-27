@@ -36,6 +36,26 @@ std::optional<Key> keyOf(const MidiEvent& event, bool on) {
     return Key{(event.bytes[0] & 0x0F) + 1, event.bytes[1]};
 }
 
+// Calls repeat(offset, end) for each pass through the content, where end is how much of the content that pass plays.
+template <class Repeat>
+void forEachRepeat(const MidiClip& clip, Repeat repeat) {
+    if (clip.length <= 0) {
+        return;
+    }
+    const Ticks span = clipSpan(clip);
+    for (Ticks offset = 0; offset < span; offset += clip.length) {
+        repeat(offset, std::min(clip.length, span - offset));
+    }
+}
+
+auto eventBefore(Ticks end) {
+    return [end](const MidiEvent& event) { return event.at >= 0 && event.at < end; };
+}
+
+auto noteBefore(Ticks end) {
+    return [end](const Note& note) { return note.start >= 0 && note.start < end; };
+}
+
 }  // namespace
 
 void gatherNotes(MidiClip& clip) {
@@ -68,6 +88,31 @@ void gatherNotes(MidiClip& clip) {
     clip.events = std::move(others);
 }
 
+bool looped(const MidiClip& clip) { return clip.length > 0 && clip.loopLength > clip.length; }
+
+Ticks clipSpan(const MidiClip& clip) { return looped(clip) ? clip.loopLength : clip.length; }
+
+MidiClip unrolled(const MidiClip& clip) {
+    MidiClip result = clip;
+    result.length = clipSpan(clip);
+    result.loopLength = 0;
+    result.events.clear();
+    result.notes.clear();
+    forEachRepeat(clip, [&](Ticks offset, Ticks end) {
+        for (const MidiEvent& event : clip.events | std::views::filter(eventBefore(end))) {
+            result.events.push_back({offset + event.at, event.bytes});
+        }
+        for (const Note& note : clip.notes | std::views::filter(noteBefore(end))) {
+            Note copy = note;
+            copy.id = offset == 0 ? note.id : NoteId::make();
+            copy.start += offset;
+            copy.length = std::min(note.start + note.length, end) - note.start;
+            result.notes.push_back(copy);
+        }
+    });
+    return result;
+}
+
 std::vector<MidiEvent> clipEvents(const MidiClip& clip) {
     struct Placed {
         int rank;
@@ -77,24 +122,21 @@ std::vector<MidiEvent> clipEvents(const MidiClip& clip) {
     constexpr int kOtherRank = 1;
     constexpr int kOnRank = 2;
     std::vector<Placed> placed;
-    for (const MidiEvent& event : clip.events) {
-        if (event.at >= 0 && event.at < clip.length) {
-            placed.push_back({kOtherRank, event});
+    forEachRepeat(clip, [&](Ticks offset, Ticks end) {
+        for (const MidiEvent& event : clip.events | std::views::filter(eventBefore(end))) {
+            placed.push_back({kOtherRank, {offset + event.at, event.bytes}});
         }
-    }
-    for (const Note& note : clip.notes) {
-        if (note.start < 0 || note.start >= clip.length) {
-            continue;
+        for (const Note& note : clip.notes | std::views::filter(noteBefore(end))) {
+            const auto key = static_cast<std::uint8_t>(note.pitch);
+            placed.push_back(
+                {kOnRank,
+                 {offset + note.start,
+                  {core::midi::statusFor(kNoteOn, note.channel), key, static_cast<std::uint8_t>(note.velocity)}}});
+            placed.push_back({kOffRank,
+                              {offset + std::min(note.start + note.length, end),
+                               {core::midi::statusFor(kNoteOff, note.channel), key, 0}}});
         }
-        const auto key = static_cast<std::uint8_t>(note.pitch);
-        placed.push_back(
-            {kOnRank,
-             {note.start,
-              {core::midi::statusFor(kNoteOn, note.channel), key, static_cast<std::uint8_t>(note.velocity)}}});
-        placed.push_back({kOffRank,
-                          {std::min(note.start + note.length, clip.length),
-                           {core::midi::statusFor(kNoteOff, note.channel), key, 0}}});
-    }
+    });
     std::ranges::stable_sort(placed, {}, [](const Placed& entry) { return std::pair{entry.event.at, entry.rank}; });
     return placed | std::views::transform(&Placed::event) | std::ranges::to<std::vector>();
 }

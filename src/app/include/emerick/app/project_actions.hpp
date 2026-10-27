@@ -54,6 +54,8 @@ void registerClipActions(Registry& registry, ProjectController& controller, Nav&
 void registerClipEditActions(Registry& registry, ProjectController& controller, Nav& nav);
 // Fade lengths, shapes and curves, and crossfades between overlapping audio clips.
 void registerFadeActions(Registry& registry, ProjectController& controller, Nav& nav);
+// Looping MIDI clips from the toggle and from the loop handle's drag.
+void registerClipLoopActions(Registry& registry, ProjectController& controller, Nav& nav);
 // The piano roll and every note action. Without a clip param they act on the piano roll's clip, and without notes on
 // its selected notes.
 void registerNoteActions(Registry& registry, ProjectController& controller, Nav& nav);

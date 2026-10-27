@@ -12,6 +12,7 @@
 #include "emerick/engine/effects.hpp"
 #include "emerick/model/automation.hpp"
 #include "emerick/model/controls.hpp"
+#include "emerick/model/midi_notes.hpp"
 
 namespace emerick::app {
 
@@ -161,6 +162,8 @@ Json clipState(const model::Clip& clip, const core::TempoMap& tempo, bool includ
                              Json result{{"id", midi.id.value}, {"type", "midi"}};
                              result.update(timing(midi.start, midi.length, tempo));
                              result["muted"] = midi.muted;
+                             result["loopLength"] = model::looped(midi) ? midi.loopLength : 0;
+                             result["loopEndBbt"] = tempo.toBarBeatTick(midi.start + model::clipSpan(midi)).format();
                              result["noteCount"] = midi.notes.size();
                              result["eventCount"] = midi.events.size();
                              if (includeEvents) {

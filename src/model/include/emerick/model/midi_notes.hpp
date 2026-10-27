@@ -13,8 +13,15 @@ inline constexpr int kMaxVelocity = 127;
 // until the end.
 void gatherNotes(MidiClip& clip);
 
-// The notes as note-ons and note-offs merged in time order with the other events inside the clip, as playback and
-// export send them. Every note ends by the clip end, and a note-off goes before a note-on at the same tick.
+bool looped(const MidiClip& clip);
+// How long the clip runs on the timeline, its repeats included.
+Ticks clipSpan(const MidiClip& clip);
+// The clip with each repeat written out as notes and events of its own, so it no longer loops.
+MidiClip unrolled(const MidiClip& clip);
+
+// The notes as note-ons and note-offs merged in time order with the other events inside the clip and its repeats, as
+// playback and export send them. Every note ends by the end of its repeat, and a note-off goes before a note-on at the
+// same tick.
 std::vector<MidiEvent> clipEvents(const MidiClip& clip);
 
 // Moves at toward the nearest multiple of grid by strength, from 0 (unchanged) to 1 (on the grid).

@@ -324,6 +324,17 @@ TEST_CASE("the cycle round trips, and a format 8 project loads with none") {
     CHECK_FALSE(old.cycle.active());
 }
 
+TEST_CASE("a MIDI clip's loop round trips, and a format 10 project loads with no loops") {
+    Document document = sampleDocument();
+    std::get<MidiClip>(document.tracks[0].clips[1]).loopLength = 5000;
+    CHECK(std::get<MidiClip>(documentFromJson(toJson(document)).tracks[0].clips[1]).loopLength == 5000);
+
+    auto json = toJson(document);
+    json["format"] = 10;
+    json["tracks"][0]["clips"][1].erase("loopLength");
+    CHECK(std::get<MidiClip>(documentFromJson(json).tracks[0].clips[1]).loopLength == 0);
+}
+
 TEST_CASE("set cycle undoes and redoes, and a cycle without length is never active") {
     Project project;
     project.setCycle({.enabled = true, .start = 0, .end = 3840}, "set cycle");

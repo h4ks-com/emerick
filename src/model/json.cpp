@@ -97,8 +97,13 @@ Note noteFromJson(const nlohmann::json& json) {
 
 // Projects before format 4 keep their notes as note-ons and note-offs among the events.
 MidiClip midiClipFromJson(const nlohmann::json& json) {
-    MidiClip clip{ClipId{json.at("id")},     json.at("start"), json.at("length"), json.at("events"), {},
-                  json.value("muted", false)};
+    MidiClip clip{ClipId{json.at("id")},
+                  json.at("start"),
+                  json.at("length"),
+                  json.at("events"),
+                  {},
+                  json.value("muted", false),
+                  json.value("loopLength", Ticks{0})};
     const auto notes = json.find("notes");
     if (notes == json.end()) {
         gatherNotes(clip);
@@ -159,7 +164,8 @@ nlohmann::json clipToJson(const Clip& clip) {
                                                 {"events", midi.events},
                                                 {"notes", midi.notes | std::views::transform(noteToJson) |
                                                               std::ranges::to<nlohmann::json::array_t>()},
-                                                {"muted", midi.muted}};
+                                                {"muted", midi.muted},
+                                                {"loopLength", midi.loopLength}};
                                     }},
                    clip);
     json["type"] = kClipTypes.at(clip.index()).name;

@@ -5,6 +5,7 @@
 #include <QQuickView>
 #include <QTest>
 #include <QWheelEvent>
+#include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 #include <cmath>
 #include <string>
@@ -424,4 +425,43 @@ TEST_CASE("dragging over empty lanes selects the clips the band touches, and Shi
     timeline.send(QEvent::MouseButtonRelease, below + left, Qt::NoButton, Qt::ShiftModifier);
     CHECK(timeline.rig.nav.selectedClips().size() == 3);
     CHECK(timeline.rig.nav.selectedClips().contains(QString::fromStdString(third)));
+}
+
+TEST_CASE("dragging a MIDI clip's loop handle repeats its content live in one undo step, and the lower edge resizes") {
+    Timeline& timeline = Timeline::instance();
+    while (!timeline.rig.controller->project().document().tracks.empty()) {
+        timeline.rig.run("track.remove",
+                         {{"track", timeline.rig.controller->project().document().tracks.front().id.value}});
+    }
+    const std::string track = timeline.rig.run("track.addMidi").at("id");
+    const std::string id = timeline.rig.run("midi.addClip", {{"track", track}, {"at", 0}}).at("id");
+    timeline.rig.run("midi.addNote", {{"clip", id}, {"pitch", 60}, {"start", 0}});
+    timeline.rig.nav.setScrollTicks(0);
+    Timeline::settle();
+    const auto midi = [&] {
+        return std::get<model::MidiClip>(*timeline.rig.controller->project().findClip(model::ClipId{id})->clip);
+    };
+    const QString handle = QString::fromStdString("clip.setLoopLength:" + id);
+    const double pixelsPerTick = timeline.rig.nav.pixelsPerTick();
+
+    const QPointF from = timeline.press(handle);
+    timeline.moveBy(from, {4000 * pixelsPerTick, 0});
+    CHECK(processUntil([&] { return midi().loopLength == 7680; }));
+    timeline.moveBy(from + QPointF{4000 * pixelsPerTick, 0}, {1900 * pixelsPerTick, 0});
+    CHECK(processUntil([&] { return midi().loopLength == 9600; }));
+    timeline.send(QEvent::MouseButtonRelease, from + QPointF{5900 * pixelsPerTick, 0}, Qt::NoButton, Qt::NoModifier);
+    Timeline::settle();
+    CHECK(midi().length == 3840);
+    CHECK(timeline.rig.controller->project().undoName() == "set loop length");
+    CHECK(timeline.item(QString::fromStdString("clip.repeat:" + id + ":2"))->width() ==
+          Catch::Approx(1920 * pixelsPerTick));
+
+    timeline.drag(QString::fromStdString("clip.resize:" + id + ":right"), -1900 * pixelsPerTick);
+    CHECK(midi().length == 1920);
+    CHECK(midi().loopLength == 9600);
+
+    timeline.rig.run("project.undo");
+    timeline.rig.run("project.undo");
+    CHECK(midi().loopLength == 0);
+    Timeline::settle();
 }

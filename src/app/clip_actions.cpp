@@ -2,6 +2,7 @@
 #include <algorithm>
 #include <expected>
 #include <filesystem>
+#include <optional>
 #include <ranges>
 #include <string>
 #include <utility>
@@ -10,6 +11,7 @@
 
 #include "emerick/app/action_params.hpp"
 #include "emerick/app/audio_file.hpp"
+#include "emerick/app/midi_import.hpp"
 #include "emerick/app/project_actions.hpp"
 #include "emerick/app/project_state.hpp"
 #include "emerick/core/overloaded.hpp"
@@ -89,21 +91,66 @@ void select(const ProjectController& controller, Nav& nav, const std::vector<mod
     }
 }
 
-Json importClip(const Registry& registry, ProjectController& controller, const Nav& nav, const Json& params) {
-    const model::TrackId id = targetTrack(controller, nav, params);
+model::TrackId addedTrack(const Registry& registry, const std::string& action, const std::string& name) {
+    return model::TrackId{registry.run(action, {{"name", name}}).at("id").get<std::string>()};
+}
+
+model::TrackId trackOfType(const Registry& registry, const ProjectController& controller, const model::TrackId& id,
+                           ClipType type, const std::string& label) {
     const model::Track& track = *controller.project().track(id);
-    const TrackType* type = registry.trackType(track.kind);
-    if (type == nullptr || !type->routes.audio) {
-        throw AppError("track " + track.name + " is not an audio track");
+    if (clipTypeOf(registry.trackType(track.kind)) != type) {
+        throw AppError("track " + track.name + " is not " + label + " track");
     }
+    return id;
+}
+
+Json importClip(const Registry& registry, ProjectController& controller, const Nav& nav, const Json& params) {
+    const bool newTrack = optionalParam<bool>(params, "newTrack").value_or(false);
+    const std::optional<model::TrackId> target =
+        newTrack ? std::nullopt
+                 : std::optional{trackOfType(registry, controller, targetTrack(controller, nav, params),
+                                             ClipType::audio, "an audio")};
     const std::filesystem::path source = registry.checkedPath(param<std::string>(params, "path"), PathAccess::Read);
     const core::TempoMap& tempo = controller.project().document().tempo;
     model::AudioClip clip = clipFromFile(source, controller.folder(), optionalPosition(params, "at", tempo).value_or(0),
                                          tempo, controller.sampleRate());
     const model::ClipId clipId = clip.id;
-    controller.project().editTrack(id, "import " + source.filename().string(),
-                                   [&](model::Track& edited) { edited.clips.emplace_back(std::move(clip)); });
+    const std::string name = "import " + source.filename().string();
+    controller.project().group(name, [&] {
+        const model::TrackId id = target ? *target : addedTrack(registry, "track.addAudio", source.stem().string());
+        controller.project().editTrack(id, name,
+                                       [&](model::Track& edited) { edited.clips.emplace_back(std::move(clip)); });
+    });
     return clipResult(controller, clipId);
+}
+
+// A file with one part goes onto the given MIDI track; otherwise each part gets a new MIDI track named after it.
+Json importMidi(const Registry& registry, ProjectController& controller, const Json& params) {
+    const std::optional<model::TrackId> target =
+        params.contains("track")
+            ? std::optional{trackOfType(registry, controller, trackParam(controller.project(), params), ClipType::midi,
+                                        "a MIDI")}
+            : std::nullopt;
+    const std::filesystem::path source = registry.checkedPath(param<std::string>(params, "path"), PathAccess::Read);
+    const core::TempoMap& tempo = controller.project().document().tempo;
+    const core::Ticks at = optionalPosition(params, "at", tempo).value_or(0);
+    std::vector<MidiPart> parts = readMidiParts(source, source.stem().string(), tempo.ticksPerBar());
+    if (parts.empty()) {
+        throw AppError(source.filename().string() + " has no notes");
+    }
+    std::vector<model::ClipId> ids;
+    const std::string name = "import " + source.filename().string();
+    controller.project().group(name, [&] {
+        for (MidiPart& part : parts) {
+            part.clip.start = at;
+            ids.push_back(part.clip.id);
+            const model::TrackId id =
+                target && parts.size() == 1 ? *target : addedTrack(registry, "track.addMidi", part.name);
+            controller.project().editTrack(
+                id, name, [&](model::Track& edited) { edited.clips.emplace_back(std::move(part.clip)); });
+        }
+    });
+    return clipResults(controller, ids);
 }
 
 Json splitClips(ProjectController& controller, const Nav& nav, const Json& params) {
@@ -393,12 +440,25 @@ void registerClipActions(Registry& registry, ProjectController& controller, Nav&
          .title = "Import audio file",
          .aliases = {"add audio file", "import clip"},
          .category = "Clips",
-         .schema = {{"required", {"path"}}, {"properties", {{"track", {{"type", "string"}}}, {"at", Json::object()}}}},
+         .schema = {{"required", {"path"}},
+                    {"properties",
+                     {{"track", {{"type", "string"}}}, {"at", Json::object()}, {"newTrack", {{"type", "boolean"}}}}}},
          .run = [&registry, &controller,
                  &nav](const Json& params) { return importClip(registry, controller, nav, params); },
          .menus = {kTrackMenu},
-         .dialog = FileDialog{
-             .param = "path", .mode = FileDialogMode::Open, .nameFilter = "Audio files (*.wav *.aif *.aiff *.flac)"}});
+         .dialog = FileDialog{.param = "path",
+                              .mode = FileDialogMode::Open,
+                              .nameFilter = "Audio files (*.wav *.aif *.aiff *.flac *.ogg *.oga *.mp3)"}});
+    registry.addAction(
+        {.id = "midi.import",
+         .title = "Import MIDI file",
+         .aliases = {"open midi file", "add midi file"},
+         .category = "Clips",
+         .schema = {{"required", {"path"}}, {"properties", {{"track", {{"type", "string"}}}, {"at", Json::object()}}}},
+         .run = [&registry, &controller](const Json& params) { return importMidi(registry, controller, params); },
+         .menus = {kTrackMenu},
+         .dialog =
+             FileDialog{.param = "path", .mode = FileDialogMode::Open, .nameFilter = "MIDI files (*.mid *.midi)"}});
     registry.addAction({.id = "project.clipEvents",
                         .title = "Show clip notes and MIDI events",
                         .category = "Clips",

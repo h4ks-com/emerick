@@ -78,8 +78,11 @@ void writeWav(const std::filesystem::path& path, const std::vector<std::vector<f
 model::AudioClip clipFromFile(const std::filesystem::path& source, const std::filesystem::path& folder,
                               core::Ticks start, const core::TempoMap& tempo, double sampleRate) {
     const auto info = readAudioInfo(source);
-    if (!info || info->frames == 0) {
-        throw AppError("cannot read audio from " + source.string());
+    if (!info) {
+        throw AppError("cannot open " + source.filename().string() + " as audio: " + sf_strerror(nullptr));
+    }
+    if (info->frames == 0) {
+        throw AppError(source.filename().string() + " holds no audio");
     }
     if (info->sampleRate != std::lround(sampleRate)) {
         throw AppError("the file runs at " + std::to_string(info->sampleRate) + " Hz and the project at " +

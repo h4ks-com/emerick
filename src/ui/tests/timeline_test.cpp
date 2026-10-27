@@ -1,3 +1,5 @@
+#include <QDropEvent>
+#include <QMimeData>
 #include <QMouseEvent>
 #include <QQmlContext>
 #include <QQmlProperty>
@@ -13,6 +15,7 @@
 
 #include "emerick/app/core_actions.hpp"
 #include "emerick/app/qml_exposure.hpp"
+#include "emerick/model/clip_edit.hpp"
 #include "project_rig.hpp"
 
 using namespace emerick;
@@ -463,5 +466,51 @@ TEST_CASE("dragging a MIDI clip's loop handle repeats its content live in one un
     timeline.rig.run("project.undo");
     timeline.rig.run("project.undo");
     CHECK(midi().loopLength == 0);
+    Timeline::settle();
+}
+
+TEST_CASE("dropping files on a lane imports them at the pointer onto that track and new ones, as one undo step") {
+    Timeline& timeline = Timeline::instance();
+    ProjectRig& rig = timeline.rig;
+    while (!rig.controller->project().document().tracks.empty()) {
+        rig.run("track.remove", {{"track", rig.controller->project().document().tracks.front().id.value}});
+    }
+    const std::string keys = rig.run("track.addMidi", {{"name", "Keys"}}).at("id");
+    const std::string notes = rig.run("midi.addClip", {{"track", keys}, {"at", 0}}).at("id");
+    rig.run("midi.addNote", {{"clip", notes}, {"pitch", 60}, {"start", 0}});
+    rig.run("export.midi", {{"path", rig.path("song.mid").string()}});
+    rig.run("track.remove", {{"track", keys}});
+    const std::string vox = rig.run("track.addAudio", {{"name", "Vox"}}).at("id");
+    writeConstant(rig.path("take.wav"), 48000, 0.5F);
+    rig.nav.setScrollTicks(0);
+    Timeline::settle();
+    QQuickItem* lane = timeline.item(QString::fromStdString("lane:" + vox));
+    const double pixelsPerTick = rig.nav.pixelsPerTick();
+    const QPointF at = lane->mapToScene({1000 * pixelsPerTick, lane->height() / 2});
+    QMimeData files;
+    files.setUrls({QUrl::fromLocalFile(QString::fromStdString(rig.path("take.wav").string())),
+                   QUrl::fromLocalFile(QString::fromStdString(rig.path("song.mid").string()))});
+
+    QDragEnterEvent enter{at, Qt::CopyAction, &files, Qt::LeftButton, Qt::NoModifier};
+    QCoreApplication::sendEvent(&timeline.view, &enter);
+    QDragMoveEvent move{at, Qt::CopyAction, &files, Qt::LeftButton, Qt::NoModifier};
+    QCoreApplication::sendEvent(&timeline.view, &move);
+    CHECK(timeline.item("tracks.fileDropTarget")->isVisible());
+    QDropEvent drop{at, Qt::CopyAction, &files, Qt::LeftButton, Qt::NoModifier};
+    QCoreApplication::sendEvent(&timeline.view, &drop);
+    Timeline::settle();
+
+    const auto& tracks = rig.controller->project().document().tracks;
+    REQUIRE(tracks.size() == 2);
+    REQUIRE(tracks[0].clips.size() == 1);
+    CHECK(model::clipStart(tracks[0].clips[0]) == 960);
+    CHECK(tracks[1].name == "Keys");
+    REQUIRE(tracks[1].clips.size() == 1);
+    CHECK(model::clipStart(tracks[1].clips[0]) == 960);
+    CHECK(rig.controller->project().undoName() == "import files");
+    rig.run("project.undo");
+    CHECK(rig.controller->project().document().tracks.size() == 1);
+    // The list deletes the removed track's row after a frame, and that delete must run before the app exits.
+    QTest::qWait(100);
     Timeline::settle();
 }

@@ -54,6 +54,28 @@ Rectangle {
         return item !== null && item.clipType === type
     }
 
+    // Dropped files go one per track from the row under the pointer; a file whose row is missing or takes another kind
+    // of clip gets a new track.
+    function importFiles(urls, firstRow, at) {
+        const calls = Array.from(urls).map((url, index) => {
+            const path = Registry.localPath(url)
+            const midi = /\.midi?$/i.test(path)
+            const row = firstRow + index
+            const params = {path: path, at: at}
+            if (row < list.count && area.rowAccepts(row, midi ? "midi" : "audio")) {
+                params.track = area.trackIdAt(row)
+            } else if (!midi) {
+                params.newTrack = true
+            }
+            return {id: midi ? "midi.import" : "clip.import", params: params}
+        })
+        if (calls.length === 1) {
+            Registry.runAction(calls[0].id, calls[0].params)
+        } else {
+            Registry.runActions("import files", calls)
+        }
+    }
+
     function openClipMenu() {
         clipMenu.popup()
     }
@@ -434,6 +456,44 @@ Rectangle {
         width: area.width
         height: Theme.selectionWidth
         color: Theme.ink
+    }
+
+    DropArea {
+        id: fileDrop
+        objectName: "tracks.fileDrop"
+        anchors.fill: list
+        property int row: -1
+        property int files: 0
+        property real at: 0
+
+        function follow(drag) {
+            row = Math.max(0, Math.floor((drag.y + list.contentY) / Nav.trackHeight))
+            at = Project.placed(Math.round(area.scrollTicks + Math.max(0, drag.x - area.headerWidth) / area.pixelsPerTick),
+                                Qt.NoModifier)
+        }
+
+        onEntered: drag => {
+            drag.accepted = drag.hasUrls
+            files = drag.urls.length
+            follow(drag)
+        }
+        onPositionChanged: drag => follow(drag)
+        onDropped: drop => {
+            drop.acceptProposedAction()
+            area.importFiles(drop.urls, row, at)
+        }
+    }
+
+    Rectangle {
+        objectName: "tracks.fileDropTarget"
+        visible: fileDrop.containsDrag
+        x: Math.max(area.headerWidth, area.xOf(fileDrop.at))
+        y: area.lanesTop + fileDrop.row * Nav.trackHeight - list.contentY
+        width: area.width - x
+        height: fileDrop.files * Nav.trackHeight
+        color: Theme.glow(Theme.tape)
+        border.width: Theme.selectionWidth
+        border.color: Theme.tape
     }
 
     Rectangle {

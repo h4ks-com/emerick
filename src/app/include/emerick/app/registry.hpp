@@ -348,6 +348,8 @@ public:
     Q_INVOKABLE void cancelGesture();
     // Runs the action with the file a dialog picked as its dialog param.
     Q_INVOKABLE QVariant runWithFile(const QString& id, const QUrl& file) const;
+    // The path of a file URL, such as one dropped from the Finder, to pass as an action's path param.
+    Q_INVOKABLE static QString localPath(const QUrl& file) { return file.toLocalFile(); }
     Q_INVOKABLE bool setSettingValue(const QString& id, const QVariant& value);
 
 signals:

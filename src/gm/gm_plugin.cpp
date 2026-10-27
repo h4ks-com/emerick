@@ -32,6 +32,18 @@ using emerick::gm::wantedSoundFont;
 constexpr const char* kSoundFontFile = "GeneralUser-GS.sf2";
 constexpr int kDrumChannel = 9;
 constexpr int kChannels = 16;
+constexpr int kBankSelect = 0;
+
+// Yamaha and Roland modules select a drum kit on any channel with these bank select MSBs.
+constexpr bool isDrumBank(int msb) { return msb == 120 || msb == 126 || msb == 127; }
+
+void selectBank(fluid_synth_t* synth, int channel, int msb) {
+    if (isDrumBank(msb)) {
+        fluid_synth_set_channel_type(synth, channel, CHANNEL_TYPE_DRUM);
+    } else if (channel != kDrumChannel) {
+        fluid_synth_set_channel_type(synth, channel, CHANNEL_TYPE_MELODIC);
+    }
+}
 
 bool activate(const clap_plugin* plugin, double sampleRate, std::uint32_t /*unused*/, std::uint32_t /*unused*/) {
     Gm& gm = gmOf(plugin);
@@ -79,6 +91,9 @@ void playMidi(fluid_synth_t* synth, const std::array<std::uint8_t, 3>& data) {
             fluid_synth_key_pressure(synth, channel, first, second);
             break;
         case 0xB0:
+            if (first == kBankSelect) {
+                selectBank(synth, channel, second);
+            }
             fluid_synth_cc(synth, channel, first, second);
             break;
         case 0xC0:
@@ -113,6 +128,7 @@ void sendPrograms(Gm& gm) {
     const int sound = gm.sound.load(std::memory_order_relaxed);
     for (const int channel : std::views::iota(0, kChannels)) {
         if (channel != kDrumChannel) {
+            fluid_synth_set_channel_type(synth, channel, CHANNEL_TYPE_MELODIC);
             fluid_synth_bank_select(synth, channel, 0);
             fluid_synth_program_change(synth, channel, sound);
         }

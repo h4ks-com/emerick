@@ -142,6 +142,25 @@ TEST_CASE("channel 10 plays the drum kit") {
     CHECK(zeroCrossings(hiHat) > 4 * zeroCrossings(keys));
 }
 
+TEST_CASE("bank select MSB 127 plays a drum kit on any channel until a melodic bank is selected") {
+    const std::vector<float> keys = render({{0x98, 42, 100}});
+    const std::vector<float> hiHat = render({{0xB8, 0, 127}, {0xC8, 0, 0}, {0x98, 42, 100}});
+    REQUIRE(loudest(hiHat) > 0.01F);
+    CHECK(zeroCrossings(hiHat) > 4 * zeroCrossings(keys));
+    const std::vector<float> back = render({{0xB8, 0, 127}, {0xC8, 0, 0}, {0xB8, 0, 0}, {0xC8, 0, 0}, {0x98, 42, 100}});
+    CHECK(differenceEnergy(back, keys) < 0.01 * energy(keys));
+}
+
+TEST_CASE("a drum bank select on channel 10 keeps the drums, and a kit the SoundFont lacks plays the Standard kit") {
+    const std::vector<float> standard = render({{0x99, 42, 100}});
+    for (const std::uint8_t channel : {std::uint8_t{8}, std::uint8_t{9}}) {
+        const auto status = [&](int kind) { return static_cast<std::uint8_t>(kind | channel); };
+        const std::vector<float> missingKit =
+            render({{status(0xB0), 0, 127}, {status(0xB0), 32, 0}, {status(0xC0), 100, 0}, {status(0x90), 42, 100}});
+        CHECK(differenceEnergy(missingKit, standard) < 0.01 * energy(standard));
+    }
+}
+
 TEST_CASE(
     "the instrument saves its SoundFont path, sound and drum kit, and reads a plain path as older projects saved") {
     const std::shared_ptr<ClapInstrument> instrument = generalMidi();

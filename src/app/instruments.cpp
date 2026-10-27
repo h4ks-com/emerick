@@ -1,5 +1,6 @@
 #include "emerick/app/instruments.hpp"
 
+#include <QGuiApplication>
 #include <QObject>
 #include <ranges>
 #include <utility>
@@ -119,6 +120,9 @@ void Instruments::showEditor(const model::TrackId& id, const std::string& title)
     }
     auto window = std::make_unique<QWindow>();
     window->setTitle(qs(title));
+    // A tool window floats over the app's windows, as plugin windows do in other DAWs.
+    window->setFlag(Qt::Tool);
+    window->setTransientParent(QGuiApplication::focusWindow());
     // Qt hands out the native view of a window as an integer, and the plugin embeds into that view.
     const auto size =
         instrument.embedEditor(reinterpret_cast<void*>(window->winId()));  // NOLINT(performance-no-int-to-ptr)

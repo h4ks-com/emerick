@@ -71,12 +71,13 @@ void allocatePorts(const std::vector<std::uint32_t>& channels, core::Frames maxF
     }
 }
 
-bool prefersClapNotes(const ClapPluginProxy& proxy) {
-    if (!proxy.canUseNotePorts() || proxy.notePortsCount(true) == 0) {
-        return true;
-    }
+// The dialects of the plugin's first note input; a plugin without note ports reads CLAP notes.
+std::uint32_t noteDialects(const ClapPluginProxy& proxy) {
     clap_note_port_info info{};
-    return !proxy.notePortsGet(0, true, &info) || (info.supported_dialects & CLAP_NOTE_DIALECT_CLAP) != 0;
+    if (!proxy.canUseNotePorts() || proxy.notePortsCount(true) == 0 || !proxy.notePortsGet(0, true, &info)) {
+        return CLAP_NOTE_DIALECT_CLAP;
+    }
+    return info.supported_dialects;
 }
 
 }  // namespace
@@ -202,6 +203,10 @@ ClapInstrument::~ClapInstrument() {
 
 const std::string& ClapInstrument::name() const { return impl_->name; }
 
+bool ClapInstrument::producesMidi() const {
+    return impl_->proxy->canUseNotePorts() && impl_->proxy->notePortsCount(false) > 0;
+}
+
 bool ClapInstrument::activate(double sampleRate, core::Frames maxFrames) {
     Impl& impl = *impl_;
     if (impl.active && impl.sampleRate == sampleRate && impl.maxFrames == maxFrames) {
@@ -210,7 +215,9 @@ bool ClapInstrument::activate(double sampleRate, core::Frames maxFrames) {
     const AudioGuard guard(impl.audioGuard);
     impl.deactivate();
     impl.allocateBuffers(maxFrames);
-    impl.clapNotes = prefersClapNotes(*impl.proxy);
+    const std::uint32_t dialects = noteDialects(*impl.proxy);
+    impl.clapNotes = (dialects & CLAP_NOTE_DIALECT_CLAP) != 0;
+    impl.takesSysex = (dialects & CLAP_NOTE_DIALECT_MIDI) != 0;
     impl.sampleRate = sampleRate;
     impl.maxFrames = maxFrames;
     impl.active = impl.proxy->activate(sampleRate, 1, static_cast<std::uint32_t>(maxFrames));

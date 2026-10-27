@@ -45,7 +45,7 @@ model::Track styleTrack() {
     model::Track style;
     style.kind = "test.style";
     style.name = "Style";
-    style.midiOut = {kMidiPort, 0, false, false};
+    style.midiOut = {kMidiPort, 0, false, false, {}};
     return style;
 }
 
@@ -121,7 +121,7 @@ TEST_CASE("the chase setting turns the core MIDI chase off") {
     model::Track keys;
     keys.kind = "midi";
     keys.name = "Keys";
-    keys.midiOut = {kMidiPort, 1, false, false};
+    keys.midiOut = {kMidiPort, 1, false, false, {}};
     keys.clips.emplace_back(model::MidiClip{.length = 2 * kBar, .events = {{0, {0xC0, 7}}}});
     rig.controller->project().addTrack(keys);
     rig.controller->locate(kBar);

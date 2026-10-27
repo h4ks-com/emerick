@@ -2,6 +2,7 @@
 
 #include <clap/clap.h>
 
+#include <algorithm>
 #include <array>
 #include <atomic>
 #include <chrono>
@@ -11,6 +12,7 @@
 #include <cstdint>
 #include <memory>
 #include <optional>
+#include <span>
 #include <string>
 #include <thread>
 #include <vector>
@@ -28,11 +30,38 @@ using ClapPluginProxy = clap::helpers::PluginProxy<kClapMisbehaviour, kClapCheck
 
 inline constexpr std::size_t kMaxQueuedMidi = 1024;
 inline constexpr std::size_t kMaxQueuedParams = 64;
+// Every queued or produced message keeps its bytes in a pool this large per block, so a sysex needs no allocation.
+inline constexpr std::size_t kMidiPoolBytes = std::size_t{1} << 16;
 
 struct QueuedMidi {
     std::int64_t timestampNs = 0;
-    std::array<std::uint8_t, 3> bytes{};
-    std::uint8_t size = 0;
+    std::size_t offset = 0;
+    std::size_t size = 0;
+};
+
+// Fixed buffers for a block's MIDI messages and their bytes, so the audio thread never allocates for them.
+template <class Message>
+struct MidiPool {
+    std::array<Message, kMaxQueuedMidi> messages{};
+    std::size_t count = 0;
+    std::array<std::uint8_t, kMidiPoolBytes> bytes{};
+    std::size_t used = 0;
+
+    // Copies bytes into the pool; nullopt when the messages or the bytes are full.
+    std::optional<std::span<const std::uint8_t>> store(std::span<const std::uint8_t> message) {
+        if (count == messages.size() || message.size() > bytes.size() - used) {
+            return std::nullopt;
+        }
+        const auto stored = std::span(bytes).subspan(used, message.size());
+        std::ranges::copy(message, stored.begin());
+        used += message.size();
+        return stored;
+    }
+
+    void clear() {
+        count = 0;
+        used = 0;
+    }
 };
 
 struct QueuedParam {
@@ -93,6 +122,8 @@ struct ClapInstrument::Impl final : ClapHostBase {
     // The event list holds the collected events, and the output list marks params changed by the plugin itself.
     clap_input_events inputEvents();
     clap_output_events outputEvents();
+    // Audio thread: also collects the notes, MIDI and sysex the plugin sends into produced.
+    clap_output_events processOutputEvents();
 
     std::thread::id mainThread = std::this_thread::get_id();
     std::shared_ptr<ClapLibrary> library;
@@ -120,18 +151,22 @@ struct ClapInstrument::Impl final : ClapHostBase {
     double sampleRate = 0.0;
     core::Frames maxFrames = 0;
     bool clapNotes = true;
+    bool takesSysex = false;
     std::vector<PortBuffers> inputPorts;
     std::vector<PortBuffers> outputPorts;
     std::vector<clap_audio_buffer> inputBuffers;
     std::vector<clap_audio_buffer> outputBuffers;
-    std::array<QueuedMidi, kMaxQueuedMidi> queued{};
-    std::size_t queuedCount = 0;
+    MidiPool<QueuedMidi> queued;
     std::array<clap_event_note, kMaxQueuedMidi> notes{};
     std::array<clap_event_midi, kMaxQueuedMidi> midi{};
+    std::array<clap_event_midi_sysex, kMaxQueuedMidi> sysex{};
     std::array<clap_event_param_value, kMaxQueuedParams> paramEvents{};
     std::size_t paramEventCount = 0;
     std::array<const clap_event_header*, kMaxQueuedMidi + kMaxQueuedParams> events{};
     std::size_t eventCount = 0;
+
+    // Only the audio thread touches these, in and after processBlock.
+    MidiPool<InstrumentMidi> produced;
 
     // Main thread only.
     bool editorOpen = false;

@@ -151,10 +151,11 @@ void registerSendEdits(Registry& registry, ProjectController& controller, const 
 void removeTrack(ProjectController& controller, const model::TrackId& id) {
     model::Project& project = controller.project();
     const std::string name = "remove track " + project.track(id)->name;
-    const auto feeding = project.document().tracks | std::views::filter([&](const model::Track& track) {
-                             return std::ranges::contains(model::busesFedBy(track), id);
-                         }) |
-                         std::views::transform(&model::Track::id) | std::ranges::to<std::vector>();
+    const auto feeding =
+        project.document().tracks | std::views::filter([&](const model::Track& track) {
+            return std::ranges::contains(model::busesFedBy(track), id) || track.midiIn.sourceTrack == id;
+        }) |
+        std::views::transform(&model::Track::id) | std::ranges::to<std::vector>();
     project.group(name, [&] {
         for (const model::TrackId& track : feeding) {
             project.editTrack(track, name, [&](model::Track& edited) {
@@ -163,6 +164,9 @@ void removeTrack(ProjectController& controller, const model::TrackId& id) {
                               [&](const model::AutomationLane& lane) { return lane.param == sendParamId(id); });
                 if (edited.outputBus == id) {
                     edited.outputBus = {};
+                }
+                if (edited.midiIn.sourceTrack == id) {
+                    edited.midiIn.sourceTrack = {};
                 }
             });
         }

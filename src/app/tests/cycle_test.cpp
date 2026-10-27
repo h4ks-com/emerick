@@ -86,7 +86,7 @@ TEST_CASE("an audible hooked track moves the cycle start to its alignment, and e
     model::Track style;
     style.kind = "test.style";
     style.name = "Style";
-    style.midiOut = {kMidiPort, 0, false, false};
+    style.midiOut = {kMidiPort, 0, false, false, {}};
     rig.controller->project().addTrack(style);
     rig.controller->project().setClockPorts({kMidiPort});
     rig.run("cycle.set", {{"start", kBar + (kBar / 2)}, {"end", 2 * kBar}, {"enabled", true}});

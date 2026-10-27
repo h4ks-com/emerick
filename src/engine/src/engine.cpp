@@ -36,7 +36,7 @@ bool listensToAudioInput(const Track& track) { return track.armed || track.monit
 bool listensLive(const Session& session) {
     return (session.clockWhileStopped && !session.clockPorts.empty()) ||
            std::ranges::any_of(session.tracks, [](const Track& track) {
-               return listensToAudioInput(track) || !track.midiIn.portId.empty();
+               return listensToAudioInput(track) || !track.midiIn.portId.empty() || !track.midiInTrack.empty();
            });
 }
 

@@ -19,9 +19,24 @@ namespace emerick::model {
 
 // NOLINTBEGIN(modernize-use-constraints): the nlohmann macro expands to enable_if
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(AudioRoute, deviceId, channels)
-NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(MidiRoute, portId, channel, thru, sysex)
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(MidiEvent, at, bytes)
 // NOLINTEND(modernize-use-constraints)
+
+void to_json(nlohmann::json& json, const MidiRoute& route) {
+    json = {{"portId", route.portId},
+            {"channel", route.channel},
+            {"thru", route.thru},
+            {"sysex", route.sysex},
+            {"sourceTrack", route.sourceTrack.value}};
+}
+
+void from_json(const nlohmann::json& json, MidiRoute& route) {
+    route = {.portId = json.at("portId"),
+             .channel = json.at("channel"),
+             .thru = json.at("thru"),
+             .sysex = json.at("sysex"),
+             .sourceTrack = TrackId{json.value("sourceTrack", std::string{})}};
+}
 
 namespace {
 

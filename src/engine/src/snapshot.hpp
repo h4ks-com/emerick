@@ -104,6 +104,8 @@ struct TrackState {
     std::vector<int> outputs;
     std::vector<const float*> inputPointers;
     std::shared_ptr<MidiInputPort> midiIn;
+    // The index of the track whose instrument's MIDI this track takes in place of midiIn.
+    std::optional<std::size_t> midiSource;
     int inChannel = 0;
     std::shared_ptr<MidiOutputPort> midiOut;
     int outChannel = 0;
@@ -156,6 +158,9 @@ struct Snapshot {
     std::vector<TrackState> tracks;
     // Track indices with every track before the buses it plays into, so a bus mixes after all its sources.
     std::vector<std::size_t> mixOrder;
+    // Track indices with an instrument, each after the track it takes MIDI from, so that MIDI reaches it in the same
+    // block.
+    std::vector<std::size_t> instrumentOrder;
     std::vector<std::shared_ptr<MidiOutputPort>> clockPorts;
     // Every output port the tracks, the clock and the metronome use, once each.
     std::vector<std::shared_ptr<MidiOutputPort>> outputs;

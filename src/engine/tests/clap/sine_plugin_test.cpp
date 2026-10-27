@@ -1,4 +1,5 @@
-// A tiny CLAP instrument for the tests: one sine voice at the last note held, scaled by a level param its state saves.
+// A tiny CLAP instrument for the tests: one sine voice at the last note held, scaled by a level param its state saves,
+// that echoes what it gets on its note output.
 // Built with EMERICK_TEST_CRASH or EMERICK_TEST_HANG, its entry crashes or hangs, as a broken plugin would.
 
 #include <clap/clap.h>
@@ -61,6 +62,16 @@ void handle(Synth& synth, const clap_event_header* header) {
     }
 }
 
+void echo(const clap_event_header* header, const clap_output_events* out) {
+    if (header->space_id != CLAP_CORE_EVENT_SPACE_ID) {
+        return;
+    }
+    if (header->type == CLAP_EVENT_NOTE_ON || header->type == CLAP_EVENT_NOTE_OFF || header->type == CLAP_EVENT_MIDI ||
+        header->type == CLAP_EVENT_MIDI_SYSEX) {
+        out->try_push(out, header);
+    }
+}
+
 clap_process_status process(const clap_plugin* plugin, const clap_process* process) {
     Synth& synth = synthOf(plugin);
     const std::uint32_t events = process->in_events->size(process->in_events);
@@ -73,6 +84,7 @@ clap_process_status process(const clap_plugin* plugin, const clap_process* proce
                 break;
             }
             handle(synth, header);
+            echo(header, process->out_events);
             ++next;
         }
         float sample = 0.0F;
@@ -104,17 +116,17 @@ bool audioPortGet(const clap_plugin*, std::uint32_t index, bool isInput, clap_au
 
 const clap_plugin_audio_ports kAudioPorts{audioPortCount, audioPortGet};
 
-std::uint32_t notePortCount(const clap_plugin*, bool isInput) { return isInput ? 1 : 0; }
+std::uint32_t notePortCount(const clap_plugin*, bool) { return 1; }
 
 bool notePortGet(const clap_plugin*, std::uint32_t index, bool isInput, clap_note_port_info* info) {
-    if (!isInput || index != 0) {
+    if (index != 0) {
         return false;
     }
     *info = {};
     info->id = 0;
     info->supported_dialects = CLAP_NOTE_DIALECT_CLAP | CLAP_NOTE_DIALECT_MIDI;
     info->preferred_dialect = CLAP_NOTE_DIALECT_CLAP;
-    std::strncpy(info->name, "Notes", sizeof(info->name));
+    std::strncpy(info->name, isInput ? "Notes" : "Echo", sizeof(info->name));
     return true;
 }
 

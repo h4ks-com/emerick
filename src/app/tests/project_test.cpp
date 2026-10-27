@@ -180,8 +180,8 @@ TEST_CASE("the session mapping turns the document into engine tracks") {
     model::Track midi;
     midi.kind = "midi";
     midi.audioIn = {"interface", {1}};
-    midi.midiIn = {kMidiPort, 2, false, true};
-    midi.midiOut = {kMidiPort, 3, true, false};
+    midi.midiIn = {kMidiPort, 2, false, true, {}};
+    midi.midiOut = {kMidiPort, 3, true, false, {}};
     model::MidiClip notes;
     notes.start = 480;
     notes.length = 960;
@@ -416,7 +416,7 @@ TEST_CASE("a plugin track kind renders to MIDI and folds takes into its data") {
     model::Track chord;
     chord.kind = "test.chord";
     chord.name = "Chords";
-    chord.midiIn = {kMidiPort, 0, false, false};
+    chord.midiIn = {kMidiPort, 0, false, false, {}};
     chord.data = {{"root", 62}};
     rig.controller->project().addTrack(chord);
 

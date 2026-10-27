@@ -25,7 +25,7 @@ std::vector<QString> menuTitles(const app::Registry& registry, const QString& me
 std::string chordTrackOnKeyboard(YamahaRig& rig) {
     const std::string id = rig.addTrack("yamaha.chord");
     rig.controller->project().editTrack(model::TrackId{id}, "route", [](model::Track& track) {
-        track.midiIn = {.portId = app::test::kMidiPort, .channel = 0, .thru = false, .sysex = false};
+        track.midiIn = {.portId = app::test::kMidiPort, .channel = 0, .thru = false, .sysex = false, .sourceTrack = {}};
     });
     return id;
 }

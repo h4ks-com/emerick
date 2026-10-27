@@ -107,10 +107,11 @@ target_link_libraries(emerick_ui PRIVATE Qt6::Quick Qt6::QuickControls2)
 
 if(EMERICK_BUILD_TESTS)
     # QML singletons register once per process, so each test that loads a view gets its own binary.
-    foreach(name automation console cycle editing effects file_menu instrument meter mixer picker piano_roll recording timeline tooltips transport_bar value_controls)
+    foreach(name automation console cycle editing effects file_menu instrument meter midi_source mixer picker piano_roll recording timeline tooltips transport_bar value_controls)
         emerick_test(emerick_ui_${name}_tests tests/${name}_test.cpp)
         target_include_directories(emerick_ui_${name}_tests PRIVATE ${PROJECT_SOURCE_DIR}/src/app/tests)
         target_link_libraries(emerick_ui_${name}_tests PRIVATE emerick_app emerick_uiplugin Qt6::Quick Qt6::Test)
     endforeach()
     target_link_libraries(emerick_ui_instrument_tests PRIVATE emerick_test_clap emerick_gm_clap)
+    target_link_libraries(emerick_ui_midi_source_tests PRIVATE emerick_test_clap)
 endif()

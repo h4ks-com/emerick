@@ -38,12 +38,14 @@ struct AudioRoute {
     bool operator==(const AudioRoute&) const = default;
 };
 
-// Channel 0 is all channels, 1 to 16 one channel. The track with sysex set claims sysex from the port.
+// Channel 0 is all channels, 1 to 16 one channel. The track with sysex set claims sysex from the port. An input with a
+// source track takes the MIDI that track's instrument sends in place of a port's.
 struct MidiRoute {
     std::string portId;
     int channel = 0;
     bool thru = false;
     bool sysex = false;
+    TrackId sourceTrack;
 
     bool operator==(const MidiRoute&) const = default;
 };

@@ -111,6 +111,56 @@ void connectBuses(Snapshot& snapshot, const Session& session, std::vector<Sessio
     }
 }
 
+bool inMidiLoop(const Snapshot& snapshot, std::size_t index) {
+    std::optional<std::size_t> at = snapshot.tracks[index].midiSource;
+    for (std::size_t step = 0; at && step < snapshot.tracks.size(); ++step) {
+        if (*at == index) {
+            return true;
+        }
+        at = snapshot.tracks[*at].midiSource;
+    }
+    return false;
+}
+
+std::size_t midiDepth(const Snapshot& snapshot, std::size_t index) {
+    std::size_t depth = 0;
+    for (auto at = snapshot.tracks[index].midiSource; at; at = snapshot.tracks[*at].midiSource) {
+        ++depth;
+    }
+    return depth;
+}
+
+// Resolves each track's MIDI source to the index of a track with an instrument and orders the instruments so each
+// plays after its source. A loop of MIDI routes loses them, so no instrument waits on itself.
+void connectMidiSources(Snapshot& snapshot, const Session& session, std::vector<SessionError>& errors) {
+    for (std::size_t index = 0; index < session.tracks.size(); ++index) {
+        const std::string& source = session.tracks[index].midiInTrack;
+        if (source.empty()) {
+            continue;
+        }
+        const auto found = std::ranges::find(snapshot.tracks, source, &TrackState::id);
+        if (found == snapshot.tracks.end() || !found->instrument) {
+            errors.push_back(
+                {snapshot.tracks[index].id, "its MIDI input track plays no instrument, so it gets no MIDI"});
+            continue;
+        }
+        snapshot.tracks[index].midiSource = static_cast<std::size_t>(found - snapshot.tracks.begin());
+    }
+    const auto looped = std::views::iota(std::size_t{0}, snapshot.tracks.size()) |
+                        std::views::filter([&](std::size_t index) { return inMidiLoop(snapshot, index); }) |
+                        std::ranges::to<std::vector>();
+    for (const std::size_t index : looped) {
+        snapshot.tracks[index].midiSource.reset();
+        errors.push_back({snapshot.tracks[index].id, "its MIDI input feeds back into it, so it gets no MIDI"});
+    }
+    snapshot.instrumentOrder =
+        std::views::iota(std::size_t{0}, snapshot.tracks.size()) |
+        std::views::filter([&](std::size_t index) { return snapshot.tracks[index].instrument != nullptr; }) |
+        std::ranges::to<std::vector>();
+    std::ranges::stable_sort(snapshot.instrumentOrder, {},
+                             [&](std::size_t index) { return midiDepth(snapshot, index); });
+}
+
 std::optional<std::size_t> sendIndex(const Session& session, const TrackState& state, const std::string& bus) {
     const auto busIndex =
         static_cast<std::size_t>(std::ranges::find(session.tracks, bus, &Track::id) - session.tracks.begin());
@@ -284,6 +334,7 @@ BuiltSnapshot SnapshotBuilder::build(const Session& session, const StreamLayout&
         snapshot.tracks.push_back(std::move(state));
     }
     connectBuses(snapshot, session, built.errors);
+    connectMidiSources(snapshot, session, built.errors);
     addLanes(snapshot, session);
     updateSoloPaths(snapshot);
     addMetronome(snapshot, session, layout, built.errors);
@@ -455,7 +506,8 @@ std::shared_ptr<const MidiSchedule> SnapshotBuilder::midiSchedule(const Track& t
 
 void SnapshotBuilder::addRecorder(TrackState& state, const Track& track, const Session& session,
                                   const StreamLayout& layout, Frames captureOffset) {
-    const bool canRecord = track.kind == TrackKind::audio ? !state.inputs.empty() : state.midiIn != nullptr;
+    const bool canRecord =
+        track.kind == TrackKind::audio ? !state.inputs.empty() : state.midiIn != nullptr || !track.midiInTrack.empty();
     if (!canRecord) {
         return;
     }

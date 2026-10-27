@@ -37,7 +37,7 @@ std::string addTrack(MainWindow& main, const char* kind, const Json& events) {
     track.kind = kind;
     track.name = kind;
     track.data = events;
-    track.midiIn = {.portId = kMidiPort, .channel = 0, .thru = false, .sysex = false};
+    track.midiIn = {.portId = kMidiPort, .channel = 0, .thru = false, .sysex = false, .sourceTrack = {}};
     const std::string id = track.id.value;
     main.rig.controller->project().addTrack(std::move(track));
     MainWindow::settle();

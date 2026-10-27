@@ -54,6 +54,7 @@ engine::Track commonFields(const model::Track& track, engine::TrackKind kind) {
             .audioIn = {},
             .audioOut = {},
             .midiIn = {},
+            .midiInTrack = {},
             .midiOut = {},
             .midiThru = false,
             .claimsSysex = false,
@@ -135,6 +136,7 @@ engine::Track busEngineTrack(const model::Track& track) {
 engine::Track midiEngineTrack(const model::Track& track) {
     engine::Track result = commonFields(track, engine::TrackKind::midi);
     result.midiIn = toEngine(track.midiIn);
+    result.midiInTrack = track.midiIn.sourceTrack.value;
     result.midiOut = toEngine(track.midiOut);
     result.midiThru = track.midiOut.thru;
     result.claimsSysex = track.midiIn.sysex;

@@ -52,15 +52,47 @@ model::AudioRoute mergeAudioRoute(ProjectController& controller, model::AudioRou
     return route;
 }
 
-// A field missing from params keeps its value in route.
+void checkSourceTrack(const model::Project& project, const model::TrackId& target, const model::TrackId& sourceId) {
+    const model::Track* source = project.track(sourceId);
+    if (source == nullptr || !source->instrument) {
+        throw AppError((source == nullptr ? "no track " + sourceId.value : source->name + " plays no instrument") +
+                       ", pick a track with an instrument as the MIDI input");
+    }
+    const model::Track* at = source;
+    for (std::size_t step = 0; at != nullptr && step <= project.document().tracks.size(); ++step) {
+        if (at->id == target) {
+            throw AppError(source->name + " takes MIDI from this track, so pick another MIDI input");
+        }
+        at = project.track(at->midiIn.sourceTrack);
+    }
+}
+
+// A field missing from params keeps its value in route. A port replaces an input's source track and a source track
+// replaces its port, so an input takes MIDI from one of them. The target is the track whose input this is.
 model::MidiRoute mergeMidiRoute(ProjectController& controller, model::MidiRoute route, const Json& params,
-                                Direction direction) {
-    route.portId = optionalParam<std::string>(params, "port").value_or(route.portId);
+                                Direction direction, const model::TrackId& target = {}) {
+    if (const auto port = optionalParam<std::string>(params, "port")) {
+        route.portId = *port;
+        route.sourceTrack = {};
+    }
+    if (const auto source = optionalParam<std::string>(params, "sourceTrack")) {
+        if (direction == Direction::output && !source->empty()) {
+            throw AppError("a MIDI output takes no source track, set it on the MIDI input");
+        }
+        route.sourceTrack = source->empty() ? model::TrackId{} : findTrackByIdOrName(controller.project(), *source);
+        if (!route.sourceTrack.empty()) {
+            route.portId.clear();
+        }
+    }
     route.channel = optionalParam<int>(params, "channel").value_or(route.channel);
     route.thru = optionalParam<bool>(params, "thru").value_or(route.thru);
     route.sysex = optionalParam<bool>(params, "sysex").value_or(route.sysex);
     if (route.channel < 0 || route.channel > kMidiChannels) {
         throw AppError("channel must be 0 (all) to 16");
+    }
+    if (!route.sourceTrack.empty()) {
+        checkSourceTrack(controller.project(), target, route.sourceTrack);
+        return route;
     }
     if (route.portId.empty()) {
         return route;
@@ -174,7 +206,7 @@ void registerAudioDefault(Registry& registry, ProjectController& controller, con
 model::MidiRoute defaultMidiInput(ProjectController& controller) {
     const auto& ports = controller.engine().midiPorts();
     const auto port = std::ranges::find_if(ports, &engine::MidiPortInfo::isInput);
-    return port == ports.end() ? model::MidiRoute{} : model::MidiRoute{port->id, 0, false, false};
+    return port == ports.end() ? model::MidiRoute{} : model::MidiRoute{port->id, 0, false, false, {}};
 }
 
 // A track listening to one channel of a profiled device takes that channel's part name and icon.
@@ -351,6 +383,7 @@ void registerRouteActions(Registry& registry, ProjectController& controller, con
                             .schema = {{"required", {"track"}},
                                        {"properties",
                                         {{"port", {{"type", "string"}}},
+                                         {"sourceTrack", {{"type", "string"}}},
                                          {"channel", {{"type", "integer"}}},
                                          {"thru", {{"type", "boolean"}}},
                                          {"sysex", {{"type", "boolean"}}},
@@ -358,7 +391,7 @@ void registerRouteActions(Registry& registry, ProjectController& controller, con
                             .run = [&registry, &controller, &nav, title, direction, field](const Json& params) {
                                 return editTargets(controller, nav, params, title, [&](const model::TrackId& id) {
                                     const auto route = mergeMidiRoute(
-                                        controller, controller.project().track(id)->*field, params, direction);
+                                        controller, controller.project().track(id)->*field, params, direction, id);
                                     editTrack(controller, id, title, [&](model::Track& track) {
                                         track.*field = route;
                                         if (direction == Direction::input) {

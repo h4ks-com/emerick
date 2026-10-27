@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
 
 namespace emerick::core::midi {
@@ -27,5 +28,14 @@ constexpr std::uint8_t statusFor(std::uint8_t type, int channel) {
 }
 
 constexpr bool isChannelMessage(std::uint8_t status) { return status >= kNoteOff && status < kSysexStart; }
+
+// The bytes a channel message takes with its status, or 0 for any other status.
+constexpr std::size_t channelMessageSize(std::uint8_t status) {
+    if (!isChannelMessage(status)) {
+        return 0;
+    }
+    const auto type = static_cast<std::uint8_t>(status & 0xF0);
+    return type == kProgramChange || type == kChannelPressure ? 2 : 3;
+}
 
 }  // namespace emerick::core::midi

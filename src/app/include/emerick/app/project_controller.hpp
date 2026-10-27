@@ -73,6 +73,7 @@ class ProjectController : public QObject {
     Q_PROPERTY(QVariantMap cycle READ cycle NOTIFY projectChanged)
     Q_PROPERTY(QVariantMap instruments READ instrumentsInfo NOTIFY projectChanged)
     Q_PROPERTY(QVariantMap routeDevices READ routeDevices NOTIFY devicesChanged)
+    Q_PROPERTY(QVariantList midiSources READ midiSources NOTIFY projectChanged)
     Q_PROPERTY(QVariantMap trackErrors READ trackErrors NOTIFY trackErrorsChanged)
     Q_PROPERTY(QVariantList healthIssues READ healthIssues NOTIFY healthChanged)
     Q_PROPERTY(int midiChannelCount READ midiChannelCount CONSTANT)
@@ -190,6 +191,8 @@ public:
     // The cycle's enabled flag and locators in ticks.
     [[nodiscard]] QVariantMap cycle() const;
     [[nodiscard]] QVariantMap routeDevices() const;
+    // The tracks whose instrument sends MIDI, as entries of the MIDI input picker named "track / instrument".
+    [[nodiscard]] QVariantList midiSources() const;
     // A position as bar.beat.tick, or with duration a length counted from zero, as the number fields show them.
     Q_INVOKABLE QString ticksText(qint64 ticks, bool duration) const;
     // Reads text in the same form, or plain ticks; returns -1 for text it cannot read.

@@ -36,7 +36,7 @@ Document sampleDocument() {
     track.gainDb = -6.0;
     track.pan = -0.25;
     track.audioIn = {"genos", {1, 2}};
-    track.midiIn = {"Digital Keyboard Port 1", 3, true, true};
+    track.midiIn = {"Digital Keyboard Port 1", 3, true, true, {}};
     track.data = {{"voices", {1, 2, 3}}};
     track.clips.emplace_back(AudioClip{ClipId::make(), 960, 3840, 44100, "audio/take1.wav", -3.5, 10, 20,
                                        FadeShape::sCurve, FadeShape::equalPower, 0.25, -0.5});

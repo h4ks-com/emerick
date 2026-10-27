@@ -34,8 +34,14 @@ QVariantMap audioRoute(const model::AudioRoute& route) {
     return {{"device", qs(route.deviceId)}, {"channels", channels}};
 }
 
+// The source names the route's entry in the MIDI input picker: its source track's id, or else its port's.
 QVariantMap midiRoute(const model::MidiRoute& route) {
-    return {{"port", qs(route.portId)}, {"channel", route.channel}, {"thru", route.thru}, {"sysex", route.sysex}};
+    return {{"port", qs(route.portId)},
+            {"sourceTrack", qs(route.sourceTrack.value)},
+            {"source", qs(route.sourceTrack.empty() ? route.portId : route.sourceTrack.value)},
+            {"channel", route.channel},
+            {"thru", route.thru},
+            {"sysex", route.sysex}};
 }
 
 // QML compares this with a clip's type.

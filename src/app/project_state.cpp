@@ -102,7 +102,11 @@ Json audioRoute(const model::AudioRoute& route, std::span<const engine::AudioDev
 }
 
 Json midiRoute(const model::MidiRoute& route) {
-    return {{"port", route.portId}, {"channel", route.channel}, {"thru", route.thru}, {"sysex", route.sysex}};
+    Json json{{"port", route.portId}, {"channel", route.channel}, {"thru", route.thru}, {"sysex", route.sysex}};
+    if (!route.sourceTrack.empty()) {
+        json["sourceTrack"] = route.sourceTrack.value;
+    }
+    return json;
 }
 
 Json syncState(const ProjectController& controller) {

@@ -2,6 +2,8 @@
 
 #include <algorithm>
 #include <array>
+#include <cstddef>
+#include <optional>
 #include <span>
 #include <string_view>
 
@@ -20,8 +22,18 @@ std::int64_t timeAt(const AudioBlock& block, double sampleRate, Frames offset) {
     return block.hostTimeNs + framesToNs(offset, sampleRate);
 }
 
-bool acceptsMessage(const TrackState& track, const MidiInputPort* port, std::span<const std::uint8_t> bytes) {
-    if (track.midiIn.get() != port) {
+// Where a message came from: an input port, or the instrument of the track at an index.
+struct MidiFrom {
+    const MidiInputPort* port = nullptr;
+    std::optional<std::size_t> track;
+};
+
+bool listensTo(const TrackState& track, const MidiFrom& from) {
+    return from.port != nullptr ? track.midiIn.get() == from.port : from.track && track.midiSource == from.track;
+}
+
+bool acceptsMessage(const TrackState& track, const MidiFrom& from, std::span<const std::uint8_t> bytes) {
+    if (!listensTo(track, from)) {
         return false;
     }
     if (!isChannelMessage(bytes[0])) {
@@ -83,13 +95,15 @@ void releaseTrackNotes(TrackState& track, std::int64_t timestampNs) {
     }
 }
 
-void route(Snapshot& snapshot, const RealtimeState& state, const MidiInputPort* port,
-           std::span<const std::uint8_t> bytes, std::int64_t timestampNs, Frames eventFrame) {
-    const bool sysex = bytes[0] == core::midi::kSysexStart;
+// A sysex from a port goes to the tracks that claim it, or to the first recording track; a sysex from an instrument
+// goes to every track that takes all its channels.
+void route(Snapshot& snapshot, const RealtimeState& state, const MidiFrom& from, std::span<const std::uint8_t> bytes,
+           std::int64_t timestampNs, Frames eventFrame) {
+    const bool claimedSysex = bytes[0] == core::midi::kSysexStart && from.port != nullptr;
     const bool soloActive = anySolo(snapshot);
     for (TrackState& track : snapshot.tracks) {
         const bool accepts =
-            sysex ? track.midiIn.get() == port && track.claimsSysex : acceptsMessage(track, port, bytes);
+            claimedSysex ? listensTo(track, from) && track.claimsSysex : acceptsMessage(track, from, bytes);
         if (track.thru && track.midiOut && accepts) {
             std::array<std::uint8_t, 3> rewritten{};
             track.midiOut->queue(onChannel(bytes, track.outChannel, rewritten), timestampNs);
@@ -108,12 +122,11 @@ void route(Snapshot& snapshot, const RealtimeState& state, const MidiInputPort* 
         track.recorder->writeMidi(snapshot.tempo.framesToTicks(frame, snapshot.sampleRate), bytes);
     };
     const auto recording = [&](const TrackState& track) {
-        return track.kind == TrackKind::midi && track.midiIn.get() == port && track.recorder &&
-               track.recorder->recording();
+        return track.kind == TrackKind::midi && listensTo(track, from) && track.recorder && track.recorder->recording();
     };
-    if (!sysex) {
+    if (!claimedSysex) {
         for (TrackState& track : snapshot.tracks) {
-            if (recording(track) && acceptsMessage(track, port, bytes)) {
+            if (recording(track) && acceptsMessage(track, from, bytes)) {
                 record(track);
             }
         }
@@ -221,8 +234,16 @@ void receiveMidi(Snapshot& snapshot, const RealtimeState& state, const AudioBloc
             readInto(port->ring, bytes);
             const Frames offset = nsToFrames(header.timestampNs - block.hostTimeNs, snapshot.sampleRate);
             const Frames eventFrame = blockStartFrame + std::clamp<Frames>(offset, -block.frames, block.frames - 1);
-            route(snapshot, state, port.get(), bytes, header.timestampNs, eventFrame);
+            route(snapshot, state, {.port = port.get(), .track = std::nullopt}, bytes, header.timestampNs, eventFrame);
         }
+    }
+}
+
+void routeInstrumentMidi(Snapshot& snapshot, const RealtimeState& state, std::size_t source, const AudioBlock& block,
+                         Frames blockStartFrame) {
+    for (const InstrumentMidi& message : snapshot.tracks[source].instrument->producedMidi()) {
+        route(snapshot, state, {.port = nullptr, .track = source}, message.bytes,
+              timeAt(block, snapshot.sampleRate, message.offset), blockStartFrame + message.offset);
     }
 }
 

@@ -141,6 +141,7 @@ if(EMERICK_BUILD_TESTS)
         tests/note_test.cpp
         tests/metronome_test.cpp
         tests/midi_import_test.cpp
+        tests/midi_source_test.cpp
         tests/path_access_test.cpp
         tests/peak_cache_test.cpp
         tests/plugin_catalog_test.cpp

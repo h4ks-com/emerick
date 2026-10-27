@@ -368,9 +368,6 @@ void mixTracks(Snapshot& snapshot, const AudioBlock& block, const BlockTime& tim
             if (!track.lanes.empty()) {
                 applyLanes(track, time.at(block.frames));
             }
-            if (track.instrument) {
-                track.instrument->processBlock(track.mixPointers, block.frames, block.hostTimeNs);
-            }
             for (InsertState& insert : track.inserts) {
                 insert.effect->process(track.mixPointers, block.frames, insert.params, insert.bypass,
                                        snapshot.tempo.bpm);
@@ -395,6 +392,18 @@ void mixTracks(Snapshot& snapshot, const AudioBlock& block, const BlockTime& tim
         }
         for (std::vector<float>& channel : track.mix) {
             std::fill_n(channel.data(), block.frames, 0.0F);
+        }
+    }
+}
+
+// Each instrument plays into its track's mix after the track it takes MIDI from, so that MIDI reaches it in this block.
+void playInstruments(const RealtimeState& state, Snapshot& snapshot, const AudioBlock& block, Frames blockStartFrame) {
+    const bool soloActive = anySolo(snapshot);
+    for (const std::size_t index : snapshot.instrumentOrder) {
+        TrackState& track = snapshot.tracks[index];
+        if (audible(track, soloActive)) {
+            track.instrument->processBlock(track.mixPointers, block.frames, block.hostTimeNs);
+            routeInstrumentMidi(snapshot, state, index, block, blockStartFrame);
         }
     }
 }
@@ -563,7 +572,8 @@ void processBlock(RealtimeState& state, const AudioBlock& block) {
         apply(state, snapshot, command, block);
     }
     const Frames rollFrom = countIn(state, snapshot, block);
-    receiveMidi(snapshot, state, block, state.frame - rollFrom);
+    const Frames blockStartFrame = state.frame - rollFrom;
+    receiveMidi(snapshot, state, block, blockStartFrame);
     BlockTime time{.frame = state.frame, .rollFrom = rollFrom, .playing = false};
     if (state.transportPlaying) {
         time = playTransport(state, snapshot, block, rollFrom);
@@ -573,6 +583,7 @@ void processBlock(RealtimeState& state, const AudioBlock& block) {
     }
     renderMetronome(state, snapshot, block);
     monitorAndRecordAudio(snapshot, block, rollFrom);
+    playInstruments(state, snapshot, block, blockStartFrame);
     mixTracks(snapshot, block, time);
     state.publishedFrame.store(state.frame, std::memory_order_relaxed);
     state.publishedPlaying.store(state.transportPlaying || state.countInLeft > 0, std::memory_order_relaxed);

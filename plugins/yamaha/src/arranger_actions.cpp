@@ -76,7 +76,8 @@ model::MidiRoute controllerRoute(const app::Registry& registry, app::ProjectCont
     return {.portId = hasPort(controller.engine().midiPorts(), port, false) ? port : keyboard,
             .channel = registry.settingValue(kControllerChannelSetting).get<int>(),
             .thru = false,
-            .sysex = false};
+            .sysex = false,
+            .sourceTrack = {}};
 }
 
 // The keyboard reads Chord and Section Control sysex on its own port whatever its Receive channels are.
@@ -86,8 +87,8 @@ model::Track arrangerTrack(const app::Registry& registry, const char* kind, cons
     track.kind = kind;
     track.name = type.title;
     track.icon = type.icon;
-    track.midiIn = {.portId = keyboard, .channel = 0, .thru = false, .sysex = !keyboard.empty()};
-    track.midiOut = {.portId = keyboard, .channel = 0, .thru = false, .sysex = false};
+    track.midiIn = {.portId = keyboard, .channel = 0, .thru = false, .sysex = !keyboard.empty(), .sourceTrack = {}};
+    track.midiOut = {.portId = keyboard, .channel = 0, .thru = false, .sysex = false, .sourceTrack = {}};
     track.data = std::move(data);
     return track;
 }
@@ -107,8 +108,8 @@ model::Track partTrack(const Part& part, const std::string& keyboard, const std:
     track.name = part.name;
     track.icon = part.icon;
     track.armed = true;
-    track.midiIn = {.portId = keyboard, .channel = part.channel, .thru = false, .sysex = false};
-    track.midiOut = {.portId = output, .channel = part.channel, .thru = false, .sysex = false};
+    track.midiIn = {.portId = keyboard, .channel = part.channel, .thru = false, .sysex = false, .sourceTrack = {}};
+    track.midiOut = {.portId = output, .channel = part.channel, .thru = false, .sysex = false, .sourceTrack = {}};
     return track;
 }
 

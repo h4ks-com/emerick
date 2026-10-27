@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
 
 #include "emerick/engine/audio_backend.hpp"
@@ -10,6 +11,9 @@ namespace emerick::engine {
 
 // The block's first frame sits at blockStartFrame on the timeline.
 void receiveMidi(Snapshot& snapshot, const RealtimeState& state, const AudioBlock& block, Frames blockStartFrame);
+// Routes what the instrument of the track at source sent in this block to the tracks that take its MIDI, as live input.
+void routeInstrumentMidi(Snapshot& snapshot, const RealtimeState& state, std::size_t source, const AudioBlock& block,
+                         Frames blockStartFrame);
 void sendClock(const Snapshot& snapshot, Frames frame, const AudioBlock& block);
 void playMidiClips(Snapshot& snapshot, Frames frame, const AudioBlock& block);
 void sendToClockPorts(const Snapshot& snapshot, std::uint8_t status, std::int64_t timestampNs);

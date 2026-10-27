@@ -107,6 +107,8 @@ struct Track {
     AudioRoute audioIn;
     AudioRoute audioOut;
     MidiRoute midiIn;
+    // A track id here takes the MIDI that track's instrument sends in place of midiIn's port, on midiIn's channel.
+    std::string midiInTrack;
     MidiRoute midiOut;
     bool midiThru = false;
     bool claimsSysex = false;

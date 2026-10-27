@@ -34,6 +34,12 @@ struct ClapParam {
 
 inline constexpr std::size_t kMaxParamChoices = 1024;
 
+// A message the plugin sent on its note outputs, offset frames into the block it processed.
+struct InstrumentMidi {
+    core::Frames offset = 0;
+    std::span<const std::uint8_t> bytes;
+};
+
 // One CLAP plugin playing as a track's instrument. The thread that creates it is the plugin's main thread: it
 // activates, saves, loads, runs the editor and destroys it. The audio thread queues MIDI and processes. Whoever holds
 // the audio guard is the plugin's audio thread, so the main thread can stop processing and reactivate the plugin
@@ -53,6 +59,8 @@ public:
     ClapInstrument& operator=(ClapInstrument&&) = delete;
 
     [[nodiscard]] const std::string& name() const;
+    // True when the plugin has a note output, so other tracks can take MIDI from it.
+    [[nodiscard]] bool producesMidi() const;
     // Activates the plugin at this rate and largest block, reactivating it when either changed; false when it refuses.
     bool activate(double sampleRate, core::Frames maxFrames);
     // Runs what the plugin asked of the main thread: its callback, a restart and closing its editor. Returns true once
@@ -82,10 +90,13 @@ public:
     // The size the embedded editor asked for since the last call.
     std::optional<EditorSize> takeEditorResize();
 
-    // Realtime: queues a MIDI message for the next processBlock, which plays it at its timestamp in that block.
+    // Realtime: queues a MIDI message or a sysex for the next processBlock, which plays it at its timestamp in that
+    // block. A sysex reaches only a plugin whose note input takes MIDI.
     void queueMidi(std::span<const std::uint8_t> bytes, std::int64_t timestampNs);
     // Realtime: adds the plugin's main output to each mix channel; a mix channel past its outputs takes the last one.
     void processBlock(std::span<float* const> mix, core::Frames frames, std::int64_t hostTimeNs);
+    // Realtime: the notes, MIDI and sysex the plugin sent in the last processBlock, valid until the next one.
+    [[nodiscard]] std::span<const InstrumentMidi> producedMidi() const;
 
 private:
     std::unique_ptr<Impl> impl_;

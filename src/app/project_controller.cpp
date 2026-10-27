@@ -770,6 +770,18 @@ QVariantMap ProjectController::instrumentsInfo() const {
     return info;
 }
 
+QVariantList ProjectController::midiSources() const {
+    QVariantList sources;
+    for (const model::Track& track : project_.document().tracks) {
+        if (const auto instrument = instruments_.find(track.id); instrument && instrument->producesMidi()) {
+            sources.append(QVariantMap{{"id", qs(track.id.value)},
+                                       {"name", qs(track.name + " / " + instrument->name())},
+                                       {"params", QVariantMap{{"sourceTrack", qs(track.id.value)}}}});
+        }
+    }
+    return sources;
+}
+
 QVariantMap ProjectController::cycle() const {
     const model::Cycle& cycle = project_.document().cycle;
     return {{"enabled", cycle.enabled},

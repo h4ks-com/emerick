@@ -44,7 +44,7 @@ Rectangle {
             actionId: midiRoute.actionId
             trackId: midiRoute.trackId
             model: midiRoute.ports
-            currentId: midiRoute.route.port
+            currentId: midiRoute.route.source
             mixed: midiRoute.mixed
             Layout.fillWidth: true
         }
@@ -353,7 +353,7 @@ Rectangle {
                     visible: panel.midiRoutes
                     actionId: "track.setMidiIn"
                     trackId: panel.trackId
-                    ports: Project.routeDevices.midiIn
+                    ports: Project.routeDevices.midiIn.concat(Project.midiSources.filter(source => source.id !== panel.trackId))
                     route: panel.midiIn
                     mixed: inspector.mixed("midiIn")
                 }

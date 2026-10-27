@@ -1,16 +1,7 @@
-# The General MIDI instrument as a CLAP bundle, laid out as it sits beside the app, so the tests scan it the same way.
-if(APPLE)
-    set(gm_app_folder ${CMAKE_CURRENT_BINARY_DIR}/MacOS)
-    set(gm_clap_folder ${CMAKE_CURRENT_BINARY_DIR}/PlugIns)
-else()
-    set(gm_app_folder ${CMAKE_CURRENT_BINARY_DIR})
-    set(gm_clap_folder ${CMAKE_CURRENT_BINARY_DIR}/clap)
-endif()
-
 add_library(emerick_gm MODULE gm_plugin.cpp gm_settings.cpp)
 target_link_libraries(emerick_gm PRIVATE clap nlohmann_json::nlohmann_json PkgConfig::FLUIDSYNTH)
 set_target_properties(emerick_gm PROPERTIES PREFIX "" SUFFIX ".clap" OUTPUT_NAME "Emerick GM"
-    LIBRARY_OUTPUT_DIRECTORY ${gm_clap_folder})
+    LIBRARY_OUTPUT_DIRECTORY ${emerick_bundled_clap_folder})
 if(APPLE)
     set_target_properties(emerick_gm PROPERTIES BUNDLE TRUE BUNDLE_EXTENSION clap)
     set(gm_resources "$<TARGET_BUNDLE_CONTENT_DIR:emerick_gm>/Resources")
@@ -29,4 +20,4 @@ add_custom_command(TARGET emerick_gm POST_BUILD
 add_library(emerick_gm_clap INTERFACE)
 add_dependencies(emerick_gm_clap emerick_gm)
 target_compile_definitions(emerick_gm_clap INTERFACE EMERICK_GM_CLAP="${gm_bundle}"
-    EMERICK_GM_APP_FOLDER="${gm_app_folder}")
+    EMERICK_GM_APP_FOLDER="${emerick_bundled_app_folder}")

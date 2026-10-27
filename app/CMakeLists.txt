@@ -9,7 +9,7 @@ set_target_properties(emerick PROPERTIES
     MACOSX_BUNDLE_ICON_FILE emerick.icns)
 emerick_target(emerick)
 # The app runs the plugin scanner from its own folder and always scans the CLAP bundles it ships.
-add_dependencies(emerick emerick-clap-scanner emerick_gm)
+add_dependencies(emerick emerick-clap-scanner emerick_gm emerick_voices)
 if(APPLE)
     set(bundled_clap_folder "$<TARGET_BUNDLE_CONTENT_DIR:emerick>/PlugIns")
 else()
@@ -17,8 +17,7 @@ else()
 endif()
 add_custom_command(TARGET emerick POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:emerick-clap-scanner> $<TARGET_FILE_DIR:emerick>
-    COMMAND ${CMAKE_COMMAND} -E copy_directory_if_different "$<TARGET_PROPERTY:emerick_gm,LIBRARY_OUTPUT_DIRECTORY>"
-        ${bundled_clap_folder})
+    COMMAND ${CMAKE_COMMAND} -E copy_directory_if_different ${emerick_bundled_clap_folder} ${bundled_clap_folder})
 target_link_libraries(emerick PRIVATE Qt6::Gui Qt6::Qml Qt6::Quick emerick_app emerick_uiplugin emerick_yamaha_plugin
     emerick_yamaha_pluginplugin)
 

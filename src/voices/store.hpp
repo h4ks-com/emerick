@@ -1,0 +1,63 @@
+#pragma once
+
+#include <compare>
+#include <filesystem>
+#include <optional>
+#include <string>
+#include <string_view>
+#include <unordered_map>
+#include <vector>
+
+namespace emerick::voices {
+
+// The bank select and program change that pick a voice on the keyboard.
+struct VoiceAddress {
+    int msb = 0;
+    int lsb = 0;
+    int program = 0;
+    auto operator<=>(const VoiceAddress&) const = default;
+};
+
+// One sample a voice plays for a range of notes and velocities, flattened from its element and key bank.
+struct Zone {
+    int keyLo = 0;
+    int keyHi = 127;
+    int velocityLo = 0;
+    int velocityHi = 127;
+    // The element plays the notes this many semitones higher.
+    int keyShift = 0;
+    int rootKey = 60;
+    double tuneCents = 0.0;
+    bool fixedPitch = false;
+    bool oneShot = false;
+    double sampleRate = 44100.0;
+    float gain = 1.0F;
+    float pan = 0.0F;
+    std::string leftWave;
+    // Empty for a mono zone, which plays leftWave on both sides.
+    std::string rightWave;
+};
+
+struct Voice {
+    std::string pack;
+    std::string name;
+    VoiceAddress address;
+    std::vector<Zone> zones;
+};
+
+// The voices of an Expansion Manager store that we can play, sorted by pack and name, and where each wave lives.
+struct Store {
+    std::vector<Voice> voices;
+    std::unordered_map<std::string, std::filesystem::path> waves;
+};
+
+// The folder Yamaha Expansion Manager keeps its packs in on this computer, or empty where it has none.
+std::filesystem::path defaultStoreFolder();
+
+// Reads every pack in the folder; a missing or empty folder is an empty store.
+Store loadStore(const std::filesystem::path& folder);
+
+// A Yamaha note name such as C-2, F#3 or G8, where C-2 is MIDI note 0.
+std::optional<int> yamahaNote(std::string_view name);
+
+}  // namespace emerick::voices

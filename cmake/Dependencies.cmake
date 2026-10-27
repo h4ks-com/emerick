@@ -59,7 +59,15 @@ FetchContent_Declare(clap_helpers
     GIT_TAG a380c978f429103e08afc1d17e9efbf3e3c96ee2
     SYSTEM)
 
-FetchContent_MakeAvailable(nlohmann_json readerwriterqueue libremidi sol2 Catch2 clap clap_helpers)
+FetchContent_Declare(pugixml
+    GIT_REPOSITORY https://github.com/zeux/pugixml.git
+    GIT_TAG v1.15
+    GIT_SHALLOW TRUE
+    SYSTEM)
+
+FetchContent_MakeAvailable(nlohmann_json readerwriterqueue libremidi sol2 Catch2 clap clap_helpers pugixml)
+# The expansion voices instrument is a shared module, so the static pugixml it links must be position independent.
+set_target_properties(pugixml-static PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
 # miniaudio ships a single source file; we compile it once as our own target. macOS talks to CoreAudio directly.
 if(NOT APPLE)

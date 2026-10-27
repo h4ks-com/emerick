@@ -88,6 +88,18 @@ TEST_CASE("the catalog always searches the app's bundled folder first and lists 
     CHECK(std::ranges::contains(found->descriptor.features, std::string{"instrument"}));
 }
 
+TEST_CASE("the catalog lists the expansion voices instrument in the app's bundled folder") {
+    QTemporaryDir dir;
+    PluginCatalog::Options options = catalogOptions(dir, EMERICK_CLAP_SCANNER);
+    options.folders = {bundledClapFolder(EMERICK_GM_APP_FOLDER)};
+    PluginCatalog catalog(options);
+    catalog.scan({}, false);
+    const auto found = catalog.find("org.emerick.voices");
+    REQUIRE(found.has_value());
+    CHECK(found->descriptor.name == "Expansion Voices");
+    CHECK(std::ranges::contains(found->descriptor.features, std::string{"instrument"}));
+}
+
 TEST_CASE("rescanning loads every bundle again") {
     CatalogRig rig;
     rig.registry.run("plugins.list");

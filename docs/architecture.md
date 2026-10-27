@@ -14,6 +14,7 @@ Each layer is one CMake target. A layer only depends on the layers above it in t
 | `emerick_app` | yes | the registry, document and engine controllers, QML models, navigation and reveal, introspection, MCP server, Lua host, settings |
 | `emerick_ui` | yes | the QML module `Emerick.Ui`: theme tokens and every view |
 | `emerick_gm` | no | the General MIDI CLAP instrument the app ships, built on FluidSynth |
+| `emerick_voices` | no | the Expansion Voices CLAP instrument the app ships, a sampler for Yamaha expansion pack voices |
 | `plugins/*` | both | one folder per plugin; pure C++ parts in their own target with tests |
 | `emerick` | yes | the executable: parses flags, wires backends, loads plugins |
 
@@ -77,6 +78,8 @@ A MIDI track has an optional `instrument` slot that names a CLAP plugin by id an
 
 The app ships its own CLAP bundles in `Contents/PlugIns` on macOS and in `clap/` beside the executable elsewhere, and every scan searches that folder first. `src/gm` builds the first one, General MIDI (`org.emerick.gm`): it plays all 16 channels through FluidSynth, with notes, program changes, bank select, controllers, pressure and pitch bend, and channel 10 plays drums. Its params are Sound, the 128 General MIDI sounds, which it sends as a program change to every channel but 10, and Drum kit, the GS kits GeneralUser GS holds, which it sends to channel 10; a program change in the MIDI still picks another sound. Its CLAP state is JSON with the SoundFont path, the sound and the drum kit, and it reads a state that is no JSON object as a plain SoundFont path, as older projects saved it. An empty path plays GeneralUser GS, which the build downloads at a pinned hash and puts with its license in the bundle's `Resources`. A new General MIDI instrument takes the `plugins.generalMidiSoundFont` setting as its state.
 
+`src/voices` builds Expansion Voices (`org.emerick.voices`), which plays the voices of the Yamaha expansion packs installed in Yamaha Expansion Manager, read from its store folder: each pack's UVF voice files and the wave blobs the packs share. It lists the voices whose waves are all 16-bit linear audio, so voices with WXC compressed waves stay out of the list. A note plays every zone whose element and key bank cover its note and velocity, at the zone's sample rate, pitched from its center note with its coarse and fine tune in semitones and cents, and looped over the wave's sustain loop unless the zone is a one-shot. The host's main thread reads the store, and decodes a voice's waves when the voice is picked; the audio thread plays them. Its params are Voice, a choice of "Pack / Voice", Volume, Tune, Attack, Release, and Follow program changes, which lets bank select and program change pick the voice at that address, or none when the store holds no such voice. Its CLAP state is JSON with the store folder, empty for Expansion Manager's own folder on macOS, the voice by pack, name and address, and the other params.
+
 ## Agent interface
 
 The app serves MCP over streamable HTTP on loopback (`--mcp-port`). Tools: `ui.tree`, `ui.find`, `ui.reveal`, `ui.invoke`, `ui.set`, `actions.list`, `actions.run`, `actions.batch`, `settings.get`, `settings.set`, `state.get`, `lua.eval`, `console.log`, `screenshot`. Every tool returns the state after the change. An action that fails leaves the document and its undo history as they were. `actions.batch` and `emerick.batch` run up to 1000 calls, each as its own undo step. With `--agent-read-root` and `--agent-write-root`, every path an MCP or Lua request names goes through one check that resolves symlinks and `..` and refuses a path outside the root; paths from the person using the UI stay open. Lua (5.4 through sol2) sees the same document and registry, and its `ui` functions and the `ui.*` tools both go through `UiApi`, so a script and an agent can do anything a click can.
@@ -101,6 +104,7 @@ The console (Cmd+\`) runs Lua in the same sandboxed host on the UI thread. `Regi
 | MIDI IO and MIDI files | libremidi |
 | Audio files | libsndfile |
 | General MIDI sounds | FluidSynth and the GeneralUser GS SoundFont |
+| Expansion voice files | pugixml |
 | Queues | moodycamel readerwriterqueue |
 | JSON | nlohmann_json |
 | Lua | Lua 5.4 and sol2 |

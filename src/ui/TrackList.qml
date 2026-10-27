@@ -412,7 +412,7 @@ Rectangle {
             for (let row = Math.max(0, firstRow); row <= Math.min(list.count - 1, lastRow); ++row) {
                 const item = list.itemAtIndex(row)
                 for (const clip of item ? item.clips : []) {
-                    if (clip.start < toTicks && clip.start + clip.length > fromTicks && ids.indexOf(clip.id) < 0) {
+                    if (clip.start < toTicks && clip.end > fromTicks && ids.indexOf(clip.id) < 0) {
                         ids.push(clip.id)
                     }
                 }

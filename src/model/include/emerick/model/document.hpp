@@ -93,6 +93,9 @@ struct MidiClip {
     std::vector<MidiEvent> events;
     std::vector<Note> notes;
     bool muted = false;
+    // How far the clip runs on the timeline repeating its content, as a looped region in Logic. The content keeps its
+    // own length, and the clip loops only while loopLength is longer.
+    Ticks loopLength = 0;
 
     bool operator==(const MidiClip&) const = default;
 };

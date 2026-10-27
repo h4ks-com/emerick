@@ -378,6 +378,7 @@ void registerClipActions(Registry& registry, ProjectController& controller, Nav&
                             },
                         .menus = {kClipContextMenu}});
     registerFadeActions(registry, controller, nav);
+    registerClipLoopActions(registry, controller, nav);
     registry.addAction(
         {.id = "clip.duplicate",
          .title = "Duplicate clip",

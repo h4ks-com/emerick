@@ -8,6 +8,14 @@ Item {
     id: content
 
     required property ClipItem clipItem
+    // We create only the repeats in view, so a short clip looped for many bars stays light.
+    readonly property real loopPeriod: clipItem.looped ? clipItem.clip.length : 0
+    readonly property int firstRepeat: loopPeriod > 0
+                                       ? Math.max(1, Math.floor((clipItem.viewFrom - clipItem.start) / loopPeriod)) : 0
+    readonly property int lastRepeat: loopPeriod > 0
+                                      ? Math.min(Math.ceil((clipItem.end - clipItem.start) / loopPeriod) - 1,
+                                                 Math.floor((clipItem.viewTo - clipItem.start) / loopPeriod))
+                                      : -1
 
     component FadeHandle: Rectangle {
         id: handle
@@ -88,7 +96,8 @@ Item {
     Binding {
         target: content.clipItem
         property: "editing"
-        value: move.pressed || startGrip.pressed || endGrip.pressed || fadeInHandle.pressed || fadeOutHandle.pressed
+        value: move.pressed || startGrip.pressed || endGrip.pressed || loopGrip.pressed || fadeInHandle.pressed
+               || fadeOutHandle.pressed
     }
 
     HoverHandler {
@@ -96,10 +105,11 @@ Item {
     }
 
     // A drag shows where the clip lands, as Logic's help tag does.
-    ToolTip.visible: move.dragging || startGrip.pressed || endGrip.pressed
+    ToolTip.visible: move.dragging || startGrip.pressed || endGrip.pressed || loopGrip.pressed
     ToolTip.text: move.dragging ? Registry.actionInfo("clip.move").title + "   " + Project.ticksText(clipItem.start, false)
                 : startGrip.pressed ? Registry.actionInfo("clip.resize").title + "   " + Project.ticksText(clipItem.start, false)
-                : Registry.actionInfo("clip.resize").title + "   " + Project.ticksText(clipItem.end, false)
+                : loopGrip.pressed ? Registry.actionInfo("clip.setLoopLength").title + "   " + Project.ticksText(clipItem.end, false)
+                : Registry.actionInfo("clip.resize").title + "   " + Project.ticksText(clipItem.contentEnd, false)
 
     Rectangle {
         id: body
@@ -180,6 +190,55 @@ Item {
                     length: content.clipItem.clip.length
                     color: Theme.clipInk
                     textureSize: Theme.notesTexture(width, height)
+                }
+            }
+        }
+
+        Rectangle {
+            visible: content.clipItem.looped
+            x: (content.clipItem.contentEnd - content.clipItem.start) * content.clipItem.pixelsPerTick
+            width: parent.width - x
+            height: parent.height
+            color: Theme.loopWash
+        }
+
+        Repeater {
+            model: Math.max(0, content.lastRepeat - content.firstRepeat + 1)
+            Item {
+                required property int index
+                readonly property real offset: (content.firstRepeat + index) * content.loopPeriod
+                objectName: "clip.repeat:" + content.clipItem.clipId + ":" + (content.firstRepeat + index)
+                x: offset * content.clipItem.pixelsPerTick
+                width: Math.min(content.loopPeriod, content.clipItem.end - content.clipItem.start - offset)
+                       * content.clipItem.pixelsPerTick
+                height: parent.height
+
+                Item {
+                    y: Theme.clipLabelHeight
+                    width: parent.width
+                    height: parent.height - Theme.clipLabelHeight
+                    clip: true
+                    ClipNotes {
+                        width: content.loopPeriod * content.clipItem.pixelsPerTick
+                        height: parent.height
+                        notes: content.clipItem.clip.notes
+                        length: content.loopPeriod
+                        color: Theme.clipInk
+                        textureSize: Theme.notesTexture(width, height)
+                    }
+                }
+                Rectangle {
+                    x: -Theme.loopNotch / 2
+                    width: Theme.loopNotch
+                    height: Theme.loopNotch
+                    color: Theme.graphite
+                }
+                Rectangle {
+                    x: -Theme.loopNotch / 2
+                    y: parent.height - Theme.loopNotch
+                    width: Theme.loopNotch
+                    height: Theme.loopNotch
+                    color: Theme.graphite
                 }
             }
         }
@@ -325,18 +384,21 @@ Item {
         onCanceled: content.clipItem.cancelDrag()
     }
 
+    // A MIDI clip's right edge resizes its content below the middle and drags its loop above it, as in Logic. A looped
+    // clip keeps the resize edge at the end of its content.
     MouseArea {
         id: endGrip
         objectName: "clip.resize:" + content.clipItem.clipId + ":right"
-        anchors.right: parent.right
+        x: (content.clipItem.contentEnd - content.clipItem.start) * content.clipItem.pixelsPerTick - width
+        y: content.clipItem.audio ? 0 : parent.height / 2
         width: Theme.clipGrip
-        height: parent.height
+        height: content.clipItem.audio ? parent.height : parent.height / 2
         cursorShape: Qt.SizeHorCursor
         property real pressX
         property real pressEnd
         onPressed: mouse => {
             pressX = content.clipItem.sceneX(endGrip, mouse)
-            pressEnd = content.clipItem.end
+            pressEnd = content.clipItem.contentEnd
         }
         onPositionChanged: mouse => {
             const item = content.clipItem
@@ -346,6 +408,39 @@ Item {
         }
         onReleased: Registry.endGesture()
         onCanceled: content.clipItem.cancelDrag()
+    }
+
+    MouseArea {
+        id: loopGrip
+        objectName: "clip.setLoopLength:" + content.clipItem.clipId
+        visible: !content.clipItem.audio
+        anchors.right: parent.right
+        width: Theme.clipGrip
+        height: parent.height / 2
+        cursorShape: Qt.SizeHorCursor
+        property real pressX
+        property real pressEnd
+        onPressed: mouse => {
+            pressX = content.clipItem.sceneX(loopGrip, mouse)
+            pressEnd = content.clipItem.end
+        }
+        onPositionChanged: mouse => {
+            const item = content.clipItem
+            const target = item.place(pressEnd + (item.sceneX(loopGrip, mouse) - pressX) / item.pixelsPerTick,
+                                      mouse.modifiers)
+            item.drag("clip.setLoopLength", {end: Math.max(target, item.start + 1)})
+        }
+        onReleased: Registry.endGesture()
+        onCanceled: content.clipItem.cancelDrag()
+
+        IconImage {
+            visible: hover.hovered || loopGrip.pressed
+            anchors.right: parent.right
+            y: Theme.clipInset
+            source: Theme.iconSource("repeat")
+            sourceSize: Qt.size(Theme.clipLabelHeight - Theme.space1, Theme.clipLabelHeight - Theme.space1)
+            color: Theme.ink
+        }
     }
 
     FadeHandle {

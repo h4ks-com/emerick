@@ -351,10 +351,10 @@ Rectangle {
                     PositionNumber {
                         visible: !panel.severalClips
                         clipPanel: panel
-                        actionId: "clip.resize"
+                        actionId: panel.clip && panel.clip.looped ? "clip.setLoopLength" : "clip.resize"
                         param: "end"
                         from: panel.clip ? panel.clip.start + 1 : 0
-                        value: panel.clip ? panel.clip.start + panel.clip.length : 0
+                        value: panel.clip ? panel.clip.end : 0
                     }
                     RouteLabel { text: "Length" }
                     PositionNumber {
@@ -364,6 +364,14 @@ Rectangle {
                         duration: true
                         from: 1
                         value: panel.clip ? panel.clip.length : 0
+                    }
+                    RouteLabel { text: "Loop"; visible: !panel.audioClip }
+                    ChromeButton {
+                        objectName: "clip.loop:" + (panel.clip ? panel.clip.id : "")
+                        visible: !panel.audioClip
+                        actionId: "clip.loop"
+                        iconName: "repeat"
+                        active: panel.clip !== undefined && panel.clip.looped === true
                     }
                     RouteLabel {
                         text: "Fades"

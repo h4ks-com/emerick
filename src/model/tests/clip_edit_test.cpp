@@ -2,6 +2,7 @@
 
 #include <catch2/catch_test_macros.hpp>
 #include <cstdint>
+#include <ranges>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -93,6 +94,74 @@ TEST_CASE("splitting a MIDI clip leaves no hanging note on either side") {
     CHECK(events(right).empty());
     CHECK(clipId(right) != clipId(left));
     CHECK_FALSE(split(heldNotes(), 960, kTempo, kRate));
+}
+
+namespace {
+
+// One bar of content with notes on beats 1 and 4, looped for two and a half bars.
+MidiClip loopedBar() {
+    MidiClip clip;
+    clip.start = 960;
+    clip.length = 3840;
+    clip.loopLength = 9600;
+    clip.events = std::vector{on(0, 60), off(480, 60), on(2880, 64), off(3840, 64)} |
+                  std::views::transform([](const Event& event) { return MidiEvent{event.first, event.second}; }) |
+                  std::ranges::to<std::vector>();
+    gatherNotes(clip);
+    return clip;
+}
+
+}  // namespace
+
+TEST_CASE("a looped MIDI clip plays its content again in each repeat and cuts the last repeat short") {
+    const MidiClip clip = loopedBar();
+    CHECK(clipEnd(clip) == 960 + 9600);
+    CHECK(events(clip) == std::vector{on(0, 60), off(480, 60), on(2880, 64), off(3840, 64), on(3840, 60), off(4320, 60),
+                                      on(6720, 64), off(7680, 64), on(7680, 60), off(8160, 60)});
+    MidiClip held = clip;
+    held.loopLength = 7680 + 200;
+    CHECK(events(held).back() == off(7880, 60));
+}
+
+TEST_CASE("setting a loop length loops only MIDI clips and a length up to the content ends the loop") {
+    const auto longer = setLoopLength(loopedBar(), 20000);
+    REQUIRE(longer);
+    CHECK(clipEnd(*longer) == 960 + 20000);
+    CHECK(clipLength(*longer) == 3840);
+    CHECK(std::get<MidiClip>(*setLoopLength(loopedBar(), 3840)).loopLength == 0);
+    CHECK_FALSE(setLoopLength(loopedBar(), 0));
+    CHECK_FALSE(setLoopLength(AudioClip{.length = 960}, 1920));
+}
+
+TEST_CASE("resizing a looped clip's content keeps where its repeats end") {
+    const auto shorter = setLength(loopedBar(), 1920);
+    REQUIRE(shorter);
+    CHECK(clipEnd(*shorter) == 960 + 9600);
+    CHECK(events(*shorter).at(2) == on(1920, 60));
+    const auto trimmed = trimStart(loopedBar(), 960 + 2880, kTempo, kRate);
+    REQUIRE(trimmed);
+    CHECK(clipEnd(*trimmed) == 960 + 9600);
+    CHECK(events(*trimmed).front() == on(0, 64));
+}
+
+TEST_CASE("splitting a looped clip loops each side up to the split, or writes out the repeats it cuts into") {
+    const auto onBoundary = split(loopedBar(), 960 + 3840, kTempo, kRate);
+    REQUIRE(onBoundary);
+    CHECK(clipEnd(onBoundary->first) == 960 + 3840);
+    CHECK_FALSE(looped(std::get<MidiClip>(onBoundary->first)));
+    CHECK(clipStart(onBoundary->second) == 960 + 3840);
+    CHECK(clipEnd(onBoundary->second) == 960 + 9600);
+    CHECK(std::get<MidiClip>(onBoundary->second).loopLength == 5760);
+
+    const auto inside = split(loopedBar(), 960 + 5760, kTempo, kRate);
+    REQUIRE(inside);
+    CHECK(std::get<MidiClip>(inside->first).loopLength == 5760);
+    CHECK(events(inside->first).back() == off(4320, 60));
+    const auto& right = std::get<MidiClip>(inside->second);
+    CHECK_FALSE(looped(right));
+    CHECK(right.start == 960 + 5760);
+    CHECK(right.length == 3840);
+    CHECK(events(right) == std::vector{on(960, 64), off(1920, 64), on(1920, 60), off(2400, 60)});
 }
 
 TEST_CASE("splitting an audio clip continues the source and drops the fades at the cut") {

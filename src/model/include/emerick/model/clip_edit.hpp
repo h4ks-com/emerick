@@ -12,6 +12,7 @@ namespace emerick::model {
 
 Ticks clipStart(const Clip& clip);
 Ticks clipLength(const Clip& clip);
+// Where the clip ends on the timeline, after its repeats when it loops.
 Ticks clipEnd(const Clip& clip);
 
 Clip moveClip(Clip clip, Ticks start);
@@ -26,7 +27,10 @@ Clip duplicateClip(Clip clip, Ticks start);
 std::expected<Clip, std::string> trimStart(const Clip& clip, Ticks start, const core::TempoMap& tempo,
                                            double sampleRate);
 std::expected<Clip, std::string> setLength(const Clip& clip, Ticks length);
-// The right part gets a new id.
+// Loops a MIDI clip's content until length on the timeline, with a partial last repeat where it falls short; a length
+// up to the content's own ends the loop. The content keeps its length.
+std::expected<Clip, std::string> setLoopLength(const Clip& clip, Ticks length);
+// The right part gets a new id. Splitting a looped clip turns the repeats on each side into the content they play.
 std::expected<std::pair<Clip, Clip>, std::string> split(const Clip& clip, Ticks at, const core::TempoMap& tempo,
                                                         double sampleRate);
 

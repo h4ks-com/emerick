@@ -146,6 +146,9 @@ QtObject {
     // A take in progress shows in a dimmed record color until it lands as a clip. It stays opaque, so the clips it
     // records over do not show through it.
     readonly property color takePreview: Qt.tint(graphite, Qt.rgba(0.937, 0.325, 0.314, 0.6))
+    // A looped clip's repeats draw as lighter copies of its content, with a notch at each repeat boundary.
+    readonly property color loopWash: Qt.rgba(1, 1, 1, 0.22)
+    readonly property int loopNotch: 4
     readonly property color fadeShade: Qt.rgba(0, 0, 0, 0.3)
     readonly property color fadeLine: Qt.rgba(1, 1, 1, 0.7)
     readonly property int clipInset: 2

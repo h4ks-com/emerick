@@ -7,6 +7,7 @@ qt_add_library(emerick_app STATIC
     backends.cpp
     clip_actions.cpp
     clip_edit_actions.cpp
+    clip_loop_actions.cpp
     clip_notes.cpp
     code_highlighter.cpp
     console.cpp
@@ -119,6 +120,7 @@ emerick_target(emerick_app)
 if(EMERICK_BUILD_TESTS)
     emerick_test(emerick_app_tests
         tests/automation_test.cpp
+        tests/clip_loop_test.cpp
         tests/clip_mute_test.cpp
         tests/code_highlighter_test.cpp
         tests/console_test.cpp

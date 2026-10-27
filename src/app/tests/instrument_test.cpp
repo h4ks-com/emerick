@@ -11,6 +11,7 @@
 
 #include "emerick/app/plugin_actions.hpp"
 #include "emerick/app/plugin_catalog.hpp"
+#include "emerick/model/json.hpp"
 #include "project_rig.hpp"
 
 using namespace emerick;
@@ -136,7 +137,7 @@ TEST_CASE("a project saves its instrument's current state and loads it back into
     rig.controller->save();
     std::ifstream file(rig.controller->folder() / "project.json");
     const Json saved = Json::parse(file);
-    CHECK(saved.at("format") == 10);
+    CHECK(saved.at("format") == model::kFormatVersion);
     CHECK(saved.at("tracks")[0].at("instrument").at("state") == "AACAPg==");
 
     InstrumentRig other;

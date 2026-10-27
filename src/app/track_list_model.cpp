@@ -22,6 +22,7 @@
 #include "emerick/model/automation.hpp"
 #include "emerick/model/clip_edit.hpp"
 #include "emerick/model/controls.hpp"
+#include "emerick/model/midi_notes.hpp"
 
 namespace emerick::app {
 
@@ -148,31 +149,33 @@ QVariantMap TrackListModel::clipEntry(const model::Clip& clip, int take) const {
                       {"take", take},
                       {"muted", model::clipMuted(clip)},
                       {"start", QVariant::fromValue(start)},
-                      {"length", QVariant::fromValue(end - start)},
+                      {"length", QVariant::fromValue(model::clipLength(clip))},
+                      {"end", QVariant::fromValue(end)},
                       {"startText", qs(tempo.toBarBeatTick(start).format())},
                       {"endText", qs(tempo.toBarBeatTick(end).format())},
                       {"lengthText", qs(durationText(end - start, tempo))}};
-    std::visit(core::Overloaded{
-                   [&](const model::AudioClip& audio) {
-                       const std::filesystem::path file{audio.file};
-                       const core::Frames frames = tempo.ticksToFrames(end, rate) - tempo.ticksToFrames(start, rate);
-                       entry.insert(
-                           QVariantMap{{"type", "audio"},
-                                       {"fadeIn", QVariant::fromValue(audio.fadeIn)},
-                                       {"fadeOut", QVariant::fromValue(audio.fadeOut)},
-                                       {"fadeInShape", qs(std::string{core::fadeShapeId(audio.fadeInShape)})},
-                                       {"fadeOutShape", qs(std::string{core::fadeShapeId(audio.fadeOutShape)})},
-                                       {"fadeInCurve", audio.fadeInCurve},
-                                       {"fadeOutCurve", audio.fadeOutCurve},
-                                       {"gainDb", audio.gainDb},
-                                       {"file", qs((file.is_absolute() ? file : controller_.folder() / file).string())},
-                                       {"sourceOffset", QVariant::fromValue(audio.sourceOffset)},
-                                       {"frames", QVariant::fromValue(frames)}});
-                   },
-                   [&](const model::MidiClip& midi) {
-                       entry.insert(QVariantMap{{"type", "midi"}, {"notes", noteList(midi)}});
-                   }},
-               clip);
+    std::visit(
+        core::Overloaded{
+            [&](const model::AudioClip& audio) {
+                const std::filesystem::path file{audio.file};
+                const core::Frames frames = tempo.ticksToFrames(end, rate) - tempo.ticksToFrames(start, rate);
+                entry.insert(
+                    QVariantMap{{"type", "audio"},
+                                {"fadeIn", QVariant::fromValue(audio.fadeIn)},
+                                {"fadeOut", QVariant::fromValue(audio.fadeOut)},
+                                {"fadeInShape", qs(std::string{core::fadeShapeId(audio.fadeInShape)})},
+                                {"fadeOutShape", qs(std::string{core::fadeShapeId(audio.fadeOutShape)})},
+                                {"fadeInCurve", audio.fadeInCurve},
+                                {"fadeOutCurve", audio.fadeOutCurve},
+                                {"gainDb", audio.gainDb},
+                                {"file", qs((file.is_absolute() ? file : controller_.folder() / file).string())},
+                                {"sourceOffset", QVariant::fromValue(audio.sourceOffset)},
+                                {"frames", QVariant::fromValue(frames)}});
+            },
+            [&](const model::MidiClip& midi) {
+                entry.insert(QVariantMap{{"type", "midi"}, {"notes", noteList(midi)}, {"looped", model::looped(midi)}});
+            }},
+        clip);
     return entry;
 }
 

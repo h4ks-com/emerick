@@ -21,7 +21,9 @@ Item {
     readonly property bool clipMuted: clip.muted === true
     readonly property bool audio: clip.type === "audio"
     readonly property real start: clip.start
-    readonly property real end: clip.start + clip.length
+    readonly property real end: clip.end
+    readonly property real contentEnd: clip.start + clip.length
+    readonly property bool looped: clip.looped === true
     readonly property real fadeIn: audio ? clip.fadeIn : 0
     readonly property real fadeOut: audio ? clip.fadeOut : 0
     readonly property string fadeInShape: audio ? clip.fadeInShape : "linear"

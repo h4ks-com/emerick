@@ -2,7 +2,11 @@
 
 #include <QGuiApplication>
 #include <QObject>
+#include <algorithm>
+#include <cmath>
+#include <format>
 #include <ranges>
+#include <string>
 #include <utility>
 
 #include "emerick/app/registry.hpp"
@@ -30,7 +34,16 @@ void Instruments::sync(const model::Document& document) {
             continue;
         }
         const model::PluginSlot& slot = *track.instrument;
-        if (auto found = live_.find(track.id.value); found != live_.end() && samePlugin(found->second.slot, slot)) {
+        // An empty state means the plugin's defaults, which only a new instance has.
+        if (auto found = live_.find(track.id.value); found != live_.end() && samePlugin(found->second.slot, slot) &&
+                                                     (found->second.slot.state == slot.state || !slot.state.empty())) {
+            Live& live = found->second;
+            if (live.instrument && live.slot.state != slot.state) {
+                live.error = live.instrument->loadState(slot.state)
+                                 ? std::string{}
+                                 : slot.name + " did not load its saved settings, so it plays with its defaults";
+            }
+            live.slot = slot;
             kept.insert(live_.extract(found));
             continue;
         }
@@ -76,6 +89,7 @@ bool Instruments::idle() {
             continue;
         }
         dirty = live.instrument->idle() || dirty;
+        paramsChanged_ = live.instrument->takeParamsChanged() || paramsChanged_;
         if (const auto size = live.instrument->takeEditorResize(); size && live.window) {
             live.window->resize(static_cast<int>(size->width), static_cast<int>(size->height));
         }
@@ -143,6 +157,43 @@ void Instruments::showEditor(const model::TrackId& id, const std::string& title)
 bool Instruments::editorOpen(const model::TrackId& id) const {
     const auto found = live_.find(id.value);
     return found != live_.end() && found->second.instrument && found->second.instrument->editorOpen();
+}
+
+Json Instruments::describe(const model::TrackId& id) const {
+    const auto instrument = find(id);
+    if (!instrument) {
+        return nullptr;
+    }
+    return {{"editor", instrument->hasEditor()},
+            {"params", instrument->params() | std::views::transform([&](const engine::ClapParam& param) {
+                           const double value = instrument->paramValue(param.id).value_or(param.defaultValue);
+                           return Json{{"id", param.id},           {"name", param.name},
+                                       {"module", param.module},   {"min", param.min},
+                                       {"max", param.max},         {"default", param.defaultValue},
+                                       {"stepped", param.stepped}, {"enum", param.enumerated},
+                                       {"value", value},           {"text", instrument->paramText(param.id, value)},
+                                       {"choices", param.choices}};
+                       }) | std::ranges::to<Json::array_t>()}};
+}
+
+std::vector<std::uint8_t> Instruments::setParam(const model::TrackId& id, std::uint32_t param, double value) {
+    const auto found = live_.find(id.value);
+    if (found == live_.end() || !found->second.instrument) {
+        throw AppError(found == live_.end() ? "the track has no instrument, run instrument.load first"
+                                            : found->second.error);
+    }
+    Live& live = found->second;
+    const std::vector<engine::ClapParam> params = live.instrument->params();
+    const auto info = std::ranges::find(params, param, &engine::ClapParam::id);
+    if (info == params.end()) {
+        throw AppError(live.slot.name + " has no param " + std::to_string(param) + ", run instrument.params for ids");
+    }
+    if (value < info->min || value > info->max) {
+        throw AppError(info->name + " takes a value from " + std::format("{} to {}", info->min, info->max));
+    }
+    live.instrument->setParam(param, info->stepped ? std::round(value) : value);
+    live.slot.state = live.instrument->saveState().value_or(live.slot.state);
+    return live.slot.state;
 }
 
 void Instruments::closeEditor(Live& live) {

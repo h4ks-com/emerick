@@ -238,3 +238,64 @@ TEST_CASE("a new General MIDI instrument plays the SoundFont the setting names, 
     const std::string state(track.instrument->state.begin(), track.instrument->state.end());
     CHECK(std::filesystem::equivalent(state, soundFont));
 }
+
+TEST_CASE("instrument.params lists the instrument's params with their values") {
+    InstrumentRig rig;
+    const model::TrackId id = rig.addSynth();
+    rig.controller->flush();
+    const Json listed = rig.run("instrument.params", {{"track", id.value}});
+    CHECK(listed.at("editor") == false);
+    REQUIRE(listed.at("params").size() == 1);
+    const Json& level = listed.at("params")[0];
+    CHECK(level.at("name") == "Level");
+    CHECK(level.at("value") == 0.5);
+    CHECK(level.at("text") == "50%");
+    CHECK(level.at("stepped") == false);
+    CHECK(rig.controller->instrumentsInfo().contains(QString::fromStdString(id.value)));
+}
+
+TEST_CASE("instrument.setParam sets the value as one undo step and the project keeps it") {
+    InstrumentRig rig;
+    const model::TrackId id = rig.addSynth();
+    rig.controller->flush();
+    rig.run("instrument.setParam", {{"track", id.value}, {"param", 0}, {"value", 0.25}});
+    CHECK(rig.controller->project().track(id)->instrument->state == levelState(0.25F));
+    CHECK(rig.controller->instruments().find(id)->paramValue(0) == 0.25);
+    rig.controller->flush();
+    CHECK(rig.controller->instruments().find(id)->paramValue(0) == 0.25);
+
+    rig.run("project.undo");
+    rig.controller->flush();
+    CHECK(rig.controller->instruments().find(id)->paramValue(0) == 0.5);
+    rig.run("project.redo");
+    rig.controller->flush();
+    CHECK(rig.controller->instruments().find(id)->paramValue(0) == 0.25);
+
+    CHECK_THROWS_AS(rig.run("instrument.setParam", {{"track", id.value}, {"param", 0}, {"value", 2.0}}), AppError);
+    CHECK_THROWS_AS(rig.run("instrument.setParam", {{"track", id.value}, {"param", 9}, {"value", 0.0}}), AppError);
+    CHECK(rig.controller->instruments().find(id)->paramValue(0) == 0.25);
+
+    rig.controller->save();
+    InstrumentRig other;
+    other.controller->open(rig.controller->folder());
+    other.controller->flush();
+    REQUIRE(other.controller->instruments().find(id) != nullptr);
+    CHECK(other.controller->instruments().find(id)->paramValue(0) == 0.25);
+}
+
+TEST_CASE("picking a General MIDI sound shows its name and undoes to the piano") {
+    InstrumentRig rig;
+    rig.registry.setSetting(kClapFoldersSetting, Json::array({bundledClapFolder(EMERICK_GM_APP_FOLDER).string()}));
+    const model::TrackId id{
+        rig.run("track.addInstrument", {{"plugin", kGeneralMidiPluginId}}).at("id").get<std::string>()};
+    rig.controller->flush();
+    const auto sound = [&] { return rig.run("instrument.params", {{"track", id.value}}).at("params")[0]; };
+    CHECK(sound().at("text") == "Acoustic Grand Piano");
+    CHECK(sound().at("choices").size() == 128);
+    rig.run("instrument.setParam", {{"track", id.value}, {"param", 0}, {"value", 40}});
+    rig.controller->flush();
+    CHECK(sound().at("text") == "Violin");
+    rig.run("project.undo");
+    rig.controller->flush();
+    CHECK(sound().at("text") == "Acoustic Grand Piano");
+}

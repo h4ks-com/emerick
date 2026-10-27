@@ -143,6 +143,7 @@ Rectangle {
                 required property bool armed
                 required property bool monitor
                 readonly property bool records: !busRoutes
+                readonly property var instrument: Project.instruments[trackId]
                 readonly property var clip: visible && Nav.selectedClips.length > 0
                                             ? clips.find(entry => entry.id === Nav.selectedClips[0]) : undefined
                 readonly property bool audioClip: clip !== undefined && clip.type === "audio"
@@ -249,12 +250,64 @@ Rectangle {
                     }
                     ChromeButton {
                         objectName: "instrument.showEditor:" + panel.trackId + ":inspector"
-                        visible: panel.instrumentId !== ""
+                        visible: panel.instrument !== undefined && panel.instrument.editor
                         actionId: "instrument.showEditor"
                         params: ({track: panel.trackId})
                         iconName: "sliders"
                         implicitWidth: Theme.headerButton
                         implicitHeight: Theme.headerButton
+                    }
+                }
+
+                // The model is a count, so a new value keeps each param's control, and a drag on it, alive.
+                Repeater {
+                    model: panel.midiRoutes && panel.instrument !== undefined ? panel.instrument.params.length : 0
+                    ColumnLayout {
+                        id: setting
+                        required property int index
+                        readonly property var modelData: panel.instrument?.params[index]
+                            ?? {id: 0, name: "", min: 0, max: 0, value: 0, stepped: false, text: "", choices: []}
+                        readonly property string controlName: "instrument.setParam:" + panel.trackId + ":" + modelData.id
+                        spacing: Theme.space1
+                        Layout.fillWidth: true
+
+                        function set(value) {
+                            return {id: "instrument.setParam", params: {track: panel.trackId, param: setting.modelData.id, value: value}}
+                        }
+
+                        RouteLabel { text: setting.modelData.name }
+                        Loader {
+                            sourceComponent: setting.modelData.choices.length > 0 ? choicePicker : numberField
+                            Layout.fillWidth: true
+                        }
+                        Component {
+                            id: choicePicker
+                            SearchCombo {
+                                objectName: setting.controlName
+                                model: setting.modelData.choices.map(
+                                    (name, index) => ({id: String(setting.modelData.min + index), name: name}))
+                                currentId: String(Math.round(setting.modelData.value))
+                                missingText: setting.modelData.text
+                                toolTip: Registry.actionInfo("instrument.setParam").title
+                                onPicked: entry => {
+                                    const call = setting.set(Number(entry.id))
+                                    Registry.runAction(call.id, call.params)
+                                }
+                            }
+                        }
+                        Component {
+                            id: numberField
+                            DragNumber {
+                                objectName: setting.controlName
+                                actionId: "instrument.setParam"
+                                value: setting.modelData.value
+                                from: setting.modelData.min
+                                to: setting.modelData.max
+                                step: setting.modelData.stepped ? 1 : (setting.modelData.max - setting.modelData.min) / 100
+                                decimals: setting.modelData.stepped ? 0 : 2
+                                actionsFor: number => [setting.set(number)]
+                            }
+                        }
                     }
                 }
 

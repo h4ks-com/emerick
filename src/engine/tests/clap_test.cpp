@@ -6,6 +6,8 @@
 #include <cstdint>
 #include <ranges>
 #include <span>
+#include <stop_token>
+#include <thread>
 #include <vector>
 
 #include "emerick/engine/clap_instrument.hpp"
@@ -116,4 +118,45 @@ TEST_CASE("an instrument reactivates at a new sample rate and keeps playing") {
     instrument->processBlock(mix, 512, 0);
     CHECK(loudest(left) > 0.4F);
     CHECK_FALSE(instrument->hasEditor());
+}
+
+TEST_CASE("an instrument lists its params, and a value set while it is idle reaches its state") {
+    const std::shared_ptr<ClapInstrument> instrument = sine();
+    const std::vector<ClapParam> params = instrument->params();
+    REQUIRE(params.size() == 1);
+    CHECK(params[0].name == "Level");
+    CHECK(params[0].max == 1.0);
+    CHECK(params[0].defaultValue == 0.5);
+    CHECK_FALSE(params[0].stepped);
+    CHECK(params[0].choices.empty());
+    CHECK(instrument->paramText(0, 0.25) == "25%");
+    instrument->setParam(0, 0.25);
+    CHECK(instrument->paramValue(0) == 0.25);
+    REQUIRE(instrument->saveState() == levelState(0.25F));
+    const std::shared_ptr<ClapInstrument> reloaded = sine();
+    REQUIRE(reloaded->loadState(*instrument->saveState()));
+    CHECK(reloaded->paramValue(0) == 0.25);
+}
+
+TEST_CASE("a param set while the instrument processes reaches it through its next process call") {
+    const std::shared_ptr<ClapInstrument> instrument = sine();
+    REQUIRE(instrument->activate(48000.0, 512));
+    std::vector<float> left(512);
+    std::vector<float> right(512);
+    const std::array<float*, 2> mix{left.data(), right.data()};
+    instrument->queueMidi(std::array<std::uint8_t, 3>{0x90, 69, 100}, 0);
+    instrument->processBlock(mix, 512, 0);
+    {
+        const std::jthread audio([&](const std::stop_token& stop) {
+            while (!stop.stop_requested()) {
+                instrument->processBlock(mix, 512, 0);
+            }
+        });
+        instrument->setParam(0, 0.25);
+        CHECK(instrument->paramValue(0) == 0.25);
+    }
+    std::ranges::fill(left, 0.0F);
+    instrument->processBlock(mix, 512, 0);
+    CHECK(loudest(left) > 0.2F);
+    CHECK(loudest(left) <= 0.25F);
 }

@@ -1,6 +1,8 @@
 #include <algorithm>
+#include <cstdint>
 #include <ranges>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "emerick/app/action_params.hpp"
@@ -133,6 +135,49 @@ void registerInstrumentActions(Registry& registry, ProjectController& controller
                                             {"editorOpen", controller.instruments().editorOpen(id)}};
                             },
                         .menus = {kTrackContextMenu}});
+    registry.addAction({.id = "instrument.params",
+                        .title = "List instrument settings",
+                        .description =
+                            "Lists the params of the track's CLAP instrument with their values, and the label of every "
+                            "choice of a stepped param, such as each General MIDI sound.",
+                        .aliases = {"plugin params", "instrument parameters", "list sounds"},
+                        .category = "Tracks",
+                        .schema = {{"properties", {{"track", {{"type", "string"}}}}}},
+                        .run =
+                            [&registry, &controller, &nav](const Json& params) {
+                                const model::TrackId id = instrumentTrack(registry, controller, nav, params);
+                                Json described = controller.instruments().describe(id);
+                                if (described.is_null()) {
+                                    throw AppError("the instrument of track " + controller.project().track(id)->name +
+                                                   " is not loaded, see the track's warning");
+                                }
+                                described["track"] = id.value;
+                                described["message"] = std::to_string(described.at("params").size()) + " settings";
+                                return described;
+                            },
+                        .menus = {kTrackContextMenu},
+                        .notifies = true});
+    registry.addAction(
+        {.id = "instrument.setParam",
+         .title = "Set instrument setting",
+         .description = "Sets a param of the track's CLAP instrument, such as the General MIDI sound, as one undo "
+                        "step. The instrument's saved state keeps the value.",
+         .aliases = {"pick sound", "change sound", "set plugin param"},
+         .category = "Tracks",
+         .schema = {{"required", {"param", "value"}},
+                    {"properties",
+                     {{"track", {{"type", "string"}}},
+                      {"param", {{"type", "integer"}, {"description", "a param id from instrument.params"}}},
+                      {"value", {{"type", "number"}}}}}},
+         .run = [&registry, &controller, &nav](const Json& params) {
+             const model::TrackId id = instrumentTrack(registry, controller, nav, params);
+             const auto paramId = param<std::uint32_t>(params, "param");
+             const auto value = param<double>(params, "value");
+             std::vector<std::uint8_t> state = controller.instruments().setParam(id, paramId, value);
+             editTrack(controller, id, "set instrument setting",
+                       [&state](model::Track& track) { track.instrument->state = std::move(state); });
+             return Json{{"track", id.value}, {"param", paramId}, {"value", value}};
+         }});
 }
 
 }  // namespace emerick::app

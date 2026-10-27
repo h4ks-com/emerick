@@ -2,6 +2,7 @@ add_library(emerick_engine
     src/audio_backend.cpp
     src/clap_instrument.cpp
     src/clap_library.cpp
+    src/clap_params.cpp
     src/clap_scan.cpp
     src/clip_stream.cpp
     src/effects.cpp

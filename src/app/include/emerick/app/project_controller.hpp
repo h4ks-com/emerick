@@ -71,6 +71,7 @@ class ProjectController : public QObject {
     Q_PROPERTY(qint64 endTicks READ endTicks NOTIFY projectChanged)
     Q_PROPERTY(QVariantList markers READ markers NOTIFY projectChanged)
     Q_PROPERTY(QVariantMap cycle READ cycle NOTIFY projectChanged)
+    Q_PROPERTY(QVariantMap instruments READ instrumentsInfo NOTIFY projectChanged)
     Q_PROPERTY(QVariantMap routeDevices READ routeDevices NOTIFY devicesChanged)
     Q_PROPERTY(QVariantMap trackErrors READ trackErrors NOTIFY trackErrorsChanged)
     Q_PROPERTY(QVariantList healthIssues READ healthIssues NOTIFY healthChanged)
@@ -184,6 +185,8 @@ public:
     Q_INVOKABLE qint64 placedOn(qint64 ticks, int modifiers, qint64 step) const;
     // Each marker's state in position order.
     [[nodiscard]] QVariantList markers() const;
+    // Each live instrument as Instruments::describe lists it, by track id.
+    [[nodiscard]] QVariantMap instrumentsInfo() const;
     // The cycle's enabled flag and locators in ticks.
     [[nodiscard]] QVariantMap cycle() const;
     [[nodiscard]] QVariantMap routeDevices() const;

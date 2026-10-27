@@ -7,8 +7,8 @@ else()
     set(gm_clap_folder ${CMAKE_CURRENT_BINARY_DIR}/clap)
 endif()
 
-add_library(emerick_gm MODULE gm_plugin.cpp)
-target_link_libraries(emerick_gm PRIVATE clap PkgConfig::FLUIDSYNTH)
+add_library(emerick_gm MODULE gm_plugin.cpp gm_settings.cpp)
+target_link_libraries(emerick_gm PRIVATE clap nlohmann_json::nlohmann_json PkgConfig::FLUIDSYNTH)
 set_target_properties(emerick_gm PROPERTIES PREFIX "" SUFFIX ".clap" OUTPUT_NAME "Emerick GM"
     LIBRARY_OUTPUT_DIRECTORY ${gm_clap_folder})
 if(APPLE)

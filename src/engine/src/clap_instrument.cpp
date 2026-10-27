@@ -151,10 +151,10 @@ void ClapInstrument::Impl::guiClosed(bool wasDestroyed) noexcept {
 }
 
 void ClapInstrument::Impl::deactivate() {
-    if (processing) {
+    if (processing.load(std::memory_order_relaxed)) {
         const AudioThreadScope audioThread;
         proxy->stopProcessing();
-        processing = false;
+        processing.store(false, std::memory_order_relaxed);
     }
     if (active) {
         proxy->deactivate();
@@ -226,6 +226,12 @@ bool ClapInstrument::idle() {
         const AudioGuard guard(impl.audioGuard);
         impl.deactivate();
         impl.active = impl.proxy->activate(impl.sampleRate, 1, static_cast<std::uint32_t>(impl.maxFrames));
+    }
+    // A processing plugin flushes in its next process call.
+    if (impl.flushRequested.exchange(false, std::memory_order_relaxed) &&
+        !impl.processing.load(std::memory_order_relaxed)) {
+        const AudioGuard guard(impl.audioGuard);
+        impl.flushParams();
     }
     if (std::exchange(impl.editorClosedByPlugin, false)) {
         impl.proxy->guiDestroy();

@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
 #include <expected>
 #include <filesystem>
@@ -17,6 +18,21 @@ struct EditorSize {
     std::uint32_t width = 0;
     std::uint32_t height = 0;
 };
+
+struct ClapParam {
+    std::uint32_t id = 0;
+    std::string name;
+    std::string module;
+    double min = 0.0;
+    double max = 0.0;
+    double defaultValue = 0.0;
+    bool stepped = false;
+    bool enumerated = false;
+    // The plugin's label for each step from min to max, for a stepped param with up to kMaxParamChoices steps.
+    std::vector<std::string> choices;
+};
+
+inline constexpr std::size_t kMaxParamChoices = 1024;
 
 // One CLAP plugin playing as a track's instrument. The thread that creates it is the plugin's main thread: it
 // activates, saves, loads, runs the editor and destroys it. The audio thread queues MIDI and processes. Whoever holds
@@ -45,6 +61,16 @@ public:
     // Nullopt when the plugin keeps no state or fails to save it.
     [[nodiscard]] std::optional<std::vector<std::uint8_t>> saveState() const;
     bool loadState(std::span<const std::uint8_t> bytes);
+
+    // The params the plugin shows, leaving out hidden and read-only ones.
+    [[nodiscard]] std::vector<ClapParam> params() const;
+    [[nodiscard]] std::optional<double> paramValue(std::uint32_t id) const;
+    [[nodiscard]] std::string paramText(std::uint32_t id, double value) const;
+    // Main thread: queues the value for the next process call, or flushes it while the plugin is not processing, and
+    // returns once the plugin has it, so a state saved next holds it.
+    void setParam(std::uint32_t id, double value);
+    // True once after the plugin asked to rescan its params or reported a param change of its own.
+    bool takeParamsChanged();
 
     [[nodiscard]] bool hasEditor() const;
     [[nodiscard]] bool editorOpen() const;

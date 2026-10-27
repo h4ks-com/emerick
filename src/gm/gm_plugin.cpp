@@ -1,5 +1,5 @@
 // The General MIDI instrument: a CLAP plugin that plays all 16 MIDI channels through FluidSynth and a SoundFont.
-// Its state is the SoundFont path; an empty path plays the GeneralUser GS bank shipped inside the plugin bundle.
+// An empty SoundFont path plays the GeneralUser GS bank shipped inside the plugin bundle.
 
 #include <clap/clap.h>
 #include <fluidsynth.h>
@@ -11,42 +11,27 @@
 #include <cstring>
 #include <filesystem>
 #include <memory>
+#include <ranges>
 #include <string>
+
+#include "gm.hpp"
+#include "gm_sounds.hpp"
 
 namespace {
 
+using emerick::gm::bundledSoundFont;
+using emerick::gm::eventAs;
+using emerick::gm::Gm;
+using emerick::gm::gmOf;
+using emerick::gm::kDrumKits;
+using emerick::gm::kParams;
+using emerick::gm::kState;
+using emerick::gm::setParam;
+using emerick::gm::wantedSoundFont;
+
 constexpr const char* kSoundFontFile = "GeneralUser-GS.sf2";
-
-std::filesystem::path& bundledSoundFont() {
-    static std::filesystem::path path;
-    return path;
-}
-
-struct SettingsDeleter {
-    void operator()(fluid_settings_t* settings) const { delete_fluid_settings(settings); }
-};
-
-struct SynthDeleter {
-    void operator()(fluid_synth_t* synth) const { delete_fluid_synth(synth); }
-};
-
-struct Gm {
-    clap_plugin plugin{};
-    const clap_host* host = nullptr;
-    std::string soundFont;
-    std::filesystem::path loadedSoundFont;
-    double loadedRate = 0.0;
-    bool active = false;
-    // The synth reads its settings until it is deleted, so we declare the settings first and they outlive it.
-    std::unique_ptr<fluid_settings_t, SettingsDeleter> settings;
-    std::unique_ptr<fluid_synth_t, SynthDeleter> synth;
-};
-
-Gm& gmOf(const clap_plugin* plugin) { return *static_cast<Gm*>(plugin->plugin_data); }
-
-std::filesystem::path wantedSoundFont(const Gm& gm) {
-    return gm.soundFont.empty() ? bundledSoundFont() : std::filesystem::path{gm.soundFont};
-}
+constexpr int kDrumChannel = 9;
+constexpr int kChannels = 16;
 
 bool activate(const clap_plugin* plugin, double sampleRate, std::uint32_t /*unused*/, std::uint32_t /*unused*/) {
     Gm& gm = gmOf(plugin);
@@ -68,6 +53,7 @@ bool activate(const clap_plugin* plugin, double sampleRate, std::uint32_t /*unus
         gm.loadedRate = sampleRate;
         gm.loadedSoundFont = soundFont;
     }
+    gm.programsPending.store(true, std::memory_order_relaxed);
     gm.active = true;
     return true;
 }
@@ -109,12 +95,6 @@ void playMidi(fluid_synth_t* synth, const std::array<std::uint8_t, 3>& data) {
     }
 }
 
-// CLAP hands every event as its header, and the type in that header says which struct it starts.
-template <typename Event>
-const Event& eventAs(const clap_event_header* header) {
-    return *reinterpret_cast<const Event*>(header);
-}
-
 void playNote(fluid_synth_t* synth, const clap_event_note& note, bool on) {
     const int channel = std::max<int>(note.channel, 0);
     if (on) {
@@ -126,10 +106,27 @@ void playNote(fluid_synth_t* synth, const clap_event_note& note, bool on) {
     }
 }
 
-void play(fluid_synth_t* synth, const clap_event_header* header) {
+// Picking a sound sets every melodic channel, as a GM module's own sound button does, until a program change in the
+// MIDI picks another.
+void sendPrograms(Gm& gm) {
+    fluid_synth_t* synth = gm.synth.get();
+    const int sound = gm.sound.load(std::memory_order_relaxed);
+    for (const int channel : std::views::iota(0, kChannels)) {
+        if (channel != kDrumChannel) {
+            fluid_synth_bank_select(synth, channel, 0);
+            fluid_synth_program_change(synth, channel, sound);
+        }
+    }
+    fluid_synth_program_change(
+        synth, kDrumChannel,
+        kDrumKits.at(static_cast<std::size_t>(gm.drumKit.load(std::memory_order_relaxed))).program);
+}
+
+void play(Gm& gm, const clap_event_header* header) {
     if (header->space_id != CLAP_CORE_EVENT_SPACE_ID) {
         return;
     }
+    fluid_synth_t* synth = gm.synth.get();
     switch (header->type) {
         case CLAP_EVENT_NOTE_ON:
             playNote(synth, eventAs<clap_event_note>(header), true);
@@ -141,13 +138,17 @@ void play(fluid_synth_t* synth, const clap_event_header* header) {
         case CLAP_EVENT_MIDI:
             playMidi(synth, std::to_array(eventAs<clap_event_midi>(header).data));
             break;
+        case CLAP_EVENT_PARAM_VALUE:
+            setParam(gm, eventAs<clap_event_param_value>(header));
+            break;
         default:
             break;
     }
 }
 
 clap_process_status process(const clap_plugin* plugin, const clap_process* process) {
-    fluid_synth_t* synth = gmOf(plugin).synth.get();
+    Gm& gm = gmOf(plugin);
+    fluid_synth_t* synth = gm.synth.get();
     float** outputs = process->audio_outputs[0].data32;
     const auto render = [&](std::uint32_t from, std::uint32_t to) {
         if (to > from) {
@@ -162,7 +163,13 @@ clap_process_status process(const clap_plugin* plugin, const clap_process* proce
         const std::uint32_t time = std::clamp(header->time, rendered, process->frames_count);
         render(rendered, time);
         rendered = time;
-        play(synth, header);
+        if (gm.programsPending.exchange(false, std::memory_order_relaxed)) {
+            sendPrograms(gm);
+        }
+        play(gm, header);
+    }
+    if (gm.programsPending.exchange(false, std::memory_order_relaxed)) {
+        sendPrograms(gm);
     }
     render(rendered, process->frames_count);
     return CLAP_PROCESS_CONTINUE;
@@ -200,42 +207,6 @@ bool notePortGet(const clap_plugin* /*unused*/, std::uint32_t index, bool isInpu
 
 const clap_plugin_note_ports kNotePorts{notePortCount, notePortGet};
 
-bool saveState(const clap_plugin* plugin, const clap_ostream* stream) {
-    const std::string& path = gmOf(plugin).soundFont;
-    std::size_t written = 0;
-    while (written < path.size()) {
-        const std::int64_t count = stream->write(stream, path.data() + written, path.size() - written);
-        if (count <= 0) {
-            return false;
-        }
-        written += static_cast<std::size_t>(count);
-    }
-    return true;
-}
-
-bool loadState(const clap_plugin* plugin, const clap_istream* stream) {
-    std::string path;
-    std::array<char, 4096> chunk{};
-    for (;;) {
-        const std::int64_t count = stream->read(stream, chunk.data(), chunk.size());
-        if (count < 0) {
-            return false;
-        }
-        if (count == 0) {
-            break;
-        }
-        path.append(chunk.data(), static_cast<std::size_t>(count));
-    }
-    Gm& gm = gmOf(plugin);
-    gm.soundFont = std::move(path);
-    if (gm.active && wantedSoundFont(gm) != gm.loadedSoundFont) {
-        gm.host->request_restart(gm.host);
-    }
-    return true;
-}
-
-const clap_plugin_state kState{saveState, loadState};
-
 const void* extension(const clap_plugin* /*unused*/, const char* id) {
     if (std::strcmp(id, std::data(CLAP_EXT_AUDIO_PORTS)) == 0) {
         return &kAudioPorts;
@@ -245,6 +216,9 @@ const void* extension(const clap_plugin* /*unused*/, const char* id) {
     }
     if (std::strcmp(id, std::data(CLAP_EXT_STATE)) == 0) {
         return &kState;
+    }
+    if (std::strcmp(id, std::data(CLAP_EXT_PARAMS)) == 0) {
+        return &kParams;
     }
     return nullptr;
 }

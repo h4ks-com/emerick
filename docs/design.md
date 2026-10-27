@@ -44,6 +44,8 @@ Glass: the control bar and popovers use `slate` at 96% with a 1 px top highlight
 
 Left aligned everywhere. Track header holds arm, mute, solo, name and an instrument icon, and a thin level meter along its right edge; the inspector shows the selected track's inputs and outputs per track (audio device and channels, MIDI port and channel), always visible, never hidden in a global preference. A track whose routes fail shows a warning icon in `rec` in its header and the inspector, the transport shows one when the audio device stops, and hovering the icon shows the whole message. Dragging the inspector's right edge, or the header column's edge above the tracks or beside the piano keys, resizes it, and the width stays as a setting.
 
+Under a MIDI track's instrument picker, the inspector lists the instrument's settings: a searchable picker for each setting with choices, such as the General MIDI sound, and a number field for the others. The editor button beside the picker shows for a plugin that has its own editor.
+
 Command-click a track header to add it to the selection and Shift-click to select a range; Command+A on a header selects every track. The inspector then reads "N tracks" and shows "Mixed" where the tracks differ, and its routes, flags, gain and pan, the header controls of a selected track, the track menu and Delete act on every selected track as one undo step. Gain and pan move each track by the same amount, as in Logic.
 
 Left and Right move the playhead one bar, and Shift with them eight bars. A tempo change keeps the playhead on its bar and beat.

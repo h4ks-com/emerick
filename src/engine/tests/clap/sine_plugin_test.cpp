@@ -1,4 +1,4 @@
-// A tiny CLAP instrument for the tests: one sine voice at the last note held, scaled by a level its state saves.
+// A tiny CLAP instrument for the tests: one sine voice at the last note held, scaled by a level param its state saves.
 // Built with EMERICK_TEST_CRASH or EMERICK_TEST_HANG, its entry crashes or hangs, as a broken plugin would.
 
 #include <clap/clap.h>
@@ -39,7 +39,12 @@ void handle(Synth& synth, const clap_event_header* header) {
     if (header->space_id != CLAP_CORE_EVENT_SPACE_ID) {
         return;
     }
-    if (header->type == CLAP_EVENT_NOTE_ON) {
+    if (header->type == CLAP_EVENT_PARAM_VALUE) {
+        const auto* change = reinterpret_cast<const clap_event_param_value*>(header);
+        if (change->param_id == 0) {
+            synth.level = static_cast<float>(change->value);
+        }
+    } else if (header->type == CLAP_EVENT_NOTE_ON) {
         noteOn(synth, reinterpret_cast<const clap_event_note*>(header)->key);
     } else if (header->type == CLAP_EVENT_NOTE_OFF) {
         noteOff(synth, reinterpret_cast<const clap_event_note*>(header)->key);
@@ -131,6 +136,44 @@ bool loadState(const clap_plugin* plugin, const clap_istream* stream) {
 
 const clap_plugin_state kState{saveState, loadState};
 
+std::uint32_t paramCount(const clap_plugin*) { return 1; }
+
+bool paramInfo(const clap_plugin*, std::uint32_t index, clap_param_info* info) {
+    if (index != 0) {
+        return false;
+    }
+    *info = {};
+    info->id = 0;
+    info->flags = CLAP_PARAM_IS_AUTOMATABLE;
+    std::strncpy(info->name, "Level", sizeof(info->name));
+    info->min_value = 0.0;
+    info->max_value = 1.0;
+    info->default_value = 0.5;
+    return true;
+}
+
+bool paramValue(const clap_plugin* plugin, clap_id id, double* value) {
+    if (id != 0) {
+        return false;
+    }
+    *value = synthOf(plugin).level;
+    return true;
+}
+
+bool paramText(const clap_plugin*, clap_id id, double value, char* text, std::uint32_t size) {
+    return id == 0 && std::snprintf(text, size, "%.0f%%", value * 100.0) > 0;
+}
+
+void paramFlush(const clap_plugin* plugin, const clap_input_events* in, const clap_output_events*) {
+    for (std::uint32_t index = 0; index < in->size(in); ++index) {
+        handle(synthOf(plugin), in->get(in, index));
+    }
+}
+
+bool paramFromText(const clap_plugin*, clap_id, const char*, double*) { return false; }
+
+const clap_plugin_params kParams{paramCount, paramInfo, paramValue, paramText, paramFromText, paramFlush};
+
 const void* extension(const clap_plugin*, const char* id) {
     if (std::strcmp(id, CLAP_EXT_AUDIO_PORTS) == 0) {
         return &kAudioPorts;
@@ -140,6 +183,9 @@ const void* extension(const clap_plugin*, const char* id) {
     }
     if (std::strcmp(id, CLAP_EXT_STATE) == 0) {
         return &kState;
+    }
+    if (std::strcmp(id, CLAP_EXT_PARAMS) == 0) {
+        return &kParams;
     }
     return nullptr;
 }

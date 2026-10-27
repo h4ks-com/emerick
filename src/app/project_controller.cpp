@@ -651,6 +651,9 @@ void ProjectController::poll() {
     if (instruments_.idle()) {
         setEdited(true);
     }
+    if (instruments_.takeParamsChanged()) {
+        emit projectChanged();
+    }
     const core::Ticks ticks = engine_.position().ticks;
     const bool isPlaying = engine_.playing();
     const bool stalled = engine_.streamStalled();
@@ -756,6 +759,16 @@ qint64 ProjectController::placedOn(qint64 ticks, int modifiers, qint64 step) con
 }
 
 QVariantList ProjectController::markers() const { return toVariant(markersState(project_.document())).toList(); }
+
+QVariantMap ProjectController::instrumentsInfo() const {
+    QVariantMap info;
+    for (const model::Track& track : project_.document().tracks) {
+        if (const Json described = instruments_.describe(track.id); !described.is_null()) {
+            info[qs(track.id.value)] = toVariant(described);
+        }
+    }
+    return info;
+}
 
 QVariantMap ProjectController::cycle() const {
     const model::Cycle& cycle = project_.document().cycle;

@@ -1,6 +1,7 @@
 #include <QCommandLineParser>
 #include <QFileOpenEvent>
 #include <QGuiApplication>
+#include <QIcon>
 #include <QQmlApplicationEngine>
 #include <QStandardPaths>
 #include <QtEnvironmentVariables>
@@ -66,6 +67,7 @@ int run(int argc, char** argv) {
     QGuiApplication::setApplicationName("Emerick");
     QGuiApplication::setOrganizationName("Emerick");
     QGuiApplication::setApplicationVersion(appVersion());
+    QGuiApplication::setWindowIcon(QIcon(":/icons/emerick.png"));
 
     QCommandLineParser parser;
     parser.addHelpOption();

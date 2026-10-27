@@ -324,7 +324,8 @@ std::vector<const model::Track*> ProjectController::playingTracks() const {
     const auto& tracks = project_.document().tracks;
     const bool soloActive = std::ranges::any_of(tracks, &model::Track::solo);
     return tracks | std::views::filter([&](const model::Track& track) {
-               return !track.mute && (!soloActive || track.solo) && !track.midiOut.portId.empty();
+               return !track.mute && (!soloActive || track.solo) &&
+                      (!track.midiOut.portId.empty() || track.instrument.has_value());
            }) |
            std::views::transform([](const model::Track& track) { return &track; }) | std::ranges::to<std::vector>();
 }
@@ -332,7 +333,12 @@ std::vector<const model::Track*> ProjectController::playingTracks() const {
 void ProjectController::sendTrackMidi(const model::Track& track, const std::vector<MidiMessage>& messages) {
     for (const MidiMessage& message : messages) {
         try {
-            engine_.sendMidi(message.port.empty() ? track.midiOut.portId : message.port, message.bytes);
+            if (message.port.empty() && track.instrument) {
+                engine_.sendInstrumentMidi(track.id.value, message.bytes);
+            }
+            if (const std::string& port = message.port.empty() ? track.midiOut.portId : message.port; !port.empty()) {
+                engine_.sendMidi(port, message.bytes);
+            }
         } catch (const std::invalid_argument& error) {
             qWarning("cannot send MIDI for track %s: %s", track.name.c_str(), error.what());
         } catch (const std::runtime_error& error) {
@@ -342,7 +348,8 @@ void ProjectController::sendTrackMidi(const model::Track& track, const std::vect
 }
 
 void ProjectController::chaseTrackTypes(core::Ticks at) {
-    const PlaybackContext context{.tempo = project_.document().tempo, .folder = folder_};
+    const PlaybackContext context{
+        .tempo = project_.document().tempo, .folder = folder_, .document = &project_.document()};
     for (const model::Track* track : playingTracks()) {
         if (const TrackType* type = registry_.trackType(track->kind); type != nullptr && type->chase) {
             sendTrackMidi(*track, type->chase(*track, at, context));
@@ -351,7 +358,8 @@ void ProjectController::chaseTrackTypes(core::Ticks at) {
 }
 
 std::optional<StartAlignment> ProjectController::earliestAlignment(core::Ticks at) const {
-    const PlaybackContext context{.tempo = project_.document().tempo, .folder = folder_};
+    const PlaybackContext context{
+        .tempo = project_.document().tempo, .folder = folder_, .document = &project_.document()};
     std::optional<StartAlignment> earliest;
     for (const model::Track* track : playingTracks()) {
         const TrackType* type = registry_.trackType(track->kind);
@@ -386,12 +394,17 @@ engine::Cycle ProjectController::engineCycle() {
             played.start = aligned->position;
             reason = qs("Cycle: " + aligned->reason);
         }
-        const PlaybackContext context{.tempo = project_.document().tempo, .folder = folder_};
+        const PlaybackContext context{
+            .tempo = project_.document().tempo, .folder = folder_, .document = &project_.document()};
         for (const model::Track* track : playingTracks()) {
             if (const TrackType* type = registry_.trackType(track->kind); type != nullptr && type->chase) {
                 for (MidiMessage& message : type->chase(*track, played.start, context)) {
-                    played.restart.push_back(
-                        {message.port.empty() ? track->midiOut.portId : message.port, std::move(message.bytes)});
+                    if (message.port.empty() && track->instrument) {
+                        played.restart.push_back({.portId = {}, .bytes = message.bytes, .trackId = track->id.value});
+                    }
+                    played.restart.push_back({.portId = message.port.empty() ? track->midiOut.portId : message.port,
+                                              .bytes = std::move(message.bytes),
+                                              .trackId = {}});
                 }
             }
         }

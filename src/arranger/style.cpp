@@ -4,6 +4,8 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <format>
+#include <numeric>
 #include <optional>
 #include <span>
 #include <string>
@@ -233,6 +235,15 @@ const StyleSection* findSection(const Style& style, Section kind, int variation)
         return section.kind == kind && section.variation == variation;
     });
     return found == style.sections.end() ? nullptr : &*found;
+}
+
+std::string styleHash(std::span<const std::uint8_t> bytes) {
+    constexpr std::uint64_t kOffsetBasis = 0xCBF29CE484222325;
+    constexpr std::uint64_t kPrime = 0x100000001B3;
+    const std::uint64_t hash =
+        std::accumulate(bytes.begin(), bytes.end(), kOffsetBasis,
+                        [](std::uint64_t value, std::uint8_t byte) { return (value ^ byte) * kPrime; });
+    return std::format("{:016x}", hash);
 }
 
 }  // namespace emerick::arranger

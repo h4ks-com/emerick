@@ -9,6 +9,7 @@
 
 namespace emerick::yamaha {
 
+class ArrangerStyles;
 class KeyboardCheck;
 class StyleSync;
 
@@ -23,6 +24,7 @@ struct Listeners {
     ChordInput chordInput;
     std::unique_ptr<KeyboardCheck> keyboardCheck;
     std::unique_ptr<StyleSync> styleSync;
+    std::unique_ptr<ArrangerStyles> arrangerStyles;
 };
 
 // The Chords and Style track kinds, the yamaha.* actions and settings, and the Digital Keyboard MIDI profile. The

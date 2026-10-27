@@ -108,8 +108,10 @@ void route(Snapshot& snapshot, const RealtimeState& state, const MidiFrom& from,
             std::array<std::uint8_t, 3> rewritten{};
             track.midiOut->queue(onChannel(bytes, track.outChannel, rewritten), timestampNs);
         }
-        // An instrument plays what the player plays while its track is armed or monitored, as Logic's does.
-        if (track.instrument && accepts && (track.armed || track.monitor) && audible(track, soloActive)) {
+        // An instrument plays what the player plays while its track is armed or monitored, as Logic's does, and
+        // always plays what another instrument sends it, as it plays a clip.
+        const bool plays = track.armed || track.monitor || from.track.has_value();
+        if (track.instrument && accepts && plays && audible(track, soloActive)) {
             track.instrument->queueMidi(bytes, timestampNs);
             rememberNote(track, bytes);
         }

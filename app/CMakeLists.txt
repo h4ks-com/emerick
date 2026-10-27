@@ -9,7 +9,7 @@ set_target_properties(emerick PROPERTIES
     MACOSX_BUNDLE_ICON_FILE emerick.icns)
 emerick_target(emerick)
 # The app runs the plugin scanner from its own folder and always scans the CLAP bundles it ships.
-add_dependencies(emerick emerick-clap-scanner emerick_gm emerick_voices)
+add_dependencies(emerick emerick-clap-scanner emerick_gm emerick_voices emerick_arranger_device)
 if(APPLE)
     set(bundled_clap_folder "$<TARGET_BUNDLE_CONTENT_DIR:emerick>/PlugIns")
 else()

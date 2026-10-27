@@ -258,10 +258,18 @@ void addCycle(Snapshot& snapshot, const Session& session) {
     snapshot.cycleStart = session.tempo.ticksToFrames(session.cycle.start, snapshot.sampleRate);
     snapshot.cycleEnd = session.tempo.ticksToFrames(session.cycle.end, snapshot.sampleRate);
     for (const PortMessage& message : session.cycle.restart) {
+        if (!message.trackId.empty()) {
+            const auto track = std::ranges::find(snapshot.tracks, message.trackId, &TrackState::id);
+            if (track != snapshot.tracks.end() && track->instrument && !message.bytes.empty()) {
+                snapshot.cycleRestart.push_back(
+                    {.port = nullptr, .instrument = track->instrument, .bytes = message.bytes});
+            }
+            continue;
+        }
         const auto port = std::ranges::find(snapshot.outputs, message.portId,
                                             [](const auto& output) -> const std::string& { return output->id(); });
         if (port != snapshot.outputs.end() && !message.bytes.empty()) {
-            snapshot.cycleRestart.push_back({*port, message.bytes});
+            snapshot.cycleRestart.push_back({.port = *port, .instrument = nullptr, .bytes = message.bytes});
         }
     }
 }

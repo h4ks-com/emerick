@@ -58,6 +58,8 @@ public:
         automationParams,
         recordDelayMs,
         takePreview,
+        inspectorComponent,
+        fileDrop,
     };
 
     TrackListModel(ProjectController& controller, const Registry& registry, QObject* parent = nullptr);

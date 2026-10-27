@@ -1,12 +1,17 @@
+#include <QMimeData>
 #include <QQmlContext>
 #include <QQmlProperty>
+#include <algorithm>
 #include <catch2/catch_test_macros.hpp>
+#include <filesystem>
+#include <fstream>
 #include <memory>
 #include <string>
 #include <vector>
 
 #include "emerick/yamaha/plugin.hpp"
 #include "main_window.hpp"
+#include "style_builder.hpp"
 
 using namespace emerick;
 using namespace emerick::app;
@@ -67,7 +72,101 @@ void type(const MainWindow& main, const QString& text) {
 
 QVariant attached(QQuickItem* item, const char* name) { return QQmlProperty(item, name, qmlContext(item)).read(); }
 
+// A Style track that plays the Arranger on the generated demo style, which has Intro 1, Main A and B, fills, a Break
+// and Ending 1 at 100 BPM.
+std::string addArrangerTrack(MainWindow& main, const Json& sections) {
+    const std::filesystem::path style = main.rig.path("Demo.sty");
+    const Bytes bytes = arranger::test::demoStyle();
+    std::ofstream(style, std::ios::binary)
+        .write(reinterpret_cast<const char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
+    const std::string state = Json{{"style", style.string()}, {"hash", ""}, {"autoFill", true}}.dump();
+    model::Track track;
+    track.kind = "yamaha.style";
+    track.name = "Style";
+    track.data = sections;
+    track.instrument = model::PluginSlot{.pluginId = "org.emerick.arranger",
+                                         .bundle = EMERICK_ARRANGER_CLAP,
+                                         .name = "Arranger",
+                                         .state = {state.begin(), state.end()}};
+    const std::string id = track.id.value;
+    main.rig.controller->project().addTrack(std::move(track));
+    MainWindow::settle();
+    return id;
+}
+
 }  // namespace
+
+TEST_CASE("a Style track's inspector shows its style, tempo and sections, and its badge takes the style tempo") {
+    MainWindow& main = yamahaWindow();
+    main.rig.run("project.setTempo", {{"bpm", 96}});
+    const std::string id = addArrangerTrack(main, Json::array());
+    main.rig.nav.setSelectedTrack(qid(id));
+
+    CHECK(main.item("arranger.style.load:" + qid(id))->property("displayText").toString() == "Demo");
+    CHECK(main.item("arranger.style.load:" + qid(id) + ":file") != nullptr);
+    CHECK(main.item("arranger.style.tempo:" + qid(id))->property("text").toString() == "100 BPM   4/4");
+    CHECK(main.item("arranger.style.section:" + qid(id) + ":A")->opacity() == 1.0);
+    CHECK(main.item("arranger.style.section:" + qid(id) + ":C")->opacity() < 1.0);
+    CHECK(main.item("arranger.style.section:" + qid(id) + ":Fill")->opacity() == 1.0);
+    CHECK(main.item("arranger.style.section:" + qid(id) + ":E3")->opacity() < 1.0);
+    CHECK(main.item("instrument.setParam:" + qid(id) + ":0")->property("text").toString() == "Auto fill");
+
+    QQuickItem* tempo = main.item("project.setTempo:" + qid(id) + ":style");
+    CHECK(tempo->property("message").toString() == "Style tempo 100, project 96. Click to use the style tempo");
+    main.click(tempo);
+    CHECK(processUntil([&] { return main.rig.controller->project().document().tempo.bpm == 100.0; }));
+    CHECK(processUntil([&] { return !tempo->isVisible(); }));
+    main.rig.nav.setSelectedTrack({});
+    removeTrack(main, id);
+}
+
+TEST_CASE("the Style lane dims the sections the style lacks and marks a block that asks for one") {
+    MainWindow& main = yamahaWindow();
+    const std::string id = addArrangerTrack(
+        main, Json::parse(R"([{"at":0,"kind":"main","variation":0},{"at":3840,"kind":"main","variation":2}])"));
+    CHECK(main.item(QString::fromStdString("yamaha.section.missing:" + id + ":3840"))
+              ->property("message")
+              .toString()
+              .startsWith("Demo has no Main C"));
+    CHECK(MainWindow::find(main.window->contentItem(), QString::fromStdString("yamaha.section.missing:" + id + ":0")) ==
+          nullptr);
+
+    main.click(block(main, "yamaha.section", id, 0));
+    QQuickItem* picker = main.item("yamaha.section.set:" + qid(id));
+    REQUIRE(opened(popupOf(picker)));
+    const QVariantList matches = picker->property("matches").toList();
+    const auto dim = [&](const QString& name) {
+        const auto found = std::ranges::find_if(
+            matches, [&](const QVariant& entry) { return entry.toMap().value("id").toString() == name; });
+        REQUIRE(found != matches.end());
+        return found->toMap().value("dim").toBool();
+    };
+    CHECK_FALSE(dim("Main A"));
+    CHECK(dim("Main C"));
+    CHECK(dim("Intro 2"));
+    QTest::keyClick(main.window, Qt::Key_Escape);
+    removeTrack(main, id);
+}
+
+TEST_CASE("dropping a style file on a Style track loads it into the track's Arranger") {
+    MainWindow& main = yamahaWindow();
+    const std::string id = addArrangerTrack(main, Json::array());
+    const std::filesystem::path other = main.rig.path("Other.prs");
+    std::filesystem::copy_file(main.rig.path("Demo.sty"), other, std::filesystem::copy_options::overwrite_existing);
+    QQuickItem* lane = main.item(QString::fromStdString("lane:" + id));
+    const QPointF at = lane->mapToScene({lane->width() / 2, lane->height() / 2});
+    QMimeData files;
+    files.setUrls({QUrl::fromLocalFile(QString::fromStdString(other.string()))});
+    QDragEnterEvent enter{at, Qt::CopyAction, &files, Qt::LeftButton, Qt::NoModifier};
+    QCoreApplication::sendEvent(main.window, &enter);
+    QDropEvent drop{at, Qt::CopyAction, &files, Qt::LeftButton, Qt::NoModifier};
+    QCoreApplication::sendEvent(main.window, &drop);
+    CHECK(processUntil([&] {
+        const auto& state = main.rig.controller->project().track(model::TrackId{id})->instrument->state;
+        return Json::parse(state).at("style") == other.string();
+    }));
+    removeTrack(main, id);
+}
 
 TEST_CASE("a click on a chord block opens a picker that sets the root, the type and the bass from the keyboard") {
     MainWindow& main = yamahaWindow();

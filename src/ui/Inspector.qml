@@ -129,6 +129,7 @@ Rectangle {
                 required property bool playsAudio
                 required property string instrumentId
                 required property string instrumentName
+                required property string inspectorComponent
                 required property var sends
                 required property var inserts
                 required property var audioIn
@@ -277,10 +278,26 @@ Rectangle {
                             return {id: "instrument.setParam", params: {track: panel.trackId, param: setting.modelData.id, value: value}}
                         }
 
-                        RouteLabel { text: setting.modelData.name }
+                        readonly property bool isSwitch: setting.modelData.stepped && setting.modelData.min === 0
+                                                         && setting.modelData.max === 1
+                        RouteLabel { text: setting.modelData.name; visible: !setting.isSwitch }
                         Loader {
-                            sourceComponent: setting.modelData.choices.length > 0 ? choicePicker : numberField
-                            Layout.fillWidth: true
+                            sourceComponent: setting.isSwitch ? switchButton
+                                           : setting.modelData.choices.length > 0 ? choicePicker : numberField
+                            Layout.fillWidth: !setting.isSwitch
+                        }
+                        Component {
+                            id: switchButton
+                            ChromeButton {
+                                objectName: setting.controlName
+                                actionId: "instrument.setParam"
+                                params: setting.set(setting.modelData.value >= 0.5 ? 0 : 1).params
+                                active: setting.modelData.value >= 0.5
+                                activeColor: Theme.ink
+                                text: setting.modelData.name
+                                hint: "Turn " + setting.modelData.name.toLowerCase() + (setting.modelData.value >= 0.5 ? " off" : " on")
+                                implicitHeight: Theme.headerButton
+                            }
                         }
                         Component {
                             id: choicePicker
@@ -311,6 +328,14 @@ Rectangle {
                             }
                         }
                     }
+                }
+
+                Loader {
+                    active: panel.inspectorComponent !== ""
+                    visible: active
+                    source: panel.inspectorComponent
+                    onLoaded: item.trackId = Qt.binding(() => panel.trackId)
+                    Layout.fillWidth: true
                 }
 
                 RouteLabel { text: "Audio input"; visible: panel.audioRoutes }

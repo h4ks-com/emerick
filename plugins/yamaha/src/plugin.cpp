@@ -10,6 +10,7 @@
 #include <utility>
 #include <vector>
 
+#include "arranger_styles.hpp"
 #include "emerick/app/core_actions.hpp"
 #include "emerick/app/project_state.hpp"
 #include "emerick/app/session_mapping.hpp"
@@ -17,6 +18,7 @@
 #include "emerick/yamaha/render.hpp"
 #include "emerick/yamaha/sysex.hpp"
 #include "registration.hpp"
+#include "style_library.hpp"
 
 namespace emerick::yamaha {
 
@@ -76,6 +78,11 @@ std::optional<app::StartAlignment> styleStart(const model::Track& style, core::T
                                          sectionName(pattern->section)};
 }
 
+// A Style track with an instrument, such as the Arranger, also plays the chords, so its instrument gets them too.
+bool playsChords(const model::Track& style, const app::PlaybackContext& context) {
+    return style.instrument.has_value() && context.document != nullptr;
+}
+
 void addSetting(app::Registry& registry, app::Setting setting) {
     setting.category = "Settings / Yamaha";
     setting.location = "settings.yamaha";
@@ -128,6 +135,11 @@ std::optional<Chord> chordAt(const model::Document& document, core::Ticks positi
     return chords == document.tracks.end() ? std::nullopt : chordIn(*chords, position);
 }
 
+std::vector<ChordEvent> projectChords(const model::Document& document) {
+    const auto chords = std::ranges::find(document.tracks, std::string{kChordKind}, &model::Track::kind);
+    return chords == document.tracks.end() ? std::vector<ChordEvent>{} : playableEvents<ChordEvent>(*chords);
+}
+
 ChartOptions chartOptions(const app::Registry& registry, int shiftBars) {
     return {.shiftBars = shiftBars,
             .snapToBeat = registry.settingValue(kSnapSetting).get<bool>(),
@@ -167,6 +179,12 @@ void registerSettings(app::Registry& registry, app::ProjectController& controlle
                           .minimum = 1,
                           .maximum = app::kMidiChannels,
                           .hint = "Channel the Style track presses the keyboard's section buttons on"});
+    addSetting(registry, {.id = kStyleFoldersSetting,
+                          .title = "Style folders",
+                          .aliases = {"style library", "sty folders"},
+                          .type = app::SettingType::List,
+                          .defaultValue = app::Json::array(),
+                          .hint = "Folders to list styles from in the built-in arranger's style picker"});
 }
 
 void registerTrackKinds(app::Registry& registry, const StyleSync& sync) {
@@ -203,13 +221,21 @@ void registerTrackKinds(app::Registry& registry, const StyleSync& sync) {
          .icon = std::string(kStyleIcon),
          .headerComponent = "qrc:/qt/qml/Emerick/Yamaha/StyleHeader.qml",
          .laneComponent = "qrc:/qt/qml/Emerick/Yamaha/StyleLane.qml",
+         .inspectorComponent = "qrc:/qt/qml/Emerick/Yamaha/StyleInspector.qml",
          .routes = {.midi = true},
+         .fileDrop = {.extensions = {kStyleExtensions.begin(), kStyleExtensions.end()},
+                      .action = "arranger.style.load"},
          .toEngine =
              [&registry](const model::Track& track, const app::PlaybackContext& context) {
-                 return withRendered(track,
-                                     sectionPresses(playableEvents<SectionEvent>(track), buttonChannel(registry, track),
-                                                    context.tempo.ticksPerBeat()));
+                 std::vector<RawEvent> rendered = sectionPresses(
+                     playableEvents<SectionEvent>(track), buttonChannel(registry, track), context.tempo.ticksPerBeat());
+                 if (playsChords(track, context)) {
+                     std::ranges::copy(chordControls(projectChords(*context.document)), std::back_inserter(rendered));
+                     std::ranges::stable_sort(rendered, {}, &RawEvent::at);
+                 }
+                 return withRendered(track, rendered);
              },
+         .readsOtherTracks = true,
          .fromTake =
              [&registry](model::Track& track, const engine::RecordedTake& take, const app::TakeContext& context) {
                  Chart chart = chartFromTake(rawEvents(take), context.tempo, chartOptions(registry));
@@ -230,10 +256,17 @@ void registerTrackKinds(app::Registry& registry, const StyleSync& sync) {
              },
          .holdsStart = [](const model::Document& document) { return mutedStyle(document) != nullptr; },
          .chase =
-             [&registry](const model::Track& track, core::Ticks position, const app::PlaybackContext&) {
-                 const auto section = chaseSection(playableEvents<SectionEvent>(track), position);
-                 return section ? toTrackOutput(sectionPress(*section, buttonChannel(registry, track)))
-                                : std::vector<app::MidiMessage>{};
+             [&registry](const model::Track& track, core::Ticks position, const app::PlaybackContext& context) {
+                 std::vector<std::vector<std::uint8_t>> messages;
+                 if (const auto chord =
+                         playsChords(track, context) ? chordAt(*context.document, position) : std::nullopt) {
+                     messages.push_back(encodeChordControl(*chord));
+                 }
+                 if (const auto section = chaseSection(playableEvents<SectionEvent>(track), position)) {
+                     std::ranges::move(sectionPress(*section, buttonChannel(registry, track)),
+                                       std::back_inserter(messages));
+                 }
+                 return toTrackOutput(messages);
              },
          .alignStart = [](const model::Track& track, core::Ticks position,
                           const app::PlaybackContext& context) { return styleStart(track, position, context.tempo); }});
@@ -242,8 +275,10 @@ void registerTrackKinds(app::Registry& registry, const StyleSync& sync) {
 Listeners::Listeners(app::Registry& registry, app::ProjectController& controller, app::Nav& nav)
     : chordInput(registry, controller, nav),
       keyboardCheck(std::make_unique<KeyboardCheck>(controller)),
-      styleSync(std::make_unique<StyleSync>(controller, registry)) {
+      styleSync(std::make_unique<StyleSync>(controller, registry)),
+      arrangerStyles(std::make_unique<ArrangerStyles>(controller, registry)) {
     qmlRegisterSingletonInstance("Emerick.Yamaha", 1, 0, "KeyboardCheck", keyboardCheck.get());
+    qmlRegisterSingletonInstance("Emerick.Yamaha", 1, 0, "ArrangerStyles", arrangerStyles.get());
 }
 
 Listeners::~Listeners() = default;
@@ -256,6 +291,7 @@ std::unique_ptr<Listeners> registerWith(app::Registry& registry, app::ProjectCon
     registerChartActions(registry, controller, nav);
     registerArrangerActions(registry, controller, *listeners->keyboardCheck);
     registerTemplateActions(registry);
+    registerBuiltinArranger(registry, controller, nav);
     return listeners;
 }
 

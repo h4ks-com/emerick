@@ -56,11 +56,22 @@ Rectangle {
 
     // Dropped files go one per track from the row under the pointer; a file whose row is missing or takes another kind
     // of clip gets a new track.
+    // A track kind can take files of its own, such as a style on a Style track.
+    function fileDropAt(row, path) {
+        const item = list.itemAtIndex(row)
+        const drop = item ? item.fileDrop : undefined
+        return drop && drop.extensions.some(extension => path.toLowerCase().endsWith("." + extension)) ? drop : undefined
+    }
+
     function importFiles(urls, firstRow, at) {
         const calls = Array.from(urls).map((url, index) => {
             const path = Registry.localPath(url)
             const midi = /\.midi?$/i.test(path)
             const row = firstRow + index
+            const drop = area.fileDropAt(row, path)
+            if (drop) {
+                return {id: drop.action, params: {track: area.trackIdAt(row), path: path}}
+            }
             const params = {path: path, at: at}
             if (row < list.count && area.rowAccepts(row, midi ? "midi" : "audio")) {
                 params.track = area.trackIdAt(row)
@@ -254,6 +265,7 @@ Rectangle {
             required property var trackData
             required property string laneComponent
             required property string headerComponent
+            required property var fileDrop
             required property string clipType
             required property string automationMode
             required property var automation

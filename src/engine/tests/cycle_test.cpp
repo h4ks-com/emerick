@@ -23,7 +23,7 @@ constexpr float kRampStep = 1e-5F;
 using Bytes = std::vector<std::uint8_t>;
 const Bytes kRestart{0xF0, 0x43, 0x7E, 0x00, 0x09, 0x7F, 0xF7};
 
-Cycle cycle() { return {.start = kCycleStart, .end = kCycleEnd, .restart = {{kPort1, kRestart}}}; }
+Cycle cycle() { return {.start = kCycleStart, .end = kCycleEnd, .restart = {{kPort1, kRestart, {}}}}; }
 
 Track keysTrack() {
     Track track{.id = "keys", .kind = TrackKind::midi};

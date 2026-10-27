@@ -3,7 +3,7 @@ import QtQuick.Controls.Basic
 import QtQuick.Controls.impl
 import Emerick.App
 
-// The one picker every view uses. Each entry has an id and a name. Typing filters the names and lists an exact name first, then the names it starts, the arrows move,
+// The one picker every view uses. Each entry has an id and a name, and an entry with dim set lists in the dim ink. Typing filters the names and lists an exact name first, then the names it starts, the arrows move,
 // Enter picks and Escape closes. With acceptsText, Enter on no match hands over the typed text.
 Item {
     id: control
@@ -169,7 +169,7 @@ Item {
                 }
                 contentItem: Text {
                     text: row.modelData.name
-                    color: Theme.ink
+                    color: row.modelData.dim ? Theme.inkDim : Theme.ink
                     font.pixelSize: Theme.textLabel
                     elide: Text.ElideRight
                     verticalAlignment: Text.AlignVCenter

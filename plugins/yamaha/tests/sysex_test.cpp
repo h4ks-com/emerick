@@ -12,6 +12,20 @@ std::vector<std::uint8_t> section(std::uint8_t code, std::uint8_t on) {
 
 }  // namespace
 
+TEST_CASE("a button press decodes to the section the Style track pressed it for") {
+    CHECK(decodeButtonPress(12, std::nullopt) == SectionPress{Section::Main, 1, true});
+    CHECK(decodeButtonPress(22, std::nullopt) == SectionPress{Section::Intro, 1, true});
+    CHECK(decodeButtonPress(31, std::nullopt) == SectionPress{Section::Ending, 0, true});
+    CHECK(decodeButtonPress(8, std::nullopt) == SectionPress{Section::Break, 0, true});
+    CHECK(decodeButtonPress(6, 2) == SectionPress{Section::Fill, 0, true});
+    CHECK(decodeButtonPress(9, 1) == SectionPress{Section::FillTo, 2, true});
+    CHECK(decodeButtonPress(5, 1) == SectionPress{Section::FillTo, 0, true});
+    CHECK_FALSE(decodeButtonPress(5, 0).has_value());
+    CHECK_FALSE(decodeButtonPress(9, std::nullopt).has_value());
+    CHECK_FALSE(decodeButtonPress(0, 0).has_value());
+    CHECK_FALSE(decodeButtonPress(7, 0).has_value());
+}
+
 TEST_CASE("chord control decodes root, type and bass") {
     const std::vector<std::uint8_t> dm7{0xF0, 0x43, 0x7E, 0x02, 0x32, 0x0A, 0x7F, 0x7F, 0xF7};
     CHECK(decodeChordControl(dm7)->name() == "Dm7");

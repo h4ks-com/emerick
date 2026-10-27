@@ -221,7 +221,41 @@ std::span<const InstrumentMidi> ClapInstrument::producedMidi() const {
     return std::span(impl_->produced.messages).first(impl_->produced.count);
 }
 
-void ClapInstrument::processBlock(std::span<float* const> mix, core::Frames frames, std::int64_t hostTimeNs) {
+namespace {
+
+clap_beattime beatTime(double beats) { return std::llround(beats * static_cast<double>(CLAP_BEATTIME_FACTOR)); }
+
+clap_event_transport clapTransport(const InstrumentTransport& transport) {
+    const double quartersPerBar = 4.0 * transport.meter.numerator / transport.meter.denominator;
+    const double bar = std::floor(transport.beats / quartersPerBar);
+    std::uint32_t flags =
+        CLAP_TRANSPORT_HAS_TEMPO | CLAP_TRANSPORT_HAS_BEATS_TIMELINE | CLAP_TRANSPORT_HAS_TIME_SIGNATURE;
+    if (transport.playing) {
+        flags |= CLAP_TRANSPORT_IS_PLAYING;
+    }
+    if (transport.looping) {
+        flags |= CLAP_TRANSPORT_IS_LOOP_ACTIVE;
+    }
+    return {.header = header(sizeof(clap_event_transport), 0, CLAP_EVENT_TRANSPORT),
+            .flags = flags,
+            .song_pos_beats = beatTime(transport.beats),
+            .song_pos_seconds = 0,
+            .tempo = transport.bpm,
+            .tempo_inc = 0.0,
+            .loop_start_beats = beatTime(transport.loopStartBeats),
+            .loop_end_beats = beatTime(transport.loopEndBeats),
+            .loop_start_seconds = 0,
+            .loop_end_seconds = 0,
+            .bar_start = beatTime(bar * quartersPerBar),
+            .bar_number = static_cast<std::int32_t>(bar),
+            .tsig_num = static_cast<std::uint16_t>(transport.meter.numerator),
+            .tsig_denom = static_cast<std::uint16_t>(transport.meter.denominator)};
+}
+
+}  // namespace
+
+void ClapInstrument::processBlock(std::span<float* const> mix, core::Frames frames, std::int64_t hostTimeNs,
+                                  const InstrumentTransport& transport) {
     Impl& impl = *impl_;
     impl.produced.clear();
     if (frames <= 0 || impl.audioGuard.exchange(true, std::memory_order_acquire)) {
@@ -240,9 +274,10 @@ void ClapInstrument::processBlock(std::span<float* const> mix, core::Frames fram
         }
         const clap_input_events input = impl.inputEvents();
         const clap_output_events output = impl.processOutputEvents();
+        const clap_event_transport clock = clapTransport(transport);
         const clap_process process{.steady_time = -1,
                                    .frames_count = static_cast<std::uint32_t>(frames),
-                                   .transport = nullptr,
+                                   .transport = &clock,
                                    .audio_inputs = impl.inputBuffers.data(),
                                    .audio_outputs = impl.outputBuffers.data(),
                                    .audio_inputs_count = static_cast<std::uint32_t>(impl.inputBuffers.size()),

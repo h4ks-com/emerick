@@ -6,6 +6,7 @@
 #include <optional>
 #include <span>
 #include <stdexcept>
+#include <string>
 #include <vector>
 
 #include "emerick/core/time.hpp"
@@ -118,5 +119,8 @@ public:
 Style parseStyle(std::span<const std::uint8_t> bytes);
 
 const StyleSection* findSection(const Style& style, yamaha::Section kind, int variation);
+
+// FNV-1a of a style file's bytes in hex, so a project notices a style file that changed.
+std::string styleHash(std::span<const std::uint8_t> bytes);
 
 }  // namespace emerick::arranger

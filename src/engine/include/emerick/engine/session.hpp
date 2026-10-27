@@ -159,10 +159,11 @@ struct Metronome {
 // level and raises a hard-panned one by 3 dB on its side; every other law plays a hard-panned track at full level.
 enum class PanLaw : std::uint8_t { compensated, zeroDb, constantPower, compromise, linear };
 
-// Bytes for one output port, which the session must use.
+// Bytes for one output port, which the session must use, or for the instrument of the track trackId names.
 struct PortMessage {
     std::string portId;
     std::vector<std::uint8_t> bytes;
+    std::string trackId;
     bool operator==(const PortMessage&) const = default;
 };
 

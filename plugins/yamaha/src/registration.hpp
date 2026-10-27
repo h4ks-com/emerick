@@ -48,6 +48,11 @@ std::vector<Event> eventsOf(const nlohmann::json& data) {
     }
 }
 
+inline void addTrack(app::ProjectController& controller, model::Track track) {
+    track.color = static_cast<int>(controller.project().document().tracks.size() % app::kTrackColors);
+    controller.project().addTrack(std::move(track));
+}
+
 // The port and channel the first Style track presses the keyboard's section buttons on.
 inline std::optional<model::MidiRoute> styleButtons(const model::Document& document) {
     const auto style = std::ranges::find(document.tracks, std::string{kStyleKind}, &model::Track::kind);
@@ -74,6 +79,7 @@ const model::Track* mutedStyle(const model::Document& document);
 std::optional<Chord> chordIn(const model::Track& chords, core::Ticks position);
 // We read the first Chords track.
 std::optional<Chord> chordAt(const model::Document& document, core::Ticks position);
+std::vector<ChordEvent> projectChords(const model::Document& document);
 
 ChartOptions chartOptions(const app::Registry& registry, int shiftBars = 0);
 
@@ -82,5 +88,7 @@ void registerTrackKinds(app::Registry& registry, const StyleSync& sync);
 void registerChartActions(app::Registry& registry, app::ProjectController& controller, app::Nav& nav);
 void registerArrangerActions(app::Registry& registry, app::ProjectController& controller, KeyboardCheck& check);
 void registerTemplateActions(app::Registry& registry);
+// The built-in arranger: its set-up and the style actions of a Style track that plays the Arranger device.
+void registerBuiltinArranger(app::Registry& registry, app::ProjectController& controller, app::Nav& nav);
 
 }  // namespace emerick::yamaha

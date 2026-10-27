@@ -80,8 +80,8 @@ const Event& eventAs(const clap_event_header* header) {
 }
 
 VoiceKey keyOf(const Voice& voice);
-// The voice with this pack, name and address, else with this name and address, else with this pack and name; -1 when
-// the store holds none.
+// The voice with this pack, name and address, else with this name and address, else with this pack and name, else
+// with this address for a key that names no voice; -1 when the store holds none.
 int findVoice(const Store& store, const VoiceKey& key);
 
 // Main thread: reads the store the state names unless it is loaded already or the plugin is active. We read it on

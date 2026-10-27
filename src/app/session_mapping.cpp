@@ -159,7 +159,7 @@ engine::Session toSession(const model::Document& document, const Registry& regis
     if (cache.tempo != document.tempo || cache.folder != folder) {
         cache = {.tempo = document.tempo, .folder = folder, .tracks = {}};
     }
-    const PlaybackContext context{.tempo = document.tempo, .folder = folder};
+    const PlaybackContext context{.tempo = document.tempo, .folder = folder, .document = &document};
     std::map<std::string, EngineTrackCache::Entry> kept;
     for (const model::Track& track : document.tracks) {
         const TrackType* type = registry.trackType(track.kind);
@@ -167,7 +167,7 @@ engine::Session toSession(const model::Document& document, const Registry& regis
             continue;
         }
         auto entry = cache.tracks.extract(track.id.value);
-        if (entry.empty() || entry.mapped().source != track) {
+        if (entry.empty() || type->readsOtherTracks || entry.mapped().source != track) {
             engine::Track converted = type->toEngine(track, context);
             if (type->routes.midi && track.instrument) {
                 addBusRoutes(converted, track);

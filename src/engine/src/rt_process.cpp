@@ -396,13 +396,31 @@ void mixTracks(Snapshot& snapshot, const AudioBlock& block, const BlockTime& tim
     }
 }
 
+double quarters(const Snapshot& snapshot, Frames frame) {
+    return static_cast<double>(frame) / snapshot.sampleRate * snapshot.tempo.bpm / 60.0;
+}
+
+// A count-in that ends inside the block starts the transport for the instruments with the next block.
+InstrumentTransport instrumentTransport(const RealtimeState& state, const Snapshot& snapshot, const BlockTime& time) {
+    const bool looping = snapshot.cycleEnd > snapshot.cycleStart && !state.recordEnabled;
+    return {.playing = time.playing && time.rollFrom == 0,
+            .beats = quarters(snapshot, time.frame),
+            .bpm = snapshot.tempo.bpm,
+            .meter = snapshot.tempo.meter,
+            .looping = looping,
+            .loopStartBeats = looping ? quarters(snapshot, snapshot.cycleStart) : 0.0,
+            .loopEndBeats = looping ? quarters(snapshot, snapshot.cycleEnd) : 0.0};
+}
+
 // Each instrument plays into its track's mix after the track it takes MIDI from, so that MIDI reaches it in this block.
-void playInstruments(const RealtimeState& state, Snapshot& snapshot, const AudioBlock& block, Frames blockStartFrame) {
+void playInstruments(const RealtimeState& state, Snapshot& snapshot, const AudioBlock& block, Frames blockStartFrame,
+                     const BlockTime& time) {
     const bool soloActive = anySolo(snapshot);
+    const InstrumentTransport transport = instrumentTransport(state, snapshot, time);
     for (const std::size_t index : snapshot.instrumentOrder) {
         TrackState& track = snapshot.tracks[index];
         if (audible(track, soloActive)) {
-            track.instrument->processBlock(track.mixPointers, block.frames, block.hostTimeNs);
+            track.instrument->processBlock(track.mixPointers, block.frames, block.hostTimeNs, transport);
             routeInstrumentMidi(snapshot, state, index, block, blockStartFrame);
         }
     }
@@ -482,7 +500,11 @@ void jumpToCycleStart(RealtimeState& state, Snapshot& snapshot, std::int64_t tim
     sendToClockPorts(snapshot, core::midi::kStop, timestampNs);
     releaseNotes(snapshot, timestampNs);
     for (const RestartMessage& message : snapshot.cycleRestart) {
-        message.port->queue(message.bytes, timestampNs);
+        if (message.port) {
+            message.port->queue(message.bytes, timestampNs);
+        } else {
+            message.instrument->queueMidi(message.bytes, timestampNs);
+        }
     }
     state.frame = snapshot.cycleStart;
     for (TrackState& track : snapshot.tracks) {
@@ -583,7 +605,7 @@ void processBlock(RealtimeState& state, const AudioBlock& block) {
     }
     renderMetronome(state, snapshot, block);
     monitorAndRecordAudio(snapshot, block, rollFrom);
-    playInstruments(state, snapshot, block, blockStartFrame);
+    playInstruments(state, snapshot, block, blockStartFrame, time);
     mixTracks(snapshot, block, time);
     state.publishedFrame.store(state.frame, std::memory_order_relaxed);
     state.publishedPlaying.store(state.transportPlaying || state.countInLeft > 0, std::memory_order_relaxed);

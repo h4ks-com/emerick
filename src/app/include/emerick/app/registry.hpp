@@ -161,9 +161,16 @@ struct RouteSections {
     bool bus = false;
 };
 
+struct FileDrop {
+    std::vector<std::string> extensions = {};
+    std::string action = {};
+};
+
 struct PlaybackContext {
     core::TempoMap tempo = {};
     std::filesystem::path folder = {};
+    // The project the track plays in, for a type that plays what other tracks hold.
+    const model::Document* document = nullptr;
 };
 
 struct TakeContext {
@@ -193,8 +200,14 @@ struct TrackType {
     std::string icon = {};
     std::string headerComponent = {};
     std::string laneComponent = {};
+    // Shown in the inspector under the track's instrument, with the track's id.
+    std::string inspectorComponent = {};
     RouteSections routes = {};
+    // A file with one of these extensions dropped on the track runs the action with the track and the file's path.
+    FileDrop fileDrop = {};
     std::function<engine::Track(const model::Track&, const PlaybackContext&)> toEngine = {};
+    // True when toEngine reads other tracks of the document, so the track converts again on every change.
+    bool readsOtherTracks = false;
     std::function<void(model::Track&, const engine::RecordedTake&, const TakeContext&)> fromTake = {};
     // Names along the timeline, such as chords, that a MIDI export writes as markers.
     std::function<std::vector<Marker>(const model::Track&)> markers = {};
@@ -203,7 +216,7 @@ struct TrackType {
     // True when a project holds MIDI Start back from the clock ports; play then sends clock only.
     std::function<bool(const model::Document&)> holdsStart = {};
     // The hooks below run only for a track that plays: unmuted, not silenced by another track's solo, with a MIDI
-    // output. A project without them plays as plain MIDI.
+    // output or an instrument, which both get the messages. A project without them plays as plain MIDI.
     // Messages that put the track's device in its state at position. We send them before Start on play and record,
     // and before a locate while playing, ahead of the core chase of programs and controllers.
     std::function<std::vector<MidiMessage>(const model::Track&, core::Ticks position, const PlaybackContext&)> chase =

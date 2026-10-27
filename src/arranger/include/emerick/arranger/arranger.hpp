@@ -35,6 +35,10 @@ public:
     void request(yamaha::Section kind, int variation, core::Ticks at);
     void start(core::Ticks at);
     void stop(core::Ticks at);
+    // While stopped: drops the sections requested and played so far, so the next start plays only what comes after.
+    void forget();
+    // Sends each part's bank, program, volume and pan; start sends them too.
+    void sendVoices(core::Ticks at);
 
     [[nodiscard]] bool playing() const { return current_ != nullptr; }
     [[nodiscard]] const StyleSection* currentSection() const { return current_; }

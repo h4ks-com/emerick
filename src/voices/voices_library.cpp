@@ -68,12 +68,14 @@ VoiceKey keyOf(const Voice& voice) {
 }
 
 int findVoice(const Store& store, const VoiceKey& key) {
-    const std::array<std::function<bool(const Voice&)>, 3> matches{
+    const bool unnamed = key.pack.empty() && key.name.empty();
+    const std::array<std::function<bool(const Voice&)>, 4> matches{
         [&](const Voice& voice) {
             return voice.pack == key.pack && voice.name == key.name && voice.address == key.address;
         },
         [&](const Voice& voice) { return voice.name == key.name && voice.address == key.address; },
-        [&](const Voice& voice) { return voice.pack == key.pack && voice.name == key.name; }};
+        [&](const Voice& voice) { return voice.pack == key.pack && voice.name == key.name; },
+        [&](const Voice& voice) { return unnamed && voice.address == key.address; }};
     for (const auto& match : matches) {
         const auto found = std::ranges::find_if(store.voices, match);
         if (found != store.voices.end()) {

@@ -13,6 +13,9 @@ qt_add_library(emerick_yamaha_plugin STATIC
     include/emerick/yamaha/chord_input.hpp
     include/emerick/yamaha/plugin.hpp
     src/arranger_actions.cpp
+    src/arranger_styles.cpp
+    src/arranger_styles.hpp
+    src/builtin_arranger.cpp
     src/chart_actions.cpp
     src/chord_input.cpp
     src/keyboard_check.cpp
@@ -22,8 +25,10 @@ qt_add_library(emerick_yamaha_plugin STATIC
     src/style_sync.cpp
     src/style_sync.hpp
     src/registration.hpp
+    src/style_library.cpp
+    src/style_library.hpp
     src/template_actions.cpp)
-set(yamaha_qml qml/BlockLane.qml qml/ChordLane.qml qml/StyleHeader.qml qml/StyleLane.qml)
+set(yamaha_qml qml/BlockLane.qml qml/ChordLane.qml qml/StyleHeader.qml qml/StyleInspector.qml qml/StyleLane.qml)
 foreach(file ${yamaha_qml})
     get_filename_component(name ${file} NAME)
     set_source_files_properties(${file} PROPERTIES QT_RESOURCE_ALIAS ${name})
@@ -36,7 +41,7 @@ qt_add_qml_module(emerick_yamaha_plugin
 target_include_directories(emerick_yamaha_plugin PRIVATE src)
 target_link_libraries(emerick_yamaha_plugin
     PUBLIC emerick_app emerick_yamaha_codec
-    PRIVATE Qt6::Qml Qt6::Quick libremidi)
+    PRIVATE emerick_arranger Qt6::Qml Qt6::Quick libremidi)
 emerick_target(emerick_yamaha_plugin)
 
 if(EMERICK_BUILD_TESTS)
@@ -53,16 +58,19 @@ if(EMERICK_BUILD_TESTS)
     emerick_test(emerick_yamaha_plugin_tests
         tests/plugin_test.cpp
         tests/arranger_test.cpp
+        tests/builtin_arranger_test.cpp
         tests/hostile_params_test.cpp
         tests/lane_edit_test.cpp
         tests/template_actions_test.cpp)
-    target_include_directories(emerick_yamaha_plugin_tests PRIVATE ${PROJECT_SOURCE_DIR}/src/app/tests)
-    target_link_libraries(emerick_yamaha_plugin_tests PRIVATE emerick_yamaha_plugin libremidi)
+    target_include_directories(emerick_yamaha_plugin_tests PRIVATE
+        ${PROJECT_SOURCE_DIR}/src/app/tests ${PROJECT_SOURCE_DIR}/src/arranger/tests)
+    target_link_libraries(emerick_yamaha_plugin_tests PRIVATE emerick_yamaha_plugin libremidi
+        emerick_test_clap emerick_gm_clap emerick_voices_clap emerick_arranger_clap)
     target_compile_definitions(emerick_yamaha_plugin_tests PRIVATE TEST_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}/tests/data")
 
     emerick_test(emerick_yamaha_lanes_tests tests/lanes_test.cpp)
     target_include_directories(emerick_yamaha_lanes_tests PRIVATE
-        ${PROJECT_SOURCE_DIR}/src/app/tests ${PROJECT_SOURCE_DIR}/src/ui/tests)
+        ${PROJECT_SOURCE_DIR}/src/app/tests ${PROJECT_SOURCE_DIR}/src/ui/tests ${PROJECT_SOURCE_DIR}/src/arranger/tests)
     target_link_libraries(emerick_yamaha_lanes_tests PRIVATE
-        emerick_yamaha_plugin emerick_yamaha_pluginplugin emerick_uiplugin Qt6::Quick Qt6::Test)
+        emerick_yamaha_plugin emerick_yamaha_pluginplugin emerick_uiplugin emerick_arranger_clap Qt6::Quick Qt6::Test)
 endif()

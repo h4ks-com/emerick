@@ -410,45 +410,55 @@ QVariant TrackListModel::data(const QModelIndex& index, int role) const {
             return track.recordDelayMs;
         case Role::takePreview:
             return previewEntry(track.id, clipTypeOf(type));
+        case Role::inspectorComponent:
+            return qs(type != nullptr ? type->inspectorComponent : std::string{});
+        case Role::fileDrop:
+            return type != nullptr && !type->fileDrop.action.empty()
+                       ? QVariantMap{{"action", qs(type->fileDrop.action)},
+                                     {"extensions", toVariant(Json(type->fileDrop.extensions))}}
+                       : QVariant{};
     }
     return {};
 }
 
 QHash<int, QByteArray> TrackListModel::roleNames() const {
-    static constexpr std::array<std::pair<Role, const char*>, 34> kNames{{{Role::id, "trackId"},
-                                                                          {Role::name, "name"},
-                                                                          {Role::kind, "kind"},
-                                                                          {Role::icon, "icon"},
-                                                                          {Role::colorIndex, "colorIndex"},
-                                                                          {Role::mute, "mute"},
-                                                                          {Role::solo, "solo"},
-                                                                          {Role::armed, "armed"},
-                                                                          {Role::monitor, "monitor"},
-                                                                          {Role::gainDb, "gainDb"},
-                                                                          {Role::pan, "pan"},
-                                                                          {Role::audioIn, "audioIn"},
-                                                                          {Role::audioOut, "audioOut"},
-                                                                          {Role::midiIn, "midiIn"},
-                                                                          {Role::midiOut, "midiOut"},
-                                                                          {Role::audioRoutes, "audioRoutes"},
-                                                                          {Role::midiRoutes, "midiRoutes"},
-                                                                          {Role::busRoutes, "busRoutes"},
-                                                                          {Role::playsAudio, "playsAudio"},
-                                                                          {Role::instrumentId, "instrumentId"},
-                                                                          {Role::instrumentName, "instrumentName"},
-                                                                          {Role::sends, "sends"},
-                                                                          {Role::inserts, "inserts"},
-                                                                          {Role::outputBusName, "outputBusName"},
-                                                                          {Role::clips, "clips"},
-                                                                          {Role::trackData, "trackData"},
-                                                                          {Role::laneComponent, "laneComponent"},
-                                                                          {Role::headerComponent, "headerComponent"},
-                                                                          {Role::clipType, "clipType"},
-                                                                          {Role::automationMode, "automationMode"},
-                                                                          {Role::automation, "automation"},
-                                                                          {Role::automationParams, "automationParams"},
-                                                                          {Role::recordDelayMs, "recordDelayMs"},
-                                                                          {Role::takePreview, "takePreview"}}};
+    static constexpr std::array<std::pair<Role, const char*>, 36> kNames{
+        {{Role::id, "trackId"},
+         {Role::name, "name"},
+         {Role::kind, "kind"},
+         {Role::icon, "icon"},
+         {Role::colorIndex, "colorIndex"},
+         {Role::mute, "mute"},
+         {Role::solo, "solo"},
+         {Role::armed, "armed"},
+         {Role::monitor, "monitor"},
+         {Role::gainDb, "gainDb"},
+         {Role::pan, "pan"},
+         {Role::audioIn, "audioIn"},
+         {Role::audioOut, "audioOut"},
+         {Role::midiIn, "midiIn"},
+         {Role::midiOut, "midiOut"},
+         {Role::audioRoutes, "audioRoutes"},
+         {Role::midiRoutes, "midiRoutes"},
+         {Role::busRoutes, "busRoutes"},
+         {Role::playsAudio, "playsAudio"},
+         {Role::instrumentId, "instrumentId"},
+         {Role::instrumentName, "instrumentName"},
+         {Role::sends, "sends"},
+         {Role::inserts, "inserts"},
+         {Role::outputBusName, "outputBusName"},
+         {Role::clips, "clips"},
+         {Role::trackData, "trackData"},
+         {Role::laneComponent, "laneComponent"},
+         {Role::headerComponent, "headerComponent"},
+         {Role::clipType, "clipType"},
+         {Role::automationMode, "automationMode"},
+         {Role::automation, "automation"},
+         {Role::automationParams, "automationParams"},
+         {Role::recordDelayMs, "recordDelayMs"},
+         {Role::takePreview, "takePreview"},
+         {Role::inspectorComponent, "inspectorComponent"},
+         {Role::fileDrop, "fileDrop"}}};
     QHash<int, QByteArray> names;
     for (const auto& [role, name] : kNames) {
         names.insert(static_cast<int>(role), name);

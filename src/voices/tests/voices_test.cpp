@@ -133,6 +133,16 @@ TEST_CASE("the expansion voices instrument loads through the CLAP host and lists
     CHECK(params[5].choices == std::vector<std::string>{"Off", "On"});
 }
 
+TEST_CASE("a state that names a voice only by its bank and program picks the voice at that address") {
+    const Rig rig;
+    const auto picked = [&](int program) {
+        const Json state{{"voice", {{"pack", ""}, {"name", ""}, {"msb", 8}, {"lsb", 0}, {"program", program}}}};
+        return rig.instrument(state)->paramValue(kVoice);
+    };
+    CHECK(picked(4) == 2.0);
+    CHECK(picked(99) == 0.0);
+}
+
 TEST_CASE("a note plays its zone at the pitch its root key, sample rate and fine tune give") {
     const Rig rig;
     const auto pitch = [&](const Json& state, int key) {

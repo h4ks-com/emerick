@@ -56,11 +56,6 @@ std::optional<std::string> keyboardPort(app::ProjectController& controller, cons
     return duplex.empty() ? std::nullopt : std::optional{duplex.front().id};
 }
 
-void addTrack(app::ProjectController& controller, model::Track track) {
-    track.color = static_cast<int>(controller.project().document().tracks.size() % app::kTrackColors);
-    controller.project().addTrack(std::move(track));
-}
-
 // The keyboard's other port, which feeds its Song parts and so plays the recorded parts back as they sounded.
 std::string partsPort(app::ProjectController& controller, const std::string& keyboard) {
     const auto& ports = controller.engine().midiPorts();

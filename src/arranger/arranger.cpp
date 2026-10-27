@@ -175,6 +175,11 @@ void Arranger::start(Ticks at) {
         landing_ = main;
     }
     first_ = nullptr;
+    sendVoices(at);
+    enter(first, at);
+}
+
+void Arranger::sendVoices(Ticks at) {
     for (int part = 0; part < kParts; ++part) {
         const auto& voice = style_->voices.at(static_cast<std::size_t>(part));
         if (!voice) {
@@ -189,12 +194,18 @@ void Arranger::start(Ticks at) {
         push(pending_, {at, {control, kPanCc, voice->pan}});
         bankMsb_.at(static_cast<std::size_t>(channel)) = voice->bankMsb;
     }
-    enter(first, at);
 }
 
 void Arranger::stop(Ticks at) {
     releaseAll(at, pending_);
     current_ = nullptr;
+    next_.reset();
+}
+
+void Arranger::forget() {
+    first_ = nullptr;
+    landing_ = nullptr;
+    playingMain_ = nullptr;
     next_.reset();
 }
 

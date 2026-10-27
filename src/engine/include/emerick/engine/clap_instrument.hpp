@@ -40,6 +40,18 @@ struct InstrumentMidi {
     std::span<const std::uint8_t> bytes;
 };
 
+// Where the host transport stands at the start of a block, in quarter notes from the project start.
+struct InstrumentTransport {
+    bool playing = false;
+    double beats = 0.0;
+    double bpm = 120.0;
+    core::Meter meter{};
+    // Set while playback jumps from loopEndBeats back to loopStartBeats.
+    bool looping = false;
+    double loopStartBeats = 0.0;
+    double loopEndBeats = 0.0;
+};
+
 // One CLAP plugin playing as a track's instrument. The thread that creates it is the plugin's main thread: it
 // activates, saves, loads, runs the editor and destroys it. The audio thread queues MIDI and processes. Whoever holds
 // the audio guard is the plugin's audio thread, so the main thread can stop processing and reactivate the plugin
@@ -94,7 +106,8 @@ public:
     // block. A sysex reaches only a plugin whose note input takes MIDI.
     void queueMidi(std::span<const std::uint8_t> bytes, std::int64_t timestampNs);
     // Realtime: adds the plugin's main output to each mix channel; a mix channel past its outputs takes the last one.
-    void processBlock(std::span<float* const> mix, core::Frames frames, std::int64_t hostTimeNs);
+    void processBlock(std::span<float* const> mix, core::Frames frames, std::int64_t hostTimeNs,
+                      const InstrumentTransport& transport = {});
     // Realtime: the notes, MIDI and sysex the plugin sent in the last processBlock, valid until the next one.
     [[nodiscard]] std::span<const InstrumentMidi> producedMidi() const;
 

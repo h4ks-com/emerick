@@ -72,6 +72,29 @@ std::optional<SectionPress> decodeSectionControl(std::span<const std::uint8_t> m
     return sectionFromCode(message[4], message[5] == kOn);
 }
 
+std::optional<SectionPress> decodeButtonPress(std::uint8_t cc, std::optional<int> playingMain) {
+    const auto nextTo = [&](int step) -> std::optional<SectionPress> {
+        const int variation = playingMain.value_or(-2) + step;
+        if (variation < 0 || variation >= variationCount(sectionInfo(Section::Main))) {
+            return std::nullopt;
+        }
+        return SectionPress{Section::FillTo, variation, true};
+    };
+    if (cc == kFillUpCc) {
+        return nextTo(1);
+    }
+    if (cc == kFillDownCc) {
+        return nextTo(-1);
+    }
+    for (const SectionInfo& info : kSections) {
+        const int variation = cc - info.controllerCc;
+        if (info.kind != Section::FillTo && variation >= 0 && variation < variationCount(info)) {
+            return SectionPress{info.kind, variation, true};
+        }
+    }
+    return std::nullopt;
+}
+
 std::vector<std::uint8_t> encodeChordControl(const Chord& chord) {
     const auto root = requireCode(chord.root.name);
     const auto bass = chord.bass ? requireCode(chord.bass->name) : kNone;

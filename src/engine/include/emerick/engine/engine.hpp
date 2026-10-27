@@ -85,8 +85,8 @@ public:
     // Queues bytes on an output port the session uses, ahead of whatever the next play or locate sends, so a chase
     // reaches the device before Start. A port the session does not use drops them; a message over 64 KiB throws.
     void sendMidi(std::string_view portId, std::span<const std::uint8_t> bytes);
-    // Plays a channel message on the track's instrument while the track is audible. A note it starts ends with the
-    // track's other notes on stop and panic.
+    // Plays a channel message or a sysex on the track's instrument while the track is audible. A note it starts ends
+    // with the track's other notes on stop and panic.
     void sendInstrumentMidi(std::string_view trackId, std::span<const std::uint8_t> bytes);
     // Sends Stop to the clock ports, releases the notes the tracks hold, and sends sustain off, all sound off and all
     // notes off on every channel of every output port the session uses. It works while stopped.

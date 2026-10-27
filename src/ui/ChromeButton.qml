@@ -32,7 +32,8 @@ Button {
     }
     padding: iconName ? 0 : Theme.space2
     display: iconName ? AbstractButton.IconOnly : AbstractButton.TextOnly
-    icon.source: iconName ? Theme.iconSource(iconName) : ""
+    // A plugin's QML would resolve the relative icon path against its own module, so we resolve it here.
+    icon.source: iconName ? Qt.resolvedUrl(Theme.iconSource(iconName)) : ""
     icon.width: Theme.iconSize
     icon.height: Theme.iconSize
     icon.color: active ? activeColor : iconColor

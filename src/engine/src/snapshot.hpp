@@ -137,8 +137,10 @@ struct TrackState {
     bool feedsSolo = false;
 };
 
+// Bytes for a port, or for an instrument when port is null.
 struct RestartMessage {
     std::shared_ptr<MidiOutputPort> port;
+    std::shared_ptr<ClapInstrument> instrument;
     std::vector<std::uint8_t> bytes;
 };
 

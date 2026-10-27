@@ -21,7 +21,7 @@ Rectangle {
     property real pan
     // A bus has no input, so it hides its arm and monitor buttons but keeps their room to line up with the tracks.
     property bool records: true
-    // An instrument track shows a button that opens its plugin's editor.
+    // A track with an instrument shows a button that opens its plugin's editor.
     property bool instrument: false
     // The row a drag would move this track to, or -1 while no drag runs.
     property int dropIndex: -1

@@ -16,17 +16,15 @@ Rectangle {
     required property bool monitor
     required property real gainDb
     required property real pan
-    required property bool audioRoutes
     required property bool midiRoutes
     required property bool busRoutes
-    required property bool instrumentRoutes
+    required property bool playsAudio
     required property var audioOut
     required property var midiOut
     required property var sends
     required property var inserts
     required property string outputBusName
     readonly property bool selected: Nav.selectedTrack === trackId
-    readonly property bool playsAudio: audioRoutes || busRoutes || instrumentRoutes
     readonly property string outputText: {
         if (outputBusName !== "") {
             return outputBusName

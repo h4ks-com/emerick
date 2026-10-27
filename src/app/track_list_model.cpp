@@ -367,8 +367,10 @@ QVariant TrackListModel::data(const QModelIndex& index, int role) const {
             return routes.midi;
         case Role::busRoutes:
             return routes.bus;
-        case Role::instrumentRoutes:
-            return routes.instrument;
+        case Role::playsAudio:
+            return type != nullptr && app::playsAudio(*type, track);
+        case Role::instrumentId:
+            return qs(track.instrument ? track.instrument->pluginId : std::string{});
         case Role::instrumentName:
             return qs(track.instrument ? track.instrument->name : std::string{});
         case Role::sends:
@@ -404,7 +406,7 @@ QVariant TrackListModel::data(const QModelIndex& index, int role) const {
 }
 
 QHash<int, QByteArray> TrackListModel::roleNames() const {
-    static constexpr std::array<std::pair<Role, const char*>, 33> kNames{{{Role::id, "trackId"},
+    static constexpr std::array<std::pair<Role, const char*>, 34> kNames{{{Role::id, "trackId"},
                                                                           {Role::name, "name"},
                                                                           {Role::kind, "kind"},
                                                                           {Role::icon, "icon"},
@@ -422,7 +424,8 @@ QHash<int, QByteArray> TrackListModel::roleNames() const {
                                                                           {Role::audioRoutes, "audioRoutes"},
                                                                           {Role::midiRoutes, "midiRoutes"},
                                                                           {Role::busRoutes, "busRoutes"},
-                                                                          {Role::instrumentRoutes, "instrumentRoutes"},
+                                                                          {Role::playsAudio, "playsAudio"},
+                                                                          {Role::instrumentId, "instrumentId"},
                                                                           {Role::instrumentName, "instrumentName"},
                                                                           {Role::sends, "sends"},
                                                                           {Role::inserts, "inserts"},

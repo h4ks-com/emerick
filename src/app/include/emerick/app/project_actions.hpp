@@ -37,10 +37,13 @@ std::vector<model::TrackId> targetTracks(const ProjectController& controller, co
 Json editTargets(ProjectController& controller, const Nav& nav, const Json& params, const std::string& name,
                  const std::function<void(const model::TrackId&)>& edit);
 Json trackResult(const ProjectController& controller, const model::TrackId& id);
-// Adds an instrument track playing slot, monitored so it plays live input at once, with the default MIDI input and
-// audio output unless params name others.
+// Adds a MIDI track playing slot, monitored so it plays live input at once, with the default MIDI input and audio
+// output unless params name others.
 Json addInstrumentTrack(const Registry& registry, ProjectController& controller, Nav& nav, model::PluginSlot slot,
                         const Json& params);
+// Plays the track through slot as one undo step, giving it the default audio output when it has none.
+Json loadInstrument(const Registry& registry, ProjectController& controller, const model::TrackId& id,
+                    model::PluginSlot slot);
 Json editTrack(ProjectController& controller, const model::TrackId& id, std::string name,
                const std::function<void(model::Track&)>& edit);
 // One submenu entry per track color, passing its index as the color param.

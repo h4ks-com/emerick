@@ -43,7 +43,7 @@ std::string sendParamId(const model::TrackId& bus) { return "send." + bus.value 
 std::vector<AutomationParam> automationParams(const Registry& registry, const model::Document& document,
                                               const model::Track& track) {
     const TrackType* type = registry.trackType(track.kind);
-    if (type == nullptr || !type->routes.playsAudio()) {
+    if (type == nullptr || !playsAudio(*type, track)) {
         return {};
     }
     std::vector<AutomationParam> params{{.id = "gain",

@@ -230,10 +230,16 @@ nlohmann::json trackToJson(const Track& track) {
         {"instrument", slotToJson(track.instrument)}};
 }
 
+// Format 10 saved a MIDI track with an instrument as its own instrument kind.
+std::string kindFromJson(const nlohmann::json& json) {
+    const std::string kind = json.at("kind");
+    return kind == "instrument" ? "midi" : kind;
+}
+
 Track trackFromJson(const nlohmann::json& json) {
     Track track{TrackId{json.at("id")},
                 json.at("name"),
-                json.at("kind"),
+                kindFromJson(json),
                 json.at("icon"),
                 json.at("color"),
                 json.at("mute"),

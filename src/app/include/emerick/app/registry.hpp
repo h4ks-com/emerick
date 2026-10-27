@@ -154,15 +154,11 @@ struct UndoSteps {
 };
 
 // Audio routes an input and an output and holds audio clips; bus routes only an output, holds no clips and takes
-// sends. An instrument track holds MIDI clips and plays them through its CLAP instrument to an audio output.
+// sends. MIDI holds MIDI clips and plays them to a MIDI output, and through the track's instrument when it has one.
 struct RouteSections {
     bool audio = false;
     bool midi = false;
     bool bus = false;
-    bool instrument = false;
-
-    // Tracks that play audio have a fader, pan, inserts, sends and an audio output.
-    [[nodiscard]] bool playsAudio() const { return audio || bus || instrument; }
 };
 
 struct PlaybackContext {
@@ -217,6 +213,19 @@ struct TrackType {
     std::function<std::optional<StartAlignment>(const model::Track&, core::Ticks position, const PlaybackContext&)>
         alignStart = {};
 };
+
+// Tracks that play audio have a fader, pan, inserts, sends and an audio output: audio tracks, buses, and MIDI tracks
+// while they hold an instrument.
+[[nodiscard]] inline bool playsAudio(const TrackType& type, const model::Track& track) {
+    return type.routes.audio || type.routes.bus || (type.routes.midi && track.instrument.has_value());
+}
+
+// Why a track plays no audio, naming the fix: an instrument on a MIDI track, otherwise otherFix.
+[[nodiscard]] inline std::string playsNoAudio(const TrackType* type, const model::Track& track,
+                                              const std::string& otherFix) {
+    return "track " + track.name + " plays no audio, " +
+           (type != nullptr && type->routes.midi ? "load an instrument on this MIDI track first" : otherFix);
+}
 
 struct MidiDeviceProfile {
     std::string nameMatch = {};

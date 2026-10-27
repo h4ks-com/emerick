@@ -146,12 +146,6 @@ engine::Track midiEngineTrack(const model::Track& track) {
     return result;
 }
 
-engine::Track instrumentEngineTrack(const model::Track& track) {
-    engine::Track result = midiEngineTrack(track);
-    addBusRoutes(result, track);
-    return result;
-}
-
 engine::Session toSession(const model::Document& document, const Registry& registry,
                           const std::filesystem::path& folder, EngineTrackCache& cache) {
     engine::Session session{.tempo = document.tempo,
@@ -172,7 +166,11 @@ engine::Session toSession(const model::Document& document, const Registry& regis
         }
         auto entry = cache.tracks.extract(track.id.value);
         if (entry.empty() || entry.mapped().source != track) {
-            kept.insert_or_assign(track.id.value, EngineTrackCache::Entry{track, type->toEngine(track, context)});
+            engine::Track converted = type->toEngine(track, context);
+            if (type->routes.midi && track.instrument) {
+                addBusRoutes(converted, track);
+            }
+            kept.insert_or_assign(track.id.value, EngineTrackCache::Entry{track, std::move(converted)});
         } else {
             kept.insert(std::move(entry));
         }

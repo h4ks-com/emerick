@@ -61,11 +61,11 @@ float loudest(const std::vector<float>& samples) {
 
 }  // namespace
 
-TEST_CASE("an instrument track plays its MIDI clips through the CLAP instrument into its audio output") {
+TEST_CASE("track.addInstrument adds a MIDI track that plays its clips through the instrument into its audio output") {
     InstrumentRig rig;
     const model::TrackId id = rig.addSynth();
     const model::Track& track = *rig.controller->project().track(id);
-    CHECK(track.kind == "instrument");
+    CHECK(track.kind == "midi");
     CHECK(track.name == "Test Sine");
     REQUIRE(track.instrument.has_value());
     CHECK(track.instrument->pluginId == kSine);
@@ -76,6 +76,56 @@ TEST_CASE("an instrument track plays its MIDI clips through the CLAP instrument 
     rig.audio->process(kBlock * 64);
     CHECK(loudest(rig.audio->output("interface", 1)) > 0.4F);
     CHECK(rig.run("send.add", {{"track", id.value}, {"bus", rig.run("track.addBus").at("id")}}).contains("sends"));
+}
+
+TEST_CASE("a MIDI track sends MIDI out until it loads an instrument, which plays it into the default audio output") {
+    InstrumentRig rig;
+    const model::TrackId id{rig.run("track.addMidi", {{"midiOut", {{"port", kMidiPort}}}}).at("id").get<std::string>()};
+    CHECK(rig.controller->project().track(id)->audioOut.deviceId.empty());
+    addNote(*rig.controller, id);
+    try {
+        rig.run("insert.add", {{"track", id.value}, {"type", "eq"}});
+        FAIL("a MIDI track without an instrument took an insert");
+    } catch (const AppError& error) {
+        CHECK(std::string{error.what()}.ends_with("load an instrument on this MIDI track first"));
+    }
+
+    rig.controller->play();
+    rig.audio->process(kBlock * 64);
+    CHECK(std::ranges::any_of(rig.midi->sent(kMidiPort), [](const engine::SentMidi& message) {
+        return message.bytes.size() == 3 && message.bytes[0] == 0x90 && message.bytes[1] == 69;
+    }));
+    CHECK(loudest(rig.audio->output("interface", 1)) == 0.0F);
+    rig.controller->stop();
+
+    rig.run("instrument.load", {{"track", id.value}, {"plugin", kSine}});
+    CHECK(rig.controller->project().track(id)->audioOut.deviceId == "interface");
+    rig.controller->flush();
+    rig.controller->locate(0);
+    rig.controller->play();
+    rig.audio->process(kBlock * 64);
+    CHECK(loudest(rig.audio->output("interface", 1)) > 0.4F);
+}
+
+TEST_CASE("instrument.remove clears the slot and the track plays no audio again") {
+    InstrumentRig rig;
+    const model::TrackId id = rig.addSynth();
+    rig.controller->flush();
+    REQUIRE(rig.controller->instruments().find(id) != nullptr);
+    const Json bus = rig.run("track.addBus").at("id");
+    rig.run("instrument.remove", {{"track", id.value}});
+    rig.controller->flush();
+    CHECK_FALSE(rig.controller->project().track(id)->instrument.has_value());
+    CHECK(rig.controller->instruments().find(id) == nullptr);
+    try {
+        rig.run("instrument.showEditor", {{"track", id.value}});
+        FAIL("the editor of a removed instrument opened");
+    } catch (const AppError& error) {
+        CHECK(std::string{error.what()}.ends_with("load an instrument on this MIDI track first"));
+    }
+    CHECK_THROWS_AS(rig.run("send.add", {{"track", id.value}, {"bus", bus}}), AppError);
+    rig.run("project.undo");
+    CHECK(rig.controller->project().track(id)->instrument.has_value());
 }
 
 TEST_CASE("a project saves its instrument's current state and loads it back into the instrument") {
@@ -92,6 +142,29 @@ TEST_CASE("a project saves its instrument's current state and loads it back into
     InstrumentRig other;
     other.controller->open(rig.controller->folder());
     other.controller->flush();
+    const auto reopened = other.controller->instruments().find(id);
+    REQUIRE(reopened != nullptr);
+    CHECK(reopened->saveState() == levelState(0.25F));
+}
+
+TEST_CASE("a format 10 instrument track loads as a MIDI track with its instrument and state") {
+    InstrumentRig rig;
+    const model::TrackId id = rig.addSynth();
+    rig.controller->flush();
+    REQUIRE(rig.controller->instruments().find(id)->loadState(levelState(0.25F)));
+    rig.controller->save();
+    const std::filesystem::path file = rig.controller->folder() / "project.json";
+    Json saved = Json::parse(std::ifstream(file));
+    saved.at("tracks")[0]["kind"] = "instrument";
+    std::ofstream(file) << saved.dump();
+
+    InstrumentRig other;
+    other.controller->open(rig.controller->folder());
+    other.controller->flush();
+    const model::Track& track = *other.controller->project().track(id);
+    CHECK(track.kind == "midi");
+    REQUIRE(track.instrument.has_value());
+    CHECK(track.instrument->pluginId == kSine);
     const auto reopened = other.controller->instruments().find(id);
     REQUIRE(reopened != nullptr);
     CHECK(reopened->saveState() == levelState(0.25F));
@@ -125,6 +198,6 @@ TEST_CASE("showing the editor of an instrument without one says so") {
     } catch (const AppError& error) {
         CHECK(std::string{error.what()} == "Test Sine has no editor");
     }
-    CHECK_THROWS_AS(rig.run("instrument.load", {{"track", rig.run("track.addMidi").at("id")}, {"plugin", kSine}}),
+    CHECK_THROWS_AS(rig.run("instrument.load", {{"track", rig.run("track.addAudio").at("id")}, {"plugin", kSine}}),
                     AppError);
 }

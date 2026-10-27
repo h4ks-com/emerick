@@ -26,13 +26,14 @@ model::TrackId busParam(const Registry& registry, const ProjectController& contr
     return bus;
 }
 
-// Audio tracks and buses play audio, so only they can send or play into a bus.
+// Only tracks that play audio can send or play into a bus.
 model::TrackId sourceParam(const Registry& registry, const ProjectController& controller, const Nav& nav,
                            const Json& params) {
     const model::TrackId track = targetTrack(controller, nav, params);
     const TrackType* type = typeOf(registry, controller, track);
-    if (type == nullptr || !type->routes.playsAudio()) {
-        throw AppError("track " + controller.project().track(track)->name + " plays no audio to send");
+    const model::Track& source = *controller.project().track(track);
+    if (type == nullptr || !playsAudio(*type, source)) {
+        throw AppError(playsNoAudio(type, source, "send from an audio track or a bus"));
     }
     return track;
 }

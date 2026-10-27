@@ -116,10 +116,10 @@ const engine::EffectParam& describedParam(const model::Insert& insert, const std
 model::TrackId audioTrack(const Registry& registry, const ProjectController& controller, const Nav& nav,
                           const Json& params) {
     const model::TrackId track = targetTrack(controller, nav, params);
-    const TrackType* type = registry.trackType(controller.project().track(track)->kind);
-    if (type == nullptr || !type->routes.playsAudio()) {
-        throw AppError("track " + controller.project().track(track)->name +
-                       " plays no audio, add inserts to an audio track or a bus");
+    const model::Track& target = *controller.project().track(track);
+    const TrackType* type = registry.trackType(target.kind);
+    if (type == nullptr || !playsAudio(*type, target)) {
+        throw AppError(playsNoAudio(type, target, "add inserts to an audio track or a bus"));
     }
     return track;
 }

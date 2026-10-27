@@ -126,9 +126,9 @@ Rectangle {
                 required property bool audioRoutes
                 required property bool midiRoutes
                 required property bool busRoutes
-                required property bool instrumentRoutes
+                required property bool playsAudio
+                required property string instrumentId
                 required property string instrumentName
-                readonly property bool playsAudio: audioRoutes || busRoutes || instrumentRoutes
                 required property var sends
                 required property var inserts
                 required property var audioIn
@@ -220,21 +220,36 @@ Rectangle {
                     Layout.fillWidth: true
                 }
 
-                RouteLabel { text: "Instrument"; visible: panel.instrumentRoutes }
+                RouteLabel { text: "Instrument"; visible: panel.midiRoutes }
                 RowLayout {
-                    visible: panel.instrumentRoutes
+                    visible: panel.midiRoutes
                     spacing: Theme.space1
                     Layout.fillWidth: true
-                    Label {
-                        objectName: "inspector.instrumentName"
-                        text: panel.instrumentName
-                        color: Theme.ink
-                        font.pixelSize: Theme.textLabel
-                        elide: Text.ElideRight
+                    // We list the plugins only while the picker is open, because the first listing scans them.
+                    SearchCombo {
+                        id: instrumentPicker
+                        objectName: "instrument.load:" + panel.trackId
+                        model: [{id: "", name: "None"}].concat(!instrumentPicker.popup.visible ? []
+                            : Registry.actionInfo("instrument.load").choices.map(
+                                choice => ({id: choice.id, name: choice.title, params: choice.params})))
+                        currentId: panel.instrumentId
+                        missingText: panel.instrumentName
+                        toolTip: Registry.actionInfo("instrument.load").title
+                        onPicked: entry => {
+                            if (entry.id === panel.instrumentId) {
+                                return
+                            }
+                            if (entry.id === "") {
+                                Registry.runAction("instrument.remove", {track: panel.trackId})
+                            } else {
+                                Registry.runAction("instrument.load", Object.assign({track: panel.trackId}, entry.params))
+                            }
+                        }
                         Layout.fillWidth: true
                     }
                     ChromeButton {
                         objectName: "instrument.showEditor:" + panel.trackId + ":inspector"
+                        visible: panel.instrumentId !== ""
                         actionId: "instrument.showEditor"
                         params: ({track: panel.trackId})
                         iconName: "sliders"

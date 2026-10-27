@@ -34,13 +34,23 @@ std::vector<MenuChoice> instrumentChoices(const Registry& registry, PluginCatalo
            std::ranges::to<std::vector>();
 }
 
-model::TrackId instrumentTrack(const Registry& registry, const ProjectController& controller, const Nav& nav,
-                               const Json& params) {
+model::TrackId midiTrack(const Registry& registry, const ProjectController& controller, const Nav& nav,
+                         const Json& params) {
     const model::TrackId id = targetTrack(controller, nav, params);
     const model::Track& track = *controller.project().track(id);
     const TrackType* type = registry.trackType(track.kind);
-    if (type == nullptr || !type->routes.instrument) {
-        throw AppError("track " + track.name + " is not an instrument track, run track.addInstrument first");
+    if (type == nullptr || !type->routes.midi) {
+        throw AppError("track " + track.name + " is not a MIDI track, select a MIDI track or run track.addInstrument");
+    }
+    return id;
+}
+
+model::TrackId instrumentTrack(const Registry& registry, const ProjectController& controller, const Nav& nav,
+                               const Json& params) {
+    const model::TrackId id = midiTrack(registry, controller, nav, params);
+    const model::Track& track = *controller.project().track(id);
+    if (!track.instrument) {
+        throw AppError("track " + track.name + " has no instrument, load an instrument on this MIDI track first");
     }
     return id;
 }
@@ -52,7 +62,7 @@ void registerInstrumentActions(Registry& registry, ProjectController& controller
     registry.addAction(
         {.id = "track.addInstrument",
          .title = "Add instrument track",
-         .description = "Adds a track that plays its MIDI through a CLAP instrument into an audio output.",
+         .description = "Adds a MIDI track with a CLAP instrument loaded, which plays its MIDI into an audio output.",
          .aliases = {"new instrument track", "add software instrument", "add synth"},
          .category = "Tracks",
          .schema = {{"type", "object"},
@@ -71,17 +81,16 @@ void registerInstrumentActions(Registry& registry, ProjectController& controller
     registry.addAction(
         {.id = "instrument.load",
          .title = "Load instrument",
-         .description = "Plays the track through another CLAP instrument, which starts from its own defaults.",
+         .description = "Plays the MIDI track through a CLAP instrument into an audio output. The instrument starts "
+                        "from its own defaults.",
          .aliases = {"change instrument", "replace instrument", "pick synth"},
          .category = "Tracks",
          .schema = {{"required", {"plugin"}},
                     {"properties", {{"plugin", pluginSchema()}, {"track", {{"type", "string"}}}}}},
          .run =
              [&registry, &controller, &nav, &catalog](const Json& params) {
-                 const model::TrackId id = instrumentTrack(registry, controller, nav, params);
-                 const model::PluginSlot slot = slotFor(registry, catalog, params);
-                 return editTrack(controller, id, "load " + slot.name,
-                                  [&](model::Track& track) { track.instrument = slot; });
+                 const model::TrackId id = midiTrack(registry, controller, nav, params);
+                 return loadInstrument(registry, controller, id, slotFor(registry, catalog, params));
              },
          .menus = {kTrackContextMenu},
          .submenu = choices,
@@ -90,6 +99,20 @@ void registerInstrumentActions(Registry& registry, ProjectController& controller
                  const model::Track* track = controller.project().track(targetTrack(controller, nav, params));
                  return track != nullptr && track->instrument ? track->instrument->pluginId : std::string{};
              }});
+    registry.addAction(
+        {.id = "instrument.remove",
+         .title = "Remove instrument",
+         .description = "Clears the MIDI track's instrument, so the track plays only to its MIDI output.",
+         .aliases = {"unload instrument", "clear instrument", "no instrument"},
+         .category = "Tracks",
+         .schema = {{"properties", {{"track", {{"type", "string"}}}}}},
+         .run =
+             [&registry, &controller, &nav](const Json& params) {
+                 const model::TrackId id = instrumentTrack(registry, controller, nav, params);
+                 return editTrack(controller, id, "remove instrument",
+                                  [](model::Track& track) { track.instrument.reset(); });
+             },
+         .menus = {kTrackContextMenu}});
     registry.addAction({.id = "instrument.showEditor",
                         .title = "Show instrument editor",
                         .description = "Opens the window of the track's CLAP instrument.",

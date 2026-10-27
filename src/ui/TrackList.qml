@@ -227,7 +227,7 @@ Rectangle {
             required property real gainDb
             required property real pan
             required property bool busRoutes
-            required property bool instrumentRoutes
+            required property string instrumentId
             required property var clips
             required property var trackData
             required property string laneComponent
@@ -359,7 +359,7 @@ Rectangle {
                 gainDb: row.gainDb
                 pan: row.pan
                 records: !row.busRoutes
-                instrument: row.instrumentRoutes
+                instrument: row.instrumentId !== ""
                 automationMode: row.automationMode
                 automationParams: row.automationParams
                 automationParam: row.automationParam

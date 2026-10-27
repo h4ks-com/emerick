@@ -111,6 +111,7 @@ constexpr std::array kAudioDefaults{
     AudioDefault{Direction::output, "audio.defaultOutput", "Default output", "track.setAllAudioOut",
                  "Set output for all audio tracks", &model::Track::audioOut},
 };
+constexpr const AudioDefault* kAudioOutputDefault = &kAudioDefaults[1];
 
 // A default whose device is gone gives way to the first device that fits, so adding a track still works.
 model::AudioRoute newTrackRoute(const Registry& registry, ProjectController& controller, const AudioDefault& entry) {
@@ -271,8 +272,7 @@ void registerBusKind(Registry& registry, ProjectController& controller, Nav& nav
          .run =
              [&registry, &controller, &nav](const Json& params) {
                  model::Track track;
-                 const auto* output = std::ranges::find(kAudioDefaults, Direction::output, &AudioDefault::direction);
-                 track.audioOut = mergeAudioRoute(controller, newTrackRoute(registry, controller, *output),
+                 track.audioOut = mergeAudioRoute(controller, newTrackRoute(registry, controller, *kAudioOutputDefault),
                                                   routeParams(params, "audioOut"), Direction::output);
                  return addTrack(controller, nav, *registry.trackType("bus"), std::move(track), params);
              },
@@ -313,19 +313,6 @@ void registerMidiKind(Registry& registry, ProjectController& controller, Nav& na
         return addTrack(controller, nav, *registry.trackType("midi"), std::move(track), params);
     };
     registry.addAction(std::move(add));
-}
-
-void registerInstrumentKind(Registry& registry) {
-    registry.addTrackType(
-        {.kind = "instrument",
-         .title = "Instrument",
-         .icon = "music-notes",
-         .routes = {.midi = true, .instrument = true},
-         .toEngine = [](const model::Track& track, const PlaybackContext&) { return instrumentEngineTrack(track); },
-         .fromTake =
-             [](model::Track& track, const engine::RecordedTake& take, const TakeContext& context) {
-                 track.clips.emplace_back(midiClipFromTake(take, context.stopTicks));
-             }});
 }
 
 void registerRouteActions(Registry& registry, ProjectController& controller, const Nav& nav) {
@@ -400,12 +387,24 @@ Json addInstrumentTrack(const Registry& registry, ProjectController& controller,
     track.name = slot.name;
     track.midiIn =
         mergeMidiRoute(controller, defaultMidiInput(controller), routeParams(params, "midiIn"), Direction::input);
-    const auto* output = std::ranges::find(kAudioDefaults, Direction::output, &AudioDefault::direction);
-    track.audioOut = mergeAudioRoute(controller, newTrackRoute(registry, controller, *output),
+    track.audioOut = mergeAudioRoute(controller, newTrackRoute(registry, controller, *kAudioOutputDefault),
                                      routeParams(params, "audioOut"), Direction::output);
     track.monitor = true;
     track.instrument = std::move(slot);
-    return addTrack(controller, nav, *registry.trackType("instrument"), std::move(track), params);
+    return addTrack(controller, nav, *registry.trackType("midi"), std::move(track), params);
+}
+
+Json loadInstrument(const Registry& registry, ProjectController& controller, const model::TrackId& id,
+                    model::PluginSlot slot) {
+    const bool needsOutput = controller.project().track(id)->audioOut.deviceId.empty();
+    const model::AudioRoute output =
+        needsOutput ? newTrackRoute(registry, controller, *kAudioOutputDefault) : model::AudioRoute{};
+    return editTrack(controller, id, "load " + slot.name, [&](model::Track& track) {
+        track.instrument = std::move(slot);
+        if (needsOutput) {
+            track.audioOut = output;
+        }
+    });
 }
 
 Json editTrack(ProjectController& controller, const model::TrackId& id, std::string name,
@@ -418,7 +417,6 @@ void registerTrackActions(Registry& registry, ProjectController& controller, Nav
     registerAudioKind(registry, controller, nav);
     registerMidiKind(registry, controller, nav);
     registerBusKind(registry, controller, nav);
-    registerInstrumentKind(registry);
     registerTrackEditActions(registry, controller, nav);
     registerSendActions(registry, controller, nav);
     registerInsertActions(registry, controller, nav);

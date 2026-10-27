@@ -12,7 +12,7 @@ inline constexpr const char* kClapFoldersSetting = "plugins.clapFolders";
 // The Plugins settings section with the user's CLAP folders, and the actions that rescan and list CLAP plugins.
 void registerPluginActions(Registry& registry, Nav& nav, PluginCatalog& catalog);
 
-// The add instrument track, load instrument and show editor actions.
+// The add instrument track, load instrument, remove instrument and show editor actions.
 void registerInstrumentActions(Registry& registry, ProjectController& controller, Nav& nav, PluginCatalog& catalog);
 
 // Scans the catalog the first time something asks for its plugins.

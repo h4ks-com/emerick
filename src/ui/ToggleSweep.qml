@@ -11,6 +11,8 @@ MouseArea {
     property bool value
     property var touched: []
     property point last
+    // A MouseArea shows the arrow by default, which would hide the cursors of the items under the sweep.
+    cursorShape: undefined
 
     function toggleAt(item, point) {
         for (let index = 0; index < item.children.length; ++index) {

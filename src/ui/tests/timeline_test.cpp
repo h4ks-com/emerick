@@ -463,6 +463,13 @@ TEST_CASE("dragging a MIDI clip's loop handle repeats its content live in one un
     CHECK(midi().length == 1920);
     CHECK(midi().loopLength == 9600);
 
+    for (const QString& grip : {handle, QString::fromStdString("clip.resize:" + id + ":right")}) {
+        QQuickItem* target = timeline.item(grip);
+        timeline.send(QEvent::MouseMove, target->mapToScene({target->width() / 2, target->height() / 2}), Qt::NoButton,
+                      Qt::NoModifier);
+        CHECK(timeline.view.cursor().shape() == Qt::SizeHorCursor);
+    }
+
     timeline.rig.run("project.undo");
     timeline.rig.run("project.undo");
     CHECK(midi().loopLength == 0);

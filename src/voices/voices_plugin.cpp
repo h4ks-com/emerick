@@ -48,6 +48,7 @@ bool activate(const clap_plugin* plugin, double sampleRate, std::uint32_t /*unus
     emerick::voices::buildBank(voices, voices.selected.load(std::memory_order_relaxed));
     voices.sampleRate = sampleRate;
     voices.sampler.silence();
+    voices.playingBank = nullptr;
     voices.active = true;
     return true;
 }
@@ -61,13 +62,18 @@ int velocityOf(double clapVelocity) { return std::clamp(static_cast<int>(std::lr
 
 int channelOf(std::int16_t channel) { return std::clamp<int>(channel, 0, static_cast<int>(kChannels) - 1); }
 
-const emerick::voices::Bank* currentBank(const Plugin& plugin) {
+const emerick::voices::Bank* updatePlayingBank(Plugin& plugin) {
     const int selected = plugin.selected.load(std::memory_order_relaxed);
-    return selected >= 0 ? plugin.banks[static_cast<std::size_t>(selected)].load(std::memory_order_acquire) : nullptr;
+    if (selected < 0) {
+        plugin.playingBank = nullptr;
+    } else if (const auto* bank = plugin.banks[static_cast<std::size_t>(selected)].load(std::memory_order_acquire)) {
+        plugin.playingBank = bank;
+    }
+    return plugin.playingBank;
 }
 
 void startNote(Plugin& plugin, int key, int velocity, int channel) {
-    if (const emerick::voices::Bank* bank = currentBank(plugin)) {
+    if (const emerick::voices::Bank* bank = updatePlayingBank(plugin)) {
         plugin.sampler.noteOn(*bank, key, velocity, channel, settingsOf(plugin));
     }
 }
@@ -82,6 +88,7 @@ void changeProgram(Plugin& plugin, int channel, int program) {
     const auto found = std::ranges::lower_bound(plugin.addresses, address, {}, &std::pair<VoiceAddress, int>::first);
     const int voice = found != plugin.addresses.end() && found->first == address ? found->second : -1;
     if (voice != plugin.selected.load(std::memory_order_relaxed)) {
+        updatePlayingBank(plugin);
         emerick::voices::selectVoice(plugin, voice, true);
         plugin.voiceChanged = true;
     }

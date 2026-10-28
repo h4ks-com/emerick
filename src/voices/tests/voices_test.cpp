@@ -239,6 +239,19 @@ TEST_CASE("program changes pick the voice at that bank address while the instrum
     CHECK(loudest(render(*instrument, {{0x90, 69, 100}}, 10)) < 1e-6F);
 }
 
+TEST_CASE("the playing voice keeps sounding while a program change waits for its new voice to decode") {
+    const Rig rig;
+    const auto instrument = rig.instrument(voiceNamed("Sine", 3));
+    instrument->setParam(kFollow, 1.0);
+    const std::vector<float> waiting =
+        render(*instrument, {{0xB0, 0, 8}, {0xB0, 32, 0}, {0xC0, 6, 0}, {0x90, 69, 120}}, 20);
+    CHECK(std::abs(cents(frequency(waiting), 440.0)) < 2.0);
+
+    instrument->idle();
+    render(*instrument, {{0x80, 69, 0}}, 50);
+    CHECK(std::abs(cents(frequency(render(*instrument, {{0x90, 69, 120}}, 20)), 660.0)) < 2.0);
+}
+
 TEST_CASE("the state names the voice by pack, name and address, so a changed store keeps it") {
     Rig rig;
     const Json state = [&] {

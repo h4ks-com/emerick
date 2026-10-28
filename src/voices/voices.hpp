@@ -68,6 +68,8 @@ struct Plugin {
     Sampler sampler;
     std::array<int, kChannels> bankMsb{};
     std::array<int, kChannels> bankLsb{};
+    // The bank that played last, which keeps sounding while a program change waits for its new bank.
+    const Bank* playingBank = nullptr;
     bool voiceChanged = false;
 };
 

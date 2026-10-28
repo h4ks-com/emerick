@@ -109,7 +109,7 @@ TEST_CASE("a count-in delays the take, which lands at the record position") {
     const std::string vox = rig.run("track.addAudio", {{"name", "Vox"}}).at("id");
     rig.run("track.setArm", {{"track", vox}, {"value", true}});
     rig.run("metronome.setCountIn", {{"bars", 1}});
-    rig.run("transport.locate", {{"position", "3.1.0"}});
+    rig.run("transport.locate", {{"at", "3.1.0"}});
 
     CHECK(rig.run("transport.record").at("playing") == true);
     rig.audio->process(48000);

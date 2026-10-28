@@ -26,7 +26,7 @@ TEST_CASE("transport actions return the state the engine reached") {
     const Json stopped = rig.run("transport.stop");
     CHECK(stopped.at("playing") == false);
     CHECK(stopped.at("position").at("ticks").get<core::Ticks>() > 0);
-    CHECK(rig.run("transport.locate", {{"position", "3.1.0"}}).at("position").at("bbt") == "3.1.0");
+    CHECK(rig.run("transport.locate", {{"at", "3.1.0"}}).at("position").at("bbt") == "3.1.0");
     const Json recording = rig.run("transport.record");
     CHECK(recording.at("playing") == true);
     CHECK(recording.at("recording") == true);
@@ -42,9 +42,9 @@ TEST_CASE("play or pause keeps the position, and a second stop returns to the st
     CHECK(ticks > 0);
     CHECK(rig.run("transport.togglePlay").at("position").at("ticks").get<core::Ticks>() >= ticks);
     CHECK(rig.run("transport.stop").at("playing") == false);
-    rig.run("transport.locate", {{"position", "3.1.0"}});
+    rig.run("transport.locate", {{"at", "3.1.0"}});
     CHECK(rig.run("transport.stop").at("position").at("ticks") == 0);
-    rig.run("transport.locate", {{"position", "3.1.0"}});
+    rig.run("transport.locate", {{"at", "3.1.0"}});
     CHECK(rig.run("transport.gotoStart").at("position").at("ticks") == 0);
 }
 

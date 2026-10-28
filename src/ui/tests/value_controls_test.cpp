@@ -293,7 +293,7 @@ TEST_CASE(
     MainWindow& main = MainWindow::instance();
     main.rig.run("project.setTempo", {{"bpm", 100}});
     const core::Ticks bar = main.rig.controller->ticksPerBar();
-    main.rig.run("transport.locate", {{"position", 3 * bar}});
+    main.rig.run("transport.locate", {{"at", 3 * bar}});
     QQuickItem* tempo = main.item("project.setTempo.bpm");
     main.hover(tempo);
     CHECK(MainWindow::find(main.window->contentItem(), "project.setTempo.bpm:up") == nullptr);

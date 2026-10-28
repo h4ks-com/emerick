@@ -331,7 +331,7 @@ TEST_CASE("copy and paste put clips at the playhead on the selected track, and b
     rig.run("selection.set", {{"clips", {clip}}});
     rig.run("clip.copy");
     const core::Ticks bar = rig.controller->ticksPerBar();
-    rig.run("transport.locate", {{"position", bar + bar / 2}});
+    rig.run("transport.locate", {{"at", bar + bar / 2}});
     rig.run("transport.barBack");
     CHECK(rig.controller->positionTicks() == bar);
     const Json pasted = rig.run("clip.paste");

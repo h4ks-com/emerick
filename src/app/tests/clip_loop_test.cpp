@@ -115,7 +115,7 @@ TEST_CASE(
     keys.add(60, 0);
     keys.add(64, 1920);
     keys.rig.run("clip.setLoopLength", {{"clip", keys.clip}, {"end", 1920 + (2 * kBar) + 960}});
-    keys.rig.run("transport.locate", {{"position", 1920 + kBar + 960}});
+    keys.rig.run("transport.locate", {{"at", 1920 + kBar + 960}});
     keys.rig.run("selection.set", {{"clips", {keys.clip}}});
 
     const Json split = keys.rig.run("clip.split");

@@ -187,7 +187,7 @@ TEST_CASE("Backspace and Delete remove the selected clips, or the selected track
 TEST_CASE("marker keys add and visit markers, the list locates, a double click renames and Delete removes") {
     MainWindow& main = MainWindow::instance();
     const core::Ticks bar = main.rig.controller->ticksPerBar();
-    main.rig.run("transport.locate", {{"position", 2 * bar}});
+    main.rig.run("transport.locate", {{"at", 2 * bar}});
     const auto& markers = main.rig.controller->project().document().markers;
     const auto before = markers.size();
 
@@ -195,11 +195,11 @@ TEST_CASE("marker keys add and visit markers, the list locates, a double click r
     REQUIRE(markers.size() == before + 1);
     const std::string id = main.rig.nav.selectedMarker().toStdString();
     CHECK(model::findMarker(main.rig.controller->project().document(), model::MarkerId{id})->at == 2 * bar);
-    main.rig.run("transport.locate", {{"position", 0}});
+    main.rig.run("transport.locate", {{"at", 0}});
     QTest::keyClick(main.window, Qt::Key_Period, Qt::AltModifier);
     CHECK(main.rig.controller->positionTicks() == 2 * bar);
 
-    main.rig.run("transport.locate", {{"position", 0}});
+    main.rig.run("transport.locate", {{"at", 0}});
     main.click(main.item("marker.goto:" + qid(id)));
     CHECK(processUntil([&] { return main.rig.controller->positionTicks() == 2 * bar; }));
 
@@ -236,7 +236,7 @@ TEST_CASE("the settings close button and Escape close settings") {
 TEST_CASE("Logic keys move the playhead by bars, select tracks and mute the selected track") {
     MainWindow& main = MainWindow::instance();
     const core::Ticks bar = main.rig.controller->ticksPerBar();
-    main.rig.run("transport.locate", {{"position", 0}});
+    main.rig.run("transport.locate", {{"at", 0}});
     const std::string first = main.rig.run("track.addMidi").at("id");
     const std::string second = main.rig.run("track.addMidi").at("id");
 
@@ -266,7 +266,7 @@ TEST_CASE("Key Commands records a new shortcut that then runs the action") {
     CHECK(main.rig.registry.action("transport.gotoEnd")->shortcut == "Ctrl+Shift+E");
     main.rig.run("settings.close");
 
-    main.rig.run("transport.locate", {{"position", "3.1.0"}});
+    main.rig.run("transport.locate", {{"at", "3.1.0"}});
     REQUIRE(main.rig.controller->endTicks() != main.rig.controller->positionTicks());
     processUntil([] { return false; }, 50);
     QTest::keyClick(main.window, Qt::Key_E, Qt::ControlModifier | Qt::ShiftModifier);
@@ -381,13 +381,13 @@ TEST_CASE("the marker lane buttons add a marker at the playhead, step between ma
     const core::Ticks bar = main.rig.controller->ticksPerBar();
     const auto& markers = main.rig.controller->project().document().markers;
     const auto before = markers.size();
-    main.rig.run("transport.locate", {{"position", 5 * bar}});
+    main.rig.run("transport.locate", {{"at", 5 * bar}});
     main.click(main.item("marker.add:lane"));
     REQUIRE(markers.size() == before + 1);
     CHECK(model::findMarker(main.rig.controller->project().document(),
                             model::MarkerId{main.rig.nav.selectedMarker().toStdString()})
               ->at == 5 * bar);
-    main.rig.run("transport.locate", {{"position", 7 * bar}});
+    main.rig.run("transport.locate", {{"at", 7 * bar}});
     main.click(main.item("marker.previous:lane"));
     CHECK(main.rig.controller->positionTicks() == 5 * bar);
 

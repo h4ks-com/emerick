@@ -401,7 +401,7 @@ TEST_CASE("dragging over empty lanes selects the clips the band touches, and Shi
         timeline.rig.run("track.remove",
                          {{"track", timeline.rig.controller->project().document().tracks.front().id.value}});
     }
-    timeline.rig.run("transport.locate", {{"position", 0}});
+    timeline.rig.run("transport.locate", {{"at", 0}});
     const std::string first = timeline.addClip();
     const std::string second = timeline.addClip();
     const std::string third = timeline.addClip();

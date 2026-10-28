@@ -48,7 +48,7 @@ TEST_CASE("a virtual MIDI take becomes a MIDI clip, takes stack and undo removes
     CHECK(notes.at(0).at("velocity") == 100);
     CHECK(notes.at(0).at("length").get<int>() >= 900);
 
-    rig.run("transport.locate", {{"position", "1.1.0"}});
+    rig.run("transport.locate", {{"at", "1.1.0"}});
     recordWhile(rig, playNote);
     REQUIRE(rig.waitForTakes(1) == 1);
     Json state = projectState(*rig.controller);

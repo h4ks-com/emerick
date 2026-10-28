@@ -221,7 +221,7 @@ TEST_CASE("chord sysex recorded from the keyboard lands on the Chords track and 
     rig.run("track.setArm", {{"track", chords}, {"value", false}});
     rig.run("yamaha.chord.set", {{"track", chords}, {"at", data.at(1).at("at")}, {"chord", "Gsus4"}});
     rig.midi->clearSent();
-    rig.run("transport.locate", {{"position", 0}});
+    rig.run("transport.locate", {{"at", 0}});
     rig.run("transport.play");
     rig.audio->process(96000);
     REQUIRE(processUntil([&] { return rig.controller->engine().midiFlushed(); }));
@@ -314,7 +314,7 @@ TEST_CASE("play from inside a pattern starts at its pass with the section and ch
     rig.run("yamaha.chord.set", {{"track", chords}, {"at", 0}, {"chord", "Dm"}});
     rig.run("yamaha.chord.set", {{"track", chords}, {"at", 6 * bar}, {"chord", "G7"}});
 
-    rig.run("transport.locate", {{"position", (6 * bar) + 100}});
+    rig.run("transport.locate", {{"at", (6 * bar) + 100}});
     rig.midi->clearSent();
     rig.run("transport.play");
     CHECK(rig.controller->startReason() == "Style starts at bar 5, Main A");
@@ -328,7 +328,7 @@ TEST_CASE("play from inside a pattern starts at its pass with the section and ch
     REQUIRE(processUntil([&] { return !rig.controller->syncStatus().contains("yamaha"); }));
 
     rig.run("track.setMute", {{"track", style}, {"value", true}});
-    rig.run("transport.locate", {{"position", (6 * bar) + 100}});
+    rig.run("transport.locate", {{"at", (6 * bar) + 100}});
     rig.run("transport.play");
     CHECK(rig.controller->startReason().isEmpty());
     rig.run("transport.stop");

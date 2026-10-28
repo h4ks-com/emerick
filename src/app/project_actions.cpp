@@ -194,9 +194,9 @@ void registerTransportActions(Registry& registry, ProjectController& controller)
                         .title = "Go to position",
                         .aliases = {"locate", "move playhead"},
                         .category = "Transport",
-                        .schema = {{"required", {"position"}}},
+                        .schema = {{"required", {"at"}}},
                         .run = [&controller](const Json& params) {
-                            controller.locate(positionParam(params, "position", controller.project().document().tempo));
+                            controller.locate(positionParam(params, "at", controller.project().document().tempo));
                             return transportState(controller);
                         }});
     registry.addAction({.id = "transport.setClockOut",

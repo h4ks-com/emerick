@@ -272,10 +272,10 @@ TEST_CASE("a block's context menu splits at the playhead inside the block and at
         REQUIRE(processUntil([&] { return !menu->property("visible").toBool(); }));
         return lane->property("menuTo").toLongLong();
     };
-    main.rig.run("transport.locate", {{"position", 1000}});
+    main.rig.run("transport.locate", {{"at", 1000}});
     MainWindow::settle();
     CHECK(menuToAfterRightClick() == 1000);
-    main.rig.run("transport.locate", {{"position", 9000}});
+    main.rig.run("transport.locate", {{"at", 9000}});
     MainWindow::settle();
     CHECK(menuToAfterRightClick() != 9000);
     removeTrack(main, id);

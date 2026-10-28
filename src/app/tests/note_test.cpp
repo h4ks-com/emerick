@@ -134,7 +134,7 @@ TEST_CASE("notes copy and paste within the clip with new ids at the playhead") {
     keys.add(64, 240);
     keys.rig.run("midi.selectNotes", {{"all", true}});
     keys.rig.run("midi.copyNotes");
-    keys.rig.run("transport.locate", {{"position", 1920 + 960}});
+    keys.rig.run("transport.locate", {{"at", 1920 + 960}});
     const Json pasted = keys.rig.run("midi.pasteNotes");
     CHECK(pasted.at("notes").size() == 2);
     CHECK(pasted.at("notes").at(0).at("start") == 960);

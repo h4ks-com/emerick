@@ -212,7 +212,7 @@ Rectangle {
         height: parent.height - y
         function locate(mouse) {
             const ticks = Math.max(0, Math.round(ruler.scrollTicks + Math.min(Math.max(mouse.x, 0), width) / ruler.pixelsPerTick))
-            Registry.runAction("transport.locate", {position: Project.placed(ticks, mouse.modifiers)})
+            Registry.runAction("transport.locate", {at: Project.placed(ticks, mouse.modifiers)})
         }
         onPressed: mouse => locate(mouse)
         onPositionChanged: mouse => locate(mouse)

@@ -78,6 +78,20 @@ TEST_CASE("a synthetic style round trips through the parser") {
     CHECK_FALSE(style.voices[1].has_value());
 }
 
+TEST_CASE("a part whose setup picks a program without a bank selects bank 0 first") {
+    StyleBuilder builder;
+    builder.marker(0, "SFF2");
+    builder.marker(0, "SInt");
+    builder.message(0, {0xC0 | kPad, 48});
+    builder.marker(StyleBuilder::kBar, "Main A");
+    builder.note(kPad, 60, 100, StyleBuilder::kBar, StyleBuilder::kTicksPerQuarter);
+    builder.marker(2 * StyleBuilder::kBar, "End");
+    const Style style = parseStyle(builder.smf(3 * StyleBuilder::kBar));
+    using Setup = std::vector<std::array<std::uint8_t, 3>>;
+    CHECK(style.voices[kPad - kFirstPartChannel] ==
+          PartVoice{0, 0, 48, Setup{{0xBD, 0, 0}, {0xBD, 32, 0}, {0xCD, 48, 0}}});
+}
+
 TEST_CASE("an SFF1 table maps a source channel and reads its rule") {
     const Style style = parseStyle(demoStyle());
     const auto& bass = findSection(style, Section::Main, 0)->rules[kBass];

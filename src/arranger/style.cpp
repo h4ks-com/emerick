@@ -40,6 +40,7 @@ int dataByteCount(std::uint8_t status) {
 struct SetupChannel {
     PartVoice voice;
     bool hasProgram = false;
+    bool hasBank = false;
 };
 
 class TrackParser {
@@ -143,12 +144,21 @@ private:
         auto& channel = setup_->at(bytes[0] & 0x0F);
         const auto type = static_cast<std::uint8_t>(bytes[0] & 0xF0);
         if (type == midi::kProgramChange) {
+            if (!channel.hasBank) {
+                // A program without a bank select means bank 0, so we send it to clear the previous style's bank.
+                const auto control = static_cast<std::uint8_t>(midi::kControlChange | (bytes[0] & 0x0F));
+                channel.voice.setup.push_back({control, midi::kBankSelectCc, 0});
+                channel.voice.setup.push_back({control, midi::kBankSelectLsbCc, 0});
+                channel.hasBank = true;
+            }
             channel.voice.program = bytes[1];
             channel.hasProgram = true;
         } else if (type == midi::kControlChange) {
             if (bytes[1] == midi::kBankSelectCc) {
+                channel.hasBank = true;
                 channel.voice.bankMsb = bytes[2];
             } else if (bytes[1] == midi::kBankSelectLsbCc) {
+                channel.hasBank = true;
                 channel.voice.bankLsb = bytes[2];
             }
         } else {

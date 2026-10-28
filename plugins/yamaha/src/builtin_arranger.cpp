@@ -193,6 +193,12 @@ bool voicesLoading(const Json& params) {
     });
 }
 
+bool playsVoice(const Json& params) {
+    return std::ranges::any_of(params, [](const Json& param) {
+        return param.at("id") == voices::kVoiceParam && param.at("value").get<double>() >= 1.0;
+    });
+}
+
 void loadPartInstrument(BuiltinArranger& builtin, app::Registry& registry, app::ProjectController& controller,
                         const model::TrackId& id, std::size_t part, std::optional<arranger::PartVoice> voice);
 
@@ -212,10 +218,7 @@ void loadStandInsForMissingVoices(BuiltinArranger& builtin, app::Registry& regis
                 continue;
             }
             builtin.waitingParts.erase(track);
-            const bool plays =
-                !described.is_null() && std::ranges::any_of(described.at("params"), [](const Json& param) {
-                    return param.at("id") == voices::kVoiceParam && param.at("value").get<double>() >= 1.0;
-                });
+            const bool plays = !described.is_null() && playsVoice(described.at("params"));
             if (voices && !plays) {
                 loadPartInstrument(builtin, registry, controller, id, waiting.part, waiting.voice);
             }
@@ -223,59 +226,62 @@ void loadStandInsForMissingVoices(BuiltinArranger& builtin, app::Registry& regis
     });
 }
 
-// Expansion Voices plays the part when it holds the voice the style asks for; General MIDI plays every other part.
-void loadPartInstrument(BuiltinArranger& builtin, app::Registry& registry, app::ProjectController& controller,
-                        const model::TrackId& id, std::size_t part, std::optional<arranger::PartVoice> voice) {
-    if (voice) {
-        registry.run("instrument.load", {{"track", id.value}, {"plugin", kVoicesPluginId}});
-        const std::string state = Json{
-            {"voice",
-             {{"pack", ""},
-              {"name", ""},
-              {"msb", voice->bankMsb},
-              {"lsb", voice->bankLsb},
-              {"program", voice->program}}},
-            {"followProgramChanges",
-             true}}.dump();
-        app::editTrack(controller, id, "pick voice",
-                       [&](model::Track& track) { track.instrument->state.assign(state.begin(), state.end()); });
-        // The project holds back change notices inside an undo group, so we sync the instruments ourselves.
-        controller.instruments().sync(controller.project().document());
-        const Json described = controller.instruments().describe(id);
-        const auto found = described.is_null() ? std::nullopt : std::optional{described.at("params")};
-        const bool plays = found && std::ranges::any_of(*found, [](const Json& param) {
-                               return param.at("id") == voices::kVoiceParam && param.at("value").get<double>() >= 1.0;
-                           });
-        if (plays) {
-            return;
-        }
-        if (found && voicesLoading(*found)) {
-            builtin.waitingParts[id.value] = {part, *voice};
-            return;
-        }
-    }
-    registry.run("instrument.load", {{"track", id.value}, {"plugin", app::kGeneralMidiPluginId}});
-    if (!voice) {
-        return;
-    }
+// Loads Expansion Voices with the voice and returns its params, or nullopt when it failed to load.
+std::optional<Json> chooseExpansionVoice(app::Registry& registry, app::ProjectController& controller,
+                                         const model::TrackId& id, const arranger::PartVoice& voice) {
+    registry.run("instrument.load", {{"track", id.value}, {"plugin", kVoicesPluginId}});
+    const std::string state = Json{
+        {"voice",
+         {{"pack", ""}, {"name", ""}, {"msb", voice.bankMsb}, {"lsb", voice.bankLsb}, {"program", voice.program}}},
+        {"followProgramChanges",
+         true}}.dump();
+    app::editTrack(controller, id, "pick voice",
+                   [&](model::Track& track) { track.instrument->state.assign(state.begin(), state.end()); });
+    // The project holds back change notices inside an undo group, so we sync the instruments ourselves.
+    controller.instruments().sync(controller.project().document());
+    const Json described = controller.instruments().describe(id);
+    return described.is_null() ? std::nullopt : std::optional{described.at("params")};
+}
+
+void configureGmStandIn(BuiltinArranger& builtin, app::Registry& registry, app::ProjectController& controller,
+                        const model::TrackId& id, std::size_t part, const arranger::PartVoice& voice) {
     controller.instruments().sync(controller.project().document());
     if (controller.instruments().find(id) == nullptr) {
         return;
     }
     registry.run("instrument.setParam", {{"track", id.value},
                                          {"param", gm::kHighestNoteParam},
-                                         {"value", voice->bankMsb == kMegaVoiceBank ? kHighestMegaVoiceNote : 127}});
-    if (gm::isDrumBank(voice->bankMsb)) {
+                                         {"value", voice.bankMsb == kMegaVoiceBank ? kHighestMegaVoiceNote : 127}});
+    if (gm::isDrumBank(voice.bankMsb)) {
         registry.run("instrument.setParam",
-                     {{"track", id.value}, {"param", gm::kDrumKitParam}, {"value", drumKitIndex(voice->program)}});
-        writeDrumMap(voiceList(builtin.voiceList, registry), controller, id, *voice);
+                     {{"track", id.value}, {"param", gm::kDrumKitParam}, {"value", drumKitIndex(voice.program)}});
+        writeDrumMap(voiceList(builtin.voiceList, registry), controller, id, voice);
         return;
     }
-    const std::optional<int> standIn = standInProgram(voiceList(builtin.voiceList, registry), part, *voice);
+    const std::optional<int> standIn = standInProgram(voiceList(builtin.voiceList, registry), part, voice);
     registry.run("instrument.setParam",
-                 {{"track", id.value}, {"param", gm::kSoundParam}, {"value", standIn.value_or(voice->program)}});
+                 {{"track", id.value}, {"param", gm::kSoundParam}, {"value", standIn.value_or(voice.program)}});
     if (standIn) {
         registry.run("instrument.setParam", {{"track", id.value}, {"param", gm::kFollowParam}, {"value", 0}});
+    }
+}
+
+// Expansion Voices plays the part when it holds the voice the style asks for; General MIDI plays every other part.
+void loadPartInstrument(BuiltinArranger& builtin, app::Registry& registry, app::ProjectController& controller,
+                        const model::TrackId& id, std::size_t part, std::optional<arranger::PartVoice> voice) {
+    if (voice) {
+        const std::optional<Json> params = chooseExpansionVoice(registry, controller, id, *voice);
+        if (params && playsVoice(*params)) {
+            return;
+        }
+        if (params && voicesLoading(*params)) {
+            builtin.waitingParts[id.value] = {part, *voice};
+            return;
+        }
+    }
+    registry.run("instrument.load", {{"track", id.value}, {"plugin", app::kGeneralMidiPluginId}});
+    if (voice) {
+        configureGmStandIn(builtin, registry, controller, id, part, *voice);
     }
 }
 

@@ -239,6 +239,30 @@ TEST_CASE("the voice list picks the General MIDI family that stands in for a par
     CHECK(param(3, 2) == 0);
 }
 
+TEST_CASE("a rhythm part on a melodic bank stands in with a percussion sound unless the voice list names its family") {
+    ArrangerRig rig;
+    const HomeFolder home{rig.path("home")};
+    const std::filesystem::path list = rig.path("list.csv");
+    std::ofstream(list) << "8,0,1,Bass\n";
+    rig.run("arranger.setup");
+    const std::string style = rig.trackOfKind("yamaha.style");
+    const auto rhythm = [&](std::size_t id) {
+        return rig.run("instrument.params", {{"track", rig.document().tracks.at(2).id.value}})
+            .at("params")[id]
+            .at("value");
+    };
+    const std::filesystem::path melodic =
+        patchedStyle(rig, "Melodic.sty", std::array<std::uint8_t, 3>{0xB0 | arranger::test::kDrums, 0, 127}, 8);
+
+    rig.run("arranger.style.load", {{"track", style}, {"path", melodic.string()}});
+    CHECK(rhythm(0) == 11);
+    CHECK(rhythm(2) == 0);
+    rig.registry.setSetting("yamaha.voiceList", list.string());
+    rig.run("arranger.style.load", {{"track", style}, {"path", melodic.string()}});
+    CHECK(rhythm(0) == 33);
+    CHECK(rhythm(2) == 0);
+}
+
 TEST_CASE("set up built-in arranger adds the Chords and Style tracks, the Arranger and a track per part in one step") {
     ArrangerRig rig;
     rig.run("arranger.setup");

@@ -93,8 +93,7 @@ constexpr std::array<Category, 14> kCategories{{
 }};
 
 // The 1-based General MIDI program each part plays when the voice list names no category for its voice.
-constexpr std::array<std::optional<int>, arranger::kParts> kPartDefaults{std::nullopt, std::nullopt, 34, 28, 5,
-                                                                         49,           62,           82};
+constexpr std::array<int, arranger::kParts> kPartDefaults{12, 12, 34, 28, 5, 49, 62, 82};
 
 using VoiceKey = std::tuple<int, int, int>;
 using VoiceFamilies = std::map<VoiceKey, Family>;
@@ -163,8 +162,7 @@ std::optional<int> standInProgram(const app::Registry& registry, std::size_t par
         const Family family = found->second;
         return (program >= family.first && program <= family.last ? program : family.typical) - 1;
     }
-    const std::optional<int> fallback = kPartDefaults.at(part);
-    return fallback ? std::optional{*fallback - 1} : std::nullopt;
+    return kPartDefaults.at(part) - 1;
 }
 
 // The General MIDI kit the style's drum program names, or Standard when General MIDI holds no such kit.

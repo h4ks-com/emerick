@@ -45,6 +45,7 @@ public:
     ClipStream(ClipFile opened, Frames sourceOffset, Frames length, double sampleRate, Frames maxBlock);
 
     [[nodiscard]] int channels() const { return channels_; }
+    // True once the reader filled the ring after the last seek and after the last read that took data from it.
     [[nodiscard]] bool buffered() const;
 
     // Data that arrives late reads as silence. Frames in preload come from it while the stream waits at its end, as
@@ -72,6 +73,7 @@ private:
     std::atomic<std::uint32_t> generation_{0};
     std::atomic<Frames> seekTarget_{0};
     std::atomic<std::uint32_t> bufferedGeneration_{std::numeric_limits<std::uint32_t>::max()};
+    std::atomic<bool> filled_{false};
 
     std::uint32_t audioGeneration_ = 0;
     Frames expected_ = 0;

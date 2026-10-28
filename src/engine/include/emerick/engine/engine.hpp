@@ -108,7 +108,8 @@ public:
     // True from a stall until the stream calls back again.
     [[nodiscard]] bool streamStalled() const;
     [[nodiscard]] const std::vector<SessionError>& sessionErrors() const;
-    // True once every locate has reached the audio thread and every clip has its read-ahead filled from there.
+    // True once every locate has reached the audio thread and every clip has its read-ahead filled from there and
+    // refilled since it last played.
     [[nodiscard]] bool readAheadReady() const;
     // True once the sender has sent every MIDI message the audio thread queued.
     [[nodiscard]] bool midiFlushed() const;

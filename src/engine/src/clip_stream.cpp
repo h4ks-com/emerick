@@ -56,7 +56,8 @@ std::size_t ClipStream::samplesFor(Frames frames) const { return static_cast<std
 std::size_t ClipStream::bytesFor(Frames frames) const { return samplesFor(frames) * sizeof(float); }
 
 bool ClipStream::buffered() const {
-    return bufferedGeneration_.load(std::memory_order_acquire) == generation_.load(std::memory_order_acquire);
+    return filled_.load(std::memory_order_acquire) &&
+           bufferedGeneration_.load(std::memory_order_acquire) == generation_.load(std::memory_order_acquire);
 }
 
 void ClipStream::seek(Frames local) {
@@ -111,6 +112,7 @@ std::span<const float> ClipStream::read(Frames local, Frames count, const Preloa
         }
         const Frames frames = std::min(remaining_, count - produced);
         readInto(ring_, std::span(scratch_).subspan(samplesFor(produced), samplesFor(frames)));
+        filled_.store(false, std::memory_order_relaxed);
         produced += frames;
         expected_ += frames;
         remaining_ -= frames;
@@ -143,6 +145,7 @@ void ClipStream::poll() {
         next_ += got;
     }
     if (current()) {
+        filled_.store(true, std::memory_order_relaxed);
         bufferedGeneration_.store(generation, std::memory_order_release);
     }
 }

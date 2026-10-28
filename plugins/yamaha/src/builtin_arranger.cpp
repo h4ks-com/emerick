@@ -21,6 +21,7 @@
 #include "gm_sounds.hpp"
 #include "registration.hpp"
 #include "style_library.hpp"
+#include "voices_params.hpp"
 
 namespace emerick::yamaha {
 
@@ -30,7 +31,6 @@ using app::AppError;
 using app::Json;
 
 constexpr std::size_t kFirstPart = 8;
-constexpr std::uint32_t kVoiceParam = 0;
 // MegaVoices play strum and fret noises from C6 (MIDI 96) up, which a General MIDI sound plays as ringing notes.
 constexpr int kMegaVoiceBank = 8;
 constexpr int kHighestMegaVoiceNote = 95;
@@ -174,12 +174,9 @@ void writeDrumMap(const app::Registry& registry, app::ProjectController& control
     controller.instruments().sync(controller.project().document());
 }
 
-// Expansion Voices names no voice with this label while it reads its store.
-constexpr std::string_view kVoicesLoadingLabel = "Loading voices";
-
 bool voicesLoading(const Json& params) {
     return std::ranges::any_of(params, [](const Json& param) {
-        return param.at("id") == kVoiceParam && param.at("text") == kVoicesLoadingLabel;
+        return param.at("id") == voices::kVoiceParam && param.at("text") == voices::kLoadingLabel;
     });
 }
 
@@ -214,7 +211,7 @@ void loadStandInsForMissingVoices(app::Registry& registry, app::ProjectControlle
             waitingParts().erase(track);
             const bool plays =
                 !described.is_null() && std::ranges::any_of(described.at("params"), [](const Json& param) {
-                    return param.at("id") == kVoiceParam && param.at("value").get<double>() >= 1.0;
+                    return param.at("id") == voices::kVoiceParam && param.at("value").get<double>() >= 1.0;
                 });
             if (voices && !plays) {
                 loadPartInstrument(registry, controller, id, waiting.part, waiting.voice);
@@ -244,7 +241,7 @@ void loadPartInstrument(app::Registry& registry, app::ProjectController& control
         const Json described = controller.instruments().describe(id);
         const auto found = described.is_null() ? std::nullopt : std::optional{described.at("params")};
         const bool plays = found && std::ranges::any_of(*found, [](const Json& param) {
-                               return param.at("id") == kVoiceParam && param.at("value").get<double>() >= 1.0;
+                               return param.at("id") == voices::kVoiceParam && param.at("value").get<double>() >= 1.0;
                            });
         if (plays) {
             return;

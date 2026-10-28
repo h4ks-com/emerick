@@ -14,20 +14,10 @@
 
 #include "rt_sampler.hpp"
 #include "store.hpp"
+#include "voices_params.hpp"
 #include "wave.hpp"
 
 namespace emerick::voices {
-
-inline constexpr clap_id kVoiceParam = 0;
-inline constexpr clap_id kVolumeParam = 1;
-inline constexpr clap_id kTuneParam = 2;
-inline constexpr clap_id kAttackParam = 3;
-inline constexpr clap_id kReleaseParam = 4;
-inline constexpr clap_id kFollowParam = 5;
-inline constexpr std::uint32_t kParamCount = 6;
-
-// The Voice param's label for no voice while the store loads, which hosts read to wait for the store.
-inline constexpr const char* kLoadingLabel = "Loading voices";
 
 inline constexpr float kDefaultAttack = 0.002F;
 inline constexpr float kDefaultRelease = 0.3F;

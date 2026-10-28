@@ -16,6 +16,9 @@ else()
 endif()
 emerick_target(emerick_voices)
 
+add_library(emerick_voices_params INTERFACE)
+target_include_directories(emerick_voices_params INTERFACE ${CMAKE_CURRENT_SOURCE_DIR})
+
 add_library(emerick_voices_clap INTERFACE)
 add_dependencies(emerick_voices_clap emerick_voices)
 target_compile_definitions(emerick_voices_clap INTERFACE EMERICK_VOICES_CLAP="${voices_bundle}")

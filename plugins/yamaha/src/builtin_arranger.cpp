@@ -31,16 +31,9 @@ using app::Json;
 
 constexpr std::size_t kFirstPart = 8;
 constexpr std::uint32_t kVoiceParam = 0;
-constexpr std::uint32_t kSoundParam = 0;
-constexpr std::uint32_t kDrumKitParam = 1;
-constexpr std::uint32_t kFollowParam = 2;
-constexpr std::uint32_t kHighestNoteParam = 3;
 // MegaVoices play strum and fret noises from C6 (MIDI 96) up, which a General MIDI sound plays as ringing notes.
 constexpr int kMegaVoiceBank = 8;
 constexpr int kHighestMegaVoiceNote = 95;
-
-// Yamaha and Roland modules select a drum kit with these bank select MSBs, so General MIDI keeps its drum kit there.
-constexpr bool isDrumBank(int msb) { return msb == 120 || msb == 126 || msb == 127; }
 
 std::optional<model::TrackId> firstOfKind(const model::Document& document, const char* kind) {
     const auto found = std::ranges::find(document.tracks, std::string{kind}, &model::Track::kind);
@@ -66,52 +59,20 @@ std::optional<StyleSummary> loadedStyle(const model::Track& style) {
     return state && !state->style.empty() ? readStyle(state->style) : std::nullopt;
 }
 
-// A range of 1-based General MIDI programs and the one that stands for the whole family.
-struct Family {
-    int first = 1;
-    int last = 1;
-    int typical = 1;
-};
-
-struct Category {
-    std::string_view name;
-    Family family;
-};
-
-constexpr std::array<Category, 14> kCategories{{
-    {"Piano", {1, 8, 1}},
-    {"E.Piano", {5, 6, 5}},
-    {"Percussion", {9, 16, 12}},
-    {"Organ", {17, 21, 17}},
-    {"Accordion", {22, 24, 22}},
-    {"A.Guitar", {25, 26, 26}},
-    {"E.Guitar", {27, 32, 28}},
-    {"Bass", {33, 40, 34}},
-    {"Strings", {41, 52, 49}},
-    {"Choir", {53, 55, 53}},
-    {"Brass", {57, 64, 62}},
-    {"Woodwind", {65, 80, 66}},
-    {"Synth", {81, 88, 81}},
-    {"Pad", {89, 96, 90}},
-}};
-
 // The 1-based General MIDI program each part plays when the voice list names no category for its voice.
 constexpr std::array<int, arranger::kParts> kPartDefaults{12, 12, 34, 28, 5, 49, 62, 82};
 
 using VoiceKey = std::tuple<int, int, int>;
-using VoiceFamilies = std::map<VoiceKey, Family>;
+using VoiceFamilies = std::map<VoiceKey, gm::Family>;
 
 std::optional<int> numberIn(std::string_view field, int first, int last) {
     const std::optional<int> value = wholeNumber(trim(field));
     return value && *value >= first && *value <= last ? value : std::nullopt;
 }
 
-// The General MIDI note each note of a kit plays, or -1 to drop it.
-using DrumMap = std::array<int, 128>;
-
 struct VoiceList {
     VoiceFamilies families;
-    std::map<VoiceKey, DrumMap> drumMaps;
+    std::map<VoiceKey, gm::DrumMap> drumMaps;
 };
 
 void readDrumNote(VoiceList& list, std::span<const std::string_view, 5> fields) {
@@ -145,8 +106,8 @@ VoiceList readVoiceList(const std::filesystem::path& path) {
         const auto msb = numberIn(fields[0], 0, 127);
         const auto lsb = numberIn(fields[1], 0, 127);
         const auto program = numberIn(fields[2], 1, 128);
-        const auto* const category = std::ranges::find(kCategories, trim(fields[3]), &Category::name);
-        if (msb && lsb && program && category != kCategories.end()) {
+        const auto* const category = std::ranges::find(gm::kCategories, trim(fields[3]), &gm::Category::name);
+        if (msb && lsb && program && category != gm::kCategories.end()) {
             list.families[{*msb, *lsb, *program}] = category->family;
         }
     }
@@ -180,7 +141,7 @@ std::optional<int> standInProgram(const app::Registry& registry, std::size_t par
     const int program = voice.program + 1;
     const VoiceFamilies& families = voiceList(registry).families;
     if (const auto found = families.find({voice.bankMsb, voice.bankLsb, program}); found != families.end()) {
-        const Family family = found->second;
+        const gm::Family family = found->second;
         return (program >= family.first && program <= family.last ? program : family.typical) - 1;
     }
     return kPartDefaults.at(part) - 1;
@@ -188,8 +149,8 @@ std::optional<int> standInProgram(const app::Registry& registry, std::size_t par
 
 // The General MIDI kit the style's drum program names, or Standard when General MIDI holds no such kit.
 std::size_t drumKitIndex(int program) {
-    const auto* const kit = std::ranges::find(gm::kDrumKits, program, &gm::DrumKit::program);
-    return kit == gm::kDrumKits.end() ? 0 : static_cast<std::size_t>(kit - gm::kDrumKits.begin());
+    const gm::DrumKit* kit = gm::drumKitOf(program);
+    return kit == nullptr ? 0 : static_cast<std::size_t>(kit - gm::kDrumKits.data());
 }
 
 // General MIDI plays the kit's notes as the voice list maps them, or unchanged when the list maps no note of the kit.
@@ -203,9 +164,9 @@ void writeDrumMap(const app::Registry& registry, app::ProjectController& control
     }
     Json state = Json::parse(instrument->state);
     if (map == maps.end()) {
-        state.erase("drumMap");
+        state.erase(gm::kDrumMapKey);
     } else {
-        state["drumMap"] = map->second;
+        state[gm::kDrumMapKey] = map->second;
     }
     const std::string text = state.dump();
     app::editTrack(controller, id, "map drum notes",
@@ -302,19 +263,19 @@ void loadPartInstrument(app::Registry& registry, app::ProjectController& control
         return;
     }
     registry.run("instrument.setParam", {{"track", id.value},
-                                         {"param", kHighestNoteParam},
+                                         {"param", gm::kHighestNoteParam},
                                          {"value", voice->bankMsb == kMegaVoiceBank ? kHighestMegaVoiceNote : 127}});
-    if (isDrumBank(voice->bankMsb)) {
+    if (gm::isDrumBank(voice->bankMsb)) {
         registry.run("instrument.setParam",
-                     {{"track", id.value}, {"param", kDrumKitParam}, {"value", drumKitIndex(voice->program)}});
+                     {{"track", id.value}, {"param", gm::kDrumKitParam}, {"value", drumKitIndex(voice->program)}});
         writeDrumMap(registry, controller, id, *voice);
         return;
     }
     const std::optional<int> standIn = standInProgram(registry, part, *voice);
     registry.run("instrument.setParam",
-                 {{"track", id.value}, {"param", kSoundParam}, {"value", standIn.value_or(voice->program)}});
+                 {{"track", id.value}, {"param", gm::kSoundParam}, {"value", standIn.value_or(voice->program)}});
     if (standIn) {
-        registry.run("instrument.setParam", {{"track", id.value}, {"param", kFollowParam}, {"value", 0}});
+        registry.run("instrument.setParam", {{"track", id.value}, {"param", gm::kFollowParam}, {"value", 0}});
     }
 }
 

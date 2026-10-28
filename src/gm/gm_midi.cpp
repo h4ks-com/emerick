@@ -2,7 +2,6 @@
 
 #include <fluidsynth.h>
 
-#include <algorithm>
 #include <array>
 #include <cstddef>
 #include <cstdint>
@@ -18,9 +17,6 @@ namespace {
 constexpr int kDrumChannel = 9;
 constexpr int kBankSelect = 0;
 constexpr int kDrumBank = 128;
-
-// Yamaha and Roland modules select a drum kit on any channel with these bank select MSBs.
-constexpr bool isDrumBank(int msb) { return msb == 120 || msb == 126 || msb == 127; }
 
 bool isDrumChannel(const Gm& gm, int channel) { return gm.drumChannels.at(static_cast<std::size_t>(channel)); }
 
@@ -41,11 +37,6 @@ bool follows(const Gm& gm, int channel) {
     return gm.followProgramChanges.load(std::memory_order_relaxed) || isDrumChannel(gm, channel);
 }
 
-const DrumKit* kitOf(int program) {
-    const auto* const kit = std::ranges::find(kDrumKits, program, &DrumKit::program);
-    return kit == kDrumKits.end() ? nullptr : kit;
-}
-
 int pickedKit(const Gm& gm) {
     return kDrumKits.at(static_cast<std::size_t>(gm.drumKit.load(std::memory_order_relaxed))).program;
 }
@@ -64,7 +55,7 @@ void followProgram(Gm& gm, int channel, int program) {
         }
         return;
     }
-    const DrumKit* kit = kitOf(program);
+    const DrumKit* kit = drumKitOf(program);
     const auto index = static_cast<int>(kit - kDrumKits.data());
     if (kit != nullptr && index != gm.drumKit.load(std::memory_order_relaxed)) {
         gm.drumKit.store(index, std::memory_order_relaxed);
@@ -74,7 +65,7 @@ void followProgram(Gm& gm, int channel, int program) {
 
 // Yamaha styles pick kits by numbers General MIDI lacks, so such a drum channel plays the Drum kit param's kit.
 void changeProgram(Gm& gm, int channel, int program) {
-    const bool unknownKit = isDrumChannel(gm, channel) && kitOf(program) == nullptr;
+    const bool unknownKit = isDrumChannel(gm, channel) && drumKitOf(program) == nullptr;
     fluid_synth_program_change(gm.synth.get(), channel, unknownKit ? pickedKit(gm) : program);
     if (!unknownKit) {
         followProgram(gm, channel, program);

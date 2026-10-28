@@ -33,7 +33,7 @@ nlohmann::json drumMap(const Gm& gm) {
 
 // A drum map that is no array of 128 notes from -1 to 127 plays every note unchanged.
 void loadDrumMap(Gm& gm, const nlohmann::json& state) {
-    const auto map = state.find("drumMap");
+    const auto map = state.find(kDrumMapKey);
     const bool valid = map != state.end() && map->is_array() && map->size() == kNotes &&
                        std::ranges::all_of(*map, [](const nlohmann::json& note) {
                            return note.is_number_integer() && note.get<int>() >= -1 && note.get<int>() < kNotes;
@@ -52,7 +52,7 @@ bool saveState(const clap_plugin* plugin, const clap_ostream* stream) {
                          {"followProgramChanges", gm.followProgramChanges.load(std::memory_order_relaxed)},
                          {"highestNote", gm.highestNote.load(std::memory_order_relaxed)}};
     if (nlohmann::json map = drumMap(gm); !map.is_null()) {
-        state["drumMap"] = std::move(map);
+        state[kDrumMapKey] = std::move(map);
     }
     const std::string text = state.dump();
     std::size_t written = 0;

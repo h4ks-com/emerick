@@ -13,15 +13,12 @@
 #include <memory>
 #include <string>
 
+#include "gm_sounds.hpp"
+
 namespace emerick::gm {
 
-inline constexpr clap_id kSoundParam = 0;
-inline constexpr clap_id kDrumKitParam = 1;
-inline constexpr clap_id kFollowParam = 2;
-inline constexpr clap_id kHighestNoteParam = 3;
 inline constexpr int kHighestNote = 127;
 inline constexpr int kChannels = 16;
-inline constexpr int kNotes = 128;
 
 inline std::filesystem::path& bundledSoundFont() {
     static std::filesystem::path path;

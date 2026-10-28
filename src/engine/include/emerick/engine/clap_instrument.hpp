@@ -32,7 +32,7 @@ struct ClapParam {
     std::vector<std::string> choices;
 };
 
-inline constexpr std::size_t kMaxParamChoices = 1024;
+inline constexpr std::size_t kMaxParamChoices = 8192;
 
 // A message the plugin sent on its note outputs, offset frames into the block it processed.
 struct InstrumentMidi {

@@ -45,9 +45,13 @@ struct ParamValue {
     double value = 0.0;
 };
 
-// Sets the params, plays the messages at the start and returns a quarter second of the left channel.
-std::vector<float> render(const std::vector<Message>& messages, const std::vector<ParamValue>& params = {}) {
+// Loads the state, sets the params, plays the messages at the start and returns a quarter second of the left channel.
+std::vector<float> render(const std::vector<Message>& messages, const std::vector<ParamValue>& params = {},
+                          const std::vector<std::uint8_t>& state = {}) {
     const std::shared_ptr<ClapInstrument> instrument = generalMidi();
+    if (!state.empty()) {
+        REQUIRE(instrument->loadState(state));
+    }
     REQUIRE(instrument->activate(kRate, kBlock));
     for (const ParamValue& param : params) {
         instrument->setParam(param.id, param.value);
@@ -356,15 +360,25 @@ TEST_CASE(
     CHECK_FALSE(reloaded->activate(kRate, kBlock));
 }
 
-TEST_CASE("a Yamaha kit plays its notes below 35 as the nearest General MIDI kit sound") {
-    Synth synth;
-    synth.play({{0xB8, 0, 127}, {0xC8, 0, 0}});
-    CHECK(emerick::gm::drumNote(synth.gm(), 8, 29) == 38);
-    CHECK(emerick::gm::drumNote(synth.gm(), 8, 30) == 85);
-    CHECK(emerick::gm::drumNote(synth.gm(), 8, 36) == 36);
-    const std::vector<float> roll = render({{0xB8, 0, 127}, {0xC8, 0, 0}, {0x98, 29, 100}});
-    const std::vector<float> snare = render({{0xB8, 0, 127}, {0xC8, 0, 0}, {0x98, 38, 100}});
-    CHECK(differenceEnergy(roll, snare) < 0.01 * energy(snare));
-    synth.play({{0xB9, 0, 120}, {0xC9, 0, 0}});
-    CHECK(emerick::gm::drumNote(synth.gm(), 9, 29) == 29);
+TEST_CASE("a drum map plays each drum channel note as its mapped note and drops the notes it maps to -1") {
+    std::string notes;
+    for (const int note : std::views::iota(0, 128)) {
+        notes += (note == 0 ? "" : ",") + std::to_string(note == 29 ? 38 : note == 30 ? -1 : note);
+    }
+    const std::string map = R"("drumMap":[)" + notes + "]";
+    const std::string mapped = "{" + map + "}";
+    const std::shared_ptr<ClapInstrument> instrument = generalMidi();
+    REQUIRE(instrument->loadState(std::vector<std::uint8_t>(mapped.begin(), mapped.end())));
+    const auto saved = instrument->saveState();
+    REQUIRE(saved.has_value());
+    CHECK(std::string(saved->begin(), saved->end()).contains(map));
+
+    const auto play = [&](const std::vector<Message>& messages) {
+        return render(messages, {}, std::vector<std::uint8_t>(mapped.begin(), mapped.end()));
+    };
+    const std::vector<float> snare = render({{0x99, 38, 100}});
+    CHECK(differenceEnergy(play({{0x99, 29, 100}}), snare) < 0.01 * energy(snare));
+    CHECK(loudest(play({{0x99, 30, 100}})) < 1e-4F);
+    CHECK(differenceEnergy(play({{0x90, 29, 100}}), render({{0x90, 29, 100}})) < 1e-6);
+    CHECK(loudest(render({{0x99, 30, 100}})) > 0.01F);
 }

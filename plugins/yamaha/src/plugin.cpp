@@ -214,9 +214,10 @@ void registerSettings(app::Registry& registry, app::ProjectController& controlle
                           .aliases = {"voice categories", "general midi stand-in"},
                           .type = app::SettingType::String,
                           .defaultValue = "",
-                          .hint = "Pick a CSV file with one voice per line as msb,lsb,program,category, with program "
-                                  "1 to 128 and a category such as Bass, so General MIDI stands in with a sound of "
-                                  "that family",
+                          .hint = "Pick a CSV file whose msb,lsb,program,category lines name a family such as Bass "
+                                  "for a voice and whose msb,lsb,program,note,gmNote lines name the General MIDI note "
+                                  "or -1 for a kit's note, with program 1 to 128, so General MIDI stands in with "
+                                  "fitting sounds",
                           .merge = app::readablePath(registry),
                           .action = kChooseVoiceListAction});
     registry.addAction({.id = kChooseVoiceListAction,

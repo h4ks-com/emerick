@@ -30,7 +30,6 @@ void setDrums(Gm& gm, int channel, bool drums) {
 }
 
 void selectBank(Gm& gm, int channel, int msb) {
-    gm.yamahaDrums.at(static_cast<std::size_t>(channel)) = msb == 126 || msb == 127;
     if (isDrumBank(msb)) {
         setDrums(gm, channel, true);
     } else if (channel != kDrumChannel) {
@@ -82,19 +81,20 @@ void changeProgram(Gm& gm, int channel, int program) {
     }
 }
 
-// Yamaha kits put snare rolls, castanets, brushes and clicks on notes 13 to 34, where the General MIDI kit of the
-// SoundFont has other sounds such as scratches, so we play the nearest sound the SoundFont kit has.
-constexpr int kFirstYamahaNote = 13;
-constexpr std::array<int, 22> kYamahaToGm{86, 87, 27, 28, 29, 30, 39, 32, 33, 34, 33,
-                                          33, 38, 38, 38, 38, 38, 85, 38, 31, 35, 37};
+void noteOff(Gm& gm, int channel, int note) {
+    if (const int played = drumNote(gm, channel, note); played >= 0) {
+        fluid_synth_noteoff(gm.synth.get(), channel, played);
+    }
+}
 
 }  // namespace
 
 int drumNote(const Gm& gm, int channel, int note) {
-    const auto index = static_cast<std::size_t>(note - kFirstYamahaNote);
-    const bool mapped =
-        gm.yamahaDrums.at(static_cast<std::size_t>(channel)) && note >= kFirstYamahaNote && index < kYamahaToGm.size();
-    return mapped ? kYamahaToGm.at(index) : note;
+    if (!isDrumChannel(gm, channel) || note >= kNotes) {
+        return note;
+    }
+    const int played = note + gm.drumNoteOffsets.at(static_cast<std::size_t>(note)).load(std::memory_order_relaxed);
+    return played >= 0 ? played : -1;
 }
 
 void playMidi(Gm& gm, const std::array<std::uint8_t, 3>& data) {
@@ -104,13 +104,14 @@ void playMidi(Gm& gm, const std::array<std::uint8_t, 3>& data) {
     const int second = data[2] & 0x7F;
     switch (data[0] & 0xF0) {
         case 0x80:
-            fluid_synth_noteoff(synth, channel, drumNote(gm, channel, first));
+            noteOff(gm, channel, first);
             break;
         case 0x90:
             if (second == 0) {
-                fluid_synth_noteoff(synth, channel, drumNote(gm, channel, first));
-            } else if (first <= gm.highestNote.load(std::memory_order_relaxed)) {
-                fluid_synth_noteon(synth, channel, drumNote(gm, channel, first), second);
+                noteOff(gm, channel, first);
+            } else if (const int played = drumNote(gm, channel, first);
+                       played >= 0 && first <= gm.highestNote.load(std::memory_order_relaxed)) {
+                fluid_synth_noteon(synth, channel, played, second);
             }
             break;
         case 0xA0:

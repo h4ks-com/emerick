@@ -234,6 +234,31 @@ TEST_CASE("a drum part's General MIDI picks the kit the style's program names, a
     CHECK(drums(1) == 0);
 }
 
+TEST_CASE("the voice list's note rows give a drum part's General MIDI a drum map, and a kit without rows gets none") {
+    ArrangerRig rig;
+    const HomeFolder home{rig.path("home")};
+    const std::filesystem::path mapped = rig.path("mapped.csv");
+    std::ofstream(mapped) << "127,0,1,29,38\n127, 0, 1, 30, -1\n127,0,1,36,36\n127,0,1,200,36\n127,0,2,40,41\n";
+    const std::filesystem::path other = rig.path("other.csv");
+    std::ofstream(other) << "127,0,2,29,38\n";
+    rig.run("arranger.setup");
+    const std::string style = rig.trackOfKind("yamaha.style");
+    const auto drumState = [&] {
+        return Json::parse(rig.track(rig.document().tracks.at(2).id.value).instrument->state);
+    };
+
+    rig.registry.setSetting("yamaha.voiceList", mapped.string());
+    rig.run("arranger.style.load", {{"track", style}, {"path", rig.demo.string()}});
+    std::vector<int> expected(128, -1);
+    expected.at(29) = 38;
+    expected.at(36) = 36;
+    CHECK(drumState().at("drumMap") == expected);
+
+    rig.registry.setSetting("yamaha.voiceList", other.string());
+    rig.run("arranger.style.load", {{"track", style}, {"path", rig.demo.string()}});
+    CHECK_FALSE(drumState().contains("drumMap"));
+}
+
 TEST_CASE("the voice list picks the General MIDI family that stands in for a part's voice") {
     ArrangerRig rig;
     const HomeFolder home{rig.path("home")};

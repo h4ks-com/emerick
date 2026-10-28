@@ -61,14 +61,20 @@ int velocity(double clapVelocity) { return std::clamp(static_cast<int>(std::lrou
 void playNote(Gm& gm, const clap_event_note& note, bool on) {
     fluid_synth_t* synth = gm.synth.get();
     const int channel = std::max<int>(note.channel, 0);
-    if (on) {
-        if (note.key <= gm.highestNote.load(std::memory_order_relaxed)) {
-            fluid_synth_noteon(synth, channel, emerick::gm::drumNote(gm, channel, note.key), velocity(note.velocity));
+    if (note.key < 0) {
+        if (!on) {
+            fluid_synth_all_notes_off(synth, note.channel < 0 ? -1 : channel);
         }
-    } else if (note.key < 0) {
-        fluid_synth_all_notes_off(synth, note.channel < 0 ? -1 : channel);
-    } else {
-        fluid_synth_noteoff(synth, channel, emerick::gm::drumNote(gm, channel, note.key));
+        return;
+    }
+    const int played = emerick::gm::drumNote(gm, channel, note.key);
+    if (played < 0) {
+        return;
+    }
+    if (!on) {
+        fluid_synth_noteoff(synth, channel, played);
+    } else if (note.key <= gm.highestNote.load(std::memory_order_relaxed)) {
+        fluid_synth_noteon(synth, channel, played, velocity(note.velocity));
     }
 }
 

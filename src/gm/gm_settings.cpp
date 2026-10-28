@@ -1,6 +1,6 @@
 // The General MIDI instrument's state and params. Its state is JSON with the SoundFont path, the sound, the drum kit,
-// Follow program changes and the highest note, and a state that is no JSON object is a plain SoundFont path, as older
-// projects saved it.
+// Follow program changes, the highest note and an optional drum note map, and a state that is no JSON object is a plain
+// SoundFont path, as older projects saved it.
 
 #include <algorithm>
 #include <array>
@@ -11,6 +11,7 @@
 #include <span>
 #include <string>
 #include <string_view>
+#include <utility>
 
 #include "gm.hpp"
 #include "gm_sounds.hpp"
@@ -19,15 +20,41 @@ namespace emerick::gm {
 
 namespace {
 
+nlohmann::json drumMap(const Gm& gm) {
+    nlohmann::json map = nlohmann::json::array();
+    bool changed = false;
+    for (const int note : std::views::iota(0, kNotes)) {
+        const int offset = gm.drumNoteOffsets.at(static_cast<std::size_t>(note)).load(std::memory_order_relaxed);
+        changed = changed || offset != 0;
+        map.push_back(std::max(note + offset, -1));
+    }
+    return changed ? map : nlohmann::json{};
+}
+
+// A drum map that is no array of 128 notes from -1 to 127 plays every note unchanged.
+void loadDrumMap(Gm& gm, const nlohmann::json& state) {
+    const auto map = state.find("drumMap");
+    const bool valid = map != state.end() && map->is_array() && map->size() == kNotes &&
+                       std::ranges::all_of(*map, [](const nlohmann::json& note) {
+                           return note.is_number_integer() && note.get<int>() >= -1 && note.get<int>() < kNotes;
+                       });
+    for (const int note : std::views::iota(0, kNotes)) {
+        const int played = valid ? map->at(static_cast<std::size_t>(note)).get<int>() : note;
+        gm.drumNoteOffsets.at(static_cast<std::size_t>(note)).store(played - note, std::memory_order_relaxed);
+    }
+}
+
 bool saveState(const clap_plugin* plugin, const clap_ostream* stream) {
     const Gm& gm = gmOf(plugin);
-    const std::string text =
-        nlohmann::json{{"soundFont", gm.soundFont},
-                       {"sound", gm.sound.load(std::memory_order_relaxed)},
-                       {"drumKit", gm.drumKit.load(std::memory_order_relaxed)},
-                       {"followProgramChanges", gm.followProgramChanges.load(std::memory_order_relaxed)},
-                       {"highestNote", gm.highestNote.load(std::memory_order_relaxed)}}
-            .dump();
+    nlohmann::json state{{"soundFont", gm.soundFont},
+                         {"sound", gm.sound.load(std::memory_order_relaxed)},
+                         {"drumKit", gm.drumKit.load(std::memory_order_relaxed)},
+                         {"followProgramChanges", gm.followProgramChanges.load(std::memory_order_relaxed)},
+                         {"highestNote", gm.highestNote.load(std::memory_order_relaxed)}};
+    if (nlohmann::json map = drumMap(gm); !map.is_null()) {
+        state["drumMap"] = std::move(map);
+    }
+    const std::string text = state.dump();
     std::size_t written = 0;
     while (written < text.size()) {
         const std::int64_t count = stream->write(stream, text.data() + written, text.size() - written);
@@ -70,6 +97,7 @@ bool loadState(const clap_plugin* plugin, const clap_istream* stream) {
                                   std::memory_order_relaxed);
     gm.highestNote.store(clampedIndex(number("highestNote", kHighestNote), kHighestNote + 1),
                          std::memory_order_relaxed);
+    loadDrumMap(gm, state);
     gm.programsPending.store(true, std::memory_order_relaxed);
     if (gm.active && wantedSoundFont(gm) != gm.loadedSoundFont) {
         gm.host->request_restart(gm.host);

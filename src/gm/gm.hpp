@@ -21,6 +21,7 @@ inline constexpr clap_id kFollowParam = 2;
 inline constexpr clap_id kHighestNoteParam = 3;
 inline constexpr int kHighestNote = 127;
 inline constexpr int kChannels = 16;
+inline constexpr int kNotes = 128;
 
 inline std::filesystem::path& bundledSoundFont() {
     static std::filesystem::path path;
@@ -48,8 +49,9 @@ struct Gm {
     bool soundChanged = false;
     bool drumKitChanged = false;
     std::array<bool, kChannels> drumChannels{};
-    // Channels whose kit a Yamaha drum bank picked, so their notes below 35 follow the Yamaha kit layout.
-    std::array<bool, kChannels> yamahaDrums{};
+    // Each entry is the General MIDI note minus the incoming note, so zero plays the note unchanged and a sum below
+    // zero drops it. The main thread writes them on state load and the audio thread reads them.
+    std::array<std::atomic<int>, kNotes> drumNoteOffsets{};
     std::filesystem::path loadedSoundFont;
     double loadedRate = 0.0;
     bool active = false;
@@ -78,7 +80,7 @@ inline int clampedIndex(double value, std::size_t count) {
 void setParam(Gm& gm, const clap_event_param_value& change);
 
 void playMidi(Gm& gm, const std::array<std::uint8_t, 3>& data);
-// The note the General MIDI kit plays for a note on the channel, which differs below 35 on a Yamaha kit.
+// The note the synth plays for a note on the channel, which the drum map changes on a drum channel, or -1 to drop it.
 int drumNote(const Gm& gm, int channel, int note);
 
 // Sends the Sound and Drum kit params to the synth as program changes.

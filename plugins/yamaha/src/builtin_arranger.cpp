@@ -116,13 +116,39 @@ std::optional<int> numberIn(std::string_view field, int first, int last) {
     return whole && value >= first && value <= last ? std::optional{value} : std::nullopt;
 }
 
-VoiceFamilies readVoiceList(const std::filesystem::path& path) {
+// The General MIDI note each note of a kit plays, or -1 to drop it.
+using DrumMap = std::array<int, 128>;
+
+struct VoiceList {
     VoiceFamilies families;
+    std::map<VoiceKey, DrumMap> drumMaps;
+};
+
+void readDrumNote(VoiceList& list, std::span<const std::string_view, 5> fields) {
+    const auto msb = numberIn(fields[0], 0, 127);
+    const auto lsb = numberIn(fields[1], 0, 127);
+    const auto program = numberIn(fields[2], 1, 128);
+    const auto note = numberIn(fields[3], 0, 127);
+    const auto played = numberIn(fields[4], -1, 127);
+    if (msb && lsb && program && note && played) {
+        auto [map, added] = list.drumMaps.try_emplace({*msb, *lsb, *program});
+        if (added) {
+            map->second.fill(-1);
+        }
+        map->second.at(static_cast<std::size_t>(*note)) = *played;
+    }
+}
+
+VoiceList readVoiceList(const std::filesystem::path& path) {
+    VoiceList list;
     std::ifstream file(path);
     for (std::string line; std::getline(file, line);) {
         const auto fields = line | std::views::split(',') |
                             std::views::transform([](auto field) { return std::string_view(field); }) |
                             std::ranges::to<std::vector>();
+        if (fields.size() == 5) {
+            readDrumNote(list, std::span<const std::string_view, 5>(fields));
+        }
         if (fields.size() != 4) {
             continue;
         }
@@ -131,27 +157,28 @@ VoiceFamilies readVoiceList(const std::filesystem::path& path) {
         const auto program = numberIn(fields[2], 1, 128);
         const auto* const category = std::ranges::find(kCategories, trimmed(fields[3]), &Category::name);
         if (msb && lsb && program && category != kCategories.end()) {
-            families[{*msb, *lsb, *program}] = category->family;
+            list.families[{*msb, *lsb, *program}] = category->family;
         }
     }
-    return families;
+    return list;
 }
 
-const VoiceFamilies& voiceFamilies(const std::filesystem::path& path) {
+const VoiceList& voiceList(const app::Registry& registry) {
     struct Cached {
         std::filesystem::path path;
         std::filesystem::file_time_type modified;
-        VoiceFamilies families;
+        VoiceList list;
     };
     static Cached cached;
+    const std::filesystem::path path = registry.settingValue(kVoiceListSetting).get<std::string>();
     std::error_code error;
     const auto modified = std::filesystem::last_write_time(path, error);
     if (error) {
         cached = {};
     } else if (path != cached.path || modified != cached.modified) {
-        cached = {.path = path, .modified = modified, .families = readVoiceList(path)};
+        cached = {.path = path, .modified = modified, .list = readVoiceList(path)};
     }
-    return cached.families;
+    return cached.list;
 }
 
 // The 0-based General MIDI program that stands in for a voice no pack holds, or nullopt when General MIDI follows
@@ -161,7 +188,7 @@ std::optional<int> standInProgram(const app::Registry& registry, std::size_t par
         return std::nullopt;
     }
     const int program = voice.program + 1;
-    const VoiceFamilies& families = voiceFamilies(registry.settingValue(kVoiceListSetting).get<std::string>());
+    const VoiceFamilies& families = voiceList(registry).families;
     if (const auto found = families.find({voice.bankMsb, voice.bankLsb, program}); found != families.end()) {
         const Family family = found->second;
         return (program >= family.first && program <= family.last ? program : family.typical) - 1;
@@ -173,6 +200,27 @@ std::optional<int> standInProgram(const app::Registry& registry, std::size_t par
 std::size_t drumKitIndex(int program) {
     const auto* const kit = std::ranges::find(gm::kDrumKits, program, &gm::DrumKit::program);
     return kit == gm::kDrumKits.end() ? 0 : static_cast<std::size_t>(kit - gm::kDrumKits.begin());
+}
+
+// General MIDI plays the kit's notes as the voice list maps them, or unchanged when the list maps no note of the kit.
+void writeDrumMap(const app::Registry& registry, app::ProjectController& controller, const model::TrackId& id,
+                  const arranger::PartVoice& voice) {
+    const auto& maps = voiceList(registry).drumMaps;
+    const auto map = maps.find({voice.bankMsb, voice.bankLsb, voice.program + 1});
+    const std::optional<model::PluginSlot>& instrument = controller.project().track(id)->instrument;
+    if (!instrument) {
+        return;
+    }
+    Json state = Json::parse(instrument->state);
+    if (map == maps.end()) {
+        state.erase("drumMap");
+    } else {
+        state["drumMap"] = map->second;
+    }
+    const std::string text = state.dump();
+    app::editTrack(controller, id, "map drum notes",
+                   [&](model::Track& track) { track.instrument.value().state.assign(text.begin(), text.end()); });
+    controller.instruments().sync(controller.project().document());
 }
 
 // Expansion Voices names no voice with this label while it reads its store.
@@ -269,6 +317,7 @@ void loadPartInstrument(app::Registry& registry, app::ProjectController& control
     if (isDrumBank(voice->bankMsb)) {
         registry.run("instrument.setParam",
                      {{"track", id.value}, {"param", kDrumKitParam}, {"value", drumKitIndex(voice->program)}});
+        writeDrumMap(registry, controller, id, *voice);
         return;
     }
     const std::optional<int> standIn = standInProgram(registry, part, *voice);

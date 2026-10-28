@@ -285,18 +285,28 @@ void loadPartInstrument(BuiltinArranger& builtin, app::Registry& registry, app::
     }
 }
 
-std::optional<model::TrackId> partTrack(const model::Document& document, const model::TrackId& style, int channel) {
-    const auto found = std::ranges::find_if(document.tracks, [&](const model::Track& track) {
-        return track.midiIn.sourceTrack == style && track.midiIn.channel == channel;
-    });
-    return found == document.tracks.end() ? std::nullopt : std::optional{found->id};
+using PartTracks = std::array<std::optional<model::TrackId>, arranger::kParts>;
+
+PartTracks partTracks(const model::Document& document, const model::TrackId& style) {
+    PartTracks tracks;
+    for (std::size_t part = 0; part < arranger::kParts; ++part) {
+        const int channel = genos2Parts().at(kFirstPart + part).channel;
+        const auto found = std::ranges::find_if(document.tracks, [&](const model::Track& track) {
+            return track.midiIn.sourceTrack == style && track.midiIn.channel == channel;
+        });
+        if (found != document.tracks.end()) {
+            tracks.at(part) = found->id;
+        }
+    }
+    return tracks;
 }
 
 // A part track follows the style while it plays General MIDI or Expansion Voices; any other instrument is the user's.
 void followStyle(BuiltinArranger& builtin, app::Registry& registry, app::ProjectController& controller,
                  const model::TrackId& style, const StyleSummary& summary) {
+    const PartTracks tracks = partTracks(controller.project().document(), style);
     for (std::size_t part = 0; part < arranger::kParts; ++part) {
-        const auto id = partTrack(controller.project().document(), style, genos2Parts().at(kFirstPart + part).channel);
+        const std::optional<model::TrackId>& id = tracks.at(part);
         if (!id) {
             continue;
         }
@@ -320,9 +330,10 @@ std::vector<engine::SessionError> missingVoices(const model::Track& style, const
         return {};
     }
     std::vector<engine::SessionError> warnings;
+    const PartTracks tracks = partTracks(document, style.id);
     for (std::size_t part = 0; part < arranger::kParts; ++part) {
         const std::optional<arranger::PartVoice>& voice = summary->style.voices.at(part);
-        const auto id = partTrack(document, style.id, genos2Parts().at(kFirstPart + part).channel);
+        const std::optional<model::TrackId>& id = tracks.at(part);
         if (!voice || !id) {
             continue;
         }
@@ -357,9 +368,10 @@ Json setup(BuiltinArranger& builtin, app::Registry& registry, app::ProjectContro
             registry.run("instrument.load", {{"track", style.value}, {"plugin", kArrangerPluginId}});
         }
         const auto summary = loadedStyle(*controller.project().track(style));
+        const PartTracks tracks = partTracks(controller.project().document(), style);
         for (std::size_t part = 0; part < arranger::kParts; ++part) {
             const Part& info = genos2Parts().at(kFirstPart + part);
-            if (partTrack(controller.project().document(), style, info.channel)) {
+            if (tracks.at(part)) {
                 continue;
             }
             const model::TrackId id{registry.run("track.addMidi", {{"name", std::string{info.name}}}).at("id")};

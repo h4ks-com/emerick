@@ -71,6 +71,23 @@ TEST_CASE("WXC1 frames in cracked modes decode bit-exactly") {
     CHECK(wave->looped());
 }
 
+TEST_CASE("WXC1 frames in the pair modes 4 and 7 decode bit-exactly") {
+    std::vector<WxcFrame> frames = crackedFrames();
+    frames[0].next.mode = 7;
+    const auto wave = decodeWave(wxc1Blob(8000.0, {.coefficients = {200, -60, 10}, .scale = 20, .mode = 4}, frames));
+    REQUIRE(wave.has_value());
+    REQUIRE(wave->samples.size() == 224);
+    CHECK(sampleValue(*wave, 0) == 54);
+    CHECK(sampleValue(*wave, 7) == -60);
+    CHECK(sampleValue(*wave, 59) == -124);
+    CHECK(sampleValue(*wave, 95) == 126);
+    CHECK(sampleValue(*wave, 96) == -141);
+    CHECK(sampleValue(*wave, 101) == 60);
+    CHECK(sampleValue(*wave, 119) == 229);
+    CHECK(sampleValue(*wave, 127) == -486);
+    CHECK(sampleValue(*wave, 223) == -924);
+}
+
 TEST_CASE("a WXC1 wave ends with a fade at its first frame in an unknown mode") {
     std::vector<WxcFrame> frames = crackedFrames();
     frames.push_back(WxcFrame{});
@@ -84,7 +101,7 @@ TEST_CASE("a WXC1 wave ends with a fade at its first frame in an unknown mode") 
 }
 
 TEST_CASE("a WXC1 wave whose first frame is in an unknown mode is not decoded") {
-    CHECK_FALSE(decodeWave(wxc1Blob(8000.0, {.mode = 7}, crackedFrames())).has_value());
+    CHECK_FALSE(decodeWave(wxc1Blob(8000.0, {.mode = 5}, crackedFrames())).has_value());
     CHECK_FALSE(decodeWave(std::vector<std::uint8_t>{1, 2, 3}).has_value());
 }
 
@@ -131,7 +148,7 @@ TEST_CASE("the store leaves out voices whose waves are undecodable or missing") 
     SyntheticStore store;
     const std::string linear = store.addWave(linearBlob(sine(440.0, 44100.0, 441), 44100.0));
     const std::string partial = store.addWave(wxc1Blob(44100.0, kFirstParams, crackedFrames()));
-    const std::string compressed = store.addWave(wxc1Blob(44100.0, {.mode = 4}, crackedFrames()));
+    const std::string compressed = store.addWave(wxc1Blob(44100.0, {.mode = 5}, crackedFrames()));
     store.addPack("Pack", {SyntheticVoice{.name = "Plays", .zones = {SyntheticZone{.wave = linear}}},
                            SyntheticVoice{.name = "Partly", .zones = {SyntheticZone{.wave = partial}}},
                            SyntheticVoice{.name = "Compressed",

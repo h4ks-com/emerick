@@ -131,16 +131,40 @@ constexpr auto kLevels6 =
     excitation(std::array{2,  6,  10, 14, 18, 22,  26,  30,  34,  38,  42,  46,  50,  54,  58,  62,
                           66, 74, 82, 90, 98, 106, 114, 122, 130, 146, 162, 178, 194, 210, 226, 242});
 
+using LevelPair = std::array<int, 2>;
+
+// Modes 4 and 7 quantize two samples per code, and their codebooks were fitted against decoded loop histories.
+constexpr std::array<LevelPair, 16> kPairs4{{{0, 0},
+                                             {22, 22},
+                                             {38, 38},
+                                             {54, 54},
+                                             {70, 70},
+                                             {102, 102},
+                                             {134, 134},
+                                             {198, 198},
+                                             {-198, -198},
+                                             {-134, -134},
+                                             {-102, -102},
+                                             {-70, -170},
+                                             {-54, -54},
+                                             {-38, -38},
+                                             {-22, -22},
+                                             {-6, -6}}};
+constexpr std::array<LevelPair, 8> kPairs7{
+    {{16, 10}, {38, 38}, {86, 172}, {170, 170}, {-162, -170}, {-86, -86}, {-38, -38}, {-10, -10}}};
+
 struct Mode {
     unsigned bits;
     std::span<const int> levels;
+    std::span<const LevelPair> pairs;
     int boost;
 };
 
-// Modes 4, 5 and 7 are not cracked yet, so a wave ends at the first frame that uses one.
-constexpr std::array<std::optional<Mode>, kModeCount> kModes{
-    Mode{2, kLevels2, 4}, Mode{3, kLevels3, 4}, Mode{4, kLevels4, 4}, Mode{6, kLevels6, 4},
-    std::nullopt,         std::nullopt,         Mode{4, kLevels4, 8}, std::nullopt};
+// Mode 5 is not cracked yet, so a wave ends at the first frame that uses it.
+constexpr std::array<std::optional<Mode>, kModeCount> kModes{Mode{2, kLevels2, {}, 4}, Mode{3, kLevels3, {}, 4},
+                                                             Mode{4, kLevels4, {}, 4}, Mode{6, kLevels6, {}, 4},
+                                                             Mode{4, {}, kPairs4, 8},  std::nullopt,
+                                                             Mode{4, kLevels4, {}, 8}, Mode{3, {}, kPairs7, 8}};
 
 constexpr int scaleFactor(int index) { return (4 + (index % 4)) << (1 + (index / 4)); }
 
@@ -183,13 +207,21 @@ void decodeFrame(const Words& words, const FrameParams& frame, const Mode& mode,
     const unsigned mask = (1U << mode.bits) - 1;
     for (const std::uint16_t word : words) {
         const int scale = scaleFactor(std::min(kLastScale, frame.scale + (mode.boost * (word >> 15U))));
-        for (unsigned shift = 0; shift + mode.bits <= 12; shift += mode.bits) {
+        const auto emit = [&](int level) {
             const int prediction = std::clamp(
                 ((history[0] * a1) >> 8) + ((history[1] * a2) >> 8) + ((history[2] * a3) >> 8), -0x20000, 0x1FFFF);
-            const int residual = (scale * mode.levels[(word >> shift) & mask]) >> 8;
-            const int sample = std::clamp((residual + prediction) >> 2, -0x8000, 0x7FFF);
+            const int sample = std::clamp((((scale * level) >> 8) + prediction) >> 2, -0x8000, 0x7FFF);
             history = {sample, history[0], history[1]};
             samples.push_back(static_cast<float>(sample) / kFullScale);
+        };
+        for (unsigned shift = 0; shift + mode.bits <= 12; shift += mode.bits) {
+            const unsigned code = (word >> shift) & mask;
+            if (mode.pairs.empty()) {
+                emit(mode.levels[code]);
+            } else {
+                emit(mode.pairs[code][0]);
+                emit(mode.pairs[code][1]);
+            }
         }
     }
 }

@@ -1,7 +1,7 @@
 // The expansion voices instrument: a CLAP plugin that plays the voices of the Yamaha expansion packs installed in
 // Expansion Manager's store, read straight from the store's voice files and wave blobs.
-// The host's main thread reads the store and decodes a voice's waves when it is picked; the audio thread only plays
-// the banks the main thread published.
+// A thread of its own reads the store, the host's main thread publishes it and decodes a voice's waves when it is
+// picked, and the audio thread only plays the banks the main thread published.
 
 #include <clap/clap.h>
 
@@ -44,6 +44,7 @@ PlaySettings settingsOf(const Plugin& plugin) {
 
 bool activate(const clap_plugin* plugin, double sampleRate, std::uint32_t /*unused*/, std::uint32_t /*unused*/) {
     Plugin& voices = pluginOf(plugin);
+    emerick::voices::publishLoadedStore(voices);
     emerick::voices::reloadStore(voices);
     emerick::voices::buildBank(voices, voices.selected.load(std::memory_order_relaxed));
     voices.sampleRate = sampleRate;
@@ -55,6 +56,7 @@ bool activate(const clap_plugin* plugin, double sampleRate, std::uint32_t /*unus
 
 void onMainThread(const clap_plugin* plugin) {
     Plugin& voices = pluginOf(plugin);
+    emerick::voices::publishLoadedStore(voices);
     emerick::voices::buildBank(voices, voices.bankWanted.exchange(-1, std::memory_order_relaxed));
 }
 
@@ -292,7 +294,10 @@ const clap_plugin* createPlugin(const clap_plugin_factory* /*unused*/, const cla
     voices->plugin = {&kDescriptor,
                       voices.get(),
                       [](const clap_plugin*) { return true; },
-                      [](const clap_plugin* plugin) { std::unique_ptr<Plugin>{&pluginOf(plugin)}.reset(); },
+                      [](const clap_plugin* plugin) {
+                          emerick::voices::dropStoreLoad(pluginOf(plugin));
+                          std::unique_ptr<Plugin>{&pluginOf(plugin)}.reset();
+                      },
                       activate,
                       [](const clap_plugin* plugin) { pluginOf(plugin).active = false; },
                       [](const clap_plugin*) { return true; },

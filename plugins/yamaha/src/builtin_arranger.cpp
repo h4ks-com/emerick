@@ -175,6 +175,55 @@ std::size_t drumKitIndex(int program) {
     return kit == gm::kDrumKits.end() ? 0 : static_cast<std::size_t>(kit - gm::kDrumKits.begin());
 }
 
+// Expansion Voices names no voice with this label while it reads its store.
+constexpr std::string_view kVoicesLoadingLabel = "Loading voices";
+
+bool voicesLoading(const Json& params) {
+    return std::ranges::any_of(params, [](const Json& param) {
+        return param.at("id") == kVoiceParam && param.at("text") == kVoicesLoadingLabel;
+    });
+}
+
+struct WaitingPart {
+    std::size_t part = 0;
+    arranger::PartVoice voice;
+};
+
+// The part tracks left on Expansion Voices while it reads its store, by track id. Only the main thread touches them.
+std::map<std::string, WaitingPart>& waitingParts() {
+    static std::map<std::string, WaitingPart> parts;
+    return parts;
+}
+
+void loadPartInstrument(app::Registry& registry, app::ProjectController& controller, const model::TrackId& id,
+                        std::size_t part, std::optional<arranger::PartVoice> voice);
+
+// Once Expansion Voices read its store, a waiting part whose voice it lacks switches to its General MIDI stand-in.
+void loadStandInsForMissingVoices(app::Registry& registry, app::ProjectController& controller) {
+    if (waitingParts().empty()) {
+        return;
+    }
+    controller.project().group("play general midi for missing voices", [&] {
+        for (const auto& [track, waiting] : std::map{waitingParts()}) {
+            const model::TrackId id{track};
+            const model::Track* found = controller.project().track(id);
+            const Json described = controller.instruments().describe(id);
+            const bool voices = found != nullptr && found->instrument && found->instrument->pluginId == kVoicesPluginId;
+            if (voices && !described.is_null() && voicesLoading(described.at("params"))) {
+                continue;
+            }
+            waitingParts().erase(track);
+            const bool plays =
+                !described.is_null() && std::ranges::any_of(described.at("params"), [](const Json& param) {
+                    return param.at("id") == kVoiceParam && param.at("value").get<double>() >= 1.0;
+                });
+            if (voices && !plays) {
+                loadPartInstrument(registry, controller, id, waiting.part, waiting.voice);
+            }
+        }
+    });
+}
+
 // Expansion Voices plays the part when it holds the voice the style asks for; General MIDI plays every other part.
 void loadPartInstrument(app::Registry& registry, app::ProjectController& controller, const model::TrackId& id,
                         std::size_t part, std::optional<arranger::PartVoice> voice) {
@@ -199,6 +248,10 @@ void loadPartInstrument(app::Registry& registry, app::ProjectController& control
                                return param.at("id") == kVoiceParam && param.at("value").get<double>() >= 1.0;
                            });
         if (plays) {
+            return;
+        }
+        if (found && voicesLoading(*found)) {
+            waitingParts()[id.value] = {part, *voice};
             return;
         }
     }
@@ -344,6 +397,8 @@ Json loadStyle(app::Registry& registry, app::ProjectController& controller, cons
 }  // namespace
 
 void registerBuiltinArranger(app::Registry& registry, app::ProjectController& controller, app::Nav& nav) {
+    QObject::connect(&controller, &app::ProjectController::projectChanged, &controller,
+                     [&registry, &controller] { loadStandInsForMissingVoices(registry, controller); });
     registry.addAction({.id = "arranger.setup",
                         .title = "Set up built-in arranger",
                         .description =

@@ -2,6 +2,7 @@
 #include <array>
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
+#include <chrono>
 #include <cmath>
 #include <cstdint>
 #include <memory>
@@ -9,6 +10,7 @@
 #include <ranges>
 #include <span>
 #include <string>
+#include <thread>
 #include <vector>
 
 #include "emerick/engine/clap_instrument.hpp"
@@ -27,6 +29,16 @@ constexpr std::uint32_t kVoice = 0;
 constexpr std::uint32_t kVolume = 1;
 constexpr std::uint32_t kFollow = 5;
 using Message = std::array<std::uint8_t, 3>;
+
+// Runs the main thread until the plugin publishes the store its thread read, which rescans the params.
+void waitForStore(ClapInstrument& instrument) {
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(10);
+    while (!instrument.takeParamsChanged()) {
+        REQUIRE(std::chrono::steady_clock::now() < deadline);
+        instrument.idle();
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+}
 
 // A pack of test voices: sines whose pitch and length say which zone and settings played them.
 struct Rig {
@@ -69,6 +81,7 @@ struct Rig {
         const std::string text = withFolder.dump();
         REQUIRE((*created)->loadState(std::vector<std::uint8_t>(text.begin(), text.end())));
         REQUIRE((*created)->activate(kRate, kBlock));
+        waitForStore(**created);
         return *created;
     }
 };
@@ -276,4 +289,27 @@ TEST_CASE("the state names the voice by pack, name and address, so a changed sto
     const auto kept = missing->saveState();
     REQUIRE(kept.has_value());
     CHECK(Json::parse(kept->begin(), kept->end()).at("voice") == voiceNamed("Gone", 9).at("voice"));
+}
+
+TEST_CASE("the store loads on its own thread and the state's voice plays once the main thread publishes it") {
+    const Rig rig;
+    const auto load = [&] {
+        auto created = ClapInstrument::create(EMERICK_VOICES_CLAP, "org.emerick.voices");
+        REQUIRE(created.has_value());
+        Json state = voiceNamed("Sine", 3);
+        state["folder"] = rig.store.folder().string();
+        const std::string text = state.dump();
+        REQUIRE((*created)->loadState(std::vector<std::uint8_t>(text.begin(), text.end())));
+        return *created;
+    };
+    load().reset();
+
+    const auto instrument = load();
+    CHECK(instrument->params()[0].choices == std::vector<std::string>{"Loading voices"});
+    CHECK(*instrument->paramValue(kVoice) == 0.0);
+    REQUIRE(instrument->activate(kRate, kBlock));
+    waitForStore(*instrument);
+    CHECK(instrument->params()[0].choices.size() == 6);
+    CHECK(instrument->paramText(kVoice, *instrument->paramValue(kVoice)) == "Test Pack / Sine");
+    CHECK(std::abs(cents(frequency(render(*instrument, {{0x90, 69, 100}}, 20)), 440.0)) < 2.0);
 }

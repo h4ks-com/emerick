@@ -26,6 +26,9 @@ inline constexpr clap_id kReleaseParam = 4;
 inline constexpr clap_id kFollowParam = 5;
 inline constexpr std::uint32_t kParamCount = 6;
 
+// The Voice param's label for no voice while the store loads, which hosts read to wait for the store.
+inline constexpr const char* kLoadingLabel = "Loading voices";
+
 inline constexpr float kDefaultAttack = 0.002F;
 inline constexpr float kDefaultRelease = 0.3F;
 
@@ -36,6 +39,9 @@ struct VoiceKey {
     VoiceAddress address;
 };
 
+// A store read on its own thread, shared by the instances that wait for the same folder.
+struct StoreLoad;
+
 struct Plugin {
     clap_plugin plugin{};
     const clap_host* host = nullptr;
@@ -43,6 +49,8 @@ struct Plugin {
     std::string folder;
     std::filesystem::path loadedFolder;
     bool storeLoaded = false;
+    // The read of the folder the state names, until the main thread publishes its store.
+    std::shared_ptr<StoreLoad> storeLoad;
     // Shared by every instance that reads the same folder; the banks point into it.
     std::shared_ptr<const Store> store = std::make_shared<const Store>();
     // "Pack / Voice" for each voice; the Voice param counts None as 0 and the voices from 1.
@@ -86,9 +94,17 @@ VoiceKey keyOf(const Voice& voice);
 // with this address for a key that names no voice; -1 when the store holds none.
 int findVoice(const Store& store, const VoiceKey& key);
 
-// Main thread: reads the store the state names unless it is loaded already or the plugin is active. We read it on
-// first use, so a state that names another folder never reads the default store.
+// Main thread: starts reading the store the state names on a thread of its own, unless it is loaded or loading already,
+// and publishes a store another instance holds right away. We read it on first use, so a state that names another
+// folder never reads the default store.
 void reloadStore(Plugin& plugin);
+// Main thread: publishes the store once its read finished and the plugin is inactive, and asks the host to restart an
+// active plugin so it can. The host then rescans the params, and the voice the state names gets its bank.
+void publishLoadedStore(Plugin& plugin);
+// Main thread: stops waiting for the store, before the plugin is destroyed or reads another folder.
+void dropStoreLoad(Plugin& plugin);
+// Main thread: picks the voice the state names once the store holds it and builds its bank.
+void pickStateVoice(Plugin& plugin);
 // Main thread: decodes the voice's waves once and publishes its bank to the audio thread.
 void buildBank(Plugin& plugin, int voice);
 // Picks a voice, or none for -1. On the audio thread it asks the main thread to build the bank.

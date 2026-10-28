@@ -54,6 +54,23 @@ struct ArrangerRig : YamahaRig {
 
     [[nodiscard]] const model::Document& document() const { return controller->project().document(); }
 
+    // Runs the action, then the event loop until Expansion Voices read its store and the parts waiting for it settled.
+    Json run(const std::string& id, const Json& params = Json::object()) const {
+        Json result = YamahaRig::run(id, params);
+        REQUIRE(processUntil([&] { return !voicesLoading(); }, 10000));
+        return result;
+    }
+
+    [[nodiscard]] bool voicesLoading() const {
+        return std::ranges::any_of(document().tracks, [&](const model::Track& track) {
+            if (!track.instrument || track.instrument->pluginId != yamaha::kVoicesPluginId) {
+                return false;
+            }
+            const Json described = controller->instruments().describe(track.id);
+            return !described.is_null() && described.at("params").at(0).at("text") == "Loading voices";
+        });
+    }
+
     [[nodiscard]] std::string trackOfKind(const char* kind) const {
         const auto found = std::ranges::find(document().tracks, std::string{kind}, &model::Track::kind);
         REQUIRE(found != document().tracks.end());
@@ -146,6 +163,9 @@ TEST_CASE("choosing a style switches the part tracks it has voices for between E
     CHECK(plugin(2) == bassPlugin);
     CHECK(plugin(3).empty());
 
+    // The parts whose voices the store lacks switch to General MIDI in a step of their own once the store is read.
+    rig.run("project.undo");
+    CHECK(rig.controller->project().redoName() == "play general midi for missing voices");
     rig.run("project.undo");
     CHECK(rig.track(style).instrument->state.empty());
     CHECK(plugin(2) == "org.emerick.gm");
@@ -299,6 +319,7 @@ TEST_CASE("the style list reads the style folders, and choosing a style loads it
     CHECK(styles[0].at("meter") == "4/4");
     CHECK(styles[0].at("sections") == Json::array({"I1", "A", "B", "Fill", "Break", "E1"}));
 
+    const HomeFolder home{rig.path("home")};
     rig.run("arranger.setup");
     const std::string style = rig.trackOfKind("yamaha.style");
     CHECK_THROWS_AS(rig.run("arranger.style.load", {{"track", style}, {"path", (rig.styles / "Notes.txt").string()}}),
@@ -312,6 +333,8 @@ TEST_CASE("the style list reads the style folders, and choosing a style loads it
     CHECK(rig.arrangerState().at("style") == rig.demo.string());
     CHECK(rig.arrangerState().at("hash").get<std::string>().size() == 16);
     CHECK(rig.arrangerState().at("autoFill") == true);
+    rig.run("project.undo");
+    CHECK(rig.controller->project().redoName() == "play general midi for missing voices");
     rig.run("project.undo");
     CHECK(rig.track(style).instrument->state.empty());
 }

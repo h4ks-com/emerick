@@ -155,13 +155,9 @@ bool loadState(const clap_plugin* plugin, const clap_istream* stream) {
         return true;
     }
     reloadStore(voices);
-    if (voices.missingVoice) {
-        const int found = findVoice(*voices.store, *voices.missingVoice);
-        if (found >= 0) {
-            selectVoice(voices, found, false);
-        }
+    if (!voices.storeLoad) {
+        pickStateVoice(voices);
     }
-    buildBank(voices, voices.selected.load(std::memory_order_relaxed));
     return true;
 }
 
@@ -209,7 +205,10 @@ std::string paramLabel(const Plugin& plugin, clap_id id, double value) {
     switch (id) {
         case kVoiceParam: {
             const int voice = voiceIndex(plugin, value);
-            return voice >= 0 ? plugin.labels[static_cast<std::size_t>(voice)] : std::string{"None"};
+            if (voice >= 0) {
+                return plugin.labels[static_cast<std::size_t>(voice)];
+            }
+            return std::string{plugin.storeLoaded ? "None" : kLoadingLabel};
         }
         case kFollowParam:
             return std::string{kSwitchLabels[value >= 0.5 ? 1 : 0]};

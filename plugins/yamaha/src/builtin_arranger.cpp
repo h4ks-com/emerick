@@ -1,6 +1,5 @@
 #include <algorithm>
 #include <array>
-#include <charconv>
 #include <filesystem>
 #include <format>
 #include <fstream>
@@ -102,18 +101,9 @@ constexpr std::array<int, arranger::kParts> kPartDefaults{12, 12, 34, 28, 5, 49,
 using VoiceKey = std::tuple<int, int, int>;
 using VoiceFamilies = std::map<VoiceKey, Family>;
 
-std::string_view trimmed(std::string_view text) {
-    const auto first = text.find_first_not_of(" \t\r");
-    return first == std::string_view::npos ? std::string_view{}
-                                           : text.substr(first, text.find_last_not_of(" \t\r") - first + 1);
-}
-
 std::optional<int> numberIn(std::string_view field, int first, int last) {
-    const std::string_view text = trimmed(field);
-    int value = 0;
-    const auto [end, error] = std::from_chars(text.data(), text.data() + text.size(), value);
-    const bool whole = error == std::errc{} && end == text.data() + text.size();
-    return whole && value >= first && value <= last ? std::optional{value} : std::nullopt;
+    const std::optional<int> value = wholeNumber(trim(field));
+    return value && *value >= first && *value <= last ? value : std::nullopt;
 }
 
 // The General MIDI note each note of a kit plays, or -1 to drop it.
@@ -155,7 +145,7 @@ VoiceList readVoiceList(const std::filesystem::path& path) {
         const auto msb = numberIn(fields[0], 0, 127);
         const auto lsb = numberIn(fields[1], 0, 127);
         const auto program = numberIn(fields[2], 1, 128);
-        const auto* const category = std::ranges::find(kCategories, trimmed(fields[3]), &Category::name);
+        const auto* const category = std::ranges::find(kCategories, trim(fields[3]), &Category::name);
         if (msb && lsb && program && category != kCategories.end()) {
             list.families[{*msb, *lsb, *program}] = category->family;
         }

@@ -22,12 +22,6 @@ constexpr std::uint8_t kBankLsbCc = 32;
 constexpr std::uint8_t kVolumeCc = 7;
 constexpr std::uint8_t kPanCc = 10;
 
-std::string_view trim(std::string_view text) {
-    const auto first = text.find_first_not_of(" \t\r");
-    return first == std::string_view::npos ? std::string_view{}
-                                           : text.substr(first, text.find_last_not_of(" \t\r") - first + 1);
-}
-
 struct VoiceField {
     std::string_view name;
     int Voice::* field;
@@ -54,13 +48,12 @@ int takeNumber(std::string_view& line, const VoiceField& field) {
     line = trim(line);
     const auto end = line.find_first_of(" \t");
     const auto word = line.substr(0, end);
-    int value = 0;
-    const auto [rest, error] = std::from_chars(word.data(), word.data() + word.size(), value);
-    if (word.empty() || error != std::errc{} || rest != word.data() + word.size()) {
+    const std::optional<int> value = wholeNumber(word);
+    if (!value) {
         throw std::invalid_argument("bad voice line field: " + std::string(word));
     }
     line = end == std::string_view::npos ? std::string_view{} : line.substr(end);
-    return inRange(field, value);
+    return inRange(field, *value);
 }
 
 Voice parseVoice(std::string_view line) {
@@ -73,6 +66,18 @@ Voice parseVoice(std::string_view line) {
 }
 
 }  // namespace
+
+std::string_view trim(std::string_view text) {
+    const auto first = text.find_first_not_of(" \t\r");
+    return first == std::string_view::npos ? std::string_view{}
+                                           : text.substr(first, text.find_last_not_of(" \t\r") - first + 1);
+}
+
+std::optional<int> wholeNumber(std::string_view text) {
+    int value = 0;
+    const auto [end, error] = std::from_chars(text.data(), text.data() + text.size(), value);
+    return error == std::errc{} && end == text.data() + text.size() ? std::optional{value} : std::nullopt;
+}
 
 const std::array<Part, 16>& genos2Parts() {
     static const std::array<Part, 16> parts{{

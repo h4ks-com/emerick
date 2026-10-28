@@ -3,6 +3,7 @@
 #include <array>
 #include <filesystem>
 #include <nlohmann/json.hpp>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -34,6 +35,11 @@ struct Voice {
     std::string name;
     bool operator==(const Voice&) const = default;
 };
+
+// The text without leading and trailing spaces, tabs and carriage returns.
+std::string_view trim(std::string_view text);
+// The text as a decimal number, or nullopt when it holds anything else.
+std::optional<int> wholeNumber(std::string_view text);
 
 // Lines read "channel msb lsb program(1-128) volume pan name"; blank lines and # lines are skipped.
 std::vector<Voice> parseVoices(std::string_view text);

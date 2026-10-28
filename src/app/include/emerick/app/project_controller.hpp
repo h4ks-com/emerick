@@ -217,6 +217,7 @@ signals:
     void transportChanged();
     void syncChanged();
     void projectChanged();
+    void projectReplaced();
     void devicesChanged();
     void trackErrorsChanged();
     void healthChanged();

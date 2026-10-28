@@ -142,6 +142,7 @@ void ProjectController::moveTo(const std::filesystem::path& folder, model::Docum
     untitled_ = false;
     takeErrors_.clear();
     project_.reset(std::move(document));
+    emit projectReplaced();
     setEdited(false);
     emit fileChanged();
     checkHealth();

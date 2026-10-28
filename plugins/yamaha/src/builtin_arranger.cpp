@@ -4,6 +4,7 @@
 #include <format>
 #include <fstream>
 #include <map>
+#include <memory>
 #include <optional>
 #include <ranges>
 #include <span>
@@ -114,13 +115,25 @@ VoiceList readVoiceList(const std::filesystem::path& path) {
     return list;
 }
 
-const VoiceList& voiceList(const app::Registry& registry) {
-    struct Cached {
-        std::filesystem::path path;
-        std::filesystem::file_time_type modified;
-        VoiceList list;
-    };
-    static Cached cached;
+struct CachedVoiceList {
+    std::filesystem::path path;
+    std::filesystem::file_time_type modified;
+    VoiceList list;
+};
+
+struct WaitingPart {
+    std::size_t part = 0;
+    arranger::PartVoice voice;
+};
+
+// What the built-in arranger keeps between actions. Only the main thread touches it.
+struct BuiltinArranger {
+    CachedVoiceList voiceList;
+    // The part tracks left on Expansion Voices while it reads its store, by track id.
+    std::map<std::string, WaitingPart> waitingParts;
+};
+
+const VoiceList& voiceList(CachedVoiceList& cached, const app::Registry& registry) {
     const std::filesystem::path path = registry.settingValue(kVoiceListSetting).get<std::string>();
     std::error_code error;
     const auto modified = std::filesystem::last_write_time(path, error);
@@ -134,12 +147,12 @@ const VoiceList& voiceList(const app::Registry& registry) {
 
 // The 0-based General MIDI program that stands in for a voice no pack holds, or nullopt when General MIDI follows
 // the style's own bank and program because the voice is a General MIDI one.
-std::optional<int> standInProgram(const app::Registry& registry, std::size_t part, const arranger::PartVoice& voice) {
+std::optional<int> standInProgram(const VoiceList& list, std::size_t part, const arranger::PartVoice& voice) {
     if (voice.bankMsb == 0 && voice.bankLsb == 0) {
         return std::nullopt;
     }
     const int program = voice.program + 1;
-    const VoiceFamilies& families = voiceList(registry).families;
+    const VoiceFamilies& families = list.families;
     if (const auto found = families.find({voice.bankMsb, voice.bankLsb, program}); found != families.end()) {
         const gm::Family family = found->second;
         return (program >= family.first && program <= family.last ? program : family.typical) - 1;
@@ -154,9 +167,9 @@ std::size_t drumKitIndex(int program) {
 }
 
 // General MIDI plays the kit's notes as the voice list maps them, or unchanged when the list maps no note of the kit.
-void writeDrumMap(const app::Registry& registry, app::ProjectController& controller, const model::TrackId& id,
+void writeDrumMap(const VoiceList& list, app::ProjectController& controller, const model::TrackId& id,
                   const arranger::PartVoice& voice) {
-    const auto& maps = voiceList(registry).drumMaps;
+    const auto& maps = list.drumMaps;
     const auto map = maps.find({voice.bankMsb, voice.bankLsb, voice.program + 1});
     const std::optional<model::PluginSlot>& instrument = controller.project().track(id)->instrument;
     if (!instrument) {
@@ -180,27 +193,17 @@ bool voicesLoading(const Json& params) {
     });
 }
 
-struct WaitingPart {
-    std::size_t part = 0;
-    arranger::PartVoice voice;
-};
-
-// The part tracks left on Expansion Voices while it reads its store, by track id. Only the main thread touches them.
-std::map<std::string, WaitingPart>& waitingParts() {
-    static std::map<std::string, WaitingPart> parts;
-    return parts;
-}
-
-void loadPartInstrument(app::Registry& registry, app::ProjectController& controller, const model::TrackId& id,
-                        std::size_t part, std::optional<arranger::PartVoice> voice);
+void loadPartInstrument(BuiltinArranger& builtin, app::Registry& registry, app::ProjectController& controller,
+                        const model::TrackId& id, std::size_t part, std::optional<arranger::PartVoice> voice);
 
 // Once Expansion Voices read its store, a waiting part whose voice it lacks switches to its General MIDI stand-in.
-void loadStandInsForMissingVoices(app::Registry& registry, app::ProjectController& controller) {
-    if (waitingParts().empty()) {
+void loadStandInsForMissingVoices(BuiltinArranger& builtin, app::Registry& registry,
+                                  app::ProjectController& controller) {
+    if (builtin.waitingParts.empty()) {
         return;
     }
     controller.project().group("play general midi for missing voices", [&] {
-        for (const auto& [track, waiting] : std::map{waitingParts()}) {
+        for (const auto& [track, waiting] : std::map{builtin.waitingParts}) {
             const model::TrackId id{track};
             const model::Track* found = controller.project().track(id);
             const Json described = controller.instruments().describe(id);
@@ -208,21 +211,21 @@ void loadStandInsForMissingVoices(app::Registry& registry, app::ProjectControlle
             if (voices && !described.is_null() && voicesLoading(described.at("params"))) {
                 continue;
             }
-            waitingParts().erase(track);
+            builtin.waitingParts.erase(track);
             const bool plays =
                 !described.is_null() && std::ranges::any_of(described.at("params"), [](const Json& param) {
                     return param.at("id") == voices::kVoiceParam && param.at("value").get<double>() >= 1.0;
                 });
             if (voices && !plays) {
-                loadPartInstrument(registry, controller, id, waiting.part, waiting.voice);
+                loadPartInstrument(builtin, registry, controller, id, waiting.part, waiting.voice);
             }
         }
     });
 }
 
 // Expansion Voices plays the part when it holds the voice the style asks for; General MIDI plays every other part.
-void loadPartInstrument(app::Registry& registry, app::ProjectController& controller, const model::TrackId& id,
-                        std::size_t part, std::optional<arranger::PartVoice> voice) {
+void loadPartInstrument(BuiltinArranger& builtin, app::Registry& registry, app::ProjectController& controller,
+                        const model::TrackId& id, std::size_t part, std::optional<arranger::PartVoice> voice) {
     if (voice) {
         registry.run("instrument.load", {{"track", id.value}, {"plugin", kVoicesPluginId}});
         const std::string state = Json{
@@ -247,7 +250,7 @@ void loadPartInstrument(app::Registry& registry, app::ProjectController& control
             return;
         }
         if (found && voicesLoading(*found)) {
-            waitingParts()[id.value] = {part, *voice};
+            builtin.waitingParts[id.value] = {part, *voice};
             return;
         }
     }
@@ -265,10 +268,10 @@ void loadPartInstrument(app::Registry& registry, app::ProjectController& control
     if (gm::isDrumBank(voice->bankMsb)) {
         registry.run("instrument.setParam",
                      {{"track", id.value}, {"param", gm::kDrumKitParam}, {"value", drumKitIndex(voice->program)}});
-        writeDrumMap(registry, controller, id, *voice);
+        writeDrumMap(voiceList(builtin.voiceList, registry), controller, id, *voice);
         return;
     }
-    const std::optional<int> standIn = standInProgram(registry, part, *voice);
+    const std::optional<int> standIn = standInProgram(voiceList(builtin.voiceList, registry), part, *voice);
     registry.run("instrument.setParam",
                  {{"track", id.value}, {"param", gm::kSoundParam}, {"value", standIn.value_or(voice->program)}});
     if (standIn) {
@@ -284,8 +287,8 @@ std::optional<model::TrackId> partTrack(const model::Document& document, const m
 }
 
 // A part track follows the style while it plays General MIDI or Expansion Voices; any other instrument is the user's.
-void followStyle(app::Registry& registry, app::ProjectController& controller, const model::TrackId& style,
-                 const StyleSummary& summary) {
+void followStyle(BuiltinArranger& builtin, app::Registry& registry, app::ProjectController& controller,
+                 const model::TrackId& style, const StyleSummary& summary) {
     for (std::size_t part = 0; part < arranger::kParts; ++part) {
         const auto id = partTrack(controller.project().document(), style, genos2Parts().at(kFirstPart + part).channel);
         if (!id) {
@@ -298,7 +301,7 @@ void followStyle(app::Registry& registry, app::ProjectController& controller, co
         const std::optional<arranger::PartVoice>& voice = summary.style.voices.at(part);
         const std::string plugin = instrument->pluginId;
         if (plugin == kVoicesPluginId || (plugin == app::kGeneralMidiPluginId && voice)) {
-            loadPartInstrument(registry, controller, *id, part, voice);
+            loadPartInstrument(builtin, registry, controller, *id, part, voice);
         }
     }
 }
@@ -340,7 +343,7 @@ model::TrackId arrangerTrack(const app::ProjectController& controller, const app
     return id;
 }
 
-Json setup(app::Registry& registry, app::ProjectController& controller) {
+Json setup(BuiltinArranger& builtin, app::Registry& registry, app::ProjectController& controller) {
     controller.project().group("set up built-in arranger", [&] {
         ensureTrack(registry, controller, kChordKind);
         const model::TrackId style = ensureTrack(registry, controller, kStyleKind);
@@ -361,14 +364,15 @@ Json setup(app::Registry& registry, app::ProjectController& controller) {
                 track.armed = false;
                 track.monitor = false;
             });
-            loadPartInstrument(registry, controller, id, part, summary ? summary->style.voices.at(part) : std::nullopt);
+            loadPartInstrument(builtin, registry, controller, id, part,
+                               summary ? summary->style.voices.at(part) : std::nullopt);
         }
     });
     return app::projectState(controller);
 }
 
-Json loadStyle(app::Registry& registry, app::ProjectController& controller, const model::TrackId& id,
-               const std::filesystem::path& path) {
+Json loadStyle(BuiltinArranger& builtin, app::Registry& registry, app::ProjectController& controller,
+               const model::TrackId& id, const std::filesystem::path& path) {
     const auto summary = readStyle(path);
     if (!summary) {
         throw AppError("cannot read " + path.string() + " as a style, pick a .sty, .prs or .sst file");
@@ -383,7 +387,7 @@ Json loadStyle(app::Registry& registry, app::ProjectController& controller, cons
     controller.project().group("load style " + summary->name, [&] {
         app::editTrack(controller, id, "load style " + summary->name,
                        [&](model::Track& track) { track.instrument.value().state = stateBytes(state); });
-        followStyle(registry, controller, id, *summary);
+        followStyle(builtin, registry, controller, id, *summary);
     });
     Json result = summaryJson(*summary);
     result["track"] = id.value;
@@ -394,18 +398,22 @@ Json loadStyle(app::Registry& registry, app::ProjectController& controller, cons
 }  // namespace
 
 void registerBuiltinArranger(app::Registry& registry, app::ProjectController& controller, app::Nav& nav) {
-    QObject::connect(&controller, &app::ProjectController::projectChanged, &controller,
-                     [&registry, &controller] { loadStandInsForMissingVoices(registry, controller); });
-    registry.addAction({.id = "arranger.setup",
-                        .title = "Set up built-in arranger",
-                        .description =
-                            "Adds Chords and Style tracks when the project lacks them, plays the Style track "
-                            "through the Arranger, and adds a track per style part that plays it.",
-                        .aliases = {"built-in arranger", "play styles without a keyboard"},
-                        .keywords = {"style", "arranger", "yamaha"},
-                        .category = "Yamaha",
-                        .run = [&registry, &controller](const Json&) { return setup(registry, controller); },
-                        .menus = {app::kTrackMenu, kYamahaMenu}});
+    const auto builtin = std::make_shared<BuiltinArranger>();
+    QObject::connect(
+        &controller, &app::ProjectController::projectChanged, &controller,
+        [builtin, &registry, &controller] { loadStandInsForMissingVoices(*builtin, registry, controller); });
+    QObject::connect(&controller, &app::ProjectController::projectReplaced, &controller,
+                     [builtin] { builtin->waitingParts.clear(); });
+    registry.addAction(
+        {.id = "arranger.setup",
+         .title = "Set up built-in arranger",
+         .description = "Adds Chords and Style tracks when the project lacks them, plays the Style track "
+                        "through the Arranger, and adds a track per style part that plays it.",
+         .aliases = {"built-in arranger", "play styles without a keyboard"},
+         .keywords = {"style", "arranger", "yamaha"},
+         .category = "Yamaha",
+         .run = [builtin, &registry, &controller](const Json&) { return setup(*builtin, registry, controller); },
+         .menus = {app::kTrackMenu, kYamahaMenu}});
     registry.addAction(
         {.id = "arranger.style.load",
          .title = "Choose style",
@@ -416,9 +424,9 @@ void registerBuiltinArranger(app::Registry& registry, app::ProjectController& co
          .schema = {{"required", {"path"}},
                     {"properties", {{"track", {{"type", "string"}}}, {"path", {{"type", "string"}}}}}},
          .run =
-             [&registry, &controller, &nav](const Json& params) {
+             [builtin, &registry, &controller, &nav](const Json& params) {
                  const model::TrackId id = arrangerTrack(controller, nav, params);
-                 return loadStyle(registry, controller, id,
+                 return loadStyle(*builtin, registry, controller, id,
                                   registry.checkedPath(app::param<std::string>(params, "path"), app::PathAccess::Read));
              },
          .menus = {kYamahaMenu},

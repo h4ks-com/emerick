@@ -42,7 +42,7 @@ Glass: the control bar and popovers use `slate` at 96% with a 1 px top highlight
 +-----------+----------------------------------------------------------+
 ```
 
-Left aligned everywhere. Track header holds arm, mute, solo, name and an instrument icon, and a thin level meter along its right edge; the inspector shows the selected track's inputs and outputs per track (audio device and channels, MIDI port and channel), always visible, never hidden in a global preference. A track whose routes fail shows a warning icon in `rec` in its header and the inspector, the transport shows one when the audio device stops, and hovering the icon shows the whole message. Dragging the inspector's right edge, or the header column's edge above the tracks or beside the piano keys, resizes it, and the width stays as a setting.
+Left aligned everywhere. Track header holds arm, mute, solo, name and an instrument icon, and a thin level meter along its right edge; the inspector shows the selected track's inputs and outputs per track (audio device and channels, MIDI port and channel), always visible, never hidden in a global preference. A track whose routes fail shows a warning icon in `rec` on the corner of its header's track icon, where it leaves the name its room, and in the inspector, the transport shows one when the audio device stops, and hovering the icon shows the whole message. Dragging the inspector's right edge, or the header column's edge above the tracks or beside the piano keys, resizes it, and the width stays as a setting.
 
 A track's MIDI input picker lists the input ports and then the other tracks whose instrument sends MIDI, as "Style / Arranger", track name first; the channel picker beside it filters either.
 

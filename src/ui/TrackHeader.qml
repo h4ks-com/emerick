@@ -125,6 +125,20 @@ Rectangle {
                 iconName: header.icon
                 iconColor: header.selected ? Theme.ink : Theme.inkDim
                 background: null
+
+                // The badge sits on the icon's corner, so it never takes room from the track name.
+                WarningBadge {
+                    objectName: "track.errors:" + header.trackId
+                    message: Project.trackErrors[header.trackId] ?? ""
+                    anchors.right: parent.right
+                    anchors.bottom: parent.bottom
+                    anchors.rightMargin: -Theme.space1
+                    anchors.bottomMargin: -Theme.space1
+                    implicitWidth: Theme.badgeSize
+                    implicitHeight: Theme.badgeSize
+                    icon.width: Theme.badgeSize
+                    icon.height: Theme.badgeSize
+                }
             }
 
             Item {
@@ -132,6 +146,7 @@ Rectangle {
                 Layout.fillHeight: true
                 Layout.leftMargin: Theme.space1
                 Label {
+                    objectName: "track.name:" + header.trackId
                     anchors.fill: parent
                     visible: !rename.visible
                     text: header.name
@@ -195,12 +210,6 @@ Rectangle {
                 implicitWidth: Theme.headerButton
                 implicitHeight: Theme.headerButton
                 Layout.preferredWidth: Theme.headerButton
-            }
-            WarningBadge {
-                objectName: "track.errors:" + header.trackId
-                message: Project.trackErrors[header.trackId] ?? ""
-                implicitWidth: Theme.headerButton
-                implicitHeight: Theme.headerButton
             }
             ChromeButton {
                 objectName: "track.showMenu:" + header.trackId

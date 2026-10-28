@@ -96,10 +96,16 @@ TEST_CASE("a track's route error shows as a warning badge in its header and the 
     REQUIRE(processUntil([&] { return tip->property("opened").toBool(); }));
     CHECK(tip->property("width").toReal() <= 320);
     CHECK(tip->property("contentItem").value<QObject*>()->property("lineCount").toInt() > 1);
+    QQuickItem* icon = main.item("track.select:" + id);
+    const QRectF badgeArea = badge->mapRectToItem(icon, QRectF(0, 0, badge->width(), badge->height()));
+    CHECK(QRectF(0, 0, icon->width(), icon->height()).intersects(badgeArea));
+    QQuickItem* name = main.item("track.name:" + id);
+    const qreal nameWidth = name->width();
 
     main.rig.run("track.setAudioOut", {{"track", phones.id.value}, {"device", "interface"}});
     MainWindow::settle();
     CHECK_FALSE(badge->isVisible());
+    CHECK(name->width() == nameWidth);
     CHECK(MainWindow::find(main.window->contentItem(), "inspector.trackErrors") == nullptr);
     main.rig.run("project.new");
     MainWindow::settle();

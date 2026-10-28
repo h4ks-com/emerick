@@ -106,6 +106,7 @@ QtObject {
     readonly property int colorStripe: 4
     readonly property int iconSize: 18
     readonly property int headerButton: 20
+    readonly property int badgeSize: 12
     readonly property int clipLabelHeight: 16
     readonly property int clipGrip: 8
     readonly property int fadeHandle: 8

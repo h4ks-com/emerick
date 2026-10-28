@@ -31,7 +31,25 @@ namespace {
 const std::vector<std::string> kPartNames{"Rhythm 1", "Rhythm 2", "Bass",     "Chord 1",
                                           "Chord 2",  "Pad",      "Phrase 1", "Phrase 2"};
 
+// Expansion Voices reads its store under HOME, so we point HOME at a folder of our own while a test runs.
+class HomeFolder {
+public:
+    explicit HomeFolder(const std::filesystem::path& folder) : saved_(qgetenv("HOME")) {
+        std::filesystem::create_directories(folder);
+        qputenv("HOME", QByteArray::fromStdString(folder.string()));
+    }
+    ~HomeFolder() { qputenv("HOME", saved_); }
+    HomeFolder(const HomeFolder&) = delete;
+    HomeFolder& operator=(const HomeFolder&) = delete;
+    HomeFolder(HomeFolder&&) = delete;
+    HomeFolder& operator=(HomeFolder&&) = delete;
+
+private:
+    QByteArray saved_;
+};
+
 struct ArrangerRig : YamahaRig {
+    HomeFolder home{path("home")};
     app::PluginCatalog catalog{{.cacheFolder = path("cache"),
                                 .scanner = EMERICK_CLAP_SCANNER,
                                 .folders = {},
@@ -83,23 +101,6 @@ struct ArrangerRig : YamahaRig {
     }
 };
 
-// Expansion Voices reads its store under HOME, so we point HOME at a folder of our own while a test runs.
-class HomeFolder {
-public:
-    explicit HomeFolder(const std::filesystem::path& folder) : saved_(qgetenv("HOME")) {
-        std::filesystem::create_directories(folder);
-        qputenv("HOME", QByteArray::fromStdString(folder.string()));
-    }
-    ~HomeFolder() { qputenv("HOME", saved_); }
-    HomeFolder(const HomeFolder&) = delete;
-    HomeFolder& operator=(const HomeFolder&) = delete;
-    HomeFolder(HomeFolder&&) = delete;
-    HomeFolder& operator=(HomeFolder&&) = delete;
-
-private:
-    QByteArray saved_;
-};
-
 // The demo style with the last byte of the first match of message replaced by value.
 std::filesystem::path patchedStyle(const ArrangerRig& rig, const std::string& name,
                                    std::span<const std::uint8_t> message, std::uint8_t value) {
@@ -132,7 +133,6 @@ float loudest(const std::filesystem::path& file) {
 
 TEST_CASE("choosing a style switches the part tracks it has voices for between Expansion Voices and General MIDI") {
     ArrangerRig rig;
-    const HomeFolder home{rig.path("home")};
     voices::test::SyntheticStore store;
     const std::string wave = store.addWave(voices::test::linearBlob(voices::test::sine(440.0, 44100.0, 441), 44100.0));
     store.addPack("Pack", {voices::test::SyntheticVoice{
@@ -179,7 +179,6 @@ TEST_CASE("choosing a style switches the part tracks it has voices for between E
 
 TEST_CASE("a part without an installed voice plays its part's General MIDI default and warns which pack it needs") {
     ArrangerRig rig;
-    const HomeFolder home{rig.path("home")};
     rig.run("arranger.setup");
     const std::string style = rig.trackOfKind("yamaha.style");
     rig.run("arranger.style.load", {{"track", style}, {"path", rig.demo.string()}});
@@ -215,7 +214,6 @@ TEST_CASE("a part without an installed voice plays its part's General MIDI defau
 
 TEST_CASE("a drum part's General MIDI picks the kit the style's program names, and Standard for any other program") {
     ArrangerRig rig;
-    const HomeFolder home{rig.path("home")};
     rig.run("arranger.setup");
     const std::string style = rig.trackOfKind("yamaha.style");
     const auto drums = [&](std::size_t id) {
@@ -236,7 +234,6 @@ TEST_CASE("a drum part's General MIDI picks the kit the style's program names, a
 
 TEST_CASE("the voice list's note rows give a drum part's General MIDI a drum map, and a kit without rows gets none") {
     ArrangerRig rig;
-    const HomeFolder home{rig.path("home")};
     const std::filesystem::path mapped = rig.path("mapped.csv");
     std::ofstream(mapped) << "127,0,1,29,38\n127, 0, 1, 30, -1\n127,0,1,36,36\n127,0,1,200,36\n127,0,2,40,41\n";
     const std::filesystem::path other = rig.path("other.csv");
@@ -261,7 +258,6 @@ TEST_CASE("the voice list's note rows give a drum part's General MIDI a drum map
 
 TEST_CASE("the voice list picks the General MIDI family that stands in for a part's voice") {
     ArrangerRig rig;
-    const HomeFolder home{rig.path("home")};
     const std::filesystem::path inside = rig.path("inside.csv");
     std::ofstream(inside) << "msb,lsb,program,category\n8,2,26,A.Guitar\r\n0,0,34,Nothing\n8,2\n";
     const std::filesystem::path outside = rig.path("outside.csv");
@@ -289,7 +285,6 @@ TEST_CASE("the voice list picks the General MIDI family that stands in for a par
 
 TEST_CASE("a rhythm part on a melodic bank stands in with a percussion sound unless the voice list names its family") {
     ArrangerRig rig;
-    const HomeFolder home{rig.path("home")};
     const std::filesystem::path list = rig.path("list.csv");
     std::ofstream(list) << "8,0,1,Bass\n";
     rig.run("arranger.setup");
@@ -344,7 +339,6 @@ TEST_CASE("the style list reads the style folders, and choosing a style loads it
     CHECK(styles[0].at("meter") == "4/4");
     CHECK(styles[0].at("sections") == Json::array({"I1", "A", "B", "Fill", "Break", "E1"}));
 
-    const HomeFolder home{rig.path("home")};
     rig.run("arranger.setup");
     const std::string style = rig.trackOfKind("yamaha.style");
     CHECK_THROWS_AS(rig.run("arranger.style.load", {{"track", style}, {"path", (rig.styles / "Notes.txt").string()}}),
@@ -408,7 +402,6 @@ TEST_CASE("the part tracks play what the Arranger sends them without being armed
 
 TEST_CASE("export mix and stems render the part tracks the Arranger plays from the Chords and Style lanes") {
     ArrangerRig rig;
-    const HomeFolder home{rig.path("home")};
     rig.run("arranger.setup");
     const std::string style = rig.trackOfKind("yamaha.style");
     rig.run("arranger.style.load", {{"track", style}, {"path", rig.demo.string()}});
@@ -428,7 +421,6 @@ TEST_CASE("export mix and stems render the part tracks the Arranger plays from t
 
 TEST_CASE("an export runs to the end of the style's Ending when the Style lane ends on one") {
     ArrangerRig rig;
-    const HomeFolder home{rig.path("home")};
     rig.run("arranger.setup");
     const std::string style = rig.trackOfKind("yamaha.style");
     rig.run("arranger.style.load", {{"track", style}, {"path", rig.demo.string()}});

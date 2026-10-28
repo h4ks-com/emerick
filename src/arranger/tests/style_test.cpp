@@ -123,11 +123,19 @@ TEST_CASE("an SFF2 table reads three ranges, the SFF2 tables and the bass bit") 
 
 TEST_CASE("a Cntt chunk sets the bass flag of its channel") {
     const TableSpec spec{.source = 10,
-                         .destination = 10,
+                         .destination = 11,
                          .ranges = {{{0, 1, 3, 0, 127, 4}, {0, 1, 3, 0, 127, 4}, {0, 1, 3, 0, 127, 4}}}};
     const Bytes cntt = chunk("Cntt", Bytes{10, 0x81});
     const Style style = parseStyle(styleWith(casm({{"Main A", {ctab(spec), cntt}}})));
     CHECK(findSection(style, Section::Main, 0)->rules[10]->ranges[1].bassOn);
+}
+
+TEST_CASE("a table that plays on the Bass part has bass on") {
+    const TableSpec spec{.source = 12,
+                         .destination = 10,
+                         .ranges = {{{0, 1, 3, 0, 127, 4}, {0, 1, 3, 0, 127, 4}, {0, 1, 3, 0, 127, 4}}}};
+    const Style style = parseStyle(styleWith(casm({{"Main A", {ctb2(spec)}}})));
+    CHECK(findSection(style, Section::Main, 0)->rules[12]->ranges[0].bassOn);
 }
 
 TEST_CASE("a style channel the CASM leaves out follows the default rule") {
@@ -136,7 +144,10 @@ TEST_CASE("a style channel the CASM leaves out follows the default rule") {
     REQUIRE(drums);
     CHECK(drums->ranges[1].rule == NoteRule::RootFixed);
     CHECK(drums->ranges[1].table == NoteTable::Bypass);
-    CHECK(findSection(style, Section::Main, 0)->rules[13]->ranges[1].table == NoteTable::Chord);
+    const auto& phrase = findSection(style, Section::Main, 0)->rules[15];
+    CHECK(phrase->ranges[1].table == NoteTable::Chord);
+    CHECK(phrase->ranges[1].highKey == 5);
+    CHECK(findSection(style, Section::Main, 0)->rules[10]->ranges[1].bassOn);
     CHECK_FALSE(findSection(style, Section::Main, 0)->rules[3].has_value());
 }
 

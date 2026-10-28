@@ -55,7 +55,8 @@ constexpr int kPitchClasses = 12;
 constexpr std::uint8_t kBassOnBit = 0x80;
 constexpr int kRhythm2Channel = 9;
 constexpr int kBassChannel = 10;
-constexpr int kPadChannel = 13;
+// With the high key on F every root moves to its nearest octave, a tritone going down.
+constexpr int kNearestRootHighKey = 5;
 
 enum class Dialect : std::uint8_t { Sff1, Sff2 };
 
@@ -123,6 +124,13 @@ int channelValue(std::uint8_t value) {
     return value;
 }
 
+// A table that plays on the Bass part follows the bass note of a slash chord whatever its NTT says.
+void forceBassOnBassPart(ChannelRule& rule) {
+    if (rule.destination == kBassChannel) {
+        std::ranges::for_each(rule.ranges, [](Transposition& range) { range.bassOn = true; });
+    }
+}
+
 struct SourceRule {
     int channel = 0;
     ChannelRule rule;
@@ -149,6 +157,7 @@ SourceRule readTable(std::span<const std::uint8_t> bytes, Dialect dialect) {
     rule.sourceType = bytes[19];
     if (dialect == Dialect::Sff1) {
         rule.ranges.fill(readTransposition(bytes.subspan(20, 6), dialect));
+        forceBassOnBassPart(rule);
         return result;
     }
     constexpr std::size_t kRangeLength = 6;
@@ -157,6 +166,7 @@ SourceRule readTable(std::span<const std::uint8_t> bytes, Dialect dialect) {
     for (std::size_t range = 0; range < rule.ranges.size(); ++range) {
         rule.ranges.at(range) = readTransposition(bytes.subspan(22 + range * kRangeLength, kRangeLength), dialect);
     }
+    forceBassOnBassPart(rule);
     return result;
 }
 
@@ -220,16 +230,11 @@ ChannelRule defaultRule(int sourceChannel) {
     Transposition& transposition = rule.ranges[0];
     if (sourceChannel <= kRhythm2Channel) {
         transposition = {.rule = NoteRule::RootFixed, .table = NoteTable::Bypass, .retrigger = RetriggerRule::Stop};
-    } else if (sourceChannel == kBassChannel) {
-        transposition = {.table = NoteTable::Melody,
-                         .bassOn = true,
-                         .highKey = 3,
-                         .noteLow = 28,
-                         .retrigger = RetriggerRule::RetriggerToRoot};
-    } else if (sourceChannel <= kPadChannel) {
-        transposition = {.table = NoteTable::Chord, .highKey = 7, .retrigger = RetriggerRule::PitchShift};
     } else {
-        transposition = {.table = NoteTable::Melody, .highKey = 7, .retrigger = RetriggerRule::PitchShift};
+        transposition = {.table = NoteTable::Chord,
+                         .bassOn = sourceChannel == kBassChannel,
+                         .highKey = kNearestRootHighKey,
+                         .retrigger = RetriggerRule::PitchShift};
     }
     rule.ranges.fill(transposition);
     if (sourceChannel > kRhythm2Channel) {

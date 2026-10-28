@@ -229,7 +229,7 @@ TEST_CASE("the part tracks play what the Arranger sends them without being armed
     CHECK(std::ranges::max(output | std::views::transform([](float sample) { return std::abs(sample); })) > 0.01F);
 }
 
-TEST_CASE("a style without drum notes in its Mains plays no drums, as an Audio Style") {
+TEST_CASE("a style whose Mains leave Rhythm 1 empty plays no drums, as an Audio Style") {
     arranger::Style style = arranger::parseStyle(arranger::test::demoStyle());
     CHECK(yamaha::stylePlaysDrums(style));
     for (arranger::StyleSection& section : style.sections) {

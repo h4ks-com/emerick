@@ -51,7 +51,8 @@ std::vector<StyleSummary> listStyles(std::span<const std::filesystem::path> fold
 // True when the style plays the section a Style track block asks for: a fill to a Main needs that Main, and a fill to
 // the same Main needs any fill.
 bool stylePlays(const arranger::Style& style, Section kind, int variation);
-// False for an Audio Style, whose drums are audio the keyboard keeps and no style file carries.
+// True when Rhythm 1 plays in a Main. An Audio Style keeps that kit as audio inside the keyboard, so its Rhythm 1 is
+// empty.
 bool stylePlaysDrums(const arranger::Style& style);
 app::Json summaryJson(const StyleSummary& summary);
 // What arranger.style.list returns: every style in the Style folders setting.

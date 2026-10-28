@@ -29,6 +29,7 @@ std::shared_ptr<ClapInstrument> generalMidi() {
 
 constexpr std::uint32_t kSound = 0;
 constexpr std::uint32_t kDrumKit = 1;
+constexpr std::uint32_t kFollow = 2;
 constexpr double kFlute = 73.0;
 
 struct ParamValue {
@@ -102,9 +103,9 @@ TEST_CASE("a program change plays another General MIDI sound") {
     CHECK(differenceEnergy(piano, flute) > 0.5 * energy(piano));
 }
 
-TEST_CASE("the General MIDI instrument lists its sounds and drum kits as params") {
+TEST_CASE("the General MIDI instrument lists its sounds, drum kits and Follow program changes as params") {
     const std::vector<ClapParam> params = generalMidi()->params();
-    REQUIRE(params.size() == 2);
+    REQUIRE(params.size() == 3);
     CHECK(params[0].name == "Sound");
     CHECK(params[0].enumerated);
     REQUIRE(params[0].choices.size() == 128);
@@ -114,6 +115,9 @@ TEST_CASE("the General MIDI instrument lists its sounds and drum kits as params"
     CHECK(params[1].name == "Drum kit");
     CHECK(params[1].choices == std::vector<std::string>{"Standard", "Room", "Power", "Electronic", "TR-808", "Jazz",
                                                         "Brush", "Orchestra", "SFX"});
+    CHECK(params[2].name == "Follow program changes");
+    CHECK(params[2].choices == std::vector<std::string>{"Off", "On"});
+    CHECK(params[2].defaultValue == 1.0);
 }
 
 TEST_CASE("the Sound param plays its sound on every melodic channel until a program change picks another") {
@@ -146,6 +150,20 @@ TEST_CASE("a program change on a melodic channel sets the Sound param and tells 
     play({0xC8, 0, 0});
     CHECK_FALSE(instrument->takeParamsChanged());
     CHECK(instrument->paramValue(kSound) == kFlute);
+}
+
+TEST_CASE("with Follow program changes off the Sound param ignores program changes and melodic bank selects") {
+    const std::vector<float> flute = render({{0x90, 72, 100}}, {{kSound, kFlute}});
+    const std::vector<float> ignored =
+        render({{0xB0, 0, 8}, {0xC0, 0, 0}, {0x90, 72, 100}}, {{kSound, kFlute}, {kFollow, 0.0}});
+    CHECK(differenceEnergy(ignored, flute) < 0.01 * energy(flute));
+}
+
+TEST_CASE("with Follow program changes off a drum bank select still plays a drum kit") {
+    const std::vector<float> keys = render({{0x98, 42, 100}});
+    const std::vector<float> hiHat = render({{0xB8, 0, 127}, {0xC8, 0, 0}, {0x98, 42, 100}}, {{kFollow, 0.0}});
+    REQUIRE(loudest(hiHat) > 0.01F);
+    CHECK(zeroCrossings(hiHat) > 4 * zeroCrossings(keys));
 }
 
 TEST_CASE("the Drum kit param picks the kit channel 10 plays") {
@@ -182,23 +200,29 @@ TEST_CASE("a drum bank select on channel 10 keeps the drums, and a kit the Sound
 }
 
 TEST_CASE(
-    "the instrument saves its SoundFont path, sound and drum kit, and reads a plain path as older projects saved") {
+    "the instrument saves its SoundFont path, sound, drum kit and Follow program changes, and reads a plain path as "
+    "older projects saved") {
     const std::shared_ptr<ClapInstrument> instrument = generalMidi();
     instrument->setParam(kSound, kFlute);
     instrument->setParam(kDrumKit, 4.0);
+    instrument->setParam(kFollow, 0.0);
     const auto saved = instrument->saveState();
     REQUIRE(saved.has_value());
-    CHECK(std::string(saved->begin(), saved->end()) == R"({"drumKit":4,"sound":73,"soundFont":""})");
+    CHECK(std::string(saved->begin(), saved->end()) ==
+          R"({"drumKit":4,"followProgramChanges":false,"sound":73,"soundFont":""})");
     const std::shared_ptr<ClapInstrument> reloaded = generalMidi();
     REQUIRE(reloaded->loadState(*saved));
     CHECK(reloaded->paramValue(kSound) == kFlute);
     CHECK(reloaded->paramText(kDrumKit, *reloaded->paramValue(kDrumKit)) == "TR-808");
+    CHECK(reloaded->paramValue(kFollow) == 0.0);
 
     const std::string missing = "/no/such/sounds.sf2";
     REQUIRE(reloaded->loadState(std::vector<std::uint8_t>(missing.begin(), missing.end())));
     CHECK(reloaded->paramValue(kSound) == 0.0);
+    CHECK(reloaded->paramValue(kFollow) == 1.0);
     const auto plain = reloaded->saveState();
     REQUIRE(plain.has_value());
-    CHECK(std::string(plain->begin(), plain->end()) == R"({"drumKit":0,"sound":0,"soundFont":"/no/such/sounds.sf2"})");
+    CHECK(std::string(plain->begin(), plain->end()) ==
+          R"({"drumKit":0,"followProgramChanges":true,"sound":0,"soundFont":"/no/such/sounds.sf2"})");
     CHECK_FALSE(reloaded->activate(kRate, kBlock));
 }

@@ -24,6 +24,7 @@ using emerick::gm::bundledSoundFont;
 using emerick::gm::eventAs;
 using emerick::gm::Gm;
 using emerick::gm::gmOf;
+using emerick::gm::kChannels;
 using emerick::gm::kDrumKits;
 using emerick::gm::kParams;
 using emerick::gm::kState;
@@ -32,19 +33,28 @@ using emerick::gm::wantedSoundFont;
 
 constexpr const char* kSoundFontFile = "GeneralUser-GS.sf2";
 constexpr int kDrumChannel = 9;
-constexpr int kChannels = 16;
 constexpr int kBankSelect = 0;
 constexpr int kDrumBank = 128;
 
 // Yamaha and Roland modules select a drum kit on any channel with these bank select MSBs.
 constexpr bool isDrumBank(int msb) { return msb == 120 || msb == 126 || msb == 127; }
 
-void selectBank(fluid_synth_t* synth, int channel, int msb) {
+void setDrums(Gm& gm, int channel, bool drums) {
+    fluid_synth_set_channel_type(gm.synth.get(), channel, drums ? CHANNEL_TYPE_DRUM : CHANNEL_TYPE_MELODIC);
+    gm.drumChannels.at(static_cast<std::size_t>(channel)) = drums;
+}
+
+void selectBank(Gm& gm, int channel, int msb) {
     if (isDrumBank(msb)) {
-        fluid_synth_set_channel_type(synth, channel, CHANNEL_TYPE_DRUM);
+        setDrums(gm, channel, true);
     } else if (channel != kDrumChannel) {
-        fluid_synth_set_channel_type(synth, channel, CHANNEL_TYPE_MELODIC);
+        setDrums(gm, channel, false);
     }
+}
+
+bool follows(const Gm& gm, int channel) {
+    return gm.followProgramChanges.load(std::memory_order_relaxed) ||
+           gm.drumChannels.at(static_cast<std::size_t>(channel));
 }
 
 bool activate(const clap_plugin* plugin, double sampleRate, std::uint32_t /*unused*/, std::uint32_t /*unused*/) {
@@ -106,13 +116,18 @@ void playMidi(Gm& gm, const std::array<std::uint8_t, 3>& data) {
             break;
         case 0xB0:
             if (first == kBankSelect) {
-                selectBank(synth, channel, second);
+                if (!gm.followProgramChanges.load(std::memory_order_relaxed) && !isDrumBank(second)) {
+                    break;
+                }
+                selectBank(gm, channel, second);
             }
             fluid_synth_cc(synth, channel, first, second);
             break;
         case 0xC0:
-            fluid_synth_program_change(synth, channel, first);
-            followProgram(gm, channel, first);
+            if (follows(gm, channel)) {
+                fluid_synth_program_change(synth, channel, first);
+                followProgram(gm, channel, first);
+            }
             break;
         case 0xD0:
             fluid_synth_channel_pressure(synth, channel, first);
@@ -143,11 +158,12 @@ void sendPrograms(Gm& gm) {
     const int sound = gm.sound.load(std::memory_order_relaxed);
     for (const int channel : std::views::iota(0, kChannels)) {
         if (channel != kDrumChannel) {
-            fluid_synth_set_channel_type(synth, channel, CHANNEL_TYPE_MELODIC);
+            setDrums(gm, channel, false);
             fluid_synth_bank_select(synth, channel, 0);
             fluid_synth_program_change(synth, channel, sound);
         }
     }
+    gm.drumChannels.at(static_cast<std::size_t>(kDrumChannel)) = true;
     fluid_synth_program_change(
         synth, kDrumChannel,
         kDrumKits.at(static_cast<std::size_t>(gm.drumKit.load(std::memory_order_relaxed))).program);

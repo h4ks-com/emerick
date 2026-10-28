@@ -128,6 +128,26 @@ TEST_CASE("the Sound param plays its sound on every melodic channel until a prog
     CHECK(differenceEnergy(overridden, piano) < 0.01 * energy(piano));
 }
 
+TEST_CASE("a program change on a melodic channel sets the Sound param and tells the host") {
+    const std::shared_ptr<ClapInstrument> instrument = generalMidi();
+    REQUIRE(instrument->activate(kRate, kBlock));
+    const auto play = [&](const Message& message) {
+        instrument->queueMidi(message, 0);
+        std::vector<float> left(kBlock);
+        std::vector<float> right(kBlock);
+        const std::array<float*, 2> mix{left.data(), right.data()};
+        instrument->processBlock(mix, kBlock, 0);
+    };
+    play({0xC3, 73, 0});
+    CHECK(instrument->takeParamsChanged());
+    CHECK(instrument->paramText(kSound, *instrument->paramValue(kSound)) == "Flute");
+    play({0xC9, 25, 0});
+    play({0xB8, 0, 127});
+    play({0xC8, 0, 0});
+    CHECK_FALSE(instrument->takeParamsChanged());
+    CHECK(instrument->paramValue(kSound) == kFlute);
+}
+
 TEST_CASE("the Drum kit param picks the kit channel 10 plays") {
     const std::vector<float> standard = render({{0x99, 38, 100}});
     const std::vector<float> electronic = render({{0x99, 38, 100}}, {{kDrumKit, 3.0}});

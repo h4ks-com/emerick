@@ -37,6 +37,7 @@ struct Gm {
     std::atomic<int> sound{0};
     std::atomic<int> drumKit{0};
     std::atomic<bool> programsPending{true};
+    bool soundChanged = false;
     std::filesystem::path loadedSoundFont;
     double loadedRate = 0.0;
     bool active = false;

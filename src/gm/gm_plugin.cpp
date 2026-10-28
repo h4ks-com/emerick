@@ -13,6 +13,7 @@
 #include <memory>
 #include <ranges>
 #include <string>
+#include <utility>
 
 #include "gm.hpp"
 #include "gm_sounds.hpp"
@@ -33,6 +34,7 @@ constexpr const char* kSoundFontFile = "GeneralUser-GS.sf2";
 constexpr int kDrumChannel = 9;
 constexpr int kChannels = 16;
 constexpr int kBankSelect = 0;
+constexpr int kDrumBank = 128;
 
 // Yamaha and Roland modules select a drum kit on any channel with these bank select MSBs.
 constexpr bool isDrumBank(int msb) { return msb == 120 || msb == 126 || msb == 127; }
@@ -72,7 +74,19 @@ bool activate(const clap_plugin* plugin, double sampleRate, std::uint32_t /*unus
 
 int velocity(double clapVelocity) { return std::clamp(static_cast<int>(std::lround(clapVelocity * 127.0)), 1, 127); }
 
-void playMidi(fluid_synth_t* synth, const std::array<std::uint8_t, 3>& data) {
+// A program change on a melodic channel becomes the Sound param, so the host shows the sound the MIDI picked.
+void followProgram(Gm& gm, int channel, int program) {
+    fluid_preset_t* preset = fluid_synth_get_channel_preset(gm.synth.get(), channel);
+    if (preset == nullptr || fluid_preset_get_banknum(preset) == kDrumBank ||
+        program == gm.sound.load(std::memory_order_relaxed)) {
+        return;
+    }
+    gm.sound.store(program, std::memory_order_relaxed);
+    gm.soundChanged = true;
+}
+
+void playMidi(Gm& gm, const std::array<std::uint8_t, 3>& data) {
+    fluid_synth_t* synth = gm.synth.get();
     const int channel = data[0] & 0x0F;
     const int first = data[1] & 0x7F;
     const int second = data[2] & 0x7F;
@@ -98,6 +112,7 @@ void playMidi(fluid_synth_t* synth, const std::array<std::uint8_t, 3>& data) {
             break;
         case 0xC0:
             fluid_synth_program_change(synth, channel, first);
+            followProgram(gm, channel, first);
             break;
         case 0xD0:
             fluid_synth_channel_pressure(synth, channel, first);
@@ -152,7 +167,7 @@ void play(Gm& gm, const clap_event_header* header) {
             playNote(synth, eventAs<clap_event_note>(header), false);
             break;
         case CLAP_EVENT_MIDI:
-            playMidi(synth, std::to_array(eventAs<clap_event_midi>(header).data));
+            playMidi(gm, std::to_array(eventAs<clap_event_midi>(header).data));
             break;
         case CLAP_EVENT_PARAM_VALUE:
             setParam(gm, eventAs<clap_event_param_value>(header));
@@ -160,6 +175,25 @@ void play(Gm& gm, const clap_event_header* header) {
         default:
             break;
     }
+}
+
+void reportSound(Gm& gm, const clap_output_events* out) {
+    if (!std::exchange(gm.soundChanged, false)) {
+        return;
+    }
+    const clap_event_param_value event{.header = {.size = sizeof(clap_event_param_value),
+                                                  .time = 0,
+                                                  .space_id = CLAP_CORE_EVENT_SPACE_ID,
+                                                  .type = CLAP_EVENT_PARAM_VALUE,
+                                                  .flags = 0},
+                                       .param_id = emerick::gm::kSoundParam,
+                                       .cookie = nullptr,
+                                       .note_id = -1,
+                                       .port_index = -1,
+                                       .channel = -1,
+                                       .key = -1,
+                                       .value = static_cast<double>(gm.sound.load(std::memory_order_relaxed))};
+    out->try_push(out, &event.header);
 }
 
 clap_process_status process(const clap_plugin* plugin, const clap_process* process) {
@@ -188,6 +222,7 @@ clap_process_status process(const clap_plugin* plugin, const clap_process* proce
         sendPrograms(gm);
     }
     render(rendered, process->frames_count);
+    reportSound(gm, process->out_events);
     return CLAP_PROCESS_CONTINUE;
 }
 

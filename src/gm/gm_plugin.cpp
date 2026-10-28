@@ -11,52 +11,25 @@
 #include <cstring>
 #include <filesystem>
 #include <memory>
-#include <ranges>
 #include <string>
 #include <utility>
 
 #include "gm.hpp"
-#include "gm_sounds.hpp"
 
 namespace {
 
 using emerick::gm::bundledSoundFont;
-using emerick::gm::DrumKit;
 using emerick::gm::eventAs;
 using emerick::gm::Gm;
 using emerick::gm::gmOf;
-using emerick::gm::kChannels;
-using emerick::gm::kDrumKits;
 using emerick::gm::kParams;
 using emerick::gm::kState;
+using emerick::gm::playMidi;
+using emerick::gm::sendPrograms;
 using emerick::gm::setParam;
 using emerick::gm::wantedSoundFont;
 
 constexpr const char* kSoundFontFile = "GeneralUser-GS.sf2";
-constexpr int kDrumChannel = 9;
-constexpr int kBankSelect = 0;
-constexpr int kDrumBank = 128;
-
-// Yamaha and Roland modules select a drum kit on any channel with these bank select MSBs.
-constexpr bool isDrumBank(int msb) { return msb == 120 || msb == 126 || msb == 127; }
-
-void setDrums(Gm& gm, int channel, bool drums) {
-    fluid_synth_set_channel_type(gm.synth.get(), channel, drums ? CHANNEL_TYPE_DRUM : CHANNEL_TYPE_MELODIC);
-    gm.drumChannels.at(static_cast<std::size_t>(channel)) = drums;
-}
-
-void selectBank(Gm& gm, int channel, int msb) {
-    if (isDrumBank(msb)) {
-        setDrums(gm, channel, true);
-    } else if (channel != kDrumChannel) {
-        setDrums(gm, channel, false);
-    }
-}
-
-bool follows(const Gm& gm, int channel) {
-    return gm.followProgramChanges.load(std::memory_order_relaxed) ||
-           gm.drumChannels.at(static_cast<std::size_t>(channel));
-}
 
 bool activate(const clap_plugin* plugin, double sampleRate, std::uint32_t /*unused*/, std::uint32_t /*unused*/) {
     Gm& gm = gmOf(plugin);
@@ -85,73 +58,6 @@ bool activate(const clap_plugin* plugin, double sampleRate, std::uint32_t /*unus
 
 int velocity(double clapVelocity) { return std::clamp(static_cast<int>(std::lround(clapVelocity * 127.0)), 1, 127); }
 
-// A program change becomes the Sound param on a melodic channel and the Drum kit param on a drum channel when it
-// names a kit, so the host shows what the MIDI picked.
-void followProgram(Gm& gm, int channel, int program) {
-    fluid_preset_t* preset = fluid_synth_get_channel_preset(gm.synth.get(), channel);
-    if (preset == nullptr) {
-        return;
-    }
-    if (fluid_preset_get_banknum(preset) != kDrumBank) {
-        if (program != gm.sound.load(std::memory_order_relaxed)) {
-            gm.sound.store(program, std::memory_order_relaxed);
-            gm.soundChanged = true;
-        }
-        return;
-    }
-    const auto* const kit = std::ranges::find(kDrumKits, program, &DrumKit::program);
-    const auto index = static_cast<int>(kit - kDrumKits.begin());
-    if (kit != kDrumKits.end() && index != gm.drumKit.load(std::memory_order_relaxed)) {
-        gm.drumKit.store(index, std::memory_order_relaxed);
-        gm.drumKitChanged = true;
-    }
-}
-
-void playMidi(Gm& gm, const std::array<std::uint8_t, 3>& data) {
-    fluid_synth_t* synth = gm.synth.get();
-    const int channel = data[0] & 0x0F;
-    const int first = data[1] & 0x7F;
-    const int second = data[2] & 0x7F;
-    switch (data[0] & 0xF0) {
-        case 0x80:
-            fluid_synth_noteoff(synth, channel, first);
-            break;
-        case 0x90:
-            if (second == 0) {
-                fluid_synth_noteoff(synth, channel, first);
-            } else if (first <= gm.highestNote.load(std::memory_order_relaxed)) {
-                fluid_synth_noteon(synth, channel, first, second);
-            }
-            break;
-        case 0xA0:
-            fluid_synth_key_pressure(synth, channel, first, second);
-            break;
-        case 0xB0:
-            if (first == kBankSelect) {
-                if (!gm.followProgramChanges.load(std::memory_order_relaxed) && !isDrumBank(second)) {
-                    break;
-                }
-                selectBank(gm, channel, second);
-            }
-            fluid_synth_cc(synth, channel, first, second);
-            break;
-        case 0xC0:
-            if (follows(gm, channel)) {
-                fluid_synth_program_change(synth, channel, first);
-                followProgram(gm, channel, first);
-            }
-            break;
-        case 0xD0:
-            fluid_synth_channel_pressure(synth, channel, first);
-            break;
-        case 0xE0:
-            fluid_synth_pitch_bend(synth, channel, first | (second << 7));
-            break;
-        default:
-            break;
-    }
-}
-
 void playNote(Gm& gm, const clap_event_note& note, bool on) {
     fluid_synth_t* synth = gm.synth.get();
     const int channel = std::max<int>(note.channel, 0);
@@ -164,24 +70,6 @@ void playNote(Gm& gm, const clap_event_note& note, bool on) {
     } else {
         fluid_synth_noteoff(synth, channel, note.key);
     }
-}
-
-// Picking a sound sets every melodic channel, as a GM module's own sound button does, until a program change in the
-// MIDI picks another.
-void sendPrograms(Gm& gm) {
-    fluid_synth_t* synth = gm.synth.get();
-    const int sound = gm.sound.load(std::memory_order_relaxed);
-    for (const int channel : std::views::iota(0, kChannels)) {
-        if (channel != kDrumChannel) {
-            setDrums(gm, channel, false);
-            fluid_synth_bank_select(synth, channel, 0);
-            fluid_synth_program_change(synth, channel, sound);
-        }
-    }
-    gm.drumChannels.at(static_cast<std::size_t>(kDrumChannel)) = true;
-    fluid_synth_program_change(
-        synth, kDrumChannel,
-        kDrumKits.at(static_cast<std::size_t>(gm.drumKit.load(std::memory_order_relaxed))).program);
 }
 
 void play(Gm& gm, const clap_event_header* header) {

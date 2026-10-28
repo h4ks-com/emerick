@@ -66,5 +66,5 @@ if(EMERICK_BUILD_TESTS)
     add_dependencies(emerick_test_clap emerick_test_sine emerick_test_crash emerick_test_hang emerick-clap-scanner)
     target_compile_definitions(emerick_test_clap INTERFACE EMERICK_TEST_CLAP_FOLDER="${test_clap_folder}"
         EMERICK_TEST_SINE_CLAP="${test_sine_clap}" EMERICK_CLAP_SCANNER="$<TARGET_FILE:emerick-clap-scanner>")
-    target_link_libraries(emerick_engine_tests PRIVATE emerick_engine emerick_test_clap emerick_gm_clap PkgConfig::SNDFILE)
+    target_link_libraries(emerick_engine_tests PRIVATE emerick_engine emerick_test_clap emerick_gm_clap emerick_gm_midi PkgConfig::SNDFILE)
 endif()

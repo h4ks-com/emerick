@@ -1,13 +1,19 @@
+#include "gm.hpp"
+
+#include <fluidsynth.h>
+
 #include <algorithm>
 #include <array>
 #include <catch2/catch_test_macros.hpp>
 #include <cmath>
 #include <cstdint>
+#include <initializer_list>
 #include <memory>
 #include <numeric>
 #include <ranges>
 #include <span>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "emerick/engine/clap_instrument.hpp"
@@ -88,6 +94,37 @@ std::size_t zeroCrossings(std::span<const float> samples) {
         std::views::iota(std::size_t{1}, samples.size()),
         [&](std::size_t index) { return (samples[index - 1] < 0.0F) != (samples[index] < 0.0F); }));
 }
+
+// The instrument's MIDI handling on a FluidSynth of its own, so a test reads the preset FluidSynth picked.
+class Synth {
+public:
+    Synth() {
+        gm_.settings.reset(new_fluid_settings());
+        gm_.synth.reset(new_fluid_synth(gm_.settings.get()));
+        REQUIRE(fluid_synth_sfload(gm_.synth.get(), EMERICK_GM_SOUNDFONT, 1) != FLUID_FAILED);
+        emerick::gm::sendPrograms(gm_);
+    }
+
+    void play(std::initializer_list<Message> messages) {
+        for (const Message& message : messages) {
+            emerick::gm::playMidi(gm_, message);
+        }
+    }
+
+    // The bank and program of the preset the channel plays.
+    std::pair<int, int> preset(int channel) {
+        fluid_preset_t* preset = fluid_synth_get_channel_preset(gm_.synth.get(), channel);
+        REQUIRE(preset != nullptr);
+        return {fluid_preset_get_banknum(preset), fluid_preset_get_num(preset)};
+    }
+
+    emerick::gm::Gm& gm() { return gm_; }
+
+private:
+    emerick::gm::Gm gm_;
+};
+
+constexpr int kDrumBank = 128;
 
 }  // namespace
 
@@ -246,6 +283,38 @@ TEST_CASE("a drum bank select on channel 10 keeps the drums, and a kit the Sound
             render({{status(0xB0), 0, 127}, {status(0xB0), 32, 0}, {status(0xC0), 100, 0}, {status(0x90), 42, 100}});
         CHECK(differenceEnergy(missingKit, standard) < 0.01 * energy(standard));
     }
+}
+
+TEST_CASE("a drum bank select with a kit program General MIDI lacks plays a kit from FluidSynth's drum bank") {
+    for (const auto [msb, lsb, program] : std::to_array<std::array<std::uint8_t, 3>>(
+             {{126, 8, 46}, {127, 9, 18}, {127, 9, 83}, {126, 0, 47}, {120, 0, 13}})) {
+        Synth synth;
+        synth.play({{0xB8, 0, msb}, {0xB8, 32, lsb}, {0xC8, program, 0}, {0xB3, 0, msb}, {0xC3, program, 0}});
+        CHECK(synth.preset(8) == std::pair{kDrumBank, 0});
+        CHECK(synth.preset(3) == std::pair{kDrumBank, 0});
+    }
+    Synth synth;
+    synth.gm().drumKit.store(3);
+    synth.play({{0xB8, 0, 127}, {0xC8, 46, 0}});
+    CHECK(synth.preset(8) == std::pair{kDrumBank, 24});
+    synth.play({{0xC8, 8, 0}});
+    CHECK(synth.preset(8) == std::pair{kDrumBank, 8});
+    synth.gm().followProgramChanges.store(false);
+    synth.play({{0xB2, 0, 126}, {0xC2, 47, 0}});
+    CHECK(synth.preset(2) == std::pair{kDrumBank, 8});
+}
+
+TEST_CASE("a channel a drum bank select made a drum channel keeps its kit when a param sends the programs again") {
+    Synth synth;
+    synth.play({{0xB8, 0, 127}, {0xC8, 46, 0}});
+    synth.gm().sound.store(13);
+    synth.gm().drumKit.store(1);
+    emerick::gm::sendPrograms(synth.gm());
+    CHECK(synth.preset(8) == std::pair{kDrumBank, 8});
+    CHECK(synth.preset(9) == std::pair{kDrumBank, 8});
+    CHECK(synth.preset(3) == std::pair{0, 13});
+    synth.play({{0xB8, 0, 0}, {0xC8, 13, 0}});
+    CHECK(synth.preset(8) == std::pair{0, 13});
 }
 
 TEST_CASE(

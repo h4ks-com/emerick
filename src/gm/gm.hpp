@@ -8,6 +8,7 @@
 #include <atomic>
 #include <cmath>
 #include <cstddef>
+#include <cstdint>
 #include <filesystem>
 #include <memory>
 #include <string>
@@ -73,6 +74,11 @@ inline int clampedIndex(double value, std::size_t count) {
 
 // Stores a Sound, Drum kit, Follow program changes or Highest note change for the audio thread.
 void setParam(Gm& gm, const clap_event_param_value& change);
+
+void playMidi(Gm& gm, const std::array<std::uint8_t, 3>& data);
+
+// Sends the Sound and Drum kit params to the synth as program changes.
+void sendPrograms(Gm& gm);
 
 extern const clap_plugin_state kState;
 extern const clap_plugin_params kParams;

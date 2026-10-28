@@ -1,5 +1,11 @@
+add_library(emerick_gm_midi STATIC gm_midi.cpp)
+target_link_libraries(emerick_gm_midi PUBLIC clap PkgConfig::FLUIDSYNTH)
+target_include_directories(emerick_gm_midi PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+set_target_properties(emerick_gm_midi PROPERTIES POSITION_INDEPENDENT_CODE ON)
+emerick_target(emerick_gm_midi)
+
 add_library(emerick_gm MODULE gm_plugin.cpp gm_settings.cpp)
-target_link_libraries(emerick_gm PRIVATE clap nlohmann_json::nlohmann_json PkgConfig::FLUIDSYNTH)
+target_link_libraries(emerick_gm PRIVATE emerick_gm_midi nlohmann_json::nlohmann_json)
 set_target_properties(emerick_gm PROPERTIES PREFIX "" SUFFIX ".clap" OUTPUT_NAME "Emerick GM"
     LIBRARY_OUTPUT_DIRECTORY ${emerick_bundled_clap_folder})
 if(APPLE)
@@ -23,4 +29,4 @@ target_include_directories(emerick_gm_sounds INTERFACE ${CMAKE_CURRENT_SOURCE_DI
 add_library(emerick_gm_clap INTERFACE)
 add_dependencies(emerick_gm_clap emerick_gm)
 target_compile_definitions(emerick_gm_clap INTERFACE EMERICK_GM_CLAP="${gm_bundle}"
-    EMERICK_GM_APP_FOLDER="${emerick_bundled_app_folder}")
+    EMERICK_GM_APP_FOLDER="${emerick_bundled_app_folder}" EMERICK_GM_SOUNDFONT="${gm_resources}/GeneralUser-GS.sf2")

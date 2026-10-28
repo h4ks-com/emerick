@@ -6,6 +6,7 @@
 #include <cstdlib>
 #include <optional>
 #include <ranges>
+#include <span>
 
 #include "emerick/arranger/style.hpp"
 #include "emerick/yamaha/chord.hpp"
@@ -97,16 +98,39 @@ int melodyInterval(int sourceType, int targetType, int interval) {
     return scaleOf(targetType).at(degree) + interval - source.at(degree);
 }
 
+struct ChordTones {
+    std::array<int, yamaha::kMaxChordIntervals> storage{};
+    std::size_t count = 0;
+    [[nodiscard]] std::span<const int> tones() const { return std::span(storage).first(count); }
+};
+
+ChordTones chordTones(int type) {
+    const auto intervals = yamaha::chordType(type).intervals();
+    ChordTones result{.count = intervals.size()};
+    std::ranges::transform(intervals, result.storage.begin(), pitchClass);
+    std::ranges::sort(result.storage.begin(), result.storage.begin() + static_cast<std::ptrdiff_t>(result.count));
+    return result;
+}
+
+// A chord tone keeps its degree on the new chord; a degree the new chord lacks plays its root an octave up.
 int chordInterval(int sourceType, int targetType, int interval) {
-    const int melody = melodyInterval(sourceType, targetType, interval);
-    int best = melody;
+    const auto sourceTones = chordTones(sourceType);
+    const auto targetTones = chordTones(targetType);
+    const auto source = sourceTones.tones();
+    const auto target = targetTones.tones();
+    if (const auto degree = std::ranges::find(source, interval); degree != source.end()) {
+        const auto index = static_cast<std::size_t>(degree - source.begin());
+        return index < target.size() ? target[index] : kOctave;
+    }
+    int best = interval;
     int bestDistance = kOctave;
-    for (const int tone : yamaha::chordType(targetType).intervals()) {
-        const int candidate = nearestWithPitchClass(melody, tone);
-        const int distance = std::abs(candidate - melody);
-        if (distance < bestDistance || (distance == bestDistance && candidate < best)) {
-            best = candidate;
-            bestDistance = distance;
+    for (const int tone : target) {
+        for (const int candidate : {tone - kOctave, tone, tone + kOctave}) {
+            const int distance = std::abs(candidate - interval);
+            if (distance < bestDistance || (distance == bestDistance && candidate > best)) {
+                best = candidate;
+                bestDistance = distance;
+            }
         }
     }
     return best;
@@ -212,7 +236,7 @@ const Transposition& transpositionFor(const ChannelRule& rule, int sourceNote) {
     if (sourceNote < rule.middleLow) {
         return rule.ranges[0];
     }
-    return sourceNote > rule.middleHigh ? rule.ranges[2] : rule.ranges[1];
+    return sourceNote >= rule.middleHigh ? rule.ranges[2] : rule.ranges[1];
 }
 
 int transposeNote(const ChannelRule& rule, int sourceNote, const yamaha::Chord& chord, bool megaVoice) {

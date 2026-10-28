@@ -61,6 +61,12 @@ TEST_CASE("the chord table moves notes to tones of the new chord") {
     CHECK(transposeAll(rule, {64, 67, 71}, "C(1+8)") == std::vector{60, 72, 72});
 }
 
+TEST_CASE("the chord table keeps chord tone degrees and snaps other notes up on a tie") {
+    const auto rule = ruleWith(kChord);
+    CHECK(transposeAll(rule, {71}, "C6") == std::vector{69});
+    CHECK(transposeAll(rule, {62}, "C") == std::vector{64});
+}
+
 TEST_CASE("the minor tables change only the degrees they name") {
     const std::vector<int> scale{64, 67, 69, 71};
     const auto table = [&](NoteTable value, std::string_view name) {
@@ -101,7 +107,8 @@ TEST_CASE("an SFF2 rule picks the range of each source note") {
     rule.ranges = {Transposition{.rule = NoteRule::RootFixed, .table = NoteTable::Bypass}, kMelody, kChord};
     CHECK(transposeAll(rule, {40, 64, 88}, "D") == std::vector{40, 66, 90});
     CHECK(&transpositionFor(rule, 50) == &rule.ranges[1]);
-    CHECK(&transpositionFor(rule, 81) == &rule.ranges[2]);
+    CHECK(&transpositionFor(rule, 79) == &rule.ranges[1]);
+    CHECK(&transpositionFor(rule, 80) == &rule.ranges[2]);
 }
 
 TEST_CASE("a MegaVoice part keeps its noise notes where the style wrote them") {

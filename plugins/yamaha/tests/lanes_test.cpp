@@ -328,3 +328,22 @@ TEST_CASE(
     CHECK(dataOf(main, id).at(1).at("at") == 240);
     removeTrack(main, id);
 }
+
+TEST_CASE("the voice list setting has a button that chooses its file in a file dialog") {
+    MainWindow& main = yamahaWindow();
+    main.rig.run("settings.show.yamaha");
+    QQuickItem* button = main.item("yamaha.voiceList.choose");
+    CHECK(button->property("iconName").toString() == "file");
+    CHECK(attached(button, "ToolTip.text").toString() == "Choose voice list");
+
+    const std::filesystem::path list = main.rig.path("voices.csv");
+    std::ofstream(list) << "8,0,1,Bass\n";
+    main.rig.registry.runWithFile("yamaha.voiceList.choose",
+                                  QUrl::fromLocalFile(QString::fromStdString(list.string())));
+    CHECK(main.rig.registry.settingValue("yamaha.voiceList") == list.string());
+    CHECK(processUntil(
+        [&] { return main.item("yamaha.voiceList")->property("text").toString().toStdString() == list.string(); }));
+    main.rig.registry.setSetting("yamaha.voiceList", "");
+    main.rig.run("settings.close");
+    MainWindow::settle();
+}

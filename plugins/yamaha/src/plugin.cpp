@@ -11,6 +11,7 @@
 #include <vector>
 
 #include "arranger_styles.hpp"
+#include "emerick/app/action_params.hpp"
 #include "emerick/app/core_actions.hpp"
 #include "emerick/app/project_state.hpp"
 #include "emerick/app/session_mapping.hpp"
@@ -83,6 +84,8 @@ std::optional<app::StartAlignment> styleStart(const model::Track& style, core::T
 bool playsChords(const model::Track& style, const app::PlaybackContext& context) {
     return style.instrument.has_value() && context.document != nullptr;
 }
+
+constexpr const char* kChooseVoiceListAction = "yamaha.voiceList.choose";
 
 void addSetting(app::Registry& registry, app::Setting setting) {
     setting.category = "Settings / Yamaha";
@@ -213,7 +216,23 @@ void registerSettings(app::Registry& registry, app::ProjectController& controlle
                           .defaultValue = "",
                           .hint = "Pick a CSV file with one voice per line as msb,lsb,program,category, with program "
                                   "1 to 128 and a category such as Bass, so General MIDI stands in with a sound of "
-                                  "that family"});
+                                  "that family",
+                          .merge = app::readablePath(registry),
+                          .action = kChooseVoiceListAction});
+    registry.addAction({.id = kChooseVoiceListAction,
+                        .title = "Choose voice list",
+                        .description = "Sets the CSV file that names a category for each voice, so General MIDI "
+                                       "stands in with a sound of that family.",
+                        .aliases = {"voice categories", "general midi stand-in"},
+                        .category = "Yamaha",
+                        .schema = {{"required", {"path"}}, {"properties", {{"path", {{"type", "string"}}}}}},
+                        .run =
+                            [&registry](const app::Json& params) {
+                                registry.setSetting(kVoiceListSetting, app::param<std::string>(params, "path"));
+                                return app::Json{{"path", registry.settingValue(kVoiceListSetting)}};
+                            },
+                        .menus = {kYamahaMenu},
+                        .dialog = app::FileDialog{.param = "path", .nameFilter = "Voice lists (*.csv)"}});
 }
 
 void registerTrackKinds(app::Registry& registry, const StyleSync& sync) {

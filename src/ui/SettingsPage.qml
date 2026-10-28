@@ -93,28 +93,36 @@ Rectangle {
                 }
                 Component {
                     id: plainText
-                    TextField {
-                        objectName: stringRow.modelData.id
-                        readOnly: stringRow.modelData.readOnly
-                        text: Registry.settings[objectName]
-                        implicitWidth: Theme.menuWidth
-                        implicitHeight: Theme.buttonHeight
-                        leftPadding: Theme.space2
-                        rightPadding: Theme.space2
-                        topPadding: 0
-                        bottomPadding: 0
-                        verticalAlignment: TextInput.AlignVCenter
-                        color: readOnly ? Theme.inkDim : Theme.ink
-                        font.pixelSize: Theme.textLabel
-                        ToolTip.text: stringRow.modelData.title
-                        ToolTip.visible: hovered && !activeFocus
-                        ToolTip.delay: Theme.tooltipDelay
-                        onEditingFinished: Registry.setSettingValue(objectName, text)
-                        background: Rectangle {
-                            radius: Theme.radiusClip
-                            color: parent.readOnly ? Theme.clear : Theme.lift
-                            border.width: parent.activeFocus ? Theme.hairline : 0
-                            border.color: Theme.inkDim
+                    RowLayout {
+                        spacing: Theme.space2
+                        TextField {
+                            objectName: stringRow.modelData.id
+                            readOnly: stringRow.modelData.readOnly
+                            text: Registry.settings[objectName]
+                            implicitWidth: Theme.menuWidth
+                            implicitHeight: Theme.buttonHeight
+                            leftPadding: Theme.space2
+                            rightPadding: Theme.space2
+                            topPadding: 0
+                            bottomPadding: 0
+                            verticalAlignment: TextInput.AlignVCenter
+                            color: readOnly ? Theme.inkDim : Theme.ink
+                            font.pixelSize: Theme.textLabel
+                            ToolTip.text: stringRow.modelData.title
+                            ToolTip.visible: hovered && !activeFocus
+                            ToolTip.delay: Theme.tooltipDelay
+                            onEditingFinished: Registry.setSettingValue(objectName, text)
+                            background: Rectangle {
+                                radius: Theme.radiusClip
+                                color: parent.readOnly ? Theme.clear : Theme.lift
+                                border.width: parent.activeFocus ? Theme.hairline : 0
+                                border.color: Theme.inkDim
+                            }
+                        }
+                        ChromeButton {
+                            objectName: stringRow.modelData.action
+                            visible: objectName !== ""
+                            iconName: "file"
                         }
                     }
                 }

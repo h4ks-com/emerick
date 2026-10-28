@@ -60,7 +60,7 @@ TEST_CASE("the plugin lists its settings under the Plugins group and its actions
     const QVariantMap submenu = menus.value("Plugins").toList().front().toMap();
     CHECK(submenu.value("title").toString() == "Yamaha Arranger");
     CHECK(submenu.value("row").toInt() == static_cast<int>(app::MenuRow::Menu));
-    CHECK(menus.value("Plugins/Yamaha Arranger").toList().size() == 11);
+    CHECK(menus.value("Plugins/Yamaha Arranger").toList().size() == 12);
 }
 
 TEST_CASE("a recorded take becomes the chord list and the section list") {

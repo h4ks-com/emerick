@@ -292,6 +292,20 @@ TEST_CASE("export mix and stems render the part tracks the Arranger plays from t
     CHECK(loudest(rig.path("stems") / "Bass.wav") > 0.01F);
 }
 
+TEST_CASE("an export runs to the end of the style's Ending when the Style lane ends on one") {
+    ArrangerRig rig;
+    const HomeFolder home{rig.path("home")};
+    rig.run("arranger.setup");
+    const std::string style = rig.trackOfKind("yamaha.style");
+    rig.run("arranger.style.load", {{"track", style}, {"path", rig.demo.string()}});
+    rig.controller->project().editTrack(model::TrackId{style}, "sections", [](model::Track& track) {
+        track.data = Json::parse(R"([{"at":0,"kind":"main","variation":0},{"at":7680,"kind":"ending","variation":0}])");
+    });
+
+    const Json result = rig.run("export.stems", {{"folder", rig.path("stems").string()}});
+    CHECK(result.at("end").at("bbt") == "4.1.0");
+}
+
 TEST_CASE("a style whose Mains leave Rhythm 1 empty plays no drums, as an Audio Style") {
     arranger::Style style = arranger::parseStyle(arranger::test::demoStyle());
     CHECK(yamaha::stylePlaysDrums(style));

@@ -56,6 +56,8 @@ struct MidiEvent {
 struct MidiClip {
     Ticks start = 0;
     std::vector<MidiEvent> events;  // ticks relative to start
+    // A clip whose last event starts something longer, such as a style Ending, plays until start + length.
+    Ticks length = 0;
 };
 
 // A pre-fader send taps the track before its fader and pan, a post-fader send after them.

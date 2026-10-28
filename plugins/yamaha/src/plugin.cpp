@@ -44,13 +44,14 @@ void mergeTake(model::Track& track, std::vector<Event> recorded, core::Ticks fro
     track.data = events;
 }
 
-engine::Track withRendered(const model::Track& track, const std::vector<RawEvent>& rendered) {
+engine::Track withRendered(const model::Track& track, const std::vector<RawEvent>& rendered, core::Ticks length = 0) {
     engine::Track result = app::midiEngineTrack(track);
     result.midiClips.push_back({.start = 0,
                                 .events = rendered | std::views::transform([](const RawEvent& event) {
                                               return engine::MidiEvent{event.at, event.bytes};
                                           }) |
-                                          std::ranges::to<std::vector>()});
+                                          std::ranges::to<std::vector>(),
+                                .length = length});
     return result;
 }
 
@@ -96,6 +97,26 @@ void registerDeviceProfile(app::Registry& registry) {
         profile.channelIcons[part.channel] = std::string(part.icon);
     }
     registry.addMidiDeviceProfile(std::move(profile));
+}
+
+// The last section plays its bars, or an Ending without bars plays the loaded style's Ending to its end.
+core::Ticks sectionsEnd(const model::Track& style, const std::vector<SectionEvent>& sections,
+                        const core::TempoMap& tempo) {
+    if (sections.empty()) {
+        return 0;
+    }
+    const SectionEvent& last = sections.back();
+    if (last.bars > 0) {
+        return last.at + (last.bars * tempo.ticksPerBar());
+    }
+    const auto state = arrangerState(style);
+    const auto summary =
+        last.kind == Section::Ending && state && !state->style.empty() ? readStyle(state->style) : std::nullopt;
+    if (!summary) {
+        return 0;
+    }
+    const arranger::StyleSection* ending = arranger::findSection(summary->style, Section::Ending, last.variation);
+    return ending != nullptr ? last.at + (ending->length * core::kTicksPerQuarter / summary->style.ticksPerQuarter) : 0;
 }
 
 }  // namespace
@@ -227,13 +248,14 @@ void registerTrackKinds(app::Registry& registry, const StyleSync& sync) {
                       .action = "arranger.style.load"},
          .toEngine =
              [&registry](const model::Track& track, const app::PlaybackContext& context) {
-                 std::vector<RawEvent> rendered = sectionPresses(
-                     playableEvents<SectionEvent>(track), buttonChannel(registry, track), context.tempo.ticksPerBeat());
+                 const std::vector<SectionEvent> sections = playableEvents<SectionEvent>(track);
+                 std::vector<RawEvent> rendered =
+                     sectionPresses(sections, buttonChannel(registry, track), context.tempo.ticksPerBeat());
                  if (playsChords(track, context)) {
                      std::ranges::copy(chordControls(projectChords(*context.document)), std::back_inserter(rendered));
                      std::ranges::stable_sort(rendered, {}, &RawEvent::at);
                  }
-                 return withRendered(track, rendered);
+                 return withRendered(track, rendered, sectionsEnd(track, sections, context.tempo));
              },
          .readsOtherTracks = true,
          .fromTake =

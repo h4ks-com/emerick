@@ -247,6 +247,9 @@ core::Ticks exportEnd(const engine::Session& session, const model::Document& doc
             if (!clip.events.empty()) {
                 last = std::max(last, clip.start + clip.events.back().tick);
             }
+            if (clip.length > 0) {
+                last = std::max(last, clip.start + clip.length - 1);
+            }
         }
     }
     const core::Ticks clipsEnd = projectEnd(document);

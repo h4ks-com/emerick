@@ -17,6 +17,8 @@ namespace emerick::gm {
 inline constexpr clap_id kSoundParam = 0;
 inline constexpr clap_id kDrumKitParam = 1;
 inline constexpr clap_id kFollowParam = 2;
+inline constexpr clap_id kHighestNoteParam = 3;
+inline constexpr int kHighestNote = 127;
 inline constexpr int kChannels = 16;
 
 inline std::filesystem::path& bundledSoundFont() {
@@ -40,6 +42,7 @@ struct Gm {
     std::atomic<int> sound{0};
     std::atomic<int> drumKit{0};
     std::atomic<bool> followProgramChanges{true};
+    std::atomic<int> highestNote{kHighestNote};
     std::atomic<bool> programsPending{true};
     bool soundChanged = false;
     bool drumKitChanged = false;
@@ -68,7 +71,7 @@ inline int clampedIndex(double value, std::size_t count) {
     return std::clamp(static_cast<int>(std::lround(value)), 0, static_cast<int>(count) - 1);
 }
 
-// Stores a Sound, Drum kit or Follow program changes change for the audio thread to send.
+// Stores a Sound, Drum kit, Follow program changes or Highest note change for the audio thread.
 void setParam(Gm& gm, const clap_event_param_value& change);
 
 extern const clap_plugin_state kState;

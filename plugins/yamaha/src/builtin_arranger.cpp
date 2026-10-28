@@ -35,6 +35,10 @@ constexpr std::uint32_t kVoiceParam = 0;
 constexpr std::uint32_t kSoundParam = 0;
 constexpr std::uint32_t kDrumKitParam = 1;
 constexpr std::uint32_t kFollowParam = 2;
+constexpr std::uint32_t kHighestNoteParam = 3;
+// MegaVoices play strum and fret noises from C6 (MIDI 96) up, which a General MIDI sound plays as ringing notes.
+constexpr int kMegaVoiceBank = 8;
+constexpr int kHighestMegaVoiceNote = 95;
 
 // Yamaha and Roland modules select a drum kit with these bank select MSBs, so General MIDI keeps its drum kit there.
 constexpr bool isDrumBank(int msb) { return msb == 120 || msb == 126 || msb == 127; }
@@ -206,6 +210,9 @@ void loadPartInstrument(app::Registry& registry, app::ProjectController& control
     if (controller.instruments().find(id) == nullptr) {
         return;
     }
+    registry.run("instrument.setParam", {{"track", id.value},
+                                         {"param", kHighestNoteParam},
+                                         {"value", voice->bankMsb == kMegaVoiceBank ? kHighestMegaVoiceNote : 127}});
     if (isDrumBank(voice->bankMsb)) {
         registry.run("instrument.setParam",
                      {{"track", id.value}, {"param", kDrumKitParam}, {"value", drumKitIndex(voice->program)}});

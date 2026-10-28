@@ -119,7 +119,7 @@ void playMidi(Gm& gm, const std::array<std::uint8_t, 3>& data) {
         case 0x90:
             if (second == 0) {
                 fluid_synth_noteoff(synth, channel, first);
-            } else {
+            } else if (first <= gm.highestNote.load(std::memory_order_relaxed)) {
                 fluid_synth_noteon(synth, channel, first, second);
             }
             break;
@@ -152,10 +152,13 @@ void playMidi(Gm& gm, const std::array<std::uint8_t, 3>& data) {
     }
 }
 
-void playNote(fluid_synth_t* synth, const clap_event_note& note, bool on) {
+void playNote(Gm& gm, const clap_event_note& note, bool on) {
+    fluid_synth_t* synth = gm.synth.get();
     const int channel = std::max<int>(note.channel, 0);
     if (on) {
-        fluid_synth_noteon(synth, channel, note.key, velocity(note.velocity));
+        if (note.key <= gm.highestNote.load(std::memory_order_relaxed)) {
+            fluid_synth_noteon(synth, channel, note.key, velocity(note.velocity));
+        }
     } else if (note.key < 0) {
         fluid_synth_all_notes_off(synth, note.channel < 0 ? -1 : channel);
     } else {
@@ -185,14 +188,13 @@ void play(Gm& gm, const clap_event_header* header) {
     if (header->space_id != CLAP_CORE_EVENT_SPACE_ID) {
         return;
     }
-    fluid_synth_t* synth = gm.synth.get();
     switch (header->type) {
         case CLAP_EVENT_NOTE_ON:
-            playNote(synth, eventAs<clap_event_note>(header), true);
+            playNote(gm, eventAs<clap_event_note>(header), true);
             break;
         case CLAP_EVENT_NOTE_OFF:
         case CLAP_EVENT_NOTE_CHOKE:
-            playNote(synth, eventAs<clap_event_note>(header), false);
+            playNote(gm, eventAs<clap_event_note>(header), false);
             break;
         case CLAP_EVENT_MIDI:
             playMidi(gm, std::to_array(eventAs<clap_event_midi>(header).data));

@@ -30,7 +30,9 @@ std::shared_ptr<ClapInstrument> generalMidi() {
 constexpr std::uint32_t kSound = 0;
 constexpr std::uint32_t kDrumKit = 1;
 constexpr std::uint32_t kFollow = 2;
+constexpr std::uint32_t kHighestNote = 3;
 constexpr double kFlute = 73.0;
+constexpr std::uint8_t kOrgan = 16;
 
 struct ParamValue {
     std::uint32_t id = 0;
@@ -113,7 +115,7 @@ TEST_CASE("a program change plays another General MIDI sound") {
 
 TEST_CASE("the General MIDI instrument lists its sounds, drum kits and Follow program changes as params") {
     const std::vector<ClapParam> params = generalMidi()->params();
-    REQUIRE(params.size() == 3);
+    REQUIRE(params.size() == 4);
     CHECK(params[0].name == "Sound");
     CHECK(params[0].enumerated);
     REQUIRE(params[0].choices.size() == 128);
@@ -126,6 +128,36 @@ TEST_CASE("the General MIDI instrument lists its sounds, drum kits and Follow pr
     CHECK(params[2].name == "Follow program changes");
     CHECK(params[2].choices == std::vector<std::string>{"Off", "On"});
     CHECK(params[2].defaultValue == 1.0);
+    CHECK(params[3].name == "Highest note");
+    CHECK_FALSE(params[3].enumerated);
+    CHECK(params[3].max == 127.0);
+    CHECK(params[3].defaultValue == 127.0);
+    CHECK(params[3].choices.at(95) == "95");
+}
+
+TEST_CASE("the Highest note param drops note-ons above it and keeps their note-offs") {
+    CHECK(loudest(render({{0x90, 96, 100}}, {{kHighestNote, 95.0}})) < 1e-4F);
+    CHECK(loudest(render({{0x90, 95, 100}}, {{kHighestNote, 95.0}})) > 0.01F);
+    CHECK(loudest(render({{0x90, 96, 100}})) > 0.01F);
+
+    const auto lastBlock = [](bool release) {
+        const std::shared_ptr<ClapInstrument> instrument = generalMidi();
+        REQUIRE(instrument->activate(kRate, kBlock));
+        playBlock(*instrument, {0xC0, kOrgan, 0});
+        playBlock(*instrument, {0x90, 96, 100});
+        instrument->setParam(kHighestNote, 95.0);
+        playBlock(*instrument, release ? Message{0x80, 96, 0} : Message{0xB0, 1, 0});
+        std::vector<float> left(kBlock);
+        std::vector<float> right(kBlock);
+        const std::array<float*, 2> mix{left.data(), right.data()};
+        for (int block = 0; block < 40; ++block) {
+            instrument->processBlock(mix, kBlock, 0);
+        }
+        return left;
+    };
+    const std::vector<float> held = lastBlock(false);
+    REQUIRE(energy(held) > 0.0);
+    CHECK(energy(lastBlock(true)) < 0.1 * energy(held));
 }
 
 TEST_CASE("the Sound param plays its sound on every melodic channel until a program change picks another") {
@@ -223,23 +255,26 @@ TEST_CASE(
     instrument->setParam(kSound, kFlute);
     instrument->setParam(kDrumKit, 4.0);
     instrument->setParam(kFollow, 0.0);
+    instrument->setParam(kHighestNote, 95.0);
     const auto saved = instrument->saveState();
     REQUIRE(saved.has_value());
     CHECK(std::string(saved->begin(), saved->end()) ==
-          R"({"drumKit":4,"followProgramChanges":false,"sound":73,"soundFont":""})");
+          R"({"drumKit":4,"followProgramChanges":false,"highestNote":95,"sound":73,"soundFont":""})");
     const std::shared_ptr<ClapInstrument> reloaded = generalMidi();
     REQUIRE(reloaded->loadState(*saved));
     CHECK(reloaded->paramValue(kSound) == kFlute);
     CHECK(reloaded->paramText(kDrumKit, *reloaded->paramValue(kDrumKit)) == "TR-808");
     CHECK(reloaded->paramValue(kFollow) == 0.0);
+    CHECK(reloaded->paramValue(kHighestNote) == 95.0);
 
     const std::string missing = "/no/such/sounds.sf2";
     REQUIRE(reloaded->loadState(std::vector<std::uint8_t>(missing.begin(), missing.end())));
     CHECK(reloaded->paramValue(kSound) == 0.0);
     CHECK(reloaded->paramValue(kFollow) == 1.0);
+    CHECK(reloaded->paramValue(kHighestNote) == 127.0);
     const auto plain = reloaded->saveState();
     REQUIRE(plain.has_value());
     CHECK(std::string(plain->begin(), plain->end()) ==
-          R"({"drumKit":0,"followProgramChanges":true,"sound":0,"soundFont":"/no/such/sounds.sf2"})");
+          R"({"drumKit":0,"followProgramChanges":true,"highestNote":127,"sound":0,"soundFont":"/no/such/sounds.sf2"})");
     CHECK_FALSE(reloaded->activate(kRate, kBlock));
 }

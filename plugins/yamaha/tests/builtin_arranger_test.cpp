@@ -177,6 +177,9 @@ TEST_CASE("a part without an installed voice plays its part's General MIDI defau
     CHECK(param(3, 2) == 0);
     CHECK(param(0, 0) == 0);
     CHECK(param(0, 2) == 1);
+    CHECK(param(3, 3) == 95);
+    CHECK(param(2, 3) == 127);
+    CHECK(param(0, 3) == 127);
     CHECK(warning(2) ==
           "General MIDI stands in for voice 0/0/34. Install its pack and choose Expansion Voices to hear it");
     CHECK(warning(3) ==

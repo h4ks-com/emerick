@@ -1,6 +1,6 @@
-// The General MIDI instrument's state and params. Its state is JSON with the SoundFont path, the sound and the drum
-// kit and Follow program changes, and a state that is no JSON object is a plain SoundFont path, as older projects saved
-// it.
+// The General MIDI instrument's state and params. Its state is JSON with the SoundFont path, the sound, the drum kit,
+// Follow program changes and the highest note, and a state that is no JSON object is a plain SoundFont path, as older
+// projects saved it.
 
 #include <algorithm>
 #include <array>
@@ -25,7 +25,8 @@ bool saveState(const clap_plugin* plugin, const clap_ostream* stream) {
         nlohmann::json{{"soundFont", gm.soundFont},
                        {"sound", gm.sound.load(std::memory_order_relaxed)},
                        {"drumKit", gm.drumKit.load(std::memory_order_relaxed)},
-                       {"followProgramChanges", gm.followProgramChanges.load(std::memory_order_relaxed)}}
+                       {"followProgramChanges", gm.followProgramChanges.load(std::memory_order_relaxed)},
+                       {"highestNote", gm.highestNote.load(std::memory_order_relaxed)}}
             .dump();
     std::size_t written = 0;
     while (written < text.size()) {
@@ -55,9 +56,9 @@ bool loadState(const clap_plugin* plugin, const clap_istream* stream) {
     if (!state.is_object()) {
         state = {{"soundFont", text}};
     }
-    const auto number = [&](const char* key) {
+    const auto number = [&](const char* key, double fallback = 0.0) {
         const auto found = state.find(key);
-        return found != state.end() && found->is_number() ? found->get<double>() : 0.0;
+        return found != state.end() && found->is_number() ? found->get<double>() : fallback;
     };
     const auto path = state.find("soundFont");
     Gm& gm = gmOf(plugin);
@@ -67,6 +68,8 @@ bool loadState(const clap_plugin* plugin, const clap_istream* stream) {
     const auto follow = state.find("followProgramChanges");
     gm.followProgramChanges.store(follow == state.end() || !follow->is_boolean() || follow->get<bool>(),
                                   std::memory_order_relaxed);
+    gm.highestNote.store(clampedIndex(number("highestNote", kHighestNote), kHighestNote + 1),
+                         std::memory_order_relaxed);
     gm.programsPending.store(true, std::memory_order_relaxed);
     if (gm.active && wantedSoundFont(gm) != gm.loadedSoundFont) {
         gm.host->request_restart(gm.host);
@@ -75,7 +78,7 @@ bool loadState(const clap_plugin* plugin, const clap_istream* stream) {
 }
 
 constexpr std::array<std::string_view, 2> kSwitchLabels{"Off", "On"};
-constexpr std::array<const char*, 3> kParamNames{"Sound", "Drum kit", "Follow program changes"};
+constexpr std::array<const char*, 4> kParamNames{"Sound", "Drum kit", "Follow program changes", "Highest note"};
 
 std::size_t choiceCount(clap_id id) {
     switch (id) {
@@ -83,6 +86,8 @@ std::size_t choiceCount(clap_id id) {
             return kSounds.size();
         case kDrumKitParam:
             return kDrumKits.size();
+        case kHighestNoteParam:
+            return kHighestNote + 1;
         default:
             return kSwitchLabels.size();
     }
@@ -91,15 +96,22 @@ std::size_t choiceCount(clap_id id) {
 std::uint32_t paramCount(const clap_plugin* /*unused*/) { return kParamNames.size(); }
 
 bool paramInfo(const clap_plugin* /*unused*/, std::uint32_t index, clap_param_info* info) {
-    if (index > kFollowParam) {
+    if (index > kHighestNoteParam) {
         return false;
     }
     *info = {};
     info->id = index;
-    info->flags = CLAP_PARAM_IS_STEPPED | CLAP_PARAM_IS_ENUM | CLAP_PARAM_IS_AUTOMATABLE;
+    info->flags = CLAP_PARAM_IS_STEPPED | CLAP_PARAM_IS_AUTOMATABLE;
+    if (index != kHighestNoteParam) {
+        info->flags |= CLAP_PARAM_IS_ENUM;
+    }
     std::strncpy(std::data(info->name), kParamNames.at(index), std::size(info->name));
     info->max_value = static_cast<double>(choiceCount(index) - 1);
-    info->default_value = index == kFollowParam ? 1.0 : 0.0;
+    if (index == kFollowParam) {
+        info->default_value = 1.0;
+    } else if (index == kHighestNoteParam) {
+        info->default_value = kHighestNote;
+    }
     return true;
 }
 
@@ -115,28 +127,33 @@ bool paramValue(const clap_plugin* plugin, clap_id id, double* value) {
         case kFollowParam:
             *value = gm.followProgramChanges.load(std::memory_order_relaxed) ? 1.0 : 0.0;
             return true;
+        case kHighestNoteParam:
+            *value = gm.highestNote.load(std::memory_order_relaxed);
+            return true;
         default:
             return false;
     }
 }
 
-std::string_view paramLabel(clap_id id, double value) {
+std::string paramLabel(clap_id id, double value) {
     const auto index = static_cast<std::size_t>(clampedIndex(value, choiceCount(id)));
     switch (id) {
         case kSoundParam:
-            return kSounds.at(index);
+            return std::string{kSounds.at(index)};
         case kDrumKitParam:
-            return kDrumKits.at(index).name;
+            return std::string{kDrumKits.at(index).name};
+        case kHighestNoteParam:
+            return std::to_string(index);
         default:
-            return kSwitchLabels.at(index);
+            return std::string{kSwitchLabels.at(index)};
     }
 }
 
 bool paramText(const clap_plugin* /*unused*/, clap_id id, double value, char* text, std::uint32_t size) {
-    if (id > kFollowParam || size == 0) {
+    if (id > kHighestNoteParam || size == 0) {
         return false;
     }
-    const std::string_view label = paramLabel(id, value);
+    const std::string label = paramLabel(id, value);
     const std::size_t count = std::min<std::size_t>(label.size(), size - 1);
     std::ranges::copy(label.substr(0, count), text);
     std::span(text, size)[count] = '\0';
@@ -144,7 +161,7 @@ bool paramText(const clap_plugin* /*unused*/, clap_id id, double value, char* te
 }
 
 bool paramFromText(const clap_plugin* /*unused*/, clap_id id, const char* text, double* value) {
-    if (id > kFollowParam) {
+    if (id > kHighestNoteParam) {
         return false;
     }
     const auto indices = std::views::iota(std::size_t{0}, choiceCount(id));
@@ -175,6 +192,9 @@ void setParam(Gm& gm, const clap_event_param_value& change) {
         gm.drumKit.store(clampedIndex(change.value, kDrumKits.size()), std::memory_order_relaxed);
     } else if (change.param_id == kFollowParam) {
         gm.followProgramChanges.store(change.value >= 0.5, std::memory_order_relaxed);
+    } else if (change.param_id == kHighestNoteParam) {
+        gm.highestNote.store(clampedIndex(change.value, kHighestNote + 1), std::memory_order_relaxed);
+        return;
     }
     gm.programsPending.store(true, std::memory_order_relaxed);
 }

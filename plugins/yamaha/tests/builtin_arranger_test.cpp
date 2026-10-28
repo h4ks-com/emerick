@@ -200,11 +200,11 @@ TEST_CASE("a part without an installed voice plays its part's General MIDI defau
     CHECK(param(2, 3) == 127);
     CHECK(param(0, 3) == 127);
     CHECK(warning(2) ==
-          "General MIDI stands in for voice 0/0/34. Install its pack and choose Expansion Voices to hear it");
+          "Install the pack with voice 0/0/34 and choose Expansion Voices to hear it in place of General MIDI");
     CHECK(warning(3) ==
-          "General MIDI stands in for voice 8/2/26. Install its pack and choose Expansion Voices to hear it");
+          "Install the pack with voice 8/2/26 and choose Expansion Voices to hear it in place of General MIDI");
     CHECK(warning(0) ==
-          "General MIDI stands in for voice 127/0/1. Install its pack and choose Expansion Voices to hear it");
+          "Install the pack with voice 127/0/1 and choose Expansion Voices to hear it in place of General MIDI");
     CHECK(warning(5).empty());
 
     rig.run("instrument.remove", {{"track", part(3)}});

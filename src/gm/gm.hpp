@@ -48,6 +48,8 @@ struct Gm {
     bool soundChanged = false;
     bool drumKitChanged = false;
     std::array<bool, kChannels> drumChannels{};
+    // Channels whose kit a Yamaha drum bank picked, so their notes below 35 follow the Yamaha kit layout.
+    std::array<bool, kChannels> yamahaDrums{};
     std::filesystem::path loadedSoundFont;
     double loadedRate = 0.0;
     bool active = false;
@@ -76,6 +78,8 @@ inline int clampedIndex(double value, std::size_t count) {
 void setParam(Gm& gm, const clap_event_param_value& change);
 
 void playMidi(Gm& gm, const std::array<std::uint8_t, 3>& data);
+// The note the General MIDI kit plays for a note on the channel, which differs below 35 on a Yamaha kit.
+int drumNote(const Gm& gm, int channel, int note);
 
 // Sends the Sound and Drum kit params to the synth as program changes.
 void sendPrograms(Gm& gm);

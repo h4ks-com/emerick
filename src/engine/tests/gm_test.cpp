@@ -355,3 +355,16 @@ TEST_CASE(
           R"({"drumKit":0,"followProgramChanges":true,"highestNote":127,"sound":0,"soundFont":"/no/such/sounds.sf2"})");
     CHECK_FALSE(reloaded->activate(kRate, kBlock));
 }
+
+TEST_CASE("a Yamaha kit plays its notes below 35 as the nearest General MIDI kit sound") {
+    Synth synth;
+    synth.play({{0xB8, 0, 127}, {0xC8, 0, 0}});
+    CHECK(emerick::gm::drumNote(synth.gm(), 8, 29) == 38);
+    CHECK(emerick::gm::drumNote(synth.gm(), 8, 30) == 85);
+    CHECK(emerick::gm::drumNote(synth.gm(), 8, 36) == 36);
+    const std::vector<float> roll = render({{0xB8, 0, 127}, {0xC8, 0, 0}, {0x98, 29, 100}});
+    const std::vector<float> snare = render({{0xB8, 0, 127}, {0xC8, 0, 0}, {0x98, 38, 100}});
+    CHECK(differenceEnergy(roll, snare) < 0.01 * energy(snare));
+    synth.play({{0xB9, 0, 120}, {0xC9, 0, 0}});
+    CHECK(emerick::gm::drumNote(synth.gm(), 9, 29) == 29);
+}

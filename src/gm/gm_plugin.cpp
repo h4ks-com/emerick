@@ -63,12 +63,12 @@ void playNote(Gm& gm, const clap_event_note& note, bool on) {
     const int channel = std::max<int>(note.channel, 0);
     if (on) {
         if (note.key <= gm.highestNote.load(std::memory_order_relaxed)) {
-            fluid_synth_noteon(synth, channel, note.key, velocity(note.velocity));
+            fluid_synth_noteon(synth, channel, emerick::gm::drumNote(gm, channel, note.key), velocity(note.velocity));
         }
     } else if (note.key < 0) {
         fluid_synth_all_notes_off(synth, note.channel < 0 ? -1 : channel);
     } else {
-        fluid_synth_noteoff(synth, channel, note.key);
+        fluid_synth_noteoff(synth, channel, emerick::gm::drumNote(gm, channel, note.key));
     }
 }
 

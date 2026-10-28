@@ -23,8 +23,6 @@ namespace midi = core::midi;
 using core::Ticks;
 using yamaha::Section;
 
-constexpr std::uint8_t kVolumeCc = 7;
-constexpr std::uint8_t kPanCc = 10;
 constexpr int kQuartersPerWhole = 4;
 
 Ticks floorDiv(Ticks value, Ticks unit) { return value >= 0 ? value / unit : -((-value + unit - 1) / unit); }
@@ -186,12 +184,10 @@ void Arranger::sendVoices(Ticks at) {
             continue;
         }
         const int channel = kFirstPartChannel + part;
-        const std::uint8_t control = onChannel(midi::kControlChange, channel);
-        push(pending_, {at, {control, midi::kBankSelectCc, voice->bankMsb}});
-        push(pending_, {at, {control, midi::kBankSelectLsbCc, voice->bankLsb}});
-        push(pending_, {at, {onChannel(midi::kProgramChange, channel), voice->program, 0}});
-        push(pending_, {at, {control, kVolumeCc, voice->volume}});
-        push(pending_, {at, {control, kPanCc, voice->pan}});
+        for (const auto& message : voice->setup) {
+            push(pending_,
+                 {at, {onChannel(static_cast<std::uint8_t>(message[0] & 0xF0), channel), message[1], message[2]}});
+        }
         bankMsb_.at(static_cast<std::size_t>(channel)) = voice->bankMsb;
     }
 }

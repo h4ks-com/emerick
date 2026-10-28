@@ -190,6 +190,9 @@ inline constexpr int kDrums = 8;
 inline constexpr int kBass = 10;
 inline constexpr int kChords = 11;
 inline constexpr int kPad = 13;
+// The bass's reverb send, chorus send, expression and resonance in the demo style's setup block.
+inline constexpr std::array<std::pair<std::uint8_t, std::uint8_t>, 4> kBassMix{
+    {{91, 40}, {93, 20}, {11, 120}, {71, 70}}};
 
 // An original style: Main A of two bars and every other section of one, a bass root of a beat on each bar, a CMaj7
 // stab on each bar, and an expression change on the pad at each section start.
@@ -203,6 +206,9 @@ inline Bytes demoStyle() {
     builder.marker(0, "SInt");
     builder.voice(kDrums, 127, 0, 0, 110, 64);
     builder.voice(kBass, 0, 0, 33, 100, 60);
+    for (const auto& [cc, value] : kBassMix) {
+        builder.message(0, {0xB0 | kBass, cc, value});
+    }
     builder.voice(kChords, 8, 2, 25, 90, 70);
     const std::vector<std::pair<std::string_view, std::pair<DrumNote, int>>> sections{
         {"Main A", {kMainADrum, 2}},     {"Main B", {kMainBDrum, 1}},     {"Fill In AA", {kFillADrum, 1}},

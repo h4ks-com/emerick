@@ -96,8 +96,8 @@ struct PartVoice {
     std::uint8_t bankMsb = 0;
     std::uint8_t bankLsb = 0;
     std::uint8_t program = 0;
-    std::uint8_t volume = 100;
-    std::uint8_t pan = 64;
+    // Every control change and program change of the style's setup block on the part's source channel, in order.
+    std::vector<std::array<std::uint8_t, 3>> setup;
     bool operator==(const PartVoice&) const = default;
 };
 

@@ -29,8 +29,6 @@ constexpr std::uint8_t kMetaMarker = 0x06;
 constexpr std::uint8_t kMetaEndOfTrack = 0x2F;
 constexpr std::uint8_t kMetaTempo = 0x51;
 constexpr std::uint8_t kMetaTimeSignature = 0x58;
-constexpr std::uint8_t kVolumeCc = 7;
-constexpr std::uint8_t kPanCc = 10;
 constexpr std::size_t kHeaderLength = 6;
 constexpr double kMicrosecondsPerMinute = 60'000'000.0;
 
@@ -148,16 +146,15 @@ private:
             channel.voice.program = bytes[1];
             channel.hasProgram = true;
         } else if (type == midi::kControlChange) {
-            const auto set = [&](std::uint8_t cc, std::uint8_t& field) {
-                if (bytes[1] == cc) {
-                    field = bytes[2];
-                }
-            };
-            set(midi::kBankSelectCc, channel.voice.bankMsb);
-            set(midi::kBankSelectLsbCc, channel.voice.bankLsb);
-            set(kVolumeCc, channel.voice.volume);
-            set(kPanCc, channel.voice.pan);
+            if (bytes[1] == midi::kBankSelectCc) {
+                channel.voice.bankMsb = bytes[2];
+            } else if (bytes[1] == midi::kBankSelectLsbCc) {
+                channel.voice.bankLsb = bytes[2];
+            }
+        } else {
+            return;
         }
+        channel.voice.setup.push_back(bytes);
     }
 
     Style* style_;

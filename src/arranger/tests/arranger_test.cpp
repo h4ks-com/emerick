@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <catch2/catch_test_macros.hpp>
 #include <cstdint>
+#include <iterator>
 #include <map>
 #include <span>
 #include <string_view>
@@ -62,7 +63,7 @@ Chord chord(std::string_view name) { return *Chord::parse(name); }
 
 }  // namespace
 
-TEST_CASE("starting sends each part's bank, program, volume and pan") {
+TEST_CASE("starting sends each part's setup controllers and program in the style's order") {
     Arranger arranger(demo());
     arranger.start(0);
     const auto events = renderAll(arranger, 0, 1);
@@ -70,9 +71,17 @@ TEST_CASE("starting sends each part's bank, program, volume and pan") {
     CHECK(has({0, {0xB8, 0, 127}}));
     CHECK(has({0, {0xC8, 0, 0}}));
     CHECK(has({0, {0xB8, 7, 110}}));
-    CHECK(has({0, {0xBA, 10, 60}}));
-    CHECK(has({0, {0xCA, 33, 0}}));
     CHECK(has({0, {0xBB, 32, 2}}));
+    std::vector<MidiEvent> bass;
+    std::ranges::copy_if(events, std::back_inserter(bass), [](const MidiEvent& event) {
+        return (event.bytes[0] == 0xBA || event.bytes[0] == 0xCA) && event.at == 0;
+    });
+    std::vector<MidiEvent> expected{
+        {0, {0xBA, 0, 0}}, {0, {0xBA, 32, 0}}, {0, {0xCA, 33, 0}}, {0, {0xBA, 7, 100}}, {0, {0xBA, 10, 60}}};
+    for (const auto& [cc, value] : kBassMix) {
+        expected.push_back({0, {0xBA, cc, value}});
+    }
+    CHECK(bass == expected);
 }
 
 TEST_CASE("a Main loops until something else is requested") {

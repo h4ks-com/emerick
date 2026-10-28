@@ -1,11 +1,13 @@
 #include "emerick/arranger/style.hpp"
 
+#include <array>
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 #include <cstddef>
 #include <cstdint>
 #include <ranges>
 #include <span>
+#include <vector>
 
 #include "emerick/yamaha/section.hpp"
 #include "style_builder.hpp"
@@ -57,9 +59,22 @@ TEST_CASE("a synthetic style round trips through the parser") {
     CHECK(findSection(style, Section::Ending, 0) != nullptr);
     CHECK(findSection(style, Section::Main, 2) == nullptr);
 
-    CHECK(style.voices[0] == PartVoice{127, 0, 0, 110, 64});
-    CHECK(style.voices[2] == PartVoice{0, 0, 33, 100, 60});
-    CHECK(style.voices[3] == PartVoice{8, 2, 25, 90, 70});
+    using Setup = std::vector<std::array<std::uint8_t, 3>>;
+    CHECK(style.voices[0] ==
+          PartVoice{127, 0, 0, Setup{{0xB8, 0, 127}, {0xB8, 32, 0}, {0xC8, 0, 0}, {0xB8, 7, 110}, {0xB8, 10, 64}}});
+    CHECK(style.voices[2] == PartVoice{0, 0, 33,
+                                       Setup{{0xBA, 0, 0},
+                                             {0xBA, 32, 0},
+                                             {0xCA, 33, 0},
+                                             {0xBA, 7, 100},
+                                             {0xBA, 10, 60},
+                                             {0xBA, 91, 40},
+                                             {0xBA, 93, 20},
+                                             {0xBA, 11, 120},
+                                             {0xBA, 71, 70}}});
+    CHECK(style.voices[3]->bankMsb == 8);
+    CHECK(style.voices[3]->bankLsb == 2);
+    CHECK(style.voices[3]->program == 25);
     CHECK_FALSE(style.voices[1].has_value());
 }
 

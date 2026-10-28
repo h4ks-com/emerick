@@ -291,9 +291,12 @@ Store loadStore(const fs::path& folder) {
     };
     for (const auto& [file, pack] : voiceFiles) {
         auto voice = voiceOf(file, pack);
-        if (voice && !voice->zones.empty() && std::ranges::all_of(voice->zones, [&](const Zone& zone) {
-                return playable(zone.leftWave) && playable(zone.rightWave);
-            })) {
+        if (!voice) {
+            continue;
+        }
+        std::erase_if(voice->zones,
+                      [&](const Zone& zone) { return !playable(zone.leftWave) || !playable(zone.rightWave); });
+        if (!voice->zones.empty()) {
             store.voices.push_back(std::move(*voice));
         }
     }

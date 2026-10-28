@@ -201,7 +201,7 @@ TEST_CASE("the store reads each element's envelope, low-pass filter and LFO in b
     CHECK_FALSE(plain.lowPass.has_value());
 }
 
-TEST_CASE("the store leaves out voices whose waves are undecodable or missing") {
+TEST_CASE("the store leaves out zones whose waves are undecodable or missing, and voices left with none") {
     SyntheticStore store;
     const std::string linear = store.addWave(linearBlob(sine(440.0, 44100.0, 441), 44100.0));
     const std::string partial = store.addWave(wxc1Blob(44100.0, kFirstParams, crackedFrames()));
@@ -213,9 +213,12 @@ TEST_CASE("the store leaves out voices whose waves are undecodable or missing") 
                                                     SyntheticZone{.keyLo = "C#3", .wave = compressed}}},
                            SyntheticVoice{.name = "Missing", .zones = {SyntheticZone{.wave = std::string(40, 'f')}}}});
     const Store loaded = loadStore(store.folder());
-    REQUIRE(loaded.voices.size() == 2);
-    CHECK(loaded.voices[0].name == "Partly");
-    CHECK(loaded.voices[1].name == "Plays");
+    REQUIRE(loaded.voices.size() == 3);
+    CHECK(loaded.voices[0].name == "Compressed");
+    REQUIRE(loaded.voices[0].zones.size() == 1);
+    CHECK(loaded.voices[0].zones[0].keyHi == 60);
+    CHECK(loaded.voices[1].name == "Partly");
+    CHECK(loaded.voices[2].name == "Plays");
 }
 
 TEST_CASE("a missing or empty store folder is an empty store") {

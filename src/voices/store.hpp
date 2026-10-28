@@ -84,7 +84,8 @@ struct Store {
 // The folder Yamaha Expansion Manager keeps its packs in on this computer, or empty where it has none.
 std::filesystem::path defaultStoreFolder();
 
-// Reads every pack in the folder; a missing or empty folder is an empty store.
+// Reads every pack in the folder, leaving out the zones whose waves we cannot decode; a missing or empty folder is an
+// empty store.
 Store loadStore(const std::filesystem::path& folder);
 
 // A Yamaha note name such as C-2, F#3 or G8, where C-2 is MIDI note 0.

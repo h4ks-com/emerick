@@ -13,6 +13,7 @@
 #include "emerick/app/plugin_catalog.hpp"
 #include "emerick/app/session_mapping.hpp"
 #include "style_builder.hpp"
+#include "style_library.hpp"
 #include "synthetic_store.hpp"
 #include "yamaha_rig.hpp"
 
@@ -226,4 +227,15 @@ TEST_CASE("the part tracks play what the Arranger sends them without being armed
     rig.run("transport.stop");
     const std::vector<float> output = rig.audio->output("interface", 1);
     CHECK(std::ranges::max(output | std::views::transform([](float sample) { return std::abs(sample); })) > 0.01F);
+}
+
+TEST_CASE("a style without drum notes in its Mains plays no drums, as an Audio Style") {
+    arranger::Style style = arranger::parseStyle(arranger::test::demoStyle());
+    CHECK(yamaha::stylePlaysDrums(style));
+    for (arranger::StyleSection& section : style.sections) {
+        std::erase_if(section.events, [](const arranger::StyleEvent& event) {
+            return (event.bytes[0] & 0x0FU) == arranger::test::kDrums;
+        });
+    }
+    CHECK_FALSE(yamaha::stylePlaysDrums(style));
 }

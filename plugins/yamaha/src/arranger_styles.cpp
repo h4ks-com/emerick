@@ -89,6 +89,10 @@ QVariantMap ArrangerStyles::info(const QString& trackId) {
     if (!state->hash.empty() && state->hash != summary->hash) {
         result.insert("warning", app::qs("The style file " + state->style +
                                          " changed since it was loaded. Choose style to load it again."));
+    } else if (!stylePlaysDrums(summary->style)) {
+        result.insert("warning",
+                      "The style plays no drums, since an Audio Style keeps its drums inside the keyboard. "
+                      "Choose another style or add drums to Rhythm 1.");
     }
     if (std::abs(summary->bpm - projectBpm) >= kSameTempo) {
         result.insert("tempoWarning", "Style tempo " + tempoText(summary->bpm) + ", project " + tempoText(projectBpm) +

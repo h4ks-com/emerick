@@ -76,6 +76,18 @@ bool stylePlays(const arranger::Style& style, Section kind, int variation) {
     return false;
 }
 
+bool stylePlaysDrums(const arranger::Style& style) {
+    constexpr int kRhythmChannels = 2;
+    return std::ranges::any_of(style.sections, [](const arranger::StyleSection& section) {
+        return section.kind == Section::Main &&
+               std::ranges::any_of(section.events, [&](const arranger::StyleEvent& event) {
+                   const auto& rule = section.rules.at(event.bytes[0] & 0x0FU);
+                   return (event.bytes[0] & 0xF0U) == 0x90U && event.bytes[2] > 0 && rule.has_value() &&
+                          rule->destination - arranger::kFirstPartChannel < kRhythmChannels;
+               });
+    });
+}
+
 app::Json summaryJson(const StyleSummary& summary) {
     return {{"path", summary.path.string()},
             {"name", summary.name},

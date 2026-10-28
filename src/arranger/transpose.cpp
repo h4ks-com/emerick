@@ -108,7 +108,6 @@ ChordTones chordTones(int type) {
     const auto intervals = yamaha::chordType(type).intervals();
     ChordTones result{.count = intervals.size()};
     std::ranges::transform(intervals, result.storage.begin(), pitchClass);
-    std::ranges::sort(result.storage.begin(), result.storage.begin() + static_cast<std::ptrdiff_t>(result.count));
     return result;
 }
 

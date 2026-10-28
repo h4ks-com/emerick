@@ -65,6 +65,8 @@ TEST_CASE("the chord table keeps chord tone degrees and snaps other notes up on 
     const auto rule = ruleWith(kChord);
     CHECK(transposeAll(rule, {71}, "C6") == std::vector{69});
     CHECK(transposeAll(rule, {62}, "C") == std::vector{64});
+    CHECK(transposeAll(rule, {64, 67, 71}, "C9") == std::vector{64, 67, 70});
+    CHECK(transposeAll(rule, {64, 67}, "Cadd9") == std::vector{64, 67});
 }
 
 TEST_CASE("the minor tables change only the degrees they name") {

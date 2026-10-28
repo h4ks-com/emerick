@@ -167,9 +167,12 @@ TEST_CASE("a part without an installed voice plays the style's program on Genera
     CHECK(sound(2) == 33);
     CHECK(sound(3) == 25);
     CHECK(sound(0) == 0);
-    CHECK(warning(2) == "Install the pack with voice 0/0/34 to hear this part");
-    CHECK(warning(3) == "Install the pack with voice 8/2/26 to hear this part");
-    CHECK(warning(0) == "Install the pack with voice 127/0/1 to hear this part");
+    CHECK(warning(2) ==
+          "General MIDI stands in for voice 0/0/34. Install its pack and choose Expansion Voices to hear it");
+    CHECK(warning(3) ==
+          "General MIDI stands in for voice 8/2/26. Install its pack and choose Expansion Voices to hear it");
+    CHECK(warning(0) ==
+          "General MIDI stands in for voice 127/0/1. Install its pack and choose Expansion Voices to hear it");
     CHECK(warning(5).empty());
 
     rig.run("instrument.remove", {{"track", part(3)}});

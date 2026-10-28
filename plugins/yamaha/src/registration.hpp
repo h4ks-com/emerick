@@ -88,7 +88,7 @@ void registerTrackKinds(app::Registry& registry, const StyleSync& sync);
 void registerChartActions(app::Registry& registry, app::ProjectController& controller, app::Nav& nav);
 void registerArrangerActions(app::Registry& registry, app::ProjectController& controller, KeyboardCheck& check);
 void registerTemplateActions(app::Registry& registry);
-// A warning on each part track that plays General MIDI because no installed voice matches the style's voice.
+// A warning on each part track that plays General MIDI in place of the style's voice.
 std::vector<engine::SessionError> missingVoices(const model::Track& style, const model::Document& document);
 // The built-in arranger: its set-up and the style actions of a Style track that plays the Arranger device.
 void registerBuiltinArranger(app::Registry& registry, app::ProjectController& controller, app::Nav& nav);

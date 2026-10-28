@@ -134,7 +134,8 @@ std::vector<engine::SessionError> missingVoices(const model::Track& style, const
         const model::Track& track = *std::ranges::find(document.tracks, *id, &model::Track::id);
         if (track.instrument && track.instrument->pluginId == app::kGeneralMidiPluginId) {
             warnings.push_back({.trackId = id->value,
-                                .message = std::format("Install the pack with voice {}/{}/{} to hear this part",
+                                .message = std::format("General MIDI stands in for voice {}/{}/{}. Install its pack "
+                                                       "and choose Expansion Voices to hear it",
                                                        static_cast<int>(voice->bankMsb),
                                                        static_cast<int>(voice->bankLsb), voice->program + 1)});
         }

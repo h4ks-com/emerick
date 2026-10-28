@@ -160,7 +160,7 @@ struct Mode {
     int boost;
 };
 
-// Mode 5 is not cracked yet, so a wave ends at the first frame that uses it.
+// We have no decoder for mode 5, so a wave ends at the first frame that uses it.
 constexpr std::array<std::optional<Mode>, kModeCount> kModes{Mode{2, kLevels2, {}, 4}, Mode{3, kLevels3, {}, 4},
                                                              Mode{4, kLevels4, {}, 4}, Mode{6, kLevels6, {}, 4},
                                                              Mode{4, {}, kPairs4, 8},  std::nullopt,

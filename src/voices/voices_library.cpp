@@ -21,7 +21,7 @@ struct StoreLoad {
     // The hosts of the instances that wait for the store, and the store once the read finished.
     std::vector<const clap_host*> waiting;
     std::shared_ptr<const Store> store;
-    // Last, so it joins before the members its thread uses go away.
+    // We declare the thread last so it joins before the members it uses are destroyed.
     std::jthread thread;
 };
 

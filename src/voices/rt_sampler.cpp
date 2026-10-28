@@ -12,8 +12,7 @@ namespace emerick::voices {
 namespace {
 
 constexpr float kVelocityScale = 127.0F;
-// -96 dB, the floor of the voice envelopes.
-constexpr double kSilence = 1.5849e-5;
+constexpr double kEnvelopeFloor = 1.5849e-5;
 constexpr double kHighestCutoff = 0.45;
 
 double framesOf(double seconds, double rate) { return std::max(1.0, seconds * rate); }
@@ -119,12 +118,12 @@ void Sampler::noteOn(const Bank& bank, int key, int velocity, int channel, const
 
 void Sampler::release(Note& note) {
     note.sustained = false;
-    if (note.level <= kSilence) {
+    if (note.level <= kEnvelopeFloor) {
         note.stage = Stage::idle;
         return;
     }
     note.stage = Stage::release;
-    note.releaseRatio = ratioOver(note.level, kSilence, note.envelope.releaseSeconds, note.outputRate);
+    note.releaseRatio = ratioOver(note.level, kEnvelopeFloor, note.envelope.releaseSeconds, note.outputRate);
 }
 
 void Sampler::noteOff(int key, int channel) {
@@ -189,14 +188,14 @@ bool Sampler::advanceEnvelope(Note& note) {
             }
             break;
         case Stage::release:
-            if (reached(note.level, note.releaseRatio, kSilence)) {
+            if (reached(note.level, note.releaseRatio, kEnvelopeFloor)) {
                 note.stage = Stage::idle;
             }
             break;
         default:
             break;
     }
-    if (note.stage == Stage::sustain && note.level <= kSilence) {
+    if (note.stage == Stage::sustain && note.level <= kEnvelopeFloor) {
         note.stage = Stage::idle;
     }
     return note.stage != Stage::idle;

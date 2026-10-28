@@ -6,9 +6,11 @@
 #include <catch2/catch_test_macros.hpp>
 #include <chrono>
 #include <cmath>
+#include <cstdint>
 #include <filesystem>
 #include <fstream>
 #include <ranges>
+#include <span>
 #include <string>
 #include <vector>
 
@@ -81,17 +83,22 @@ private:
     QByteArray saved_;
 };
 
-// The demo style with its bass on another program, which no store in these tests holds.
-std::filesystem::path otherBassStyle(const ArrangerRig& rig) {
+// The demo style with the last byte of the first match of message replaced by value.
+std::filesystem::path patchedStyle(const ArrangerRig& rig, const std::string& name,
+                                   std::span<const std::uint8_t> message, std::uint8_t value) {
     Bytes bytes = arranger::test::demoStyle();
-    const std::array<std::uint8_t, 2> bassProgram{0xC0 | arranger::test::kBass, 33};
-    const auto found = std::ranges::search(bytes, bassProgram);
+    const auto found = std::ranges::search(bytes, message);
     REQUIRE_FALSE(found.empty());
-    found[1] = 34;
-    const std::filesystem::path path = rig.path("Other.sty");
+    found.back() = value;
+    const std::filesystem::path path = rig.path(name);
     std::ofstream(path, std::ios::binary)
         .write(reinterpret_cast<const char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
     return path;
+}
+
+// The demo style with its bass on another program, which no store in these tests holds.
+std::filesystem::path otherBassStyle(const ArrangerRig& rig) {
+    return patchedStyle(rig, "Other.sty", std::array<std::uint8_t, 2>{0xC0 | arranger::test::kBass, 33}, 34);
 }
 
 float loudest(const std::filesystem::path& file) {
@@ -181,6 +188,27 @@ TEST_CASE("a part without an installed voice plays its part's General MIDI defau
     rig.run("instrument.remove", {{"track", part(3)}});
     rig.controller->flush();
     CHECK(warning(3).empty());
+}
+
+TEST_CASE("a drum part's General MIDI picks the kit the style's program names, and Standard for any other program") {
+    ArrangerRig rig;
+    const HomeFolder home{rig.path("home")};
+    rig.run("arranger.setup");
+    const std::string style = rig.trackOfKind("yamaha.style");
+    const auto drums = [&](std::size_t id) {
+        return rig.run("instrument.params", {{"track", rig.document().tracks.at(2).id.value}})
+            .at("params")[id]
+            .at("value");
+    };
+    const std::array<std::uint8_t, 2> drumProgram{0xC0 | arranger::test::kDrums, 0};
+
+    rig.run("arranger.style.load",
+            {{"track", style}, {"path", patchedStyle(rig, "Kit.sty", drumProgram, 25).string()}});
+    CHECK(drums(1) == 4);
+    CHECK(drums(2) == 1);
+    rig.run("arranger.style.load",
+            {{"track", style}, {"path", patchedStyle(rig, "NoKit.sty", drumProgram, 100).string()}});
+    CHECK(drums(1) == 0);
 }
 
 TEST_CASE("the voice list picks the General MIDI family that stands in for a part's voice") {

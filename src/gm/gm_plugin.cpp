@@ -21,6 +21,7 @@
 namespace {
 
 using emerick::gm::bundledSoundFont;
+using emerick::gm::DrumKit;
 using emerick::gm::eventAs;
 using emerick::gm::Gm;
 using emerick::gm::gmOf;
@@ -84,15 +85,26 @@ bool activate(const clap_plugin* plugin, double sampleRate, std::uint32_t /*unus
 
 int velocity(double clapVelocity) { return std::clamp(static_cast<int>(std::lround(clapVelocity * 127.0)), 1, 127); }
 
-// A program change on a melodic channel becomes the Sound param, so the host shows the sound the MIDI picked.
+// A program change becomes the Sound param on a melodic channel and the Drum kit param on a drum channel when it
+// names a kit, so the host shows what the MIDI picked.
 void followProgram(Gm& gm, int channel, int program) {
     fluid_preset_t* preset = fluid_synth_get_channel_preset(gm.synth.get(), channel);
-    if (preset == nullptr || fluid_preset_get_banknum(preset) == kDrumBank ||
-        program == gm.sound.load(std::memory_order_relaxed)) {
+    if (preset == nullptr) {
         return;
     }
-    gm.sound.store(program, std::memory_order_relaxed);
-    gm.soundChanged = true;
+    if (fluid_preset_get_banknum(preset) != kDrumBank) {
+        if (program != gm.sound.load(std::memory_order_relaxed)) {
+            gm.sound.store(program, std::memory_order_relaxed);
+            gm.soundChanged = true;
+        }
+        return;
+    }
+    const auto* const kit = std::ranges::find(kDrumKits, program, &DrumKit::program);
+    const auto index = static_cast<int>(kit - kDrumKits.begin());
+    if (kit != kDrumKits.end() && index != gm.drumKit.load(std::memory_order_relaxed)) {
+        gm.drumKit.store(index, std::memory_order_relaxed);
+        gm.drumKitChanged = true;
+    }
 }
 
 void playMidi(Gm& gm, const std::array<std::uint8_t, 3>& data) {
@@ -193,23 +205,29 @@ void play(Gm& gm, const clap_event_header* header) {
     }
 }
 
-void reportSound(Gm& gm, const clap_output_events* out) {
-    if (!std::exchange(gm.soundChanged, false)) {
-        return;
-    }
+void reportParam(const clap_output_events* out, clap_id id, int value) {
     const clap_event_param_value event{.header = {.size = sizeof(clap_event_param_value),
                                                   .time = 0,
                                                   .space_id = CLAP_CORE_EVENT_SPACE_ID,
                                                   .type = CLAP_EVENT_PARAM_VALUE,
                                                   .flags = 0},
-                                       .param_id = emerick::gm::kSoundParam,
+                                       .param_id = id,
                                        .cookie = nullptr,
                                        .note_id = -1,
                                        .port_index = -1,
                                        .channel = -1,
                                        .key = -1,
-                                       .value = static_cast<double>(gm.sound.load(std::memory_order_relaxed))};
+                                       .value = static_cast<double>(value)};
     out->try_push(out, &event.header);
+}
+
+void reportPrograms(Gm& gm, const clap_output_events* out) {
+    if (std::exchange(gm.soundChanged, false)) {
+        reportParam(out, emerick::gm::kSoundParam, gm.sound.load(std::memory_order_relaxed));
+    }
+    if (std::exchange(gm.drumKitChanged, false)) {
+        reportParam(out, emerick::gm::kDrumKitParam, gm.drumKit.load(std::memory_order_relaxed));
+    }
 }
 
 clap_process_status process(const clap_plugin* plugin, const clap_process* process) {
@@ -238,7 +256,7 @@ clap_process_status process(const clap_plugin* plugin, const clap_process* proce
         sendPrograms(gm);
     }
     render(rendered, process->frames_count);
-    reportSound(gm, process->out_events);
+    reportPrograms(gm, process->out_events);
     return CLAP_PROCESS_CONTINUE;
 }
 

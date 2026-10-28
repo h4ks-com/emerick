@@ -41,7 +41,7 @@ qt_add_qml_module(emerick_yamaha_plugin
 target_include_directories(emerick_yamaha_plugin PRIVATE src)
 target_link_libraries(emerick_yamaha_plugin
     PUBLIC emerick_app emerick_yamaha_codec
-    PRIVATE emerick_arranger Qt6::Qml Qt6::Quick libremidi)
+    PRIVATE emerick_arranger emerick_gm_sounds Qt6::Qml Qt6::Quick libremidi)
 emerick_target(emerick_yamaha_plugin)
 
 if(EMERICK_BUILD_TESTS)

@@ -42,6 +42,7 @@ struct Gm {
     std::atomic<bool> followProgramChanges{true};
     std::atomic<bool> programsPending{true};
     bool soundChanged = false;
+    bool drumKitChanged = false;
     std::array<bool, kChannels> drumChannels{};
     std::filesystem::path loadedSoundFont;
     double loadedRate = 0.0;

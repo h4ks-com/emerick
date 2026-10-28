@@ -59,6 +59,14 @@ std::vector<float> render(const std::vector<Message>& messages, const std::vecto
     return left;
 }
 
+void playBlock(ClapInstrument& instrument, const Message& message) {
+    instrument.queueMidi(message, 0);
+    std::vector<float> left(kBlock);
+    std::vector<float> right(kBlock);
+    const std::array<float*, 2> mix{left.data(), right.data()};
+    instrument.processBlock(mix, kBlock, 0);
+}
+
 float loudest(std::span<const float> samples) {
     return std::ranges::max(samples | std::views::transform([](float sample) { return std::abs(sample); }));
 }
@@ -135,21 +143,30 @@ TEST_CASE("the Sound param plays its sound on every melodic channel until a prog
 TEST_CASE("a program change on a melodic channel sets the Sound param and tells the host") {
     const std::shared_ptr<ClapInstrument> instrument = generalMidi();
     REQUIRE(instrument->activate(kRate, kBlock));
-    const auto play = [&](const Message& message) {
-        instrument->queueMidi(message, 0);
-        std::vector<float> left(kBlock);
-        std::vector<float> right(kBlock);
-        const std::array<float*, 2> mix{left.data(), right.data()};
-        instrument->processBlock(mix, kBlock, 0);
-    };
-    play({0xC3, 73, 0});
+    playBlock(*instrument, {0xC3, 73, 0});
     CHECK(instrument->takeParamsChanged());
     CHECK(instrument->paramText(kSound, *instrument->paramValue(kSound)) == "Flute");
-    play({0xC9, 25, 0});
-    play({0xB8, 0, 127});
-    play({0xC8, 0, 0});
+    playBlock(*instrument, {0xC9, 100, 0});
+    playBlock(*instrument, {0xB8, 0, 127});
+    playBlock(*instrument, {0xC8, 99, 0});
     CHECK_FALSE(instrument->takeParamsChanged());
     CHECK(instrument->paramValue(kSound) == kFlute);
+}
+
+TEST_CASE("a program change on a drum channel that names a kit sets the Drum kit param and tells the host") {
+    const std::shared_ptr<ClapInstrument> instrument = generalMidi();
+    REQUIRE(instrument->activate(kRate, kBlock));
+    playBlock(*instrument, {0xC9, 25, 0});
+    CHECK(instrument->takeParamsChanged());
+    CHECK(instrument->paramText(kDrumKit, *instrument->paramValue(kDrumKit)) == "TR-808");
+    playBlock(*instrument, {0xB8, 0, 127});
+    playBlock(*instrument, {0xC8, 40, 0});
+    CHECK(instrument->takeParamsChanged());
+    CHECK(instrument->paramText(kDrumKit, *instrument->paramValue(kDrumKit)) == "Brush");
+    playBlock(*instrument, {0xC9, 100, 0});
+    CHECK_FALSE(instrument->takeParamsChanged());
+    CHECK(instrument->paramText(kDrumKit, *instrument->paramValue(kDrumKit)) == "Brush");
+    CHECK(instrument->paramValue(kSound) == 0.0);
 }
 
 TEST_CASE("with Follow program changes off the Sound param ignores program changes and melodic bank selects") {

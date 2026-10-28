@@ -19,6 +19,7 @@
 #include "emerick/app/project_actions.hpp"
 #include "emerick/app/project_state.hpp"
 #include "emerick/yamaha/profile.hpp"
+#include "gm_sounds.hpp"
 #include "registration.hpp"
 #include "style_library.hpp"
 
@@ -32,6 +33,7 @@ using app::Json;
 constexpr std::size_t kFirstPart = 8;
 constexpr std::uint32_t kVoiceParam = 0;
 constexpr std::uint32_t kSoundParam = 0;
+constexpr std::uint32_t kDrumKitParam = 1;
 constexpr std::uint32_t kFollowParam = 2;
 
 // Yamaha and Roland modules select a drum kit with these bank select MSBs, so General MIDI keeps its drum kit there.
@@ -165,6 +167,12 @@ std::optional<int> standInProgram(const app::Registry& registry, std::size_t par
     return fallback ? std::optional{*fallback - 1} : std::nullopt;
 }
 
+// The General MIDI kit the style's drum program names, or Standard when General MIDI holds no such kit.
+std::size_t drumKitIndex(int program) {
+    const auto* const kit = std::ranges::find(gm::kDrumKits, program, &gm::DrumKit::program);
+    return kit == gm::kDrumKits.end() ? 0 : static_cast<std::size_t>(kit - gm::kDrumKits.begin());
+}
+
 // Expansion Voices plays the part when it holds the voice the style asks for; General MIDI plays every other part.
 void loadPartInstrument(app::Registry& registry, app::ProjectController& controller, const model::TrackId& id,
                         std::size_t part, std::optional<arranger::PartVoice> voice) {
@@ -193,11 +201,16 @@ void loadPartInstrument(app::Registry& registry, app::ProjectController& control
         }
     }
     registry.run("instrument.load", {{"track", id.value}, {"plugin", app::kGeneralMidiPluginId}});
-    if (!voice || isDrumBank(voice->bankMsb)) {
+    if (!voice) {
         return;
     }
     controller.instruments().sync(controller.project().document());
     if (controller.instruments().find(id) == nullptr) {
+        return;
+    }
+    if (isDrumBank(voice->bankMsb)) {
+        registry.run("instrument.setParam",
+                     {{"track", id.value}, {"param", kDrumKitParam}, {"value", drumKitIndex(voice->program)}});
         return;
     }
     const std::optional<int> standIn = standInProgram(registry, part, *voice);

@@ -137,6 +137,33 @@ TEST_CASE("choosing a style switches the part tracks it has voices for between E
     CHECK(plugin(3).empty());
 }
 
+TEST_CASE("a part without an installed voice plays the style's program on General MIDI and warns which pack it needs") {
+    ArrangerRig rig;
+    const HomeFolder home{rig.path("home")};
+    rig.run("arranger.setup");
+    const std::string style = rig.trackOfKind("yamaha.style");
+    rig.run("arranger.style.load", {{"track", style}, {"path", rig.demo.string()}});
+    rig.controller->flush();
+    const auto part = [&](std::size_t index) { return rig.document().tracks.at(index + 2).id.value; };
+    const auto sound = [&](std::size_t index) {
+        return rig.run("instrument.params", {{"track", part(index)}}).at("params")[0].at("value");
+    };
+    const auto warning = [&](std::size_t index) {
+        return rig.controller->trackErrors().value(QString::fromStdString(part(index))).toString().toStdString();
+    };
+    CHECK(sound(2) == 33);
+    CHECK(sound(3) == 25);
+    CHECK(sound(0) == 0);
+    CHECK(warning(2) == "Install the pack with voice 0/0/34 to hear this part");
+    CHECK(warning(3) == "Install the pack with voice 8/2/26 to hear this part");
+    CHECK(warning(0) == "Install the pack with voice 127/0/1 to hear this part");
+    CHECK(warning(5).empty());
+
+    rig.run("instrument.remove", {{"track", part(3)}});
+    rig.controller->flush();
+    CHECK(warning(3).empty());
+}
+
 TEST_CASE("set up built-in arranger adds the Chords and Style tracks, the Arranger and a track per part in one step") {
     ArrangerRig rig;
     rig.run("arranger.setup");

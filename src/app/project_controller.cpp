@@ -10,6 +10,7 @@
 #include <cmath>
 #include <cstdint>
 #include <format>
+#include <iterator>
 #include <ranges>
 #include <stdexcept>
 #include <string>
@@ -74,6 +75,16 @@ std::vector<std::string> takeProblems(const engine::RecordedTake& take, double s
                                        take.droppedMidiEvents));
     }
     return problems;
+}
+
+std::vector<engine::SessionError> trackTypeWarnings(const model::Document& document, const Registry& registry) {
+    std::vector<engine::SessionError> warnings;
+    for (const model::Track& track : document.tracks) {
+        if (const TrackType* type = registry.trackType(track.kind); type != nullptr && type->warnings) {
+            std::ranges::move(type->warnings(track, document), std::back_inserter(warnings));
+        }
+    }
+    return warnings;
 }
 
 }  // namespace
@@ -572,6 +583,7 @@ void ProjectController::publish() {
     session.cycle = engineCycle();
     applyPasses(session);
     routeErrors_ = dropUnusableDevices(session, engine_.audioDevices(), options_.sampleRate);
+    typeWarnings_ = trackTypeWarnings(project_.document(), registry_);
     std::set<std::string> ids;
     std::set<std::string> audioIds;
     for (const engine::Track& track : session.tracks) {
@@ -636,7 +648,7 @@ void ProjectController::keepWarmWhileActive() {
 void ProjectController::updateTrackErrors() {
     QVariantMap errors;
     for (const auto* list : {&engine_.sessionErrors(), &std::as_const(routeErrors_), &std::as_const(takeErrors_),
-                             &instruments_.errors()}) {
+                             &instruments_.errors(), &std::as_const(typeWarnings_)}) {
         for (const engine::SessionError& error : *list) {
             const QString id = QString::fromStdString(error.trackId);
             const QString previous = errors.value(id).toString();

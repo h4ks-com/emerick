@@ -211,6 +211,8 @@ struct TrackType {
     std::function<void(model::Track&, const engine::RecordedTake&, const TakeContext&)> fromTake = {};
     // Names along the timeline, such as chords, that a MIDI export writes as markers.
     std::function<std::vector<Marker>(const model::Track&)> markers = {};
+    // Warnings for this track or the tracks it feeds, each keyed by the track id whose header shows it.
+    std::function<std::vector<engine::SessionError>(const model::Track&, const model::Document&)> warnings = {};
     // Messages the MIDI panic sends first, for every track of the type, playing or not.
     std::function<std::vector<MidiMessage>(const model::Track&)> panic = {};
     // True when a project holds MIDI Start back from the clock ports; play then sends clock only.

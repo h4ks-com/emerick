@@ -1,5 +1,6 @@
 #include <algorithm>
 #include <filesystem>
+#include <format>
 #include <optional>
 #include <ranges>
 #include <span>
@@ -23,6 +24,10 @@ using app::Json;
 
 constexpr std::size_t kFirstPart = 8;
 constexpr std::uint32_t kVoiceParam = 0;
+constexpr std::uint32_t kSoundParam = 0;
+
+// Yamaha and Roland modules select a drum kit with these bank select MSBs, so General MIDI keeps its drum kit there.
+constexpr bool isDrumBank(int msb) { return msb == 120 || msb == 126 || msb == 127; }
 
 std::optional<model::TrackId> firstOfKind(const model::Document& document, const char* kind) {
     const auto found = std::ranges::find(document.tracks, std::string{kind}, &model::Track::kind);
@@ -76,6 +81,13 @@ void loadPartInstrument(app::Registry& registry, app::ProjectController& control
         }
     }
     registry.run("instrument.load", {{"track", id.value}, {"plugin", app::kGeneralMidiPluginId}});
+    if (!voice || isDrumBank(voice->bankMsb)) {
+        return;
+    }
+    controller.instruments().sync(controller.project().document());
+    if (controller.instruments().find(id) != nullptr) {
+        registry.run("instrument.setParam", {{"track", id.value}, {"param", kSoundParam}, {"value", voice->program}});
+    }
 }
 
 std::optional<model::TrackId> partTrack(const model::Document& document, const model::TrackId& style, int channel) {
@@ -104,6 +116,33 @@ void followStyle(app::Registry& registry, app::ProjectController& controller, co
         }
     }
 }
+
+}  // namespace
+
+std::vector<engine::SessionError> missingVoices(const model::Track& style, const model::Document& document) {
+    const auto summary = loadedStyle(style);
+    if (!summary) {
+        return {};
+    }
+    std::vector<engine::SessionError> warnings;
+    for (std::size_t part = 0; part < arranger::kParts; ++part) {
+        const std::optional<arranger::PartVoice>& voice = summary->style.voices.at(part);
+        const auto id = partTrack(document, style.id, genos2Parts().at(kFirstPart + part).channel);
+        if (!voice || !id) {
+            continue;
+        }
+        const model::Track& track = *std::ranges::find(document.tracks, *id, &model::Track::id);
+        if (track.instrument && track.instrument->pluginId == app::kGeneralMidiPluginId) {
+            warnings.push_back({.trackId = id->value,
+                                .message = std::format("Install the pack with voice {}/{}/{} to hear this part",
+                                                       static_cast<int>(voice->bankMsb),
+                                                       static_cast<int>(voice->bankLsb), voice->program + 1)});
+        }
+    }
+    return warnings;
+}
+
+namespace {
 
 model::TrackId arrangerTrack(const app::ProjectController& controller, const app::Nav& nav, const Json& params) {
     const model::TrackId id = app::targetTrack(controller, nav, params);

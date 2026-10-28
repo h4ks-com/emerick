@@ -248,6 +248,7 @@ void registerTrackKinds(app::Registry& registry, const StyleSync& sync) {
                         }) |
                         std::ranges::to<std::vector>();
              },
+         .warnings = missingVoices,
          // The Start/Stop button toggles, so we press it only to stop a Style that runs.
          .panic =
              [&registry, &sync](const model::Track& track) {

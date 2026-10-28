@@ -13,6 +13,7 @@
 #include "emerick/app/audio_file.hpp"
 #include "emerick/engine/engine.hpp"
 #include "emerick/model/clip_edit.hpp"
+#include "emerick/model/document.hpp"
 
 namespace emerick::app {
 
@@ -32,13 +33,8 @@ std::string fileStem(const std::string& name) {
     return stem;
 }
 
-const model::Track* modelTrack(const model::Document& document, const std::string& id) {
-    const auto found = std::ranges::find(document.tracks, model::TrackId{id}, &model::Track::id);
-    return found == document.tracks.end() ? nullptr : &*found;
-}
-
 bool hasInstrument(const model::Document& document, const std::string& id) {
-    const model::Track* track = modelTrack(document, id);
+    const model::Track* track = model::findTrack(document, model::TrackId{id});
     return track != nullptr && track->instrument.has_value();
 }
 
@@ -103,7 +99,7 @@ std::vector<engine::Track> trackStemTracks(const std::vector<engine::Track>& tra
 RenderInstruments attachInstruments(engine::Session& session, const model::Document& document) {
     RenderInstruments created;
     for (engine::Track& track : session.tracks) {
-        const model::Track* source = modelTrack(document, track.id);
+        const model::Track* source = model::findTrack(document, model::TrackId{track.id});
         if (source == nullptr || !source->instrument) {
             continue;
         }
@@ -137,7 +133,7 @@ void idle(const RenderInstruments& instruments) {
 void chaseStart(engine::Engine& engine, const engine::Session& session, const Registry& registry,
                 const PlaybackContext& context) {
     for (const engine::Track& track : session.tracks) {
-        const model::Track* source = modelTrack(*context.document, track.id);
+        const model::Track* source = model::findTrack(*context.document, model::TrackId{track.id});
         const TrackType* type = source != nullptr ? registry.trackType(source->kind) : nullptr;
         if (!track.instrument || type == nullptr || !type->chase) {
             continue;

@@ -369,7 +369,7 @@ std::vector<engine::SessionError> missingVoices(const model::Track& style, const
         if (!voice || !id) {
             continue;
         }
-        const model::Track& track = *std::ranges::find(document.tracks, *id, &model::Track::id);
+        const model::Track& track = *model::findTrack(document, *id);
         if (track.instrument && track.instrument->pluginId == app::kGeneralMidiPluginId) {
             warnings.push_back({.trackId = id->value,
                                 .message = std::format("General MIDI stands in for voice {}/{}/{}. Install its pack "

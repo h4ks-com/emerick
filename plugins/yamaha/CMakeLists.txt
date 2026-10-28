@@ -66,7 +66,7 @@ if(EMERICK_BUILD_TESTS)
     target_include_directories(emerick_yamaha_plugin_tests PRIVATE src
         ${PROJECT_SOURCE_DIR}/src/app/tests ${PROJECT_SOURCE_DIR}/src/arranger/tests ${PROJECT_SOURCE_DIR}/src/voices/tests)
     target_link_libraries(emerick_yamaha_plugin_tests PRIVATE emerick_yamaha_plugin libremidi
-        emerick_test_clap emerick_gm_clap emerick_voices_clap emerick_arranger_clap emerick_arranger)
+        emerick_test_clap emerick_gm_clap emerick_voices_clap emerick_arranger_clap emerick_arranger PkgConfig::SNDFILE)
     target_compile_definitions(emerick_yamaha_plugin_tests PRIVATE TEST_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}/tests/data")
 
     emerick_test(emerick_yamaha_lanes_tests tests/lanes_test.cpp)

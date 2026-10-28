@@ -1,8 +1,11 @@
+#include <sndfile.h>
+
 #include <QByteArray>
 #include <algorithm>
 #include <array>
 #include <catch2/catch_test_macros.hpp>
 #include <chrono>
+#include <cmath>
 #include <filesystem>
 #include <fstream>
 #include <ranges>
@@ -89,6 +92,16 @@ std::filesystem::path otherBassStyle(const ArrangerRig& rig) {
     std::ofstream(path, std::ios::binary)
         .write(reinterpret_cast<const char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
     return path;
+}
+
+float loudest(const std::filesystem::path& file) {
+    SF_INFO info{};
+    SNDFILE* opened = sf_open(file.c_str(), SFM_READ, &info);
+    REQUIRE(opened != nullptr);
+    std::vector<float> samples(static_cast<std::size_t>(info.frames * info.channels));
+    sf_readf_float(opened, samples.data(), info.frames);
+    sf_close(opened);
+    return std::ranges::max(samples | std::views::transform([](float sample) { return std::abs(sample); }));
 }
 
 }  // namespace
@@ -254,6 +267,26 @@ TEST_CASE("the part tracks play what the Arranger sends them without being armed
     rig.run("transport.stop");
     const std::vector<float> output = rig.audio->output("interface", 1);
     CHECK(std::ranges::max(output | std::views::transform([](float sample) { return std::abs(sample); })) > 0.01F);
+}
+
+TEST_CASE("export mix and stems render the part tracks the Arranger plays from the Chords and Style lanes") {
+    ArrangerRig rig;
+    const HomeFolder home{rig.path("home")};
+    rig.run("arranger.setup");
+    const std::string style = rig.trackOfKind("yamaha.style");
+    rig.run("arranger.style.load", {{"track", style}, {"path", rig.demo.string()}});
+    rig.controller->project().editTrack(
+        model::TrackId{rig.trackOfKind("yamaha.chord")}, "chords",
+        [](model::Track& track) { track.data = Json::parse(R"([{"at":0,"chord":"C"}])"); });
+    rig.controller->project().editTrack(model::TrackId{style}, "sections", [](model::Track& track) {
+        track.data = Json::parse(R"([{"at":0,"kind":"main","variation":0}])");
+    });
+
+    rig.run("export.mix", {{"path", rig.path("mix.wav").string()}});
+    CHECK(loudest(rig.path("mix.wav")) > 0.01F);
+    const Json files = rig.run("export.stems", {{"folder", rig.path("stems").string()}}).at("files");
+    CHECK(files.size() == kPartNames.size());
+    CHECK(loudest(rig.path("stems") / "Bass.wav") > 0.01F);
 }
 
 TEST_CASE("a style whose Mains leave Rhythm 1 empty plays no drums, as an Audio Style") {

@@ -11,7 +11,6 @@
 #include <utility>
 
 #include "emerick/app/audio_file.hpp"
-#include "emerick/app/registry.hpp"
 #include "emerick/engine/engine.hpp"
 #include "emerick/model/clip_edit.hpp"
 
@@ -21,8 +20,11 @@ namespace {
 
 constexpr engine::Frames kBlock = 512;
 constexpr engine::Frames kChunk = 24000;
+constexpr int kSettleBlocks = 16;
 constexpr auto kReadAheadTimeout = std::chrono::seconds{5};
 constexpr const char* kRenderDevice = "render";
+
+using RenderInstruments = std::vector<std::shared_ptr<engine::ClapInstrument>>;
 
 std::string fileStem(const std::string& name) {
     std::string stem = name.empty() ? std::string{"track"} : name;
@@ -30,12 +32,30 @@ std::string fileStem(const std::string& name) {
     return stem;
 }
 
-bool playsAudio(const engine::Track& track) {
-    return track.kind == engine::TrackKind::audio || track.kind == engine::TrackKind::bus;
+const model::Track* modelTrack(const model::Document& document, const std::string& id) {
+    const auto found = std::ranges::find(document.tracks, model::TrackId{id}, &model::Track::id);
+    return found == document.tracks.end() ? nullptr : &*found;
 }
 
-std::vector<engine::Track> audioTracks(const engine::Session& session) {
-    return session.tracks | std::views::filter(playsAudio) | std::ranges::to<std::vector>();
+bool hasInstrument(const model::Document& document, const std::string& id) {
+    const model::Track* track = modelTrack(document, id);
+    return track != nullptr && track->instrument.has_value();
+}
+
+bool playsAudio(const engine::Track& track, const model::Document& document) {
+    return track.kind != engine::TrackKind::midi || hasInstrument(document, track.id);
+}
+
+// A track that sends MIDI on to another track's instrument, as an Arranger does, gets no stem of its own.
+bool feedsMidi(const engine::Session& session, const engine::Track& track) {
+    return std::ranges::contains(session.tracks, track.id, &engine::Track::midiInTrack);
+}
+
+std::vector<engine::Track> stemTracks(const engine::Session& session, const model::Document& document) {
+    return session.tracks | std::views::filter([&](const engine::Track& track) {
+               return playsAudio(track, document) && !feedsMidi(session, track);
+           }) |
+           std::ranges::to<std::vector>();
 }
 
 engine::AudioRoute renderRoute() { return {kRenderDevice, {1, 2}}; }
@@ -54,24 +74,105 @@ std::vector<engine::Track> busStemTracks(const std::vector<engine::Track>& track
            std::ranges::to<std::vector>();
 }
 
-// A track stem plays the track dry and straight to the render output.
-std::vector<engine::Track> trackStemTracks(engine::Track track) {
+engine::Track dry(engine::Track track, engine::AudioRoute out) {
     track.mute = false;
     track.solo = false;
-    track.audioOut = renderRoute();
+    track.audioOut = std::move(out);
     track.outputBus.clear();
     track.sends.clear();
-    return {std::move(track)};
+    return track;
 }
 
-// We sleep between chunks so the clip reader can refill its 2 s read-ahead.
-std::vector<std::vector<float>> render(engine::Session session, engine::Frames frames, double sampleRate) {
+// A track stem plays the track dry and straight to the render output, with the tracks that send it MIDI playing
+// into no output.
+std::vector<engine::Track> trackStemTracks(const std::vector<engine::Track>& tracks, const engine::Track& track) {
+    std::vector<engine::Track> stem;
+    for (std::string source = track.midiInTrack; !source.empty();) {
+        const auto found = std::ranges::find(tracks, source, &engine::Track::id);
+        if (found == tracks.end() || found->id == track.id || std::ranges::contains(stem, source, &engine::Track::id)) {
+            break;
+        }
+        stem.push_back(dry(*found, {}));
+        source = found->midiInTrack;
+    }
+    stem.push_back(dry(track, renderRoute()));
+    return stem;
+}
+
+// Each render plays fresh instances with the saved states, so the live instruments stay with the live engine.
+RenderInstruments attachInstruments(engine::Session& session, const model::Document& document) {
+    RenderInstruments created;
+    for (engine::Track& track : session.tracks) {
+        const model::Track* source = modelTrack(document, track.id);
+        if (source == nullptr || !source->instrument) {
+            continue;
+        }
+        const model::PluginSlot& slot = *source->instrument;
+        auto instrument = engine::ClapInstrument::create(slot.bundle, slot.pluginId);
+        if (!instrument) {
+            throw AppError("cannot render track " + source->name + ": " + instrument.error());
+        }
+        if (!slot.state.empty() && !(*instrument)->loadState(slot.state)) {
+            throw AppError("cannot render track " + source->name + ": " + slot.name + " did not load its settings");
+        }
+        track.instrument = *instrument;
+        created.push_back(std::move(*instrument));
+    }
+    for (engine::Track& track : session.tracks) {
+        if (!hasInstrument(document, track.midiInTrack)) {
+            track.midiInTrack.clear();
+        }
+    }
+    return created;
+}
+
+// Plugins do main-thread work, such as loading a voice after a program change, through host callbacks.
+void idle(const RenderInstruments& instruments) {
+    for (const auto& instrument : instruments) {
+        instrument->idle();
+    }
+}
+
+// Track types put their devices in their state at bar 1, such as a Style's first section, as they do on play.
+void chaseStart(engine::Engine& engine, const engine::Session& session, const Registry& registry,
+                const PlaybackContext& context) {
+    for (const engine::Track& track : session.tracks) {
+        const model::Track* source = modelTrack(*context.document, track.id);
+        const TrackType* type = source != nullptr ? registry.trackType(source->kind) : nullptr;
+        if (!track.instrument || type == nullptr || !type->chase) {
+            continue;
+        }
+        for (const MidiMessage& message : type->chase(*source, 0, context)) {
+            if (message.port.empty()) {
+                engine.sendInstrumentMidi(track.id, message.bytes);
+            }
+        }
+    }
+}
+
+void waitForReadAhead(const engine::Engine& engine) {
+    const auto deadline = std::chrono::steady_clock::now() + kReadAheadTimeout;
+    while (!engine.readAheadReady()) {
+        if (std::chrono::steady_clock::now() > deadline) {
+            throw AppError("cannot render: audio files did not load within 5 s");
+        }
+        std::this_thread::yield();
+    }
+}
+
+std::vector<std::vector<float>> render(engine::Session session, const Registry& registry,
+                                       const PlaybackContext& context, engine::Frames frames, double sampleRate) {
     for (engine::Track& track : session.tracks) {
         track.armed = false;
         track.monitor = false;
         track.audioIn = {};
+        track.midiIn.portId.clear();
+        track.midiOut = {};
+        track.midiThru = false;
     }
     session.clockPorts.clear();
+    const RenderInstruments instruments = attachInstruments(session, *context.document);
+    const engine::Session played = session;
     auto backend =
         std::make_unique<engine::OfflineBackend>(std::vector<engine::AudioDeviceInfo>{{kRenderDevice, "Render", 0, 2}});
     engine::OfflineBackend& offline = *backend;
@@ -94,19 +195,22 @@ std::vector<std::vector<float>> render(engine::Session session, engine::Frames f
         throw AppError(message);
     }
     engine.locate(0);
-    offline.process(kBlock);
-    const auto deadline = std::chrono::steady_clock::now() + kReadAheadTimeout;
-    while (!engine.readAheadReady()) {
-        if (std::chrono::steady_clock::now() > deadline) {
-            throw AppError("cannot render: audio files did not load within 5 s");
-        }
-        std::this_thread::sleep_for(std::chrono::milliseconds{1});
+    // CLAP offers no way to ask a plugin whether it is ready, so we let the instruments settle for a few blocks.
+    for (int block = 0; block < kSettleBlocks; ++block) {
+        offline.process(kBlock);
+        idle(instruments);
     }
+    waitForReadAhead(engine);
+    chaseStart(engine, played, registry, context);
     engine.play();
     const engine::Frames start = offline.processedFrames();
     for (engine::Frames done = 0; done < frames; done += kChunk) {
-        offline.process(std::min(kChunk, frames - done));
-        std::this_thread::sleep_for(std::chrono::milliseconds{5});
+        const engine::Frames chunk = std::min(kChunk, frames - done);
+        for (engine::Frames block = 0; block < chunk; block += kBlock) {
+            offline.process(std::min(kBlock, chunk - block));
+            idle(instruments);
+        }
+        waitForReadAhead(engine);
     }
     std::vector<std::vector<float>> channels;
     for (const int channel : {1, 2}) {
@@ -116,8 +220,8 @@ std::vector<std::vector<float>> render(engine::Session session, engine::Frames f
     return channels;
 }
 
-engine::Frames renderFrames(const model::Document& document, double sampleRate) {
-    const core::Ticks end = projectEnd(document);
+engine::Frames renderFrames(const engine::Session& session, const model::Document& document, double sampleRate) {
+    const core::Ticks end = exportEnd(session, document);
     if (end <= 0) {
         throw AppError("the project has no clips to export");
     }
@@ -136,10 +240,26 @@ core::Ticks projectEnd(const model::Document& document) {
     return end;
 }
 
-std::vector<std::filesystem::path> exportStems(const engine::Session& session, const model::Document& document,
-                                               const std::filesystem::path& folder, double sampleRate, bool numbered) {
-    const engine::Frames frames = renderFrames(document, sampleRate);
-    const std::vector<engine::Track> tracks = audioTracks(session);
+core::Ticks exportEnd(const engine::Session& session, const model::Document& document) {
+    core::Ticks last = -1;
+    for (const engine::Track& track : session.tracks) {
+        for (const engine::MidiClip& clip : track.midiClips) {
+            if (!clip.events.empty()) {
+                last = std::max(last, clip.start + clip.events.back().tick);
+            }
+        }
+    }
+    const core::Ticks clipsEnd = projectEnd(document);
+    const core::Ticks bar = document.tempo.ticksPerBar();
+    return last < 0 || (clipsEnd > 0 && last <= clipsEnd) ? clipsEnd : ((last / bar) + 1) * bar;
+}
+
+std::vector<std::filesystem::path> exportStems(const engine::Session& session, const Registry& registry,
+                                               const PlaybackContext& context, const std::filesystem::path& folder,
+                                               double sampleRate, bool numbered) {
+    const model::Document& document = *context.document;
+    const engine::Frames frames = renderFrames(session, document, sampleRate);
+    const std::vector<engine::Track> tracks = stemTracks(session, document);
     if (tracks.empty()) {
         throw AppError("there are no audio tracks to export");
     }
@@ -158,25 +278,25 @@ std::vector<std::filesystem::path> exportStems(const engine::Session& session, c
         if (!used.insert(stem).second) {
             stem += "-" + track.id;
         }
-        engine::Session single{
-            .tempo = session.tempo,
-            .tracks = track.kind == engine::TrackKind::bus ? busStemTracks(tracks, track) : trackStemTracks(track),
-            .clockPorts = {},
-            .takeFolder = {},
-            .metronome = {},
-            .panLaw = session.panLaw};
+        engine::Session single{.tempo = session.tempo,
+                               .tracks = track.kind == engine::TrackKind::bus ? busStemTracks(session.tracks, track)
+                                                                              : trackStemTracks(session.tracks, track),
+                               .clockPorts = {},
+                               .takeFolder = {},
+                               .metronome = {},
+                               .panLaw = session.panLaw};
         files.push_back(folder / (stem + ".wav"));
-        writeWav(files.back(), render(std::move(single), frames, sampleRate), sampleRate);
+        writeWav(files.back(), render(std::move(single), registry, context, frames, sampleRate), sampleRate);
     }
     return files;
 }
 
-void exportMix(const engine::Session& session, const model::Document& document, const std::filesystem::path& file,
-               double sampleRate) {
-    const engine::Frames frames = renderFrames(document, sampleRate);
-    std::vector<engine::Track> tracks = audioTracks(session);
+void exportMix(const engine::Session& session, const Registry& registry, const PlaybackContext& context,
+               const std::filesystem::path& file, double sampleRate) {
+    const engine::Frames frames = renderFrames(session, *context.document, sampleRate);
+    std::vector<engine::Track> tracks = session.tracks;
     for (engine::Track& track : tracks) {
-        track.audioOut = renderRoute();
+        track.audioOut = playsAudio(track, *context.document) ? renderRoute() : engine::AudioRoute{};
     }
     engine::Session mix{.tempo = session.tempo,
                         .tracks = std::move(tracks),
@@ -187,7 +307,7 @@ void exportMix(const engine::Session& session, const model::Document& document, 
     if (!file.parent_path().empty()) {
         std::filesystem::create_directories(file.parent_path());
     }
-    writeWav(file, render(std::move(mix), frames, sampleRate), sampleRate);
+    writeWav(file, render(std::move(mix), registry, context, frames, sampleRate), sampleRate);
 }
 
 }  // namespace emerick::app

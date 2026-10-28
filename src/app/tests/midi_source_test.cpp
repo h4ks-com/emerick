@@ -1,6 +1,14 @@
+#include <sndfile.h>
+
+#include <algorithm>
 #include <catch2/catch_test_macros.hpp>
 #include <chrono>
+#include <cmath>
+#include <filesystem>
+#include <ranges>
+#include <span>
 #include <string>
+#include <vector>
 
 #include "emerick/app/plugin_actions.hpp"
 #include "emerick/app/plugin_catalog.hpp"
@@ -41,7 +49,61 @@ struct SourceRig : ProjectRig {
                            .timeout = std::chrono::milliseconds(500)}};
 };
 
+std::vector<float> readLeft(const std::filesystem::path& path) {
+    SF_INFO info{};
+    SNDFILE* file = sf_open(path.c_str(), SFM_READ, &info);
+    REQUIRE(file != nullptr);
+    std::vector<float> interleaved(static_cast<std::size_t>(info.frames * info.channels));
+    sf_readf_float(file, interleaved.data(), info.frames);
+    sf_close(file);
+    std::vector<float> left;
+    for (std::size_t at = 0; at < interleaved.size(); at += static_cast<std::size_t>(info.channels)) {
+        left.push_back(interleaved[at]);
+    }
+    return left;
+}
+
+float loudest(const std::vector<float>& samples, std::size_t from, std::size_t to) {
+    return std::ranges::max(std::span(samples).subspan(from, to - from) |
+                            std::views::transform([](float sample) { return std::abs(sample); }));
+}
+
 }  // namespace
+
+TEST_CASE("export mix and stems play an instrument track's clips through its instrument") {
+    SourceRig rig;
+    rig.addDevice();
+    const auto folder = rig.path("export");
+    rig.run("export.mix", {{"path", (folder / "mix.wav").string()}});
+    const std::vector<float> mix = readLeft(folder / "mix.wav");
+    REQUIRE(mix.size() == 48000);
+    CHECK(loudest(mix, 0, 11000) == 0.0F);
+    CHECK(loudest(mix, 12000, 48000) > 0.1F);
+
+    REQUIRE(rig.run("export.stems", {{"folder", folder.string()}}).at("files").size() == 1);
+    CHECK(loudest(readLeft(folder / "Style.wav"), 12000, 48000) > 0.1F);
+}
+
+TEST_CASE("a stem of a track that takes a device's MIDI plays what the device sends it, and the device gets no stem") {
+    SourceRig rig;
+    const std::string device = rig.addDevice();
+    const std::string keys = rig.run("track.addInstrument", {{"plugin", "org.emerick.test.sine"}, {"name", "Keys"}})
+                                 .at("id")
+                                 .get<std::string>();
+    rig.run("track.setMidiIn", {{"track", keys}, {"sourceTrack", device}, {"channel", 2}});
+
+    for (const auto& tracks : {Json::array(), Json::array({"Keys"})}) {
+        const auto folder = rig.path(tracks.empty() ? "all" : "keys");
+        Json params{{"folder", folder.string()}};
+        if (!tracks.empty()) {
+            params["tracks"] = tracks;
+        }
+        REQUIRE(rig.run("export.stems", params).at("files").size() == 1);
+        const std::vector<float> stem = readLeft(folder / "Keys.wav");
+        CHECK(loudest(stem, 0, 23000) == 0.0F);
+        CHECK(loudest(stem, 24000, 48000) > 0.1F);
+    }
+}
 
 TEST_CASE("a MIDI input takes a device's output in place of its port, and undo gives the port back") {
     SourceRig rig;

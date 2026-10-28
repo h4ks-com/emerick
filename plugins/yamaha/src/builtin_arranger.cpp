@@ -61,10 +61,11 @@ std::optional<StyleSummary> loadedStyle(const model::Track& style) {
     return state && !state->style.empty() ? readStyle(state->style) : std::nullopt;
 }
 
-// A range of 1-based General MIDI programs.
+// A range of 1-based General MIDI programs and the one that stands for the whole family.
 struct Family {
     int first = 1;
     int last = 1;
+    int typical = 1;
 };
 
 struct Category {
@@ -73,20 +74,20 @@ struct Category {
 };
 
 constexpr std::array<Category, 14> kCategories{{
-    {"Piano", {1, 8}},
-    {"E.Piano", {5, 6}},
-    {"Percussion", {9, 16}},
-    {"Organ", {17, 21}},
-    {"Accordion", {22, 24}},
-    {"A.Guitar", {25, 26}},
-    {"E.Guitar", {27, 32}},
-    {"Bass", {33, 40}},
-    {"Strings", {41, 52}},
-    {"Choir", {53, 55}},
-    {"Brass", {57, 64}},
-    {"Woodwind", {65, 80}},
-    {"Synth", {81, 88}},
-    {"Pad", {89, 96}},
+    {"Piano", {1, 8, 1}},
+    {"E.Piano", {5, 6, 5}},
+    {"Percussion", {9, 16, 12}},
+    {"Organ", {17, 21, 17}},
+    {"Accordion", {22, 24, 22}},
+    {"A.Guitar", {25, 26, 26}},
+    {"E.Guitar", {27, 32, 28}},
+    {"Bass", {33, 40, 34}},
+    {"Strings", {41, 52, 49}},
+    {"Choir", {53, 55, 53}},
+    {"Brass", {57, 64, 62}},
+    {"Woodwind", {65, 80, 66}},
+    {"Synth", {81, 88, 81}},
+    {"Pad", {89, 96, 90}},
 }};
 
 // The 1-based General MIDI program each part plays when the voice list names no category for its voice.
@@ -158,7 +159,7 @@ std::optional<int> standInProgram(const app::Registry& registry, std::size_t par
     const VoiceFamilies& families = voiceFamilies(registry.settingValue(kVoiceListSetting).get<std::string>());
     if (const auto found = families.find({voice.bankMsb, voice.bankLsb, program}); found != families.end()) {
         const Family family = found->second;
-        return (program >= family.first && program <= family.last ? program : family.first) - 1;
+        return (program >= family.first && program <= family.last ? program : family.typical) - 1;
     }
     const std::optional<int> fallback = kPartDefaults.at(part);
     return fallback ? std::optional{*fallback - 1} : std::nullopt;

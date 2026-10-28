@@ -207,7 +207,7 @@ TEST_CASE("the voice list picks the General MIDI family that stands in for a par
 
     rig.registry.setSetting("yamaha.voiceList", outside.string());
     rig.run("arranger.style.load", {{"track", style}, {"path", rig.demo.string()}});
-    CHECK(param(3, 0) == 32);
+    CHECK(param(3, 0) == 33);
     CHECK(param(3, 2) == 0);
 }
 

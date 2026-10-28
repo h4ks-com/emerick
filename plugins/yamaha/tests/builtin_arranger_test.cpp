@@ -150,7 +150,7 @@ TEST_CASE("choosing a style switches the part tracks it has voices for between E
     CHECK(plugin(3).empty());
 }
 
-TEST_CASE("a part without an installed voice plays the style's program on General MIDI and warns which pack it needs") {
+TEST_CASE("a part without an installed voice plays its part's General MIDI default and warns which pack it needs") {
     ArrangerRig rig;
     const HomeFolder home{rig.path("home")};
     rig.run("arranger.setup");
@@ -158,15 +158,18 @@ TEST_CASE("a part without an installed voice plays the style's program on Genera
     rig.run("arranger.style.load", {{"track", style}, {"path", rig.demo.string()}});
     rig.controller->flush();
     const auto part = [&](std::size_t index) { return rig.document().tracks.at(index + 2).id.value; };
-    const auto sound = [&](std::size_t index) {
-        return rig.run("instrument.params", {{"track", part(index)}}).at("params")[0].at("value");
+    const auto param = [&](std::size_t index, std::size_t id) {
+        return rig.run("instrument.params", {{"track", part(index)}}).at("params")[id].at("value");
     };
     const auto warning = [&](std::size_t index) {
         return rig.controller->trackErrors().value(QString::fromStdString(part(index))).toString().toStdString();
     };
-    CHECK(sound(2) == 33);
-    CHECK(sound(3) == 25);
-    CHECK(sound(0) == 0);
+    CHECK(param(2, 0) == 33);
+    CHECK(param(2, 2) == 1);
+    CHECK(param(3, 0) == 27);
+    CHECK(param(3, 2) == 0);
+    CHECK(param(0, 0) == 0);
+    CHECK(param(0, 2) == 1);
     CHECK(warning(2) ==
           "General MIDI stands in for voice 0/0/34. Install its pack and choose Expansion Voices to hear it");
     CHECK(warning(3) ==
@@ -178,6 +181,34 @@ TEST_CASE("a part without an installed voice plays the style's program on Genera
     rig.run("instrument.remove", {{"track", part(3)}});
     rig.controller->flush();
     CHECK(warning(3).empty());
+}
+
+TEST_CASE("the voice list picks the General MIDI family that stands in for a part's voice") {
+    ArrangerRig rig;
+    const HomeFolder home{rig.path("home")};
+    const std::filesystem::path inside = rig.path("inside.csv");
+    std::ofstream(inside) << "msb,lsb,program,category\n8,2,26,A.Guitar\r\n0,0,34,Nothing\n8,2\n";
+    const std::filesystem::path outside = rig.path("outside.csv");
+    std::ofstream(outside) << " 8, 2, 26, Bass\n";
+    rig.run("arranger.setup");
+    const std::string style = rig.trackOfKind("yamaha.style");
+    const auto part = [&](std::size_t index) { return rig.document().tracks.at(index + 2).id.value; };
+    const auto param = [&](std::size_t index, std::size_t id) {
+        return rig.run("instrument.params", {{"track", part(index)}}).at("params")[id].at("value");
+    };
+
+    rig.registry.setSetting("yamaha.voiceList", inside.string());
+    rig.run("arranger.style.load", {{"track", style}, {"path", rig.demo.string()}});
+    CHECK(param(3, 0) == 25);
+    CHECK(param(3, 2) == 0);
+    CHECK(param(2, 0) == 33);
+    CHECK(param(2, 2) == 1);
+    CHECK(param(0, 2) == 1);
+
+    rig.registry.setSetting("yamaha.voiceList", outside.string());
+    rig.run("arranger.style.load", {{"track", style}, {"path", rig.demo.string()}});
+    CHECK(param(3, 0) == 32);
+    CHECK(param(3, 2) == 0);
 }
 
 TEST_CASE("set up built-in arranger adds the Chords and Style tracks, the Arranger and a track per part in one step") {

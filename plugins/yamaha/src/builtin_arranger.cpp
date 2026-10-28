@@ -1,10 +1,17 @@
 #include <algorithm>
+#include <array>
+#include <charconv>
 #include <filesystem>
 #include <format>
+#include <fstream>
+#include <map>
 #include <optional>
 #include <ranges>
 #include <span>
 #include <string>
+#include <string_view>
+#include <system_error>
+#include <tuple>
 #include <vector>
 
 #include "emerick/app/action_params.hpp"
@@ -25,6 +32,7 @@ using app::Json;
 constexpr std::size_t kFirstPart = 8;
 constexpr std::uint32_t kVoiceParam = 0;
 constexpr std::uint32_t kSoundParam = 0;
+constexpr std::uint32_t kFollowParam = 2;
 
 // Yamaha and Roland modules select a drum kit with these bank select MSBs, so General MIDI keeps its drum kit there.
 constexpr bool isDrumBank(int msb) { return msb == 120 || msb == 126 || msb == 127; }
@@ -53,9 +61,112 @@ std::optional<StyleSummary> loadedStyle(const model::Track& style) {
     return state && !state->style.empty() ? readStyle(state->style) : std::nullopt;
 }
 
+// A range of 1-based General MIDI programs.
+struct Family {
+    int first = 1;
+    int last = 1;
+};
+
+struct Category {
+    std::string_view name;
+    Family family;
+};
+
+constexpr std::array<Category, 14> kCategories{{
+    {"Piano", {1, 8}},
+    {"E.Piano", {5, 6}},
+    {"Percussion", {9, 16}},
+    {"Organ", {17, 21}},
+    {"Accordion", {22, 24}},
+    {"A.Guitar", {25, 26}},
+    {"E.Guitar", {27, 32}},
+    {"Bass", {33, 40}},
+    {"Strings", {41, 52}},
+    {"Choir", {53, 55}},
+    {"Brass", {57, 64}},
+    {"Woodwind", {65, 80}},
+    {"Synth", {81, 88}},
+    {"Pad", {89, 96}},
+}};
+
+// The 1-based General MIDI program each part plays when the voice list names no category for its voice.
+constexpr std::array<std::optional<int>, arranger::kParts> kPartDefaults{std::nullopt, std::nullopt, 34, 28, 5,
+                                                                         49,           62,           82};
+
+using VoiceKey = std::tuple<int, int, int>;
+using VoiceFamilies = std::map<VoiceKey, Family>;
+
+std::string_view trimmed(std::string_view text) {
+    const auto first = text.find_first_not_of(" \t\r");
+    return first == std::string_view::npos ? std::string_view{}
+                                           : text.substr(first, text.find_last_not_of(" \t\r") - first + 1);
+}
+
+std::optional<int> numberIn(std::string_view field, int first, int last) {
+    const std::string_view text = trimmed(field);
+    int value = 0;
+    const auto [end, error] = std::from_chars(text.data(), text.data() + text.size(), value);
+    const bool whole = error == std::errc{} && end == text.data() + text.size();
+    return whole && value >= first && value <= last ? std::optional{value} : std::nullopt;
+}
+
+VoiceFamilies readVoiceList(const std::filesystem::path& path) {
+    VoiceFamilies families;
+    std::ifstream file(path);
+    for (std::string line; std::getline(file, line);) {
+        const auto fields = line | std::views::split(',') |
+                            std::views::transform([](auto field) { return std::string_view(field); }) |
+                            std::ranges::to<std::vector>();
+        if (fields.size() != 4) {
+            continue;
+        }
+        const auto msb = numberIn(fields[0], 0, 127);
+        const auto lsb = numberIn(fields[1], 0, 127);
+        const auto program = numberIn(fields[2], 1, 128);
+        const auto* const category = std::ranges::find(kCategories, trimmed(fields[3]), &Category::name);
+        if (msb && lsb && program && category != kCategories.end()) {
+            families[{*msb, *lsb, *program}] = category->family;
+        }
+    }
+    return families;
+}
+
+const VoiceFamilies& voiceFamilies(const std::filesystem::path& path) {
+    struct Cached {
+        std::filesystem::path path;
+        std::filesystem::file_time_type modified;
+        VoiceFamilies families;
+    };
+    static Cached cached;
+    std::error_code error;
+    const auto modified = std::filesystem::last_write_time(path, error);
+    if (error) {
+        cached = {};
+    } else if (path != cached.path || modified != cached.modified) {
+        cached = {.path = path, .modified = modified, .families = readVoiceList(path)};
+    }
+    return cached.families;
+}
+
+// The 0-based General MIDI program that stands in for a voice no pack holds, or nullopt when General MIDI follows
+// the style's own bank and program because the voice is a General MIDI one.
+std::optional<int> standInProgram(const app::Registry& registry, std::size_t part, const arranger::PartVoice& voice) {
+    if (voice.bankMsb == 0 && voice.bankLsb == 0) {
+        return std::nullopt;
+    }
+    const int program = voice.program + 1;
+    const VoiceFamilies& families = voiceFamilies(registry.settingValue(kVoiceListSetting).get<std::string>());
+    if (const auto found = families.find({voice.bankMsb, voice.bankLsb, program}); found != families.end()) {
+        const Family family = found->second;
+        return (program >= family.first && program <= family.last ? program : family.first) - 1;
+    }
+    const std::optional<int> fallback = kPartDefaults.at(part);
+    return fallback ? std::optional{*fallback - 1} : std::nullopt;
+}
+
 // Expansion Voices plays the part when it holds the voice the style asks for; General MIDI plays every other part.
 void loadPartInstrument(app::Registry& registry, app::ProjectController& controller, const model::TrackId& id,
-                        std::optional<arranger::PartVoice> voice) {
+                        std::size_t part, std::optional<arranger::PartVoice> voice) {
     if (voice) {
         registry.run("instrument.load", {{"track", id.value}, {"plugin", kVoicesPluginId}});
         const std::string state = Json{
@@ -85,8 +196,14 @@ void loadPartInstrument(app::Registry& registry, app::ProjectController& control
         return;
     }
     controller.instruments().sync(controller.project().document());
-    if (controller.instruments().find(id) != nullptr) {
-        registry.run("instrument.setParam", {{"track", id.value}, {"param", kSoundParam}, {"value", voice->program}});
+    if (controller.instruments().find(id) == nullptr) {
+        return;
+    }
+    const std::optional<int> standIn = standInProgram(registry, part, *voice);
+    registry.run("instrument.setParam",
+                 {{"track", id.value}, {"param", kSoundParam}, {"value", standIn.value_or(voice->program)}});
+    if (standIn) {
+        registry.run("instrument.setParam", {{"track", id.value}, {"param", kFollowParam}, {"value", 0}});
     }
 }
 
@@ -112,7 +229,7 @@ void followStyle(app::Registry& registry, app::ProjectController& controller, co
         const std::optional<arranger::PartVoice>& voice = summary.style.voices.at(part);
         const std::string plugin = instrument->pluginId;
         if (plugin == kVoicesPluginId || (plugin == app::kGeneralMidiPluginId && voice)) {
-            loadPartInstrument(registry, controller, *id, voice);
+            loadPartInstrument(registry, controller, *id, part, voice);
         }
     }
 }
@@ -175,7 +292,7 @@ Json setup(app::Registry& registry, app::ProjectController& controller) {
                 track.armed = false;
                 track.monitor = false;
             });
-            loadPartInstrument(registry, controller, id, summary ? summary->style.voices.at(part) : std::nullopt);
+            loadPartInstrument(registry, controller, id, part, summary ? summary->style.voices.at(part) : std::nullopt);
         }
     });
     return app::projectState(controller);

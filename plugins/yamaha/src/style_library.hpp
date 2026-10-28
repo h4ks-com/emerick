@@ -19,6 +19,7 @@ namespace emerick::yamaha {
 inline constexpr const char* kArrangerPluginId = "org.emerick.arranger";
 inline constexpr const char* kVoicesPluginId = "org.emerick.voices";
 inline constexpr const char* kStyleFoldersSetting = "yamaha.styleFolders";
+inline constexpr const char* kVoiceListSetting = "yamaha.voiceList";
 inline constexpr std::array<std::string_view, 3> kStyleExtensions{"sty", "prs", "sst"};
 
 // The sections of a style as the inspector lists them, in the order a song plays them.

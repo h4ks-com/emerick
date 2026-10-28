@@ -206,6 +206,14 @@ void registerSettings(app::Registry& registry, app::ProjectController& controlle
                           .type = app::SettingType::List,
                           .defaultValue = app::Json::array(),
                           .hint = "Folders to list styles from in the built-in arranger's style picker"});
+    addSetting(registry, {.id = kVoiceListSetting,
+                          .title = "Voice list",
+                          .aliases = {"voice categories", "general midi stand-in"},
+                          .type = app::SettingType::String,
+                          .defaultValue = "",
+                          .hint = "Pick a CSV file with one voice per line as msb,lsb,program,category, with program "
+                                  "1 to 128 and a category such as Bass, so General MIDI stands in with a sound of "
+                                  "that family"});
 }
 
 void registerTrackKinds(app::Registry& registry, const StyleSync& sync) {

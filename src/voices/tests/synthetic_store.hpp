@@ -30,6 +30,8 @@ struct SyntheticVoice {
     int program = 0;
     int keyShift = 0;
     std::vector<SyntheticZone> zones;
+    // Extra blocks of the element, such as its amplitudeBlock, filterBlock and lfoBlock.
+    std::string blocks;
 };
 
 std::vector<std::int16_t> sine(double frequency, double sampleRate, std::size_t frames);

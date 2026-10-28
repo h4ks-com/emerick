@@ -29,6 +29,15 @@ struct PlaySettings {
     double releaseSeconds = 0.0;
 };
 
+// A state variable low-pass filter for both sides of a note.
+struct Filter {
+    double a1 = 0.0;
+    double a2 = 0.0;
+    double a3 = 0.0;
+    std::array<double, 2> ic1{};
+    std::array<double, 2> ic2{};
+};
+
 inline constexpr std::size_t kPolyphony = 64;
 inline constexpr std::size_t kChannels = 16;
 
@@ -36,15 +45,15 @@ inline constexpr std::size_t kChannels = 16;
 class Sampler {
 public:
     void noteOn(const Bank& bank, int key, int velocity, int channel, const PlaySettings& settings);
-    void noteOff(int key, int channel, const PlaySettings& settings);
-    void setSustain(int channel, bool down, const PlaySettings& settings);
-    void releaseAll(const PlaySettings& settings);
+    void noteOff(int key, int channel);
+    void setSustain(int channel, bool down);
+    void releaseAll();
     void silence();
     // Adds the playing notes to both channels.
     void render(std::span<float> left, std::span<float> right);
 
 private:
-    enum class Stage : std::uint8_t { idle, attack, hold, release };
+    enum class Stage : std::uint8_t { idle, attack, decay1, decay2, sustain, release };
 
     struct Note {
         Stage stage = Stage::idle;
@@ -53,17 +62,26 @@ private:
         int channel = 0;
         bool sustained = false;
         std::uint64_t started = 0;
+        double outputRate = 0.0;
         double position = 0.0;
         double step = 0.0;
         float gainLeft = 0.0F;
         float gainRight = 0.0F;
-        float level = 0.0F;
-        float attackStep = 0.0F;
-        float releaseStep = 0.0F;
+        Envelope envelope;
+        double level = 0.0;
+        double attackStep = 0.0;
+        double decay1Ratio = 1.0;
+        double decay2Ratio = 1.0;
+        double releaseRatio = 1.0;
+        Filter filter;
+        double lfoPhase = 0.0;
+        double lfoStep = 0.0;
+        double lfoDelay = 0.0;
     };
 
     Note& freeNote();
-    static void release(Note& note, const PlaySettings& settings);
+    static void release(Note& note);
+    static bool advanceEnvelope(Note& note);
     static void renderNote(Note& note, std::span<float> left, std::span<float> right);
 
     std::array<Note, kPolyphony> notes_{};

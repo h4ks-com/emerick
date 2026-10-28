@@ -144,6 +144,63 @@ TEST_CASE("the store reads each voice's pack, name, address and zones") {
     CHECK(zone.rightWave.empty());
 }
 
+TEST_CASE("the store reads each element's envelope, low-pass filter and LFO in both voice flavors") {
+    SyntheticStore store;
+    const std::string wave = store.addWave(linearBlob(sine(440.0, 44100.0, 441), 44100.0));
+    store.addPack(
+        "Pack",
+        {SyntheticVoice{.name = "Drum",
+                        .zones = {SyntheticZone{.wave = wave}},
+                        .blocks = "<amplitudeBlock><attackRate>0.534033</attackRate><decay1Rate>1.0</decay1Rate>"
+                                  "<decay2Rate>0.367366</decay2Rate><releaseRate>0.534033</releaseRate>"
+                                  "<attackLevel>0</attackLevel><decay1Level>0</decay1Level>"
+                                  "<decay2Level>-48</decay2Level></amplitudeBlock>"
+                                  "<filterBlock><dcfFilterType>LPF(YS5)</dcfFilterType><dcfCutoff>7018.73</dcfCutoff>"
+                                  "</filterBlock><lfoBlock><frequency>4</frequency><amDepth>-6</amDepth></lfoBlock>"},
+         SyntheticVoice{.name = "Pad",
+                        .zones = {SyntheticZone{.wave = wave}},
+                        .blocks = "<amplitudeBlock><attackTime>0.666667</attackTime><decay1Time>0.5</decay1Time>"
+                                  "<decay2Time>0.833333</decay2Time><releaseTime>0.75</releaseTime>"
+                                  "<attackLevel>0</attackLevel><decay1Level>-0.375</decay1Level>"
+                                  "<decay2Level>-12</decay2Level></amplitudeBlock>"
+                                  "<filterBlock><filterType>LPF</filterType><cutoffFrequency>1000</cutoffFrequency>"
+                                  "<resonance>1.0</resonance></filterBlock>"
+                                  "<lfoBlock><frequency>5</frequency><delayTime>250</delayTime>"
+                                  "<pitchModulationDepth>20</pitchModulationDepth></lfoBlock>"},
+         SyntheticVoice{.name = "Plain", .zones = {SyntheticZone{.wave = wave}}}});
+    const Store loaded = loadStore(store.folder());
+    REQUIRE(loaded.voices.size() == 3);
+
+    const Zone& drum = loaded.voices[0].zones.at(0);
+    REQUIRE(drum.envelope.has_value());
+    CHECK(drum.envelope->attackSeconds == Catch::Approx(1.0).epsilon(1e-4));
+    CHECK(drum.envelope->decay1Seconds == 0.0);
+    CHECK(drum.envelope->decay2Seconds == Catch::Approx(5.0).epsilon(1e-4));
+    CHECK(drum.envelope->releaseSeconds == Catch::Approx(0.5).epsilon(1e-4));
+    CHECK(drum.envelope->sustainGain == Catch::Approx(0.003981).epsilon(1e-3));
+    CHECK_FALSE(drum.lowPass.has_value());
+    CHECK(drum.lfo.hertz == 4.0);
+    CHECK(drum.lfo.amplitudeDb == -6.0);
+
+    const Zone& pad = loaded.voices[1].zones.at(0);
+    REQUIRE(pad.envelope.has_value());
+    CHECK(pad.envelope->attackSeconds == Catch::Approx(1.0).epsilon(1e-4));
+    CHECK(pad.envelope->decay1Seconds == Catch::Approx(0.1).epsilon(1e-4));
+    CHECK(pad.envelope->decay2Seconds == Catch::Approx(10.0).epsilon(1e-4));
+    CHECK(pad.envelope->releaseSeconds == Catch::Approx(3.1623).epsilon(1e-4));
+    CHECK(pad.envelope->decay1Gain == Catch::Approx(0.95773).epsilon(1e-4));
+    CHECK(pad.envelope->sustainGain == Catch::Approx(0.25119).epsilon(1e-4));
+    REQUIRE(pad.lowPass.has_value());
+    CHECK(pad.lowPass->hertz == 1000.0);
+    CHECK(pad.lowPass->q == Catch::Approx(1.2589).epsilon(1e-4));
+    CHECK(pad.lfo.delaySeconds == 0.25);
+    CHECK(pad.lfo.pitchCents == 20.0);
+
+    const Zone& plain = loaded.voices[2].zones.at(0);
+    CHECK_FALSE(plain.envelope.has_value());
+    CHECK_FALSE(plain.lowPass.has_value());
+}
+
 TEST_CASE("the store leaves out voices whose waves are undecodable or missing") {
     SyntheticStore store;
     const std::string linear = store.addWave(linearBlob(sine(440.0, 44100.0, 441), 44100.0));

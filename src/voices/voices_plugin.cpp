@@ -97,13 +97,13 @@ void controlChange(Plugin& plugin, int channel, int controller, int value) {
             plugin.bankLsb[index] = value;
             break;
         case kSustain:
-            plugin.sampler.setSustain(channel, value >= kSustainDown, settingsOf(plugin));
+            plugin.sampler.setSustain(channel, value >= kSustainDown);
             break;
         case kAllSoundOff:
             plugin.sampler.silence();
             break;
         case kAllNotesOff:
-            plugin.sampler.releaseAll(settingsOf(plugin));
+            plugin.sampler.releaseAll();
             break;
         default:
             break;
@@ -116,11 +116,11 @@ void playMidi(Plugin& plugin, const std::array<std::uint8_t, 3>& data) {
     const int second = data[2] & 0x7F;
     switch (data[0] & 0xF0) {
         case 0x80:
-            plugin.sampler.noteOff(first, channel, settingsOf(plugin));
+            plugin.sampler.noteOff(first, channel);
             break;
         case 0x90:
             if (second == 0) {
-                plugin.sampler.noteOff(first, channel, settingsOf(plugin));
+                plugin.sampler.noteOff(first, channel);
             } else {
                 startNote(plugin, first, second, channel);
             }
@@ -141,9 +141,9 @@ void playNote(Plugin& plugin, const clap_event_note& note, bool on) {
     if (on) {
         startNote(plugin, note.key, velocityOf(note.velocity), channel);
     } else if (note.key < 0) {
-        plugin.sampler.releaseAll(settingsOf(plugin));
+        plugin.sampler.releaseAll();
     } else {
-        plugin.sampler.noteOff(note.key, channel, settingsOf(plugin));
+        plugin.sampler.noteOff(note.key, channel);
     }
 }
 

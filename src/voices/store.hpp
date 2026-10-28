@@ -18,6 +18,32 @@ struct VoiceAddress {
     auto operator<=>(const VoiceAddress&) const = default;
 };
 
+// An element's amplitude envelope: a linear attack to attackGain, two decays and a release to silence, each
+// falling evenly in decibels over its seconds.
+struct Envelope {
+    double attackSeconds = 0.0;
+    double decay1Seconds = 0.0;
+    double decay2Seconds = 0.0;
+    double releaseSeconds = 0.0;
+    double attackGain = 1.0;
+    double decay1Gain = 1.0;
+    double sustainGain = 1.0;
+};
+
+struct LowPass {
+    double hertz = 0.0;
+    double q = 0.0;
+};
+
+// A triangle LFO that starts after its delay and moves pitch, cutoff and level by up to its depths.
+struct Lfo {
+    double hertz = 0.0;
+    double delaySeconds = 0.0;
+    double pitchCents = 0.0;
+    double cutoffCents = 0.0;
+    double amplitudeDb = 0.0;
+};
+
 // One sample a voice plays for a range of notes and velocities, flattened from its element and key bank.
 struct Zone {
     int keyLo = 0;
@@ -36,6 +62,10 @@ struct Zone {
     std::string leftWave;
     // Empty for a mono zone, which plays leftWave on both sides.
     std::string rightWave;
+    // Empty when the element names no envelope, which plays the instrument's Attack and Release.
+    std::optional<Envelope> envelope;
+    std::optional<LowPass> lowPass;
+    Lfo lfo;
 };
 
 struct Voice {

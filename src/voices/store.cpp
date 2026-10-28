@@ -25,6 +25,10 @@ namespace fs = std::filesystem;
 constexpr std::array<std::string_view, 12> kNoteNames{"C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"};
 constexpr int kLowestOctave = -2;
 constexpr std::size_t kWaveNameLength = 40;
+constexpr double kFloorDb = -96.0;
+constexpr double kDrumRateOffset = 0.534033;
+constexpr double kOpenCutoff = 14000.0;
+constexpr double kButterworthQ = 0.7071;
 
 bool isWaveName(std::string_view name) {
     return name.size() == kWaveNameLength && std::ranges::all_of(name, [](char letter) {
@@ -71,7 +75,62 @@ struct Element {
     double volumeDb = 0.0;
     double pan = 0.0;
     int waveform = -1;
+    std::optional<Envelope> envelope;
+    std::optional<LowPass> lowPass;
+    Lfo lfo;
 };
+
+double gainOf(double decibels) { return std::pow(10.0, decibels / 20.0); }
+
+// Both envelope flavors store log10 of the seconds, a sixth per decade, from different origins.
+double universalSeconds(double time) { return std::pow(10.0, 6.0 * (time - (2.0 / 3.0))); }
+
+double drumSeconds(double rate) { return std::pow(10.0, 6.0 * (kDrumRateOffset - rate)); }
+
+std::optional<Envelope> envelopeOf(const pugi::xml_node& amplitude) {
+    const double attackDb = decimal(amplitude, "attackLevel");
+    const double decay1Db = decimal(amplitude, "decay1Level");
+    const double sustainDb = std::max(decimal(amplitude, "decay2Level"), kFloorDb);
+    Envelope envelope{.attackGain = gainOf(attackDb), .decay1Gain = gainOf(decay1Db), .sustainGain = gainOf(sustainDb)};
+    if (!amplitude.child("attackTime").empty()) {
+        envelope.attackSeconds = universalSeconds(decimal(amplitude, "attackTime"));
+        envelope.decay1Seconds = universalSeconds(decimal(amplitude, "decay1Time"));
+        envelope.decay2Seconds = universalSeconds(decimal(amplitude, "decay2Time"));
+        envelope.releaseSeconds = universalSeconds(decimal(amplitude, "releaseTime"));
+        return envelope;
+    }
+    if (amplitude.child("attackRate").empty()) {
+        return std::nullopt;
+    }
+    // A drum rate is the time a full 96 dB swing takes, so each segment takes its share of it.
+    const auto seconds = [&](const char* rate, double fromDb, double toDb) {
+        return drumSeconds(decimal(amplitude, rate)) * std::abs(toDb - fromDb) / -kFloorDb;
+    };
+    envelope.attackSeconds = drumSeconds(decimal(amplitude, "attackRate"));
+    envelope.decay1Seconds = seconds("decay1Rate", attackDb, decay1Db);
+    envelope.decay2Seconds = seconds("decay2Rate", decay1Db, sustainDb);
+    envelope.releaseSeconds = seconds("releaseRate", sustainDb, kFloorDb);
+    return envelope;
+}
+
+// The resonance is the peak in decibels halved, and 14 kHz means the filter is open.
+std::optional<LowPass> lowPassOf(const pugi::xml_node& filter) {
+    const double cutoff = filter.child("cutoffFrequency").text().as_double(kOpenCutoff);
+    if (!std::string_view(filter.child_value("filterType")).starts_with("LPF") || cutoff <= 0.0 ||
+        cutoff >= kOpenCutoff) {
+        return std::nullopt;
+    }
+    return LowPass{.hertz = cutoff, .q = std::max(kButterworthQ, std::pow(10.0, decimal(filter, "resonance") / 10.0))};
+}
+
+// Drum kits name the depths pmDepth, fmDepth and amDepth, other voices spell them out.
+Lfo lfoOf(const pugi::xml_node& lfo) {
+    return Lfo{.hertz = decimal(lfo, "frequency"),
+               .delaySeconds = decimal(lfo, "delayTime") / 1000.0,
+               .pitchCents = decimal(lfo, "pmDepth") + decimal(lfo, "pitchModulationDepth"),
+               .cutoffCents = decimal(lfo, "fmDepth") + decimal(lfo, "filterModulationDepth"),
+               .amplitudeDb = decimal(lfo, "amDepth") + decimal(lfo, "amplitudeModulationDepth")};
+}
 
 Element elementOf(const pugi::xml_node& node) {
     const pugi::xml_node blocks = node.child("blockComposition");
@@ -83,15 +142,16 @@ Element elementOf(const pugi::xml_node& node) {
                    .tuneCents = tuneCents(blocks.child("pitchBlock")),
                    .volumeDb = decimal(node, "volume") + decimal(blocks.child("amplitudeBlock"), "volume"),
                    .pan = decimal(node, "pan"),
-                   .waveform = number(blocks.child("oscillatorBlock"), "waveformNum", -1)};
+                   .waveform = number(blocks.child("oscillatorBlock"), "waveformNum", -1),
+                   .envelope = envelopeOf(blocks.child("amplitudeBlock")),
+                   .lowPass = lowPassOf(blocks.child("filterBlock")),
+                   .lfo = lfoOf(blocks.child("lfoBlock"))};
 }
 
 std::string waveName(const pugi::xml_node& sample) {
     const char* file = sample.child_value("waveFile");
     return *file != '\0' ? file : sample.child_value("waveFilePath");
 }
-
-float gainOf(double decibels) { return static_cast<float>(std::pow(10.0, decibels / 20.0)); }
 
 // A zone plays where its element's note and velocity limits overlap its key bank's, with the key bank's notes
 // counted after the element's note shift.
@@ -106,10 +166,13 @@ std::optional<Zone> zoneOf(const Element& element, const pugi::xml_node& keybank
               .fixedPitch = isOn(keybank, "fixedPitch"),
               .oneShot = isOn(keybank, "oneShot"),
               .sampleRate = keybank.child("samplingFrequency").text().as_double(44100.0),
-              .gain = gainOf(commonDb + element.volumeDb + decimal(keybank, "volume")),
+              .gain = static_cast<float>(gainOf(commonDb + element.volumeDb + decimal(keybank, "volume"))),
               .pan = static_cast<float>(std::clamp(element.pan + decimal(keybank, "pan"), -1.0, 1.0)),
               .leftWave = {},
-              .rightWave = {}};
+              .rightWave = {},
+              .envelope = element.envelope,
+              .lowPass = element.lowPass,
+              .lfo = element.lfo};
     for (const pugi::xml_node sample : keybank.children("sample")) {
         (std::string_view(sample.attribute("position").value()) == "RIGHT" ? zone.rightWave : zone.leftWave) =
             waveName(sample);

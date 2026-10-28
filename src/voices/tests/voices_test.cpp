@@ -180,6 +180,38 @@ TEST_CASE("a looped zone sounds while held, a one-shot stops at its end and a re
     CHECK(loudest(std::span(played).last(4800)) < 1e-6F);
 }
 
+TEST_CASE("a voice plays its element's envelope and low-pass filter") {
+    Rig rig;
+    const std::string wave = rig.store.addWave(linearBlob(sine(440.0, 44100.0, 44100), 44100.0, std::pair{0U, 44100U}));
+    rig.store.addPack(
+        "Shaped",
+        {SyntheticVoice{.name = "Quiet",
+                        .program = 1,
+                        .zones = {SyntheticZone{.wave = wave}},
+                        .blocks = "<amplitudeBlock><attackTime>0</attackTime><decay1Time>0</decay1Time>"
+                                  "<decay2Time>0.5</decay2Time><releaseTime>0.5</releaseTime>"
+                                  "<decay2Level>-20</decay2Level></amplitudeBlock>"},
+         SyntheticVoice{.name = "Dark",
+                        .program = 2,
+                        .zones = {SyntheticZone{.wave = wave}},
+                        .blocks = "<filterBlock><filterType>LPF</filterType><cutoffFrequency>100</cutoffFrequency>"
+                                  "<resonance>0</resonance></filterBlock>"}});
+    const auto shaped = [&](const std::string& name, int program) {
+        return rig.instrument(
+            Json{{"voice", {{"pack", "Shaped"}, {"name", name}, {"msb", 0}, {"lsb", 0}, {"program", program}}}});
+    };
+    const float full = loudest(
+        std::span<const float>(render(*rig.instrument(voiceNamed("Sine", 3)), {{0x90, 69, 100}}, 30)).last(4800));
+
+    const auto quiet = shaped("Quiet", 1);
+    const std::vector<float> held = render(*quiet, {{0x90, 69, 100}}, 30);
+    CHECK(loudest(std::span(held).first(48)) > 0.5F * full);
+    CHECK(loudest(std::span(held).last(4800)) == Catch::Approx(0.1F * full).epsilon(0.05));
+    CHECK(loudest(std::span<const float>(render(*quiet, {{0x80, 69, 0}}, 30)).last(480)) < 1e-6F);
+
+    CHECK(loudest(std::span<const float>(render(*shaped("Dark", 2), {{0x90, 69, 100}}, 30)).last(4800)) < 0.1F * full);
+}
+
 TEST_CASE("the Volume param scales the output") {
     const Rig rig;
     const auto loud = rig.instrument(voiceNamed("Sine", 3));

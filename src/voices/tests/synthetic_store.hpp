@@ -21,6 +21,7 @@ struct SyntheticZone {
     double sampleRate = 44100.0;
     bool oneShot = false;
     std::string wave;
+    std::string waveType = "LINEAR16";
 };
 
 struct SyntheticVoice {

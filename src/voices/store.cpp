@@ -194,7 +194,7 @@ std::string contentsOf(const fs::path& file) {
 // A voice file holds hundreds of kilobytes of tables, so we skip the ones with compressed waves before parsing them.
 std::optional<Voice> voiceOf(const fs::path& file, const std::string& pack) {
     const std::string text = contentsOf(file);
-    if (!text.starts_with("<?xml") || text.contains("<waveType>WXC</waveType>")) {
+    if (!text.starts_with("<?xml")) {
         return std::nullopt;
     }
     pugi::xml_document document;

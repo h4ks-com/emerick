@@ -90,10 +90,10 @@ std::string zoneXml(const SyntheticZone& zone, std::size_t number) {
         "<velocityLimitHi>{}</velocityLimitHi><velocityLimitLo>{}</velocityLimitLo><volume>0.000000</volume>"
         "<pan>0.000000</pan><centerNote>{}</centerNote><tuneCoarse>{}</tuneCoarse><tuneFine>{:.6f}</tuneFine>"
         "<tuneLoop>0</tuneLoop><samplingFrequency>{:.6f}</samplingFrequency><fixedPitch>OFF</fixedPitch>"
-        "<oneShot>{}</oneShot><sample position=\"MONO\"><waveFile>{}</waveFile><waveType>LINEAR16</waveType>"
+        "<oneShot>{}</oneShot><sample position=\"MONO\"><waveFile>{}</waveFile><waveType>{}</waveType>"
         "</sample></keybank>\n",
         number, zone.keyHi, zone.keyLo, zone.velocityHi, zone.velocityLo, zone.rootKey, zone.tuneCoarse, zone.tuneFine,
-        zone.sampleRate, zone.oneShot ? "ON" : "OFF", zone.wave);
+        zone.sampleRate, zone.oneShot ? "ON" : "OFF", zone.wave, zone.waveType);
 }
 
 std::string voiceXml(const SyntheticVoice& voice) {

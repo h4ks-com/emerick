@@ -206,12 +206,13 @@ TEST_CASE("the store leaves out zones whose waves are undecodable or missing, an
     const std::string linear = store.addWave(linearBlob(sine(440.0, 44100.0, 441), 44100.0));
     const std::string partial = store.addWave(wxc1Blob(44100.0, kFirstParams, crackedFrames()));
     const std::string compressed = store.addWave(wxc1Blob(44100.0, {.mode = 5}, crackedFrames()));
-    store.addPack("Pack", {SyntheticVoice{.name = "Plays", .zones = {SyntheticZone{.wave = linear}}},
-                           SyntheticVoice{.name = "Partly", .zones = {SyntheticZone{.wave = partial}}},
-                           SyntheticVoice{.name = "Compressed",
-                                          .zones = {SyntheticZone{.keyHi = "C3", .wave = linear},
-                                                    SyntheticZone{.keyLo = "C#3", .wave = compressed}}},
-                           SyntheticVoice{.name = "Missing", .zones = {SyntheticZone{.wave = std::string(40, 'f')}}}});
+    store.addPack("Pack",
+                  {SyntheticVoice{.name = "Plays", .zones = {SyntheticZone{.wave = linear}}},
+                   SyntheticVoice{.name = "Partly", .zones = {SyntheticZone{.wave = partial, .waveType = "WXC"}}},
+                   SyntheticVoice{.name = "Compressed",
+                                  .zones = {SyntheticZone{.keyHi = "C3", .wave = linear},
+                                            SyntheticZone{.keyLo = "C#3", .wave = compressed}}},
+                   SyntheticVoice{.name = "Missing", .zones = {SyntheticZone{.wave = std::string(40, 'f')}}}});
     const Store loaded = loadStore(store.folder());
     REQUIRE(loaded.voices.size() == 3);
     CHECK(loaded.voices[0].name == "Compressed");

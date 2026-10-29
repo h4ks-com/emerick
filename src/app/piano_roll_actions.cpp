@@ -66,7 +66,8 @@ int auditionChannel(const ProjectController& controller, const model::Track& tra
         return track.midiOut.channel;
     }
     if (params.contains("clip")) {
-        const model::MidiClip& clip = midiClipOf(controller, clipParam(controller.project(), params));
+        const model::ClipId id = clipParam(controller.project(), params);
+        const model::MidiClip& clip = midiClipOf(controller, id);
         if (!clip.notes.empty()) {
             return clip.notes.front().channel;
         }

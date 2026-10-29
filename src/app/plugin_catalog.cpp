@@ -152,7 +152,8 @@ void PluginCatalog::load() {
         return;
     }
     try {
-        for (const auto& [path, entry] : Json::parse(in).at("bundles").items()) {
+        const Json cache = Json::parse(in);
+        for (const auto& [path, entry] : cache.at("bundles").items()) {
             bundles_[path] = {.modified = entry.at("modified"),
                               .plugins = descriptorsFromJson(entry.at("plugins")),
                               .blockedReason = entry.value("blocked", "")};

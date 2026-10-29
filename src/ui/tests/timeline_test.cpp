@@ -159,8 +159,8 @@ TEST_CASE("dragging a clip shows where it lands until the drag ends") {
 
     const QPointF from = timeline.press(QString::fromStdString("clip.move:" + id));
     timeline.moveBy(from, {1000 * timeline.rig.nav.pixelsPerTick(), 0});
-    CHECK(processUntil([&] { return tip("ToolTip.visible").toBool(); }));
-    CHECK(tip("ToolTip.text").toString() == "Move clip   " + timeline.rig.controller->ticksText(960, false));
+    const QString landing = "Move clip   " + timeline.rig.controller->ticksText(960, false);
+    CHECK(processUntil([&] { return tip("ToolTip.visible").toBool() && tip("ToolTip.text").toString() == landing; }));
     timeline.send(QEvent::MouseButtonRelease, from + QPointF{1000 * timeline.rig.nav.pixelsPerTick(), 0}, Qt::NoButton,
                   Qt::NoModifier);
     CHECK_FALSE(tip("ToolTip.visible").toBool());
@@ -498,9 +498,15 @@ TEST_CASE("dropping files on a lane imports them at the pointer onto that track 
     files.setUrls({QUrl::fromLocalFile(QString::fromStdString(rig.path("take.wav").string())),
                    QUrl::fromLocalFile(QString::fromStdString(rig.path("song.mid").string()))});
 
-    QDragEnterEvent enter{at, Qt::CopyAction, &files, Qt::LeftButton, Qt::NoModifier};
+#if QT_VERSION >= QT_VERSION_CHECK(6, 12, 0)
+    const QPointF dragAt = at;
+#else
+    // Qt 6.11, which the Docker image builds with, has only the QPoint drag event constructors.
+    const QPoint dragAt = at.toPoint();
+#endif
+    QDragEnterEvent enter{dragAt, Qt::CopyAction, &files, Qt::LeftButton, Qt::NoModifier};
     QCoreApplication::sendEvent(&timeline.view, &enter);
-    QDragMoveEvent move{at, Qt::CopyAction, &files, Qt::LeftButton, Qt::NoModifier};
+    QDragMoveEvent move{dragAt, Qt::CopyAction, &files, Qt::LeftButton, Qt::NoModifier};
     QCoreApplication::sendEvent(&timeline.view, &move);
     CHECK(timeline.item("tracks.fileDropTarget")->isVisible());
     QDropEvent drop{at, Qt::CopyAction, &files, Qt::LeftButton, Qt::NoModifier};

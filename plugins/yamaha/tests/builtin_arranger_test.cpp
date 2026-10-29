@@ -171,7 +171,7 @@ TEST_CASE("choosing a style switches the part tracks it has voices for between E
     CHECK(plugin(2) == "org.emerick.gm");
 
     rig.run("project.redo");
-    CHECK(plugin(2) == bassPlugin);
+    CHECK(plugin(2) == "org.emerick.voices");
     rig.run("arranger.style.load", {{"track", style}, {"path", otherBassStyle(rig).string()}});
     CHECK(plugin(2) == "org.emerick.gm");
     CHECK(plugin(3).empty());

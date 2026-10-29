@@ -464,8 +464,8 @@ std::shared_ptr<const Preload> SnapshotBuilder::preload(const std::string& key, 
                                                         const ClipPlayback& playback, Frames cycleStart,
                                                         double sampleRate) {
     const Frames from = std::max(cycleStart, playback.start);
-    const Frames to =
-        std::min(cycleStart + std::llround(kPreloadSeconds * sampleRate), playback.start + playback.length);
+    const Frames to = std::min(cycleStart + static_cast<Frames>(std::llround(kPreloadSeconds * sampleRate)),
+                               playback.start + playback.length);
     if (from >= to) {
         return nullptr;
     }

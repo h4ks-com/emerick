@@ -157,7 +157,13 @@ TEST_CASE("dropping a style file on a Style track loads it into the track's Arra
     const QPointF at = lane->mapToScene({lane->width() / 2, lane->height() / 2});
     QMimeData files;
     files.setUrls({QUrl::fromLocalFile(QString::fromStdString(other.string()))});
-    QDragEnterEvent enter{at, Qt::CopyAction, &files, Qt::LeftButton, Qt::NoModifier};
+#if QT_VERSION >= QT_VERSION_CHECK(6, 12, 0)
+    const QPointF dragAt = at;
+#else
+    // Qt 6.11, which the Docker image builds with, has only the QPoint drag event constructors.
+    const QPoint dragAt = at.toPoint();
+#endif
+    QDragEnterEvent enter{dragAt, Qt::CopyAction, &files, Qt::LeftButton, Qt::NoModifier};
     QCoreApplication::sendEvent(main.window, &enter);
     QDropEvent drop{at, Qt::CopyAction, &files, Qt::LeftButton, Qt::NoModifier};
     QCoreApplication::sendEvent(main.window, &drop);

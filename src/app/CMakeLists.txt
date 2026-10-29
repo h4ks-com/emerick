@@ -96,6 +96,7 @@ qt_add_library(emerick_app STATIC
     send_actions.cpp
     session_mapping.cpp
     stem_export.cpp
+    summary_actions.cpp
     take_preview.cpp
     track_actions.cpp
     track_edit_actions.cpp
@@ -153,6 +154,7 @@ if(EMERICK_BUILD_TESTS)
         tests/registry_test.cpp
         tests/script_library_test.cpp
         tests/send_test.cpp
+        tests/summary_test.cpp
         tests/take_preview_test.cpp
         tests/track_hooks_test.cpp
         tests/transport_test.cpp)

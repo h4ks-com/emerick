@@ -320,6 +320,7 @@ void registerProjectActions(Registry& registry, ProjectController& controller, N
     registerMarkerActions(registry, controller, nav);
     registerCycleActions(registry, controller, nav);
     registerExportActions(registry, controller);
+    registerSummaryActions(registry, controller);
     registerMetronome(registry, controller, nav);
     registerProjectFolderActions(registry, controller, nav);
     registry.addAction({.id = "devices.list",

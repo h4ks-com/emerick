@@ -85,6 +85,8 @@ void registerCycleActions(Registry& registry, ProjectController& controller, Nav
 void registerProjectFileActions(Registry& registry, ProjectController& controller);
 void registerProjectFolderActions(Registry& registry, ProjectController& controller, Nav& nav);
 void registerExportActions(Registry& registry, ProjectController& controller);
+// Compact reads for agents: midi.analyze and project.summary.
+void registerSummaryActions(Registry& registry, ProjectController& controller);
 // The Metronome settings section, the metronome actions and the "metronome" state provider. Every change to a
 // metronome setting reaches the engine at the next flush.
 void registerMetronome(Registry& registry, ProjectController& controller, Nav& nav);

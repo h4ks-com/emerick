@@ -80,6 +80,7 @@ private:
     };
 
     Note& freeNote();
+    void chokeGroup(int group, int key, int channel);
     static void release(Note& note);
     static bool advanceEnvelope(Note& note);
     static void renderNote(Note& note, std::span<float> left, std::span<float> right);

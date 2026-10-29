@@ -14,6 +14,7 @@ namespace {
 constexpr float kVelocityScale = 127.0F;
 constexpr double kEnvelopeFloor = 1.5849e-5;
 constexpr double kHighestCutoff = 0.45;
+constexpr double kChokeSeconds = 0.005;
 
 double framesOf(double seconds, double rate) { return std::max(1.0, seconds * rate); }
 
@@ -58,6 +59,11 @@ double semitonesOf(const Zone& zone, int key, const PlaySettings& settings) {
     return keyed + zone.tuneCents / 100.0 + settings.tuneSemitones;
 }
 
+bool loops(const BankZone& zone) { return zone.left->looped() && !zone.zone->oneShot; }
+
+// A key that ignores note off still releases when its wave loops, since it would otherwise play forever.
+bool releasesOnNoteOff(const BankZone& zone) { return zone.zone->receivesNoteOff || loops(zone); }
+
 float sampleAt(const Wave& wave, double position) {
     const auto index = static_cast<std::size_t>(position);
     if (index + 1 >= wave.samples.size()) {
@@ -91,6 +97,9 @@ void Sampler::noteOn(const Bank& bank, int key, int velocity, int channel, const
             continue;
         }
         const float gain = settings.volume * info.gain * (static_cast<float>(velocity) / kVelocityScale);
+        if (info.alternateGroup != 0) {
+            chokeGroup(info.alternateGroup, key, channel);
+        }
         Note& note = freeNote();
         note = Note{};
         note.stage = Stage::attack;
@@ -126,9 +135,20 @@ void Sampler::release(Note& note) {
     note.releaseRatio = ratioOver(note.level, kEnvelopeFloor, note.envelope.releaseSeconds, note.outputRate);
 }
 
+void Sampler::chokeGroup(int group, int key, int channel) {
+    for (Note& note : notes_) {
+        if (note.stage != Stage::idle && note.channel == channel && note.key != key &&
+            note.zone->zone->alternateGroup == group && note.level > kEnvelopeFloor) {
+            note.stage = Stage::release;
+            note.releaseRatio = ratioOver(note.level, kEnvelopeFloor, kChokeSeconds, note.outputRate);
+        }
+    }
+}
+
 void Sampler::noteOff(int key, int channel) {
     for (Note& note : notes_) {
-        if (note.stage != Stage::idle && note.stage != Stage::release && note.key == key && note.channel == channel) {
+        if (note.stage != Stage::idle && note.stage != Stage::release && note.key == key && note.channel == channel &&
+            releasesOnNoteOff(*note.zone)) {
             if (sustain_.at(static_cast<std::size_t>(channel))) {
                 note.sustained = true;
             } else {
@@ -205,7 +225,7 @@ void Sampler::renderNote(Note& note, std::span<float> left, std::span<float> rig
     const Zone& info = *note.zone->zone;
     const Wave& leftWave = *note.zone->left;
     const Wave& rightWave = note.zone->right != nullptr ? *note.zone->right : leftWave;
-    const bool looped = leftWave.looped() && !info.oneShot;
+    const bool looped = loops(*note.zone);
     const auto loopStart = static_cast<double>(leftWave.loopStart);
     const auto loopEnd = static_cast<double>(leftWave.loopEnd);
     const auto end = static_cast<double>(leftWave.samples.size());

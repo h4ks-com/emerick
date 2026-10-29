@@ -75,6 +75,8 @@ struct Element {
     double volumeDb = 0.0;
     double pan = 0.0;
     int waveform = -1;
+    bool receivesNoteOff = true;
+    int alternateGroup = 0;
     std::optional<Envelope> envelope;
     std::optional<LowPass> lowPass;
     Lfo lfo;
@@ -134,6 +136,7 @@ Lfo lfoOf(const pugi::xml_node& lfo) {
 
 Element elementOf(const pugi::xml_node& node) {
     const pugi::xml_node blocks = node.child("blockComposition");
+    const pugi::xml_node drumSetup = node.child("drumSetup");
     return Element{.keyLo = note(node, "noteLimitLo", 0),
                    .keyHi = note(node, "noteLimitHi", 127),
                    .velocityLo = number(node, "velocityLimitLo", 0),
@@ -143,6 +146,8 @@ Element elementOf(const pugi::xml_node& node) {
                    .volumeDb = decimal(node, "volume") + decimal(blocks.child("amplitudeBlock"), "volume"),
                    .pan = decimal(node, "pan"),
                    .waveform = number(blocks.child("oscillatorBlock"), "waveformNum", -1),
+                   .receivesNoteOff = number(drumSetup, "rcvNoteOff", 1) != 0,
+                   .alternateGroup = number(drumSetup, "alternateGroup", 0),
                    .envelope = envelopeOf(blocks.child("amplitudeBlock")),
                    .lowPass = lowPassOf(blocks.child("filterBlock")),
                    .lfo = lfoOf(blocks.child("lfoBlock"))};
@@ -165,6 +170,8 @@ std::optional<Zone> zoneOf(const Element& element, const pugi::xml_node& keybank
               .tuneCents = element.tuneCents + tuneCents(keybank),
               .fixedPitch = isOn(keybank, "fixedPitch"),
               .oneShot = isOn(keybank, "oneShot"),
+              .receivesNoteOff = element.receivesNoteOff,
+              .alternateGroup = element.alternateGroup,
               .sampleRate = keybank.child("samplingFrequency").text().as_double(44100.0),
               .gain = static_cast<float>(gainOf(commonDb + element.volumeDb + decimal(keybank, "volume"))),
               .pan = static_cast<float>(std::clamp(element.pan + decimal(keybank, "pan"), -1.0, 1.0)),

@@ -313,3 +313,43 @@ TEST_CASE("the store loads on its own thread and the state's voice plays once th
     CHECK(instrument->paramText(kVoice, *instrument->paramValue(kVoice)) == "Test Pack / Sine");
     CHECK(std::abs(cents(frequency(render(*instrument, {{0x90, 69, 100}}, 20)), 440.0)) < 2.0);
 }
+
+TEST_CASE("a drum key that ignores note off plays out, and a key of its alternate group cuts it") {
+    Rig rig;
+    const std::string long440 = rig.store.addWave(linearBlob(sine(440.0, 44100.0, 44100), 44100.0));
+    const std::string looped =
+        rig.store.addWave(linearBlob(sine(440.0, 44100.0, 44100), 44100.0, std::pair{0U, 44100U}));
+    const std::string click = rig.store.addWave(linearBlob(sine(440.0, 44100.0, 10), 44100.0));
+    rig.store.addPack("Kit",
+                      {SyntheticVoice{.name = "Kick",
+                                      .msb = 127,
+                                      .program = 1,
+                                      .zones = {SyntheticZone{.wave = long440}},
+                                      .drumSetup = "<rcvNoteOff>0</rcvNoteOff>"},
+                       SyntheticVoice{.name = "Looped",
+                                      .msb = 127,
+                                      .program = 2,
+                                      .zones = {SyntheticZone{.wave = looped}},
+                                      .drumSetup = "<rcvNoteOff>0</rcvNoteOff>"},
+                       SyntheticVoice{.name = "Hats",
+                                      .msb = 127,
+                                      .program = 3,
+                                      .zones = {SyntheticZone{.keyLo = "C3", .keyHi = "C3", .wave = long440},
+                                                SyntheticZone{.keyLo = "D3", .keyHi = "D3", .wave = click}},
+                                      .drumSetup = "<rcvNoteOff>0</rcvNoteOff><alternateGroup>1</alternateGroup>"}});
+    const auto kitVoice = [](const char* name, int program) {
+        return Json{{"voice", {{"pack", "Kit"}, {"name", name}, {"msb", 127}, {"lsb", 0}, {"program", program}}}};
+    };
+
+    const auto kick = rig.instrument(kitVoice("Kick", 1));
+    render(*kick, {{0x99, 69, 100}}, 1);
+    CHECK(loudest(std::span<const float>(render(*kick, {{0x89, 69, 0}}, 20)).last(480)) > 0.1F);
+
+    const auto loopedKey = rig.instrument(kitVoice("Looped", 2));
+    render(*loopedKey, {{0x99, 69, 100}}, 1);
+    CHECK(loudest(std::span<const float>(render(*loopedKey, {{0x89, 69, 0}}, 50)).last(480)) < 1e-6F);
+
+    const auto hats = rig.instrument(kitVoice("Hats", 3));
+    render(*hats, {{0x99, 60, 100}}, 5);
+    CHECK(loudest(std::span<const float>(render(*hats, {{0x99, 62, 100}}, 5)).last(480)) < 1e-6F);
+}

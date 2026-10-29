@@ -56,6 +56,11 @@ struct Zone {
     double tuneCents = 0.0;
     bool fixedPitch = false;
     bool oneShot = false;
+    // A drum key that ignores note off plays to its end.
+    bool receivesNoteOff = true;
+    // A note of a drum key in a group other than 0 cuts the other keys of its group, as a closed hi-hat cuts an open
+    // one.
+    int alternateGroup = 0;
     double sampleRate = 44100.0;
     float gain = 1.0F;
     float pan = 0.0F;

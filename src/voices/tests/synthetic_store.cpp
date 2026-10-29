@@ -109,13 +109,13 @@ std::string voiceXml(const SyntheticVoice& voice) {
         "  <voiceElement number=\"0\"><volume>0.000000</volume><pan>0.000000</pan><noteShift>{}</noteShift>"
         "<noteLimitHi>G8</noteLimitHi><noteLimitLo>C-2</noteLimitLo><velocityLimitHi>127</velocityLimitHi>"
         "<velocityLimitLo>1</velocityLimitLo><blockComposition><oscillatorBlock><waveformNum>7</waveformNum>"
-        "</oscillatorBlock>{}</blockComposition></voiceElement>\n"
+        "</oscillatorBlock>{}</blockComposition><drumSetup>{}</drumSetup></voiceElement>\n"
         " </voiceCommon>\n"
         " <information><voiceName>{}</voiceName><voiceMsb>{}</voiceMsb><voiceLsb>{}</voiceLsb>"
         "<voicePcNum>{}</voicePcNum></information>\n"
         " <waveform number=\"7\">\n{} </waveform>\n"
         "</uvf:voiceData>\n",
-        voice.keyShift, voice.blocks, voice.name, voice.msb, voice.lsb, voice.program, zones);
+        voice.keyShift, voice.blocks, voice.drumSetup, voice.name, voice.msb, voice.lsb, voice.program, zones);
 }
 
 }  // namespace

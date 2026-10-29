@@ -1,0 +1,87 @@
+#include "emerick/engine/audio_analysis.hpp"
+
+#include <algorithm>
+#include <array>
+#include <catch2/catch_approx.hpp>
+#include <catch2/catch_test_macros.hpp>
+#include <cmath>
+#include <numbers>
+#include <vector>
+
+using Catch::Approx;
+using emerick::engine::analyzeAudio;
+using emerick::engine::kFrequencyBands;
+
+namespace {
+
+constexpr double kRate = 48000;
+
+std::vector<float> sine(double hz, double amplitude, double seconds, double phase = 0) {
+    std::vector<float> samples(static_cast<std::size_t>(seconds * kRate));
+    for (std::size_t frame = 0; frame < samples.size(); ++frame) {
+        samples[frame] = static_cast<float>(
+            amplitude * std::sin((2 * std::numbers::pi * hz * static_cast<double>(frame) / kRate) + phase));
+    }
+    return samples;
+}
+
+}  // namespace
+
+TEST_CASE("a full scale 997 Hz sine reads -3.01 LUFS and a 1 kHz sine at -20 dBFS about -23 LUFS") {
+    CHECK(analyzeAudio({sine(997, 1, 3)}, {.sampleRate = kRate}).integratedLufs == Approx(-3.01).margin(0.05));
+    CHECK(analyzeAudio({sine(1000, 0.1, 3)}, {.sampleRate = kRate}).integratedLufs == Approx(-23.01).margin(0.1));
+}
+
+TEST_CASE("true peak finds the crest between samples that the sample peak misses") {
+    const auto analysis = analyzeAudio({sine(kRate / 4, 1, 1, std::numbers::pi / 4)}, {.sampleRate = kRate});
+    CHECK(analysis.samplePeakDbfs == Approx(-3.01).margin(0.05));
+    CHECK(analysis.truePeakDbtp == Approx(0).margin(0.3));
+}
+
+TEST_CASE("bar levels follow the bar grid from the start position") {
+    std::vector<float> samples = sine(1000, 0.5, 4);
+    std::fill(samples.begin(), samples.begin() + static_cast<std::ptrdiff_t>(2 * kRate), 0.0F);
+    const auto analysis = analyzeAudio({samples}, {.sampleRate = kRate, .barSeconds = 2, .startSeconds = 2});
+    REQUIRE(analysis.bars.size() == 2);
+    CHECK(analysis.bars[0].bar == 2);
+    CHECK(std::isinf(analysis.bars[0].rmsDb));
+    CHECK(analysis.bars[1].bar == 3);
+    CHECK(analysis.bars[1].rmsDb == Approx(-9.03).margin(0.05));
+}
+
+TEST_CASE("silence of half a second or more is a region and shorter gaps are not") {
+    std::vector<float> samples = sine(1000, 0.5, 3);
+    std::fill(samples.begin(), samples.begin() + static_cast<std::ptrdiff_t>(kRate), 0.0F);
+    std::fill(samples.begin() + static_cast<std::ptrdiff_t>(2 * kRate),
+              samples.begin() + static_cast<std::ptrdiff_t>(2.2 * kRate), 0.0F);
+    const auto analysis = analyzeAudio({samples}, {.sampleRate = kRate});
+    REQUIRE(analysis.silence.size() == 1);
+    CHECK(analysis.silence[0].start == Approx(0));
+    CHECK(analysis.silence[0].end == Approx(1).margin(0.001));
+}
+
+TEST_CASE("samples at or above 0.999 count as clipped") {
+    const std::vector<float> samples{0.5F, 0.999F, -1.0F, 0.998F, 1.2F};
+    CHECK(analyzeAudio({samples, samples}, {.sampleRate = kRate}).clippedSamples == 6);
+}
+
+TEST_CASE("identical channels correlate at 1 and inverted channels at -1") {
+    const std::vector<float> left = sine(440, 0.5, 1);
+    std::vector<float> inverted = left;
+    std::ranges::transform(inverted, inverted.begin(), [](float sample) { return -sample; });
+    const auto same = analyzeAudio({left, left}, {.sampleRate = kRate});
+    REQUIRE(same.stereo);
+    CHECK(same.stereo->correlation == Approx(1));
+    CHECK(same.stereo->balanceDb == Approx(0));
+    CHECK(analyzeAudio({left, inverted}, {.sampleRate = kRate}).stereo->correlation == Approx(-1));
+    CHECK_FALSE(analyzeAudio({left}, {.sampleRate = kRate}).stereo);
+}
+
+TEST_CASE("band energy is highest in the band that holds the tone") {
+    const std::array<double, kFrequencyBands.size()> tones{40, 120, 350, 1000, 3000, 7000, 14000};
+    for (std::size_t band = 0; band < tones.size(); ++band) {
+        const auto analysis = analyzeAudio({sine(tones[band], 0.5, 1)}, {.sampleRate = kRate});
+        CAPTURE(kFrequencyBands[band].name);
+        CHECK(std::ranges::max_element(analysis.bandDb) - analysis.bandDb.begin() == static_cast<std::ptrdiff_t>(band));
+    }
+}

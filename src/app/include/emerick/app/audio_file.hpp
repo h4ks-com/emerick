@@ -17,6 +17,14 @@ struct AudioFileInfo {
 
 std::optional<AudioFileInfo> readAudioInfo(const std::filesystem::path& path);
 
+struct AudioData {
+    std::vector<std::vector<float>> channels;
+    double sampleRate = 0;
+};
+
+// Reads every channel of a WAV, AIFF or other file libsndfile opens. Throws AppError when it cannot.
+AudioData readAudio(const std::filesystem::path& path);
+
 // Writes one float WAV with a channel per vector; every vector has the same length. Throws AppError on failure.
 void writeWav(const std::filesystem::path& path, const std::vector<std::vector<float>>& channels, double sampleRate);
 

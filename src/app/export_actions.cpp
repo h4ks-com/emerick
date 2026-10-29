@@ -1,15 +1,21 @@
+#include <QTemporaryDir>
 #include <algorithm>
+#include <cmath>
+#include <cstddef>
 #include <filesystem>
+#include <format>
 #include <ranges>
 #include <string>
 #include <vector>
 
 #include "emerick/app/action_params.hpp"
+#include "emerick/app/audio_file.hpp"
 #include "emerick/app/midi_export.hpp"
 #include "emerick/app/project_actions.hpp"
 #include "emerick/app/project_state.hpp"
 #include "emerick/app/session_mapping.hpp"
 #include "emerick/app/stem_export.hpp"
+#include "emerick/engine/audio_analysis.hpp"
 
 namespace emerick::app {
 
@@ -87,6 +93,63 @@ std::vector<std::filesystem::path> exportForLogic(ProjectController& controller,
     files.push_back(folder / "MIDI.mid");
     exportMidi(session, document, registry, controller.name().toStdString(), files.back());
     return files;
+}
+
+double rounded(double value, double step) { return std::round(value / step) * step; }
+
+Json levelDb(double value) { return std::isfinite(value) ? Json(rounded(value, 0.1)) : Json(nullptr); }
+
+Json analysisJson(const engine::AudioAnalysis& analysis) {
+    Json bands = Json::object();
+    for (const auto& [band, db] : std::views::zip(engine::kFrequencyBands, analysis.bandDb)) {
+        bands[std::string{band.name}] = levelDb(db);
+    }
+    Json result{{"integratedLufs", levelDb(analysis.integratedLufs)},
+                {"truePeakDbtp", levelDb(analysis.truePeakDbtp)},
+                {"samplePeakDbfs", levelDb(analysis.samplePeakDbfs)},
+                {"bars", analysis.bars | std::views::transform([](const engine::BarLevel& bar) {
+                             return Json{{"bar", bar.bar}, {"rmsDb", levelDb(bar.rmsDb)}};
+                         }) | std::ranges::to<Json::array_t>()},
+                {"bandsDb", bands},
+                {"silence", analysis.silence | std::views::transform([](const engine::SilentRegion& region) {
+                                return Json{rounded(region.start, 0.01), rounded(region.end, 0.01)};
+                            }) | std::ranges::to<Json::array_t>()},
+                {"clippedSamples", analysis.clippedSamples}};
+    if (analysis.stereo) {
+        result["stereo"] = {{"correlation", rounded(analysis.stereo->correlation, 0.01)},
+                            {"balanceDb", levelDb(analysis.stereo->balanceDb)}};
+    }
+    return result;
+}
+
+// Bars follow the project tempo and meter even for a file from outside the project.
+Json analyzeSection(const AudioData& audio, const Json& params, const core::TempoMap& tempo) {
+    const std::size_t frames = audio.channels.empty() ? 0 : audio.channels.front().size();
+    const double seconds = static_cast<double>(frames) / audio.sampleRate;
+    const double from = optionalParam<double>(params, "from").value_or(0);
+    const double to = std::min(optionalParam<double>(params, "to").value_or(seconds), seconds);
+    if (from < 0 || from >= to) {
+        throw AppError(
+            std::format("give from and to in seconds with 0 <= from < to <= {:.2f}, the audio length", seconds));
+    }
+    const auto first = static_cast<std::ptrdiff_t>(std::lround(from * audio.sampleRate));
+    const auto last = static_cast<std::ptrdiff_t>(std::lround(to * audio.sampleRate));
+    const auto section = audio.channels | std::views::transform([&](const std::vector<float>& channel) {
+                             return std::vector<float>(channel.begin() + first, channel.begin() + last);
+                         }) |
+                         std::ranges::to<std::vector>();
+    const engine::AudioAnalysis analysis =
+        engine::analyzeAudio(section, {.sampleRate = audio.sampleRate,
+                                       .barSeconds = tempo.ticksToSeconds(tempo.ticksPerBar()),
+                                       .startSeconds = from});
+    Json result = analysisJson(analysis);
+    result["message"] = std::format("{:.1f} LUFS integrated, {:.1f} dBTP true peak, {} clipped samples",
+                                    analysis.integratedLufs, analysis.truePeakDbtp, analysis.clippedSamples);
+    result["from"] = rounded(from, 0.01);
+    result["to"] = rounded(to, 0.01);
+    result["channels"] = audio.channels.size();
+    result["sampleRate"] = audio.sampleRate;
+    return result;
 }
 
 }  // namespace
@@ -169,6 +232,49 @@ void registerExportActions(Registry& registry, ProjectController& controller) {
          .menus = {kFileMenu},
          .dialog = FileDialog{
              .param = "path", .mode = FileDialogMode::Save, .nameFilter = "MIDI files (*.mid)", .suffix = "mid"}});
+    const Json sectionSchema{{"from", {{"type", "number"}}}, {"to", {{"type", "number"}}}};
+    Json fileSchema = sectionSchema;
+    fileSchema["path"] = {{"type", "string"}};
+    registry.addAction({.id = "audio.analyze",
+                        .title = "Analyze audio file",
+                        .description = "Measure loudness, peaks, bar levels, bands, silence, clipping and stereo image "
+                                       "of a WAV or AIFF file, optionally from and to a time in seconds.",
+                        .keywords = {"loudness", "lufs", "true peak", "meter"},
+                        .category = "Analyze",
+                        .schema = {{"required", {"path"}}, {"properties", fileSchema}},
+                        .run =
+                            [&controller, &registry](const Json& params) {
+                                const std::filesystem::path file =
+                                    registry.checkedPath(param<std::string>(params, "path"), PathAccess::Read);
+                                return analyzeSection(readAudio(file), params, controller.project().document().tempo);
+                            },
+                        .menus = {kFileMenu},
+                        .dialog = FileDialog{.param = "path",
+                                             .mode = FileDialogMode::Open,
+                                             .nameFilter = "Audio files (*.wav *.aif *.aiff)"},
+                        .notifies = true});
+    registry.addAction(
+        {.id = "render.analyze",
+         .title = "Analyze mix",
+         .description = "Render the mix as Export mix does and measure loudness, peaks, bar levels, bands, silence, "
+                        "clipping and stereo image, optionally from and to a time in seconds.",
+         .keywords = {"loudness", "lufs", "true peak", "meter", "bounce"},
+         .category = "Analyze",
+         .schema = {{"properties", sectionSchema}},
+         .run =
+             [&controller, &registry](const Json& params) {
+                 const QTemporaryDir folder;
+                 if (!folder.isValid()) {
+                     throw AppError("cannot render: no temporary folder: " + folder.errorString().toStdString());
+                 }
+                 const std::filesystem::path file = std::filesystem::path{folder.path().toStdString()} / "mix.wav";
+                 const model::Document document = liveDocument(controller);
+                 exportMix(toSession(document, registry, controller.folder()), registry,
+                           playbackContext(controller, document), file, controller.sampleRate());
+                 return analyzeSection(readAudio(file), params, document.tempo);
+             },
+         .menus = {kFileMenu},
+         .notifies = true});
 }
 
 }  // namespace emerick::app

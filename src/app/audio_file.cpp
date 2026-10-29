@@ -51,6 +51,25 @@ std::optional<AudioFileInfo> readAudioInfo(const std::filesystem::path& path) {
     return AudioFileInfo{info.frames, info.samplerate, info.channels};
 }
 
+AudioData readAudio(const std::filesystem::path& path) {
+    SF_INFO info{};
+    const SndFile file{sf_open(path.c_str(), SFM_READ, &info)};
+    if (!file) {
+        throw AppError("cannot open " + path.filename().string() + " as audio: " + sf_strerror(nullptr));
+    }
+    const auto channels = static_cast<std::size_t>(info.channels);
+    std::vector<float> interleaved(static_cast<std::size_t>(info.frames) * channels);
+    const auto frames = static_cast<std::size_t>(sf_readf_float(file.get(), interleaved.data(), info.frames));
+    AudioData audio{.channels = std::vector<std::vector<float>>(channels, std::vector<float>(frames)),
+                    .sampleRate = static_cast<double>(info.samplerate)};
+    for (std::size_t frame = 0; frame < frames; ++frame) {
+        for (std::size_t channel = 0; channel < channels; ++channel) {
+            audio.channels[channel][frame] = interleaved[(frame * channels) + channel];
+        }
+    }
+    return audio;
+}
+
 void writeWav(const std::filesystem::path& path, const std::vector<std::vector<float>>& channels, double sampleRate) {
     SF_INFO info{.frames = 0,
                  .samplerate = static_cast<int>(std::lround(sampleRate)),

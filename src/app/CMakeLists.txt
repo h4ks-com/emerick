@@ -121,6 +121,7 @@ emerick_target(emerick_app)
 
 if(EMERICK_BUILD_TESTS)
     emerick_test(emerick_app_tests
+        tests/analysis_test.cpp
         tests/automation_test.cpp
         tests/clip_loop_test.cpp
         tests/clip_mute_test.cpp

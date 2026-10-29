@@ -430,6 +430,7 @@ TEST_CASE("an export runs to the end of the style's Ending when the Style lane e
 
     const Json result = rig.run("export.stems", {{"folder", rig.path("stems").string()}});
     CHECK(result.at("end").at("bbt") == "4.1.0");
+    CHECK(rig.run("project.summary", {}).at("lengthBars") == 3);
 }
 
 TEST_CASE("a style whose Mains leave Rhythm 1 empty plays no drums, as an Audio Style") {

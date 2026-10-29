@@ -17,6 +17,7 @@
 #include "emerick/app/action_params.hpp"
 #include "emerick/app/project_actions.hpp"
 #include "emerick/app/project_state.hpp"
+#include "emerick/app/session_mapping.hpp"
 #include "emerick/app/stem_export.hpp"
 #include "emerick/core/overloaded.hpp"
 #include "emerick/model/controls.hpp"
@@ -197,19 +198,21 @@ Json trackSummary(const model::Track& track, const QVariantMap& warnings) {
     return result;
 }
 
-Json projectSummary(ProjectController& controller) {
+Json projectSummary(ProjectController& controller, const Registry& registry) {
     controller.flush();
     const model::Document& document = controller.project().document();
     const core::Ticks ticksPerBar = document.tempo.ticksPerBar();
     const QVariantMap warnings = controller.trackErrors();
-    Json result{{"tempo", tempoState(document.tempo)},
-                {"lengthBars", (projectEnd(document) + ticksPerBar - 1) / ticksPerBar},
-                {"position", document.tempo.toBarBeatTick(controller.positionTicks()).format()},
-                {"playing", controller.playing()},
-                {"tracks", document.tracks | std::views::transform([&](const model::Track& track) {
-                               return trackSummary(track, warnings);
-                           }) | std::ranges::to<Json::array_t>()},
-                {"issues", controller.checkHealth()}};
+    Json result{
+        {"tempo", tempoState(document.tempo)},
+        {"lengthBars",
+         (exportEnd(toSession(document, registry, controller.folder()), document) + ticksPerBar - 1) / ticksPerBar},
+        {"position", document.tempo.toBarBeatTick(controller.positionTicks()).format()},
+        {"playing", controller.playing()},
+        {"tracks", document.tracks | std::views::transform([&](const model::Track& track) {
+                       return trackSummary(track, warnings);
+                   }) | std::ranges::to<Json::array_t>()},
+        {"issues", controller.checkHealth()}};
     result["message"] = std::format("{} tracks, {} bars, {} issues", document.tracks.size(),
                                     result.at("lengthBars").get<core::Ticks>(), result.at("issues").size());
     if (!controller.sessionError().empty()) {
@@ -238,7 +241,7 @@ void registerSummaryActions(Registry& registry, ProjectController& controller) {
                                        "current warnings, in one compact result",
                         .aliases = {"project overview", "describe project"},
                         .category = "Project",
-                        .run = [&controller](const Json&) { return projectSummary(controller); },
+                        .run = [&controller, &registry](const Json&) { return projectSummary(controller, registry); },
                         .menus = {kFileMenu},
                         .notifies = true});
 }

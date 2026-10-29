@@ -202,6 +202,7 @@ public:
     Q_INVOKABLE static double curveThroughMidpoint(const QString& shape, double gain);
     // Each instrument track's live CLAP instrument; a save writes their current states into the project.
     [[nodiscard]] Instruments& instruments() { return instruments_; }
+    [[nodiscard]] const Instruments& instruments() const { return instruments_; }
     [[nodiscard]] TrackMeters& meters() { return meters_; }
     [[nodiscard]] const TrackMeters& meters() const { return meters_; }
     // Per track id, the reasons its routes do not play, one per line.

@@ -17,6 +17,7 @@
 #include "emerick/app/plugin_actions.hpp"
 #include "emerick/app/plugin_catalog.hpp"
 #include "emerick/app/session_mapping.hpp"
+#include "registration.hpp"
 #include "style_builder.hpp"
 #include "style_library.hpp"
 #include "synthetic_store.hpp"
@@ -431,6 +432,22 @@ TEST_CASE("an export runs to the end of the style's Ending when the Style lane e
     const Json result = rig.run("export.stems", {{"folder", rig.path("stems").string()}});
     CHECK(result.at("end").at("bbt") == "4.1.0");
     CHECK(rig.run("project.summary", {}).at("lengthBars") == 3);
+}
+
+TEST_CASE("a part waiting for Expansion Voices to read its store warns until the store is read") {
+    ArrangerRig rig;
+    rig.run("arranger.setup");
+    const std::string style = rig.trackOfKind("yamaha.style");
+    rig.YamahaRig::run("arranger.style.load", {{"track", style}, {"path", rig.demo.string()}});
+    const auto waitWarnings = [&] {
+        return std::ranges::count_if(
+            yamaha::partWarnings(rig.track(style), rig.document(), rig.controller->instruments()),
+            [](const engine::SessionError& warning) { return warning.message.starts_with("Wait for Expansion"); });
+    };
+    CHECK((waitWarnings() > 0) == rig.voicesLoading());
+
+    REQUIRE(processUntil([&] { return !rig.voicesLoading(); }, 10000));
+    CHECK(waitWarnings() == 0);
 }
 
 TEST_CASE("a style whose Mains leave Rhythm 1 empty plays no drums, as an Audio Style") {

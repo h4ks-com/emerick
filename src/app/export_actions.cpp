@@ -103,6 +103,15 @@ std::vector<std::filesystem::path> exportForLogic(ProjectController& controller,
     return files;
 }
 
+// A render result carries the track warnings, since a warned track can render silent or with stand-in sounds.
+Json withWarnings(Json result, const ProjectController& controller) {
+    const QVariantMap warnings = controller.trackErrors();
+    for (const auto& [track, text] : warnings.asKeyValueRange()) {
+        result["warnings"][track.toStdString()] = text.toString().toStdString();
+    }
+    return result;
+}
+
 double rounded(double value, double step) { return std::round(value / step) * step; }
 
 Json levelDb(double value) { return std::isfinite(value) ? Json(rounded(value, 0.1)) : Json(nullptr); }
@@ -216,25 +225,26 @@ Json writeAudioImage(const AudioData& audio, const Json& params, const std::file
 
 void registerExportActions(Registry& registry, ProjectController& controller) {
     const Json tracksSchema{{"tracks", {{"type", "array"}}}};
-    registry.addAction({.id = "export.stems",
-                        .title = "Export stems",
-                        .aliases = {"bounce tracks", "render stems"},
-                        .category = "Export",
-                        .schema = {{"required", {"folder"}}, {"properties", tracksSchema}},
-                        .run =
-                            [&controller, &registry](const Json& params) {
-                                const std::filesystem::path folder =
-                                    registry.checkedPath(param<std::string>(params, "folder"), PathAccess::Write);
-                                const model::Document document = liveDocument(controller);
-                                const engine::Session session =
-                                    exportSession(controller, document, registry, params, false, true);
-                                const auto files = exportStems(session, registry, playbackContext(controller, document),
-                                                               folder, controller.sampleRate());
-                                return Json{{"files", fileList(files)},
-                                            {"end", positionState(exportEnd(session, document), document.tempo)}};
-                            },
-                        .menus = {kFileMenu},
-                        .dialog = FileDialog{.param = "folder", .mode = FileDialogMode::Folder}});
+    registry.addAction(
+        {.id = "export.stems",
+         .title = "Export stems",
+         .aliases = {"bounce tracks", "render stems"},
+         .category = "Export",
+         .schema = {{"required", {"folder"}}, {"properties", tracksSchema}},
+         .run =
+             [&controller, &registry](const Json& params) {
+                 const std::filesystem::path folder =
+                     registry.checkedPath(param<std::string>(params, "folder"), PathAccess::Write);
+                 const model::Document document = liveDocument(controller);
+                 const engine::Session session = exportSession(controller, document, registry, params, false, true);
+                 const auto files = exportStems(session, registry, playbackContext(controller, document), folder,
+                                                controller.sampleRate());
+                 return withWarnings(Json{{"files", fileList(files)},
+                                          {"end", positionState(exportEnd(session, document), document.tempo)}},
+                                     controller);
+             },
+         .menus = {kFileMenu},
+         .dialog = FileDialog{.param = "folder", .mode = FileDialogMode::Folder}});
     registry.addAction(
         {.id = "export.mix",
          .title = "Export mix",
@@ -248,7 +258,7 @@ void registerExportActions(Registry& registry, ProjectController& controller) {
                  const model::Document document = liveDocument(controller);
                  exportMix(toSession(document, registry, controller.folder()), registry,
                            playbackContext(controller, document), file, controller.sampleRate());
-                 return Json{{"file", file.string()}};
+                 return withWarnings(Json{{"file", file.string()}}, controller);
              },
          .menus = {kFileMenu},
          .dialog = FileDialog{
@@ -361,7 +371,7 @@ void registerExportActions(Registry& registry, ProjectController& controller) {
                  const model::Document document = liveDocument(controller);
                  exportMix(toSession(document, registry, controller.folder()), registry,
                            playbackContext(controller, document), file, controller.sampleRate());
-                 return analyzeSection(readAudio(file), params, document.tempo);
+                 return withWarnings(analyzeSection(readAudio(file), params, document.tempo), controller);
              },
          .menus = {kFileMenu},
          .notifies = true});

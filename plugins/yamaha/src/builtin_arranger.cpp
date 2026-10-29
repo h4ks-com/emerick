@@ -324,7 +324,8 @@ void followStyle(BuiltinArranger& builtin, app::Registry& registry, app::Project
 
 }  // namespace
 
-std::vector<engine::SessionError> missingVoices(const model::Track& style, const model::Document& document) {
+std::vector<engine::SessionError> partWarnings(const model::Track& style, const model::Document& document,
+                                               const app::Instruments& instruments) {
     const auto summary = loadedStyle(style);
     if (!summary) {
         return {};
@@ -338,7 +339,14 @@ std::vector<engine::SessionError> missingVoices(const model::Track& style, const
             continue;
         }
         const model::Track& track = *model::findTrack(document, *id);
-        if (track.instrument && track.instrument->pluginId == app::kGeneralMidiPluginId) {
+        if (track.instrument && track.instrument->pluginId == kVoicesPluginId) {
+            const Json described = instruments.describe(*id);
+            if (!described.is_null() && voicesLoading(described.at("params"))) {
+                warnings.push_back({.trackId = id->value,
+                                    .message = "Wait for Expansion Voices to read its voice packs before you play or "
+                                               "render, since the part stays silent until then"});
+            }
+        } else if (track.instrument && track.instrument->pluginId == app::kGeneralMidiPluginId) {
             warnings.push_back({.trackId = id->value,
                                 .message = std::format("Install the pack with voice {}/{}/{} and choose Expansion "
                                                        "Voices to hear it in place of General MIDI",

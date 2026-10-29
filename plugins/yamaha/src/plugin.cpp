@@ -236,7 +236,7 @@ void registerSettings(app::Registry& registry, app::ProjectController& controlle
                         .dialog = app::FileDialog{.param = "path", .nameFilter = "Voice lists (*.csv)"}});
 }
 
-void registerTrackKinds(app::Registry& registry, const StyleSync& sync) {
+void registerTrackKinds(app::Registry& registry, const app::ProjectController& controller, const StyleSync& sync) {
     registry.addTrackType(
         {.kind = kChordKind,
          .title = "Chords",
@@ -298,7 +298,10 @@ void registerTrackKinds(app::Registry& registry, const StyleSync& sync) {
                         }) |
                         std::ranges::to<std::vector>();
              },
-         .warnings = missingVoices,
+         .warnings =
+             [&controller](const model::Track& track, const model::Document& document) {
+                 return partWarnings(track, document, controller.instruments());
+             },
          // The Start/Stop button toggles, so we press it only to stop a Style that runs.
          .panic =
              [&registry, &sync](const model::Track& track) {
@@ -337,7 +340,7 @@ Listeners::~Listeners() = default;
 std::unique_ptr<Listeners> registerWith(app::Registry& registry, app::ProjectController& controller, app::Nav& nav) {
     registerSettings(registry, controller, nav);
     auto listeners = std::make_unique<Listeners>(registry, controller, nav);
-    registerTrackKinds(registry, *listeners->styleSync);
+    registerTrackKinds(registry, controller, *listeners->styleSync);
     registerDeviceProfile(registry);
     registerChartActions(registry, controller, nav);
     registerArrangerActions(registry, controller, *listeners->keyboardCheck);

@@ -678,6 +678,7 @@ void ProjectController::poll() {
         setEdited(true);
     }
     if (instruments_.takeParamsChanged()) {
+        typeWarnings_ = trackTypeWarnings(project_.document(), registry_);
         emit projectChanged();
     }
     const core::Ticks ticks = engine_.position().ticks;

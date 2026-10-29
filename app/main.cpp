@@ -7,9 +7,13 @@
 #include <QtEnvironmentVariables>
 #include <QtLogging>
 #include <QtSystemDetection>
+#include <algorithm>
+#include <cstddef>
 #include <exception>
 #include <filesystem>
 #include <optional>
+#include <span>
+#include <string_view>
 #include <utility>
 
 #include "emerick/app/backends.hpp"
@@ -58,11 +62,37 @@ private:
     const Registry& registry_;
 };
 
+// We read --headless before QGuiApplication exists, because Qt picks its platform plugin when it is built.
+bool hasHeadlessFlag(int argc, char** argv) {
+    return std::ranges::any_of(std::span{argv, static_cast<std::size_t>(argc)},
+                               [](const char* arg) { return std::string_view{arg} == "--headless"; });
+}
+
+int runWindow(Registry& registry, Nav& nav, ProjectController& controller, Console& console) {
+    TrackListModel tracks(controller, registry);
+    FileOpenFilter fileOpen(registry);
+    QGuiApplication::instance()->installEventFilter(&fileOpen);
+    KeyFocusFilter keyFocus;
+    QGuiApplication::instance()->installEventFilter(&keyFocus);
+    PeakCache peaks;
+    QQmlApplicationEngine engine;
+    exposeToQml(engine, registry, nav, controller, tracks, peaks, &console);
+    QObject::connect(
+        &engine, &QQmlApplicationEngine::objectCreationFailed, QGuiApplication::instance(),
+        [] { QCoreApplication::exit(1); }, Qt::QueuedConnection);
+    engine.loadFromModule("Emerick.Ui", "Main");
+    return QGuiApplication::exec();
+}
+
 int run(int argc, char** argv) {
 #ifdef Q_OS_MACOS
     // A theme meant for Linux desktops, such as qt5ct, replaces the Cocoa theme, and with it the native file dialogs.
     qunsetenv("QT_QPA_PLATFORMTHEME");
 #endif
+    const bool headless = hasHeadlessFlag(argc, argv);
+    if (headless) {
+        qputenv("QT_QPA_PLATFORM", "offscreen");
+    }
     QGuiApplication application(argc, argv);
     QGuiApplication::setApplicationName("Emerick");
     QGuiApplication::setOrganizationName("Emerick");
@@ -83,11 +113,14 @@ int run(int argc, char** argv) {
                                            "Let MCP and Lua requests read files only inside this folder.", "folder");
     const QCommandLineOption agentWriteRoot("agent-write-root",
                                             "Let MCP and Lua requests write files only inside this folder.", "folder");
-    parser.addOptions({mcpPort, mcpBindAny, noLuaMcp, audio, midi, profile, agentReadRoot, agentWriteRoot});
+    const QCommandLineOption headlessOption("headless", "Run with no window, driven over MCP, which needs a port.");
+    parser.addOptions(
+        {headlessOption, mcpPort, mcpBindAny, noLuaMcp, audio, midi, profile, agentReadRoot, agentWriteRoot});
     parser.process(application);
 
     const QString profileFolder = parser.value(profile);
     Registry registry(profileFolder.isEmpty() ? QString{} : profileFolder + "/settings.ini");
+    registry.setHeadless(headless);
     const auto optionalFolder = [&parser](const QCommandLineOption& option) {
         return parser.isSet(option) ? std::optional{std::filesystem::path{parser.value(option).toStdString()}}
                                     : std::nullopt;
@@ -117,17 +150,15 @@ int run(int argc, char** argv) {
     registerPluginActions(registry, nav, plugins);
     registerInstrumentActions(registry, controller, nav, plugins);
     const auto yamaha = emerick::yamaha::registerWith(registry, controller, nav);
-    TrackListModel tracks(controller, registry);
-    FileOpenFilter fileOpen(registry);
-    QGuiApplication::instance()->installEventFilter(&fileOpen);
-    KeyFocusFilter keyFocus;
-    QGuiApplication::instance()->installEventFilter(&keyFocus);
-
     bool validPort = true;
     const auto port = parser.isSet(mcpPort) ? parser.value(mcpPort).toUShort(&validPort)
                                             : registry.settingValue("mcp.port").get<quint16>();
     if (!validPort) {
         qCritical("--mcp-port expects a number from 0 to 65535");
+        return 2;
+    }
+    if (headless && port == 0) {
+        qCritical("--headless needs an MCP port: pass --mcp-port or set mcp.port");
         return 2;
     }
 
@@ -151,14 +182,7 @@ int run(int argc, char** argv) {
         qInfo("MCP on http://%s:%u/mcp", parser.isSet(mcpBindAny) ? "0.0.0.0" : "127.0.0.1", bound);
     }
 
-    PeakCache peaks;
-    QQmlApplicationEngine engine;
-    exposeToQml(engine, registry, nav, controller, tracks, peaks, &console);
-    QObject::connect(
-        &engine, &QQmlApplicationEngine::objectCreationFailed, &application, [] { QCoreApplication::exit(1); },
-        Qt::QueuedConnection);
-    engine.loadFromModule("Emerick.Ui", "Main");
-    return QGuiApplication::exec();
+    return headless ? QGuiApplication::exec() : runWindow(registry, nav, controller, console);
 }
 
 }  // namespace

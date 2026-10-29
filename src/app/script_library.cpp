@@ -263,7 +263,8 @@ void registerScriptActions(Registry& registry, ScriptLibrary& library) {
                                 QDesktopServices::openUrl(QUrl::fromLocalFile(QString::fromStdString(folder.string())));
                                 return Json{{"path", folder.string()}};
                             },
-                        .menus = {kScriptsMenu}});
+                        .menus = {kScriptsMenu},
+                        .windowOnly = true});
 }
 
 }  // namespace emerick::app

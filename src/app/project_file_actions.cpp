@@ -151,7 +151,8 @@ void registerProjectFolderActions(Registry& registry, ProjectController& control
                                 reveal(controller.folder());
                                 return Json{{"revealed", controller.folder().string()}};
                             },
-                        .menus = {kFileMenu, kProjectMenu}});
+                        .menus = {kFileMenu, kProjectMenu},
+                        .windowOnly = true});
     registry.addAction({.id = "project.removeUnusedAudio",
                         .title = "Remove unused audio files",
                         .aliases = {"clean up project", "delete unused takes"},
@@ -181,10 +182,12 @@ void registerProjectFolderActions(Registry& registry, ProjectController& control
                         .title = "Show or hide project menu",
                         .aliases = {"file menu", "document menu"},
                         .category = "Project",
-                        .run = [&nav](const Json&) {
-                            nav.setProjectMenuOpen(!nav.projectMenuOpen());
-                            return Json{{"projectMenuOpen", nav.projectMenuOpen()}};
-                        }});
+                        .run =
+                            [&nav](const Json&) {
+                                nav.setProjectMenuOpen(!nav.projectMenuOpen());
+                                return Json{{"projectMenuOpen", nav.projectMenuOpen()}};
+                            },
+                        .windowOnly = true});
 }
 
 }  // namespace emerick::app

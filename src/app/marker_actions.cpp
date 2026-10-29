@@ -164,7 +164,8 @@ void registerMarkerNavigation(Registry& registry, ProjectController& controller,
                                 nav.setInspectorOpen(nav.inspectorOpen() || open);
                                 return Json{{"markerListOpen", open}};
                             },
-                        .menus = {kViewMenu}});
+                        .menus = {kViewMenu},
+                        .windowOnly = true});
 }
 
 void registerMarkerEdits(Registry& registry, ProjectController& controller, Nav& nav) {
@@ -191,7 +192,8 @@ void registerMarkerEdits(Registry& registry, ProjectController& controller, Nav&
                                 nav.setRenamingMarker(qs(id.value));
                                 return markerResult(controller, id);
                             },
-                        .menus = {kMarkerContextMenu}});
+                        .menus = {kMarkerContextMenu},
+                        .windowOnly = true});
     registry.addAction({.id = "marker.rename",
                         .title = "Set marker name",
                         .category = "Markers",

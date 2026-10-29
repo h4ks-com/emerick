@@ -41,26 +41,6 @@ std::vector<McpTool> mcpTools(Registry& registry, const UiApi& ui, LuaHost* lua,
         return id;
     };
     std::vector<McpTool> tools{
-        {"ui.tree", "Read the live UI tree of every window, plus registry entries whose UI is not revealed yet.",
-         objectSchema({{"namedOnly", "boolean"}, {"root", "string"}}),
-         [&ui](const Json& arguments) {
-             return ui.tree(optionalParam<bool>(arguments, "namedOnly").value_or(false), text(arguments, "root"));
-         }},
-        {"ui.find", "Fuzzy search registry actions and settings, and find live UI items by objectName or text.",
-         objectSchema({{"query", "string"}}, {"query"}),
-         [&ui](const Json& arguments) { return ui.find(param<std::string>(arguments, "query")); }},
-        {"ui.reveal", "Open the UI path to a location, action or setting id and return the item's geometry.",
-         objectSchema({{"id", "string"}}, {"id"}),
-         [&ui](const Json& arguments) { return ui.reveal(param<std::string>(arguments, "id")); }},
-        {"ui.invoke", "Run an action by id, or click the UI item with that objectName.",
-         objectSchema({{"id", "string"}}, {"id"}),
-         [&ui, allowed](const Json& arguments) { return ui.invoke(allowed(param<std::string>(arguments, "id"))); }},
-        {"ui.set", "Set a setting by id, or a property of the UI item with that objectName.",
-         objectSchema({{"id", "string"}, {"property", "string"}, {"value", ""}}, {"id", "value"}),
-         [&ui](const Json& arguments) {
-             return ui.set(param<std::string>(arguments, "id"), param<Json>(arguments, "value"),
-                           optionalParam<std::string>(arguments, "property"));
-         }},
         {"actions.list", "List actions, ranked by an optional fuzzy query.", objectSchema({{"query", "string"}}),
          [&registry](const Json& arguments) {
              return Json{{"actions", registry.describeActions(text(arguments, "query"))}};
@@ -104,29 +84,58 @@ std::vector<McpTool> mcpTools(Registry& registry, const UiApi& ui, LuaHost* lua,
              const auto name = optionalParam<std::string>(arguments, "name");
              return name ? Json{{*name, registry.state(*name)}} : Json::object();
          }},
-        {"screenshot", "Save a PNG of the main window to path, or to a temporary file.",
-         objectSchema({{"path", "string"}}),
-         [&registry](const Json& arguments) {
-             const std::string path = text(arguments, "path");
-             return UiApi::screenshot(path.empty() ? path : registry.checkedPath(path, PathAccess::Write).string());
-         }},
     };
     if (lua != nullptr) {
-        tools.insert(tools.end() - 1,
-                     {"lua.eval",
-                      "Run Lua 5.4 with the emerick table: run, actions, setting, state and ui.find/reveal/set/invoke.",
-                      objectSchema({{"code", "string"}}, {"code"}),
-                      [lua](const Json& arguments) { return lua->eval(param<std::string>(arguments, "code")); }});
+        tools.push_back(
+            {"lua.eval",
+             "Run Lua 5.4 with the emerick table: run, actions, setting, state and ui.find/reveal/set/invoke.",
+             objectSchema({{"code", "string"}}, {"code"}),
+             [lua](const Json& arguments) { return lua->eval(param<std::string>(arguments, "code")); }});
     }
     if (console != nullptr) {
-        tools.insert(tools.end() - 1,
-                     {"console.log",
-                      "Read the console's recent lines: the action log as Lua calls, and console input, output and "
-                      "errors.",
-                      objectSchema({{"lines", "integer"}}), [console](const Json& arguments) {
-                          const int lines = optionalParam<int>(arguments, "lines").value_or(kConsoleLogLines);
-                          return Json{{"lines", console->recent(static_cast<std::size_t>(std::max(lines, 0)))}};
-                      }});
+        tools.push_back({"console.log",
+                         "Read the console's recent lines: the action log as Lua calls, and console input, output and "
+                         "errors.",
+                         objectSchema({{"lines", "integer"}}), [console](const Json& arguments) {
+                             const int lines = optionalParam<int>(arguments, "lines").value_or(kConsoleLogLines);
+                             return Json{{"lines", console->recent(static_cast<std::size_t>(std::max(lines, 0)))}};
+                         }});
+    }
+    if (!registry.headless()) {
+        tools.insert(
+            tools.begin(),
+            {
+                {"ui.tree",
+                 "Read the live UI tree of every window, plus registry entries whose UI is not revealed yet.",
+                 objectSchema({{"namedOnly", "boolean"}, {"root", "string"}}),
+                 [&ui](const Json& arguments) {
+                     return ui.tree(optionalParam<bool>(arguments, "namedOnly").value_or(false),
+                                    text(arguments, "root"));
+                 }},
+                {"ui.find", "Fuzzy search registry actions and settings, and find live UI items by objectName or text.",
+                 objectSchema({{"query", "string"}}, {"query"}),
+                 [&ui](const Json& arguments) { return ui.find(param<std::string>(arguments, "query")); }},
+                {"ui.reveal", "Open the UI path to a location, action or setting id and return the item's geometry.",
+                 objectSchema({{"id", "string"}}, {"id"}),
+                 [&ui](const Json& arguments) { return ui.reveal(param<std::string>(arguments, "id")); }},
+                {"ui.invoke", "Run an action by id, or click the UI item with that objectName.",
+                 objectSchema({{"id", "string"}}, {"id"}),
+                 [&ui, allowed](const Json& arguments) {
+                     return ui.invoke(allowed(param<std::string>(arguments, "id")));
+                 }},
+                {"ui.set", "Set a setting by id, or a property of the UI item with that objectName.",
+                 objectSchema({{"id", "string"}, {"property", "string"}, {"value", ""}}, {"id", "value"}),
+                 [&ui](const Json& arguments) {
+                     return ui.set(param<std::string>(arguments, "id"), param<Json>(arguments, "value"),
+                                   optionalParam<std::string>(arguments, "property"));
+                 }},
+            });
+        tools.push_back({"screenshot", "Save a PNG of the main window to path, or to a temporary file.",
+                         objectSchema({{"path", "string"}}), [&registry](const Json& arguments) {
+                             const std::string path = text(arguments, "path");
+                             return UiApi::screenshot(
+                                 path.empty() ? path : registry.checkedPath(path, PathAccess::Write).string());
+                         }});
     }
     return tools;
 }

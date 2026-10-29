@@ -34,7 +34,8 @@ void registerConsoleActions(Registry& registry, Nav& nav, Console& console) {
                                 nav.setConsoleOpen(!nav.consoleOpen());
                                 return Json{{"consoleOpen", nav.consoleOpen()}};
                             },
-                        .menus = {kViewMenu}});
+                        .menus = {kViewMenu},
+                        .windowOnly = true});
     registry.addAction(
         {.id = "console.eval",
          .title = "Run Lua in the console",

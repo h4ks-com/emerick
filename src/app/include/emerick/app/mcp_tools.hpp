@@ -20,7 +20,7 @@ struct McpTool {
 };
 
 // Pass no Lua host to leave lua.eval out and refuse the actions that run Lua; pass no console to leave console.log
-// out.
+// out. A headless registry leaves out the ui tools and screenshot.
 std::vector<McpTool> mcpTools(Registry& registry, const UiApi& ui, LuaHost* lua, const Console* console = nullptr);
 
 }  // namespace emerick::app

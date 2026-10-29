@@ -186,7 +186,8 @@ void registerPianoRollActions(Registry& registry, ProjectController& controller,
                                 }
                                 return pianoRollState(nav);
                             },
-                        .menus = {kViewMenu}});
+                        .menus = {kViewMenu},
+                        .windowOnly = true});
     registry.addAction({.id = "midi.editClip",
                         .title = "Open in piano roll",
                         .aliases = {"edit MIDI clip", "show notes"},

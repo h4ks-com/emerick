@@ -38,3 +38,9 @@ class Client:
 
     def call(self, name, arguments=None):
         return self.rpc("tools/call", {"name": name, "arguments": arguments or {}})
+
+    def run(self, action, params=None):
+        result = self.call("actions.run", {"id": action, "params": params or {}})["structuredContent"]
+        if "error" in result:
+            raise RuntimeError(f"{action}: {result['error']}")
+        return result["result"]

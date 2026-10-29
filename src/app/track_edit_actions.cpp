@@ -265,16 +265,18 @@ void registerTrackSelection(Registry& registry, ProjectController& controller, N
                         .aliases = {"track context menu", "track options"},
                         .category = "Tracks",
                         .schema = {{"properties", {{"track", {{"type", "string"}}}}}},
-                        .run = [&controller, &nav](const Json& params) {
-                            const auto id = targetTrack(controller, nav, params);
-                            if (nav.selectedTracks().contains(qs(id.value))) {
-                                nav.selectTracks(nav.selectedTracks(), qs(id.value));
-                            } else {
-                                nav.setSelectedTrack(qs(id.value));
-                            }
-                            nav.setTrackMenu(qs(id.value));
-                            return Json{{"trackMenu", id.value}};
-                        }});
+                        .run =
+                            [&controller, &nav](const Json& params) {
+                                const auto id = targetTrack(controller, nav, params);
+                                if (nav.selectedTracks().contains(qs(id.value))) {
+                                    nav.selectTracks(nav.selectedTracks(), qs(id.value));
+                                } else {
+                                    nav.setSelectedTrack(qs(id.value));
+                                }
+                                nav.setTrackMenu(qs(id.value));
+                                return Json{{"trackMenu", id.value}};
+                            },
+                        .windowOnly = true});
     registry.addAction({.id = "track.selectPrevious",
                         .title = "Select previous track",
                         .aliases = {"track above"},
@@ -347,7 +349,8 @@ void registerTrackEditActions(Registry& registry, ProjectController& controller,
                                 nav.setRenamingTrack(qs(id.value));
                                 return trackResult(controller, id);
                             },
-                        .menus = trackMenus()});
+                        .menus = trackMenus(),
+                        .windowOnly = true});
     registry.addAction({.id = "track.rename",
                         .title = "Set track name",
                         .category = "Tracks",

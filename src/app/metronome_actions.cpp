@@ -340,10 +340,12 @@ void registerActions(Registry& registry, const ProjectController& controller, Na
                         .title = "Show or hide metronome menu",
                         .aliases = {"metronome options"},
                         .category = "Metronome",
-                        .run = [&nav](const Json&) {
-                            nav.setMetronomeMenuOpen(!nav.metronomeMenuOpen());
-                            return Json{{"metronomeMenuOpen", nav.metronomeMenuOpen()}};
-                        }});
+                        .run =
+                            [&nav](const Json&) {
+                                nav.setMetronomeMenuOpen(!nav.metronomeMenuOpen());
+                                return Json{{"metronomeMenuOpen", nav.metronomeMenuOpen()}};
+                            },
+                        .windowOnly = true});
     registry.addAction({.id = "metronome.setVolume",
                         .title = "Set metronome volume",
                         .aliases = {"click volume", "metronome level"},

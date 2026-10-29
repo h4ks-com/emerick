@@ -195,11 +195,13 @@ void registerInsertEditor(Registry& registry, ProjectController& controller, Nav
                         .aliases = {"show effect", "edit plugin"},
                         .category = kCategory,
                         .schema = insertSchema(Json::object(), {"insert"}),
-                        .run = [&controller, &nav](const Json& params) {
-                            const InsertRef ref = insertParam(controller, params);
-                            nav.setEditingInsert(qs(ref.insert.value));
-                            return insertResult(controller, ref);
-                        }});
+                        .run =
+                            [&controller, &nav](const Json& params) {
+                                const InsertRef ref = insertParam(controller, params);
+                                nav.setEditingInsert(qs(ref.insert.value));
+                                return insertResult(controller, ref);
+                            },
+                        .windowOnly = true});
     registry.addAction({.id = "insert.closeEditor",
                         .title = "Close insert editor",
                         .aliases = {"hide effect"},

@@ -392,7 +392,8 @@ void registerModeActions(Registry& registry, ProjectController& controller, Nav&
                                 nav.setAutomationOpen(!nav.automationOpen());
                                 return Json{{"automationOpen", nav.automationOpen()}};
                             },
-                        .menus = {kViewMenu}});
+                        .menus = {kViewMenu},
+                        .windowOnly = true});
 }
 
 }  // namespace

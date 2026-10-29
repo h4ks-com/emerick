@@ -134,7 +134,8 @@ void registerInstrumentActions(Registry& registry, ProjectController& controller
                                 return Json{{"track", id.value},
                                             {"editorOpen", controller.instruments().editorOpen(id)}};
                             },
-                        .menus = {kTrackContextMenu}});
+                        .menus = {kTrackContextMenu},
+                        .windowOnly = true});
     registry.addAction({.id = "instrument.params",
                         .title = "List instrument settings",
                         .description =

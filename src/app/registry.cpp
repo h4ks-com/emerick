@@ -365,6 +365,9 @@ Json Registry::run(const std::string& id, const Json& params, ActionSource sourc
     if (!isEnabled(*found)) {
         throw AppError("action " + id + " is disabled");
     }
+    if (headless_ && found->windowOnly) {
+        throw AppError("action " + id + " needs a window, and this run is headless");
+    }
     const Json given = params.is_null() ? Json::object() : params;
     const RequestOrigin origin{origin_, source};
     const bool logged = runDepth_ == 0 && !found->quiet;

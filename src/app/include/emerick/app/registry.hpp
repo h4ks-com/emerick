@@ -105,6 +105,8 @@ struct Action {
     bool quiet = false;
     // An action that runs Lua, which MCP refuses when it serves without lua.eval.
     bool runsLua = false;
+    // An action that only changes the window or the desktop, which a headless run refuses.
+    bool windowOnly = false;
     // A UI run tells the user the outcome: the result's message, or the error text when it fails.
     bool notifies = false;
 };
@@ -313,6 +315,9 @@ public:
     Json runFrom(ActionSource origin, const std::function<Json()>& call) const;
     // Canonicalizes both roots, so a missing folder throws std::filesystem::filesystem_error.
     void setAgentRoots(AgentRoots roots);
+    // A headless run has no window, so run refuses the windowOnly actions.
+    void setHeadless(bool headless) { headless_ = headless; }
+    [[nodiscard]] bool headless() const { return headless_; }
     // A request from MCP or Lua may only name a path inside the agent root for that access; others name any path.
     [[nodiscard]] std::filesystem::path checkedPath(const std::string& path, PathAccess access) const;
     [[nodiscard]] Json settingValue(const std::string& id) const;
@@ -394,6 +399,7 @@ private:
     mutable int runDepth_ = 0;
     mutable std::optional<ActionSource> origin_;
     AgentRoots agentRoots_;
+    bool headless_ = false;
     struct Call {
         std::string id;
         Json params;

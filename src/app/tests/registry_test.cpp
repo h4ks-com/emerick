@@ -32,6 +32,20 @@ TEST_CASE("actions run with params and refuse when disabled or unknown") {
     CHECK_THROWS_AS(registry.addAction(echo("test.echo", "Again")), std::logic_error);
 }
 
+TEST_CASE("a headless registry refuses the window only actions") {
+    QTemporaryDir dir;
+    Registry registry{dir.filePath("settings.ini")};
+    Action windowOnly = echo("test.window", "Window");
+    windowOnly.windowOnly = true;
+    registry.addAction(windowOnly);
+    registry.addAction(echo("test.echo", "Echo"));
+
+    CHECK(registry.run("test.window", {{"x", 1}}) == Json{{"x", 1}});
+    registry.setHeadless(true);
+    CHECK_THROWS_AS(registry.run("test.window"), AppError);
+    CHECK(registry.run("test.echo", {{"x", 1}}) == Json{{"x", 1}});
+}
+
 TEST_CASE("menus change only with their actions, and an action's info says whether it runs now") {
     QTemporaryDir dir;
     Registry registry{dir.filePath("settings.ini")};

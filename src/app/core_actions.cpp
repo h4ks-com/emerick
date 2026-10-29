@@ -103,7 +103,8 @@ void registerViewActions(Registry& registry, Nav& nav) {
                                 nav.setInspectorOpen(!nav.inspectorOpen());
                                 return Json{{"inspectorOpen", nav.inspectorOpen()}};
                             },
-                        .menus = {kViewMenu}});
+                        .menus = {kViewMenu},
+                        .windowOnly = true});
     registry.addAction({.id = "view.toggleMixer",
                         .title = "Show or hide mixer",
                         .aliases = {"mixer", "mixing console", "channel strips"},
@@ -114,7 +115,8 @@ void registerViewActions(Registry& registry, Nav& nav) {
                                 nav.setMixerOpen(!nav.mixerOpen());
                                 return Json{{"mixerOpen", nav.mixerOpen()}};
                             },
-                        .menus = {kViewMenu}});
+                        .menus = {kViewMenu},
+                        .windowOnly = true});
 }
 
 }  // namespace

@@ -20,7 +20,16 @@ class Smoke(unittest.TestCase):
 
     def test_tools(self):
         names = {tool["name"] for tool in self.client.list_tools()}
-        self.assertTrue({"ui.tree", "actions.list", "lua.eval"} <= names, names)
+        self.assertTrue({"actions.list", "actions.run", "lua.eval"} <= names, names)
+        self.assertFalse({"ui.tree", "screenshot"} & names, names)
+
+    def test_window_only_action_fails(self):
+        result = self.client.call("actions.run", {"id": "view.toggleMixer"})["structuredContent"]
+        self.assertIn("headless", result.get("error", ""))
+
+    def test_lua_ui_fails_cleanly(self):
+        result = self.client.call("lua.eval", {"code": "return emerick.ui.set('noSuchItem', 1, 'value')"})
+        self.assertTrue(result["isError"], result)
 
 
 if __name__ == "__main__":

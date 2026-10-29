@@ -1,3 +1,7 @@
+#include <QColor>
+#include <QImage>
+#include <QSize>
+#include <QString>
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 #include <cmath>
@@ -43,6 +47,50 @@ TEST_CASE("audio analyze measures a file on the project's bar grid") {
     REQUIRE(second.at("bars").size() == 1);
     CHECK(second.at("bars")[0].at("bar") == 2);
     CHECK_THROWS_AS(rig.run("audio.analyze", {{"path", rig.path("tone.wav").string()}, {"from", 5}}), AppError);
+}
+
+TEST_CASE("audio image writes a waveform PNG of the requested size") {
+    ProjectRig rig;
+    const std::vector<float> tone = sine(1000, 0.5, 4);
+    writeWav(rig.path("tone.wav"), {tone, tone}, kRate);
+
+    const Json result = rig.run("audio.image", {{"path", rig.path("tone.wav").string()},
+                                                {"out", rig.path("tone.png").string()},
+                                                {"width", 400},
+                                                {"height", 120}});
+    CHECK(result.at("kind") == "waveform");
+    CHECK(result.at("seconds") == Approx(4.0));
+    const QImage image(QString::fromStdString(rig.path("tone.png").string()));
+    CHECK(image.size() == QSize(400, 120));
+    CHECK(image.pixelColor(200, 30) != image.pixelColor(200, 5));
+
+    rig.run("audio.image", {{"path", rig.path("tone.wav").string()}});
+    CHECK(QImage(QString::fromStdString(rig.path("tone.png").string())).size() == QSize(1200, 300));
+    CHECK_THROWS_AS(rig.run("audio.image", {{"path", rig.path("tone.wav").string()}, {"kind", "sonogram"}}), AppError);
+}
+
+TEST_CASE("a spectrogram of a 1 kHz sine is brightest near 1 kHz") {
+    ProjectRig rig;
+    writeWav(rig.path("tone.wav"), {sine(1000, 0.5, 2)}, kRate);
+    constexpr int kHeight = 200;
+    rig.run("audio.image", {{"path", rig.path("tone.wav").string()},
+                            {"out", rig.path("tone.png").string()},
+                            {"kind", "spectrogram"},
+                            {"width", 100},
+                            {"height", kHeight}});
+
+    const QImage image(QString::fromStdString(rig.path("tone.png").string()));
+    REQUIRE(image.height() == kHeight);
+    int brightestRow = 0;
+    int brightest = -1;
+    for (int row = 0; row < image.height(); ++row) {
+        if (const int gray = qGray(image.pixel(image.width() / 2, row)); gray > brightest) {
+            brightest = gray;
+            brightestRow = row;
+        }
+    }
+    const double hz = 20 * std::pow(1000.0, static_cast<double>(kHeight - 1 - brightestRow) / (kHeight - 1));
+    CHECK(hz == Approx(1000).epsilon(0.05));
 }
 
 TEST_CASE("render analyze measures the rendered mix") {

@@ -1,15 +1,23 @@
+#include <QImage>
+#include <QSize>
+#include <QString>
 #include <QTemporaryDir>
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstddef>
+#include <cstdint>
 #include <filesystem>
 #include <format>
 #include <ranges>
 #include <string>
+#include <string_view>
+#include <utility>
 #include <vector>
 
 #include "emerick/app/action_params.hpp"
 #include "emerick/app/audio_file.hpp"
+#include "emerick/app/audio_image.hpp"
 #include "emerick/app/midi_export.hpp"
 #include "emerick/app/project_actions.hpp"
 #include "emerick/app/project_state.hpp"
@@ -122,8 +130,13 @@ Json analysisJson(const engine::AudioAnalysis& analysis) {
     return result;
 }
 
-// Bars follow the project tempo and meter even for a file from outside the project.
-Json analyzeSection(const AudioData& audio, const Json& params, const core::TempoMap& tempo) {
+struct AudioSection {
+    AudioData audio;
+    double from = 0;
+    double to = 0;
+};
+
+AudioSection audioSection(const AudioData& audio, const Json& params) {
     const std::size_t frames = audio.channels.empty() ? 0 : audio.channels.front().size();
     const double seconds = static_cast<double>(frames) / audio.sampleRate;
     const double from = optionalParam<double>(params, "from").value_or(0);
@@ -134,22 +147,69 @@ Json analyzeSection(const AudioData& audio, const Json& params, const core::Temp
     }
     const auto first = static_cast<std::ptrdiff_t>(std::lround(from * audio.sampleRate));
     const auto last = static_cast<std::ptrdiff_t>(std::lround(to * audio.sampleRate));
-    const auto section = audio.channels | std::views::transform([&](const std::vector<float>& channel) {
-                             return std::vector<float>(channel.begin() + first, channel.begin() + last);
-                         }) |
-                         std::ranges::to<std::vector>();
-    const engine::AudioAnalysis analysis =
-        engine::analyzeAudio(section, {.sampleRate = audio.sampleRate,
-                                       .barSeconds = tempo.ticksToSeconds(tempo.ticksPerBar()),
-                                       .startSeconds = from});
+    return {.audio = {.channels = audio.channels | std::views::transform([&](const std::vector<float>& channel) {
+                                      return std::vector<float>(channel.begin() + first, channel.begin() + last);
+                                  }) |
+                                  std::ranges::to<std::vector>(),
+                      .sampleRate = audio.sampleRate},
+            .from = from,
+            .to = to};
+}
+
+// Bars follow the project tempo and meter even for a file from outside the project.
+double barSeconds(const core::TempoMap& tempo) { return tempo.ticksToSeconds(tempo.ticksPerBar()); }
+
+Json analyzeSection(const AudioData& audio, const Json& params, const core::TempoMap& tempo) {
+    const AudioSection section = audioSection(audio, params);
+    const engine::AudioAnalysis analysis = engine::analyzeAudio(
+        section.audio.channels,
+        {.sampleRate = audio.sampleRate, .barSeconds = barSeconds(tempo), .startSeconds = section.from});
     Json result = analysisJson(analysis);
     result["message"] = std::format("{:.1f} LUFS integrated, {:.1f} dBTP true peak, {} clipped samples",
                                     analysis.integratedLufs, analysis.truePeakDbtp, analysis.clippedSamples);
-    result["from"] = rounded(from, 0.01);
-    result["to"] = rounded(to, 0.01);
+    result["from"] = rounded(section.from, 0.01);
+    result["to"] = rounded(section.to, 0.01);
     result["channels"] = audio.channels.size();
     result["sampleRate"] = audio.sampleRate;
     return result;
+}
+
+enum class AudioImageKind : std::uint8_t { Waveform, Spectrogram };
+
+constexpr std::array<std::pair<std::string_view, AudioImageKind>, 2> kAudioImageKinds{
+    {{"waveform", AudioImageKind::Waveform}, {"spectrogram", AudioImageKind::Spectrogram}}};
+
+constexpr int kMaxImageSide = 8192;
+
+int imageSide(const Json& params, const std::string& key, int fallback) {
+    const int side = optionalParam<int>(params, key).value_or(fallback);
+    if (side < 1 || side > kMaxImageSide) {
+        throw AppError(std::format("give {} in pixels from 1 to {}", key, kMaxImageSide));
+    }
+    return side;
+}
+
+Json writeAudioImage(const AudioData& audio, const Json& params, const std::filesystem::path& out,
+                     const core::TempoMap& tempo) {
+    const std::string kindName = optionalParam<std::string>(params, "kind").value_or("waveform");
+    const auto* kind =
+        std::ranges::find(kAudioImageKinds, kindName, &std::pair<std::string_view, AudioImageKind>::first);
+    if (kind == kAudioImageKinds.end()) {
+        throw AppError("kind must be waveform or spectrogram, not " + kindName);
+    }
+    const QSize size{imageSide(params, "width", 1200), imageSide(params, "height", 300)};
+    const AudioSection section = audioSection(audio, params);
+    const QImage image = kind->second == AudioImageKind::Waveform
+                             ? waveformImage(section.audio, size, section.from, barSeconds(tempo))
+                             : spectrogramImage(section.audio, size);
+    if (!image.save(QString::fromStdString(out.string()), "PNG")) {
+        throw AppError("cannot write " + out.string() + " as PNG");
+    }
+    return {{"path", out.string()},
+            {"width", size.width()},
+            {"height", size.height()},
+            {"seconds", rounded(section.to - section.from, 0.01)},
+            {"kind", kindName}};
 }
 
 }  // namespace
@@ -253,6 +313,36 @@ void registerExportActions(Registry& registry, ProjectController& controller) {
                                              .mode = FileDialogMode::Open,
                                              .nameFilter = "Audio files (*.wav *.aif *.aiff)"},
                         .notifies = true});
+    Json imageSchema = fileSchema;
+    imageSchema["out"] = {{"type", "string"}};
+    imageSchema["kind"] = {{"type", "string"},
+                           {"enum", kAudioImageKinds | std::views::keys | std::ranges::to<std::vector<std::string>>()}};
+    imageSchema["width"] = {{"type", "integer"}};
+    imageSchema["height"] = {{"type", "integer"}};
+    registry.addAction(
+        {.id = "audio.image",
+         .title = "Draw audio file",
+         .description =
+             "Draw a WAV or AIFF file as a PNG waveform with bar lines or a spectrogram, optionally from and "
+             "to a time in seconds. Writes to out, by default the file's path with a png suffix.",
+         .keywords = {"waveform", "spectrogram", "picture", "png"},
+         .category = "Analyze",
+         .schema = {{"required", {"path"}}, {"properties", imageSchema}},
+         .run =
+             [&controller, &registry](const Json& params) {
+                 const std::filesystem::path file =
+                     registry.checkedPath(param<std::string>(params, "path"), PathAccess::Read);
+                 const std::filesystem::path out =
+                     registry.checkedPath(optionalParam<std::string>(params, "out")
+                                              .value_or(std::filesystem::path{file}.replace_extension("png").string()),
+                                          PathAccess::Write);
+                 return writeAudioImage(readAudio(file), params, out, controller.project().document().tempo);
+             },
+         .menus = {kFileMenu},
+         .dialog =
+             FileDialog{
+                 .param = "path", .mode = FileDialogMode::Open, .nameFilter = "Audio files (*.wav *.aif *.aiff)"},
+         .notifies = true});
     registry.addAction(
         {.id = "render.analyze",
          .title = "Analyze mix",

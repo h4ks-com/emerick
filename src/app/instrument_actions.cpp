@@ -63,6 +63,9 @@ model::TrackId instrumentTrack(const Registry& registry, const ProjectController
     return id;
 }
 
+// A script runs its actions without turning the event loop, so we load the instruments its earlier actions added.
+void syncInstruments(ProjectController& controller) { controller.instruments().sync(controller.project().document()); }
+
 }  // namespace
 
 void registerInstrumentActions(Registry& registry, ProjectController& controller, Nav& nav, PluginCatalog& catalog) {
@@ -147,6 +150,7 @@ void registerInstrumentActions(Registry& registry, ProjectController& controller
                         .run =
                             [&registry, &controller, &nav](const Json& params) {
                                 const model::TrackId id = instrumentTrack(registry, controller, nav, params);
+                                syncInstruments(controller);
                                 Json described = controller.instruments().describe(id);
                                 if (described.is_null()) {
                                     throw AppError("the instrument of track " + controller.project().track(id)->name +
@@ -174,6 +178,7 @@ void registerInstrumentActions(Registry& registry, ProjectController& controller
              const model::TrackId id = instrumentTrack(registry, controller, nav, params);
              const auto paramId = param<std::uint32_t>(params, "param");
              const auto value = param<double>(params, "value");
+             syncInstruments(controller);
              std::vector<std::uint8_t> state = controller.instruments().setParam(id, paramId, value);
              editTrack(controller, id, "set instrument setting",
                        [&state](model::Track& track) { track.instrument->state = std::move(state); });

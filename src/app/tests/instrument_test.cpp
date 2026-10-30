@@ -254,6 +254,15 @@ TEST_CASE("instrument.params lists the instrument's params with their values") {
     CHECK(rig.controller->instrumentsInfo().contains(QString::fromStdString(id.value)));
 }
 
+TEST_CASE("a script reads and sets the params of an instrument it just added, with no event loop turn between") {
+    InstrumentRig rig;
+    const model::TrackId id = rig.addSynth();
+    CHECK(rig.run("instrument.params", {{"track", id.value}}).at("params").size() == 1);
+    const model::TrackId other = rig.addSynth();
+    rig.run("instrument.setParam", {{"track", other.value}, {"param", 0}, {"value", 0.25}});
+    CHECK(rig.controller->project().track(other)->instrument->state == levelState(0.25F));
+}
+
 TEST_CASE("instrument.setParam sets the value as one undo step and the project keeps it") {
     InstrumentRig rig;
     const model::TrackId id = rig.addSynth();

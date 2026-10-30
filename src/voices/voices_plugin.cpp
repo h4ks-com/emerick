@@ -143,6 +143,10 @@ void startNote(Plugin& plugin, int key, int velocity, int channel) {
     }
 }
 
+void stopNote(Plugin& plugin, int key, int channel) {
+    plugin.sampler.noteOff(updatePlayingBank(plugin), key, channel, settingsOf(plugin));
+}
+
 // With Follow program changes on, a program change picks the voice at the channel's bank and that program, or none.
 void changeProgram(Plugin& plugin, int channel, int program) {
     if (!plugin.followProgramChanges.load(std::memory_order_relaxed)) {
@@ -220,11 +224,11 @@ void playMidi(Plugin& plugin, const std::array<std::uint8_t, 3>& data) {
     const int second = data[2] & 0x7F;
     switch (data[0] & 0xF0) {
         case 0x80:
-            plugin.sampler.noteOff(first, channel);
+            stopNote(plugin, first, channel);
             break;
         case 0x90:
             if (second == 0) {
-                plugin.sampler.noteOff(first, channel);
+                stopNote(plugin, first, channel);
             } else {
                 startNote(plugin, first, second, channel);
             }
@@ -251,7 +255,7 @@ void playNote(Plugin& plugin, const clap_event_note& note, bool on) {
     } else if (note.key < 0) {
         plugin.sampler.releaseAll();
     } else {
-        plugin.sampler.noteOff(note.key, channel);
+        stopNote(plugin, note.key, channel);
     }
 }
 

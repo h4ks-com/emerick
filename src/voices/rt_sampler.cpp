@@ -82,7 +82,7 @@ double centsAt(const std::optional<Curve>& curve, int index) {
     return curve ? curve->at(static_cast<std::size_t>(index)) : 0.0;
 }
 
-bool loops(const BankZone& zone) { return zone.left->looped() && !zone.zone->oneShot; }
+bool loops(const BankZone& zone) { return zone.left->looped() && !zone.zone->oneShot && !zone.zone->keyOff; }
 
 // A key that ignores note off still releases when its wave loops, since it would otherwise play forever.
 bool releasesOnNoteOff(const BankZone& zone) { return zone.zone->receivesNoteOff || loops(zone); }
@@ -112,51 +112,60 @@ Sampler::Note& Sampler::freeNote() {
     return *std::ranges::min_element(notes_, {}, &Note::started);
 }
 
+bool plays(const Zone& zone, int key, int velocity) {
+    return key >= zone.keyLo && key <= zone.keyHi && velocity >= zone.velocityLo && velocity <= zone.velocityHi;
+}
+
 void Sampler::noteOn(const Bank& bank, int key, int velocity, int channel, const PlaySettings& settings) {
-    const double rate = settings.outputRate;
+    velocities_.at(static_cast<std::size_t>(channel)).at(static_cast<std::size_t>(key)) =
+        static_cast<std::uint8_t>(velocity);
     for (const BankZone& zone : bank.zones) {
-        const Zone& info = *zone.zone;
-        if (key < info.keyLo || key > info.keyHi || velocity < info.velocityLo || velocity > info.velocityHi) {
-            continue;
+        if (!zone.zone->keyOff && plays(*zone.zone, key, velocity)) {
+            startZone(zone, key, velocity, channel, settings);
         }
-        const float gain = settings.volume * info.gain * velocityGain(info, velocity);
-        if (info.alternateGroup != 0) {
-            chokeGroup(info.alternateGroup, key, channel);
-        }
-        Note& note = freeNote();
-        note = Note{};
-        note.stage = Stage::attack;
-        note.zone = &zone;
-        note.key = key;
-        note.channel = channel;
-        note.started = ++clock_;
-        note.outputRate = rate;
-        note.step = info.sampleRate / rate * std::exp2(semitonesOf(info, key, settings) / 12.0);
-        note.gain = gain;
-        aim(note);
-        note.mixLeft = note.targetLeft;
-        note.mixRight = note.targetRight;
-        note.envelope = info.envelope.value_or(
-            Envelope{.attackSeconds = settings.attackSeconds, .releaseSeconds = settings.releaseSeconds});
-        const Envelope& envelope = note.envelope;
-        note.attackStep = envelope.attackGain / framesOf(envelope.attackSeconds, rate);
-        note.decay1Ratio = ratioOver(envelope.attackGain, envelope.decay1Gain, envelope.decay1Seconds, rate);
-        note.decay2Ratio = ratioOver(envelope.decay1Gain, envelope.sustainGain, envelope.decay2Seconds, rate);
-        if (info.lowPass) {
-            const LowPass& lowPass = *info.lowPass;
-            note.cutoffHertz =
-                lowPass.hertz *
-                std::exp2((centsAt(lowPass.velocityCents, velocity) + centsAt(lowPass.keyCents, key)) / 1200.0);
-            if (lowPass.envelope) {
-                note.cutoffCents = lowPass.envelope->initialCents;
-                note.cutoffHold = lowPass.envelope->holdSeconds * rate;
-            }
-            note.filter.onePole = lowPass.onePole;
-            tune(note.filter, note.cutoffHertz * std::exp2(note.cutoffCents / 1200.0), lowPass.q, rate);
-        }
-        note.lfoStep = moves(info.lfo) ? info.lfo.hertz / rate : 0.0;
-        note.lfoDelay = info.lfo.delaySeconds * rate;
     }
+}
+
+void Sampler::startZone(const BankZone& zone, int key, int velocity, int channel, const PlaySettings& settings) {
+    const double rate = settings.outputRate;
+    const Zone& info = *zone.zone;
+    const float gain = settings.volume * info.gain * velocityGain(info, velocity);
+    if (info.alternateGroup != 0) {
+        chokeGroup(info.alternateGroup, key, channel);
+    }
+    Note& note = freeNote();
+    note = Note{};
+    note.stage = Stage::attack;
+    note.zone = &zone;
+    note.key = key;
+    note.channel = channel;
+    note.started = ++clock_;
+    note.outputRate = rate;
+    note.step = info.sampleRate / rate * std::exp2(semitonesOf(info, key, settings) / 12.0);
+    note.gain = gain;
+    aim(note);
+    note.mixLeft = note.targetLeft;
+    note.mixRight = note.targetRight;
+    note.envelope = info.envelope.value_or(
+        Envelope{.attackSeconds = settings.attackSeconds, .releaseSeconds = settings.releaseSeconds});
+    const Envelope& envelope = note.envelope;
+    note.attackStep = envelope.attackGain / framesOf(envelope.attackSeconds, rate);
+    note.decay1Ratio = ratioOver(envelope.attackGain, envelope.decay1Gain, envelope.decay1Seconds, rate);
+    note.decay2Ratio = ratioOver(envelope.decay1Gain, envelope.sustainGain, envelope.decay2Seconds, rate);
+    if (info.lowPass) {
+        const LowPass& lowPass = *info.lowPass;
+        note.cutoffHertz =
+            lowPass.hertz *
+            std::exp2((centsAt(lowPass.velocityCents, velocity) + centsAt(lowPass.keyCents, key)) / 1200.0);
+        if (lowPass.envelope) {
+            note.cutoffCents = lowPass.envelope->initialCents;
+            note.cutoffHold = lowPass.envelope->holdSeconds * rate;
+        }
+        note.filter.onePole = lowPass.onePole;
+        tune(note.filter, note.cutoffHertz * std::exp2(note.cutoffCents / 1200.0), lowPass.q, rate);
+    }
+    note.lfoStep = moves(info.lfo) ? info.lfo.hertz / rate : 0.0;
+    note.lfoDelay = info.lfo.delaySeconds * rate;
 }
 
 // We pan with equal power as General MIDI synths do, scaled so a centered note keeps its full level on both sides.
@@ -205,7 +214,7 @@ void Sampler::chokeGroup(int group, int key, int channel) {
     }
 }
 
-void Sampler::noteOff(int key, int channel) {
+void Sampler::noteOff(const Bank* bank, int key, int channel, const PlaySettings& settings) {
     for (Note& note : notes_) {
         if (note.stage != Stage::idle && note.stage != Stage::release && note.key == key && note.channel == channel &&
             releasesOnNoteOff(*note.zone)) {
@@ -214,6 +223,15 @@ void Sampler::noteOff(int key, int channel) {
             } else {
                 release(note);
             }
+        }
+    }
+    const int velocity = velocities_.at(static_cast<std::size_t>(channel)).at(static_cast<std::size_t>(key));
+    if (bank == nullptr || velocity == 0) {
+        return;
+    }
+    for (const BankZone& zone : bank->zones) {
+        if (zone.zone->keyOff && plays(*zone.zone, key, velocity)) {
+            startZone(zone, key, velocity, channel, settings);
         }
     }
 }

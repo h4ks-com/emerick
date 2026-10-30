@@ -436,3 +436,17 @@ TEST_CASE("a drum key that ignores note off plays out, and a key of its alternat
     render(*hats, {{0x99, 60, 100}}, 5);
     CHECK(loudest(std::span<const float>(render(*hats, {{0x99, 62, 100}}, 5)).last(480)) < 1e-6F);
 }
+
+TEST_CASE("a key-off element stays silent while the key is held and plays once when it is released") {
+    Rig rig;
+    const std::string clunk = rig.store.addWave(linearBlob(sine(440.0, 44100.0, 4410), 44100.0, std::pair{0U, 4410U}));
+    rig.store.addPack("Keys", {SyntheticVoice{.name = "Clunk",
+                                              .zones = {SyntheticZone{.wave = clunk}},
+                                              .blocks = "<triggerBlock><keyOffSound>ON</keyOffSound></triggerBlock>"}});
+    const auto instrument =
+        rig.instrument(Json{{"voice", {{"pack", "Keys"}, {"name", "Clunk"}, {"msb", 0}, {"lsb", 0}, {"program", 0}}}});
+
+    CHECK(loudest(render(*instrument, {{0x90, 69, 100}}, 5)) < 1e-6F);
+    CHECK(loudest(render(*instrument, {{0x80, 69, 0}}, 2)) > 0.1F);
+    CHECK(loudest(std::span<const float>(render(*instrument, {}, 40)).last(480)) < 1e-6F);
+}

@@ -84,6 +84,8 @@ struct Zone {
     // A note of a drum key in a group other than 0 cuts the other keys of its group, as a closed hi-hat cuts an open
     // one.
     int alternateGroup = 0;
+    // A key-off zone sounds once when its key is released, as the clunk of a clavinet or the damper of a Rhodes.
+    bool keyOff = false;
     double sampleRate = 44100.0;
     float gain = 1.0F;
     // Empty when the element names no touch curve, which scales the level by the velocity.

@@ -283,14 +283,17 @@ TEST_CASE("a missing or empty store folder is an empty store") {
     CHECK(loadStore(store.folder()).voices.empty());
 }
 
-TEST_CASE("the store reads whether a drum key takes note off and its alternate group") {
+TEST_CASE("the store reads whether a key takes note off, its alternate group and whether it plays at key off") {
     SyntheticStore store;
     const std::string wave = store.addWave(linearBlob(sine(440.0, 44100.0, 441), 44100.0));
     store.addPack("Kit", {SyntheticVoice{.name = "Hat",
                                          .msb = 127,
                                          .zones = {SyntheticZone{.wave = wave}},
                                          .drumSetup = "<alternateGroup>2</alternateGroup><rcvNoteOff>0</rcvNoteOff>"},
-                          SyntheticVoice{.name = "Piano", .msb = 8, .zones = {SyntheticZone{.wave = wave}}}});
+                          SyntheticVoice{.name = "Piano",
+                                         .msb = 8,
+                                         .zones = {SyntheticZone{.wave = wave}},
+                                         .blocks = "<triggerBlock><keyOffSound>ON</keyOffSound></triggerBlock>"}});
     const Store loaded = loadStore(store.folder());
     REQUIRE(loaded.voices.size() == 2);
     const Zone& hat = loaded.voices[0].zones.at(0);
@@ -299,4 +302,6 @@ TEST_CASE("the store reads whether a drum key takes note off and its alternate g
     const Zone& piano = loaded.voices[1].zones.at(0);
     CHECK(piano.receivesNoteOff);
     CHECK(piano.alternateGroup == 0);
+    CHECK(piano.keyOff);
+    CHECK_FALSE(hat.keyOff);
 }

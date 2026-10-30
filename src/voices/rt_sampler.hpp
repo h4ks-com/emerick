@@ -46,7 +46,8 @@ inline constexpr std::size_t kChannels = 16;
 class Sampler {
 public:
     void noteOn(const Bank& bank, int key, int velocity, int channel, const PlaySettings& settings);
-    void noteOff(int key, int channel);
+    // Starts the key-off zones of the bank, when one is given, at the velocity the key went down with.
+    void noteOff(const Bank* bank, int key, int channel, const PlaySettings& settings);
     void setSustain(int channel, bool down);
     // Sets the channel's level and its pan from -1 (left) to 1 (right), which sounding notes glide to.
     void setMix(int channel, float level, float pan);
@@ -98,6 +99,7 @@ private:
     };
 
     Note& freeNote();
+    void startZone(const BankZone& zone, int key, int velocity, int channel, const PlaySettings& settings);
     void chokeGroup(int group, int key, int channel);
     void aim(Note& note) const;
     static void release(Note& note);
@@ -107,6 +109,7 @@ private:
 
     std::array<Note, kPolyphony> notes_{};
     std::array<Channel, kChannels> channels_{};
+    std::array<std::array<std::uint8_t, 128>, kChannels> velocities_{};
     std::uint64_t clock_ = 0;
 };
 

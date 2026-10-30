@@ -87,6 +87,7 @@ struct Element {
     int waveform = -1;
     bool receivesNoteOff = true;
     int alternateGroup = 0;
+    bool keyOff = false;
     std::optional<Envelope> envelope;
     std::optional<LowPass> lowPass;
     std::optional<Curve> velocityDb;
@@ -217,6 +218,7 @@ Element elementOf(const pugi::xml_node& node) {
                    .waveform = number(blocks.child("oscillatorBlock"), "waveformNum", -1),
                    .receivesNoteOff = number(drumSetup, "rcvNoteOff", 1) != 0,
                    .alternateGroup = number(drumSetup, "alternateGroup", 0),
+                   .keyOff = isOn(blocks.child("triggerBlock"), "keyOffSound"),
                    .envelope = envelopeOf(blocks.child("amplitudeBlock")),
                    .lowPass = lowPassOf(blocks.child("filterBlock")),
                    .velocityDb = curveOf(blocks.child("amplitudeBlock").child("touchCurveTable"), kTouchDbPerStep),
@@ -242,6 +244,7 @@ std::optional<Zone> zoneOf(const Element& element, const pugi::xml_node& keybank
               .oneShot = isOn(keybank, "oneShot"),
               .receivesNoteOff = element.receivesNoteOff,
               .alternateGroup = element.alternateGroup,
+              .keyOff = element.keyOff,
               .sampleRate = keybank.child("samplingFrequency").text().as_double(44100.0),
               .gain = static_cast<float>(gainOf(commonDb + element.volumeDb + decimal(keybank, "volume"))),
               .velocityDb = element.velocityDb,

@@ -131,8 +131,8 @@ struct TrackState {
     std::vector<LaneState> lanes;
     // The index of the bus the track plays into in place of its outputs.
     std::optional<std::size_t> outputBus;
-    // While any track is soloed, a track stays audible when it is soloed, a soloed track plays into it, or it plays
-    // into a soloed bus.
+    // While any track is soloed, a track stays audible when it is soloed, a soloed track plays into it, it plays
+    // into a soloed bus, or it sends MIDI to a soloed track.
     bool fedBySolo = false;
     bool feedsSolo = false;
 };
@@ -216,6 +216,16 @@ inline void updateSoloPaths(Snapshot& snapshot) {
         TrackState& track = snapshot.tracks[index];
         forEachBusFed(track,
                       [&](std::size_t bus) { track.feedsSolo = track.feedsSolo || snapshot.tracks[bus].feedsSolo; });
+    }  // A soloed track hears only what its MIDI source sends it, so the sources up its chain play too.
+    for (std::size_t index = 0; index < snapshot.tracks.size(); ++index) {
+        if (!snapshot.tracks[index].feedsSolo && !snapshot.tracks[index].fedBySolo) {
+            continue;
+        }
+        std::optional<std::size_t> source = snapshot.tracks[index].midiSource;
+        for (std::size_t hops = 0; source && hops < snapshot.tracks.size(); ++hops) {
+            snapshot.tracks[*source].feedsSolo = true;
+            source = snapshot.tracks[*source].midiSource;
+        }
     }
 }
 

@@ -105,6 +105,20 @@ TEST_CASE("a stem of a track that takes a device's MIDI plays what the device se
     }
 }
 
+TEST_CASE("soloing a track that takes a device's MIDI keeps the device playing it") {
+    SourceRig rig;
+    const std::string device = rig.addDevice();
+    const std::string keys = rig.run("track.addInstrument", {{"plugin", "org.emerick.test.sine"}, {"name", "Keys"}})
+                                 .at("id")
+                                 .get<std::string>();
+    rig.run("track.setMidiIn", {{"track", keys}, {"sourceTrack", device}, {"channel", 2}});
+    rig.run("track.setSolo", {{"track", keys}, {"value", true}});
+
+    const auto folder = rig.path("solo");
+    rig.run("export.mix", {{"path", (folder / "mix.wav").string()}});
+    CHECK(loudest(readLeft(folder / "mix.wav"), 24000, 48000) > 0.1F);
+}
+
 TEST_CASE("a MIDI input takes a device's output in place of its port, and undo gives the port back") {
     SourceRig rig;
     const std::string device = rig.addDevice();

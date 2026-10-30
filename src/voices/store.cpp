@@ -31,7 +31,9 @@ constexpr double kFloorDb = -96.0;
 constexpr double kDrumRateOffset = 0.534033;
 constexpr double kOpenCutoff = 14000.0;
 constexpr double kButterworthQ = 0.7071;
+// A legacy cutoff at the top of its type's range leaves the filter open.
 constexpr double kOpenLegacyCutoff = 112300.0;
+constexpr double kOpenLegacyTwoPoleCutoff = 7018.73;
 // We calibrate the units of legacy curves and cutoff envelopes against Genos2 recordings.
 constexpr double kCutoffCentsPerStep = 100.0;
 constexpr double kTouchDbPerStep = 0.375;
@@ -166,8 +168,8 @@ std::optional<LowPass> legacyLowPassOf(const pugi::xml_node& filter) {
                           .velocityCents = curveOf(filter.child("dcfVelToCutoffTable"), kCutoffCentsPerStep),
                           .keyCents = curveOf(filter.child("dcfCutoffScalingTable"), kCutoffCentsPerStep),
                           .envelope = cutoffEnvelopeOf(filter)};
-    const bool open =
-        lowPass.hertz >= kOpenLegacyCutoff && !lowPass.velocityCents && !lowPass.keyCents && !lowPass.envelope;
+    const bool open = lowPass.hertz >= (lowPass.onePole ? kOpenLegacyCutoff : kOpenLegacyTwoPoleCutoff) &&
+                      !lowPass.velocityCents && !lowPass.keyCents && !lowPass.envelope;
     if (!type.starts_with("LPF") || lowPass.hertz <= 0.0 || open) {
         return std::nullopt;
     }

@@ -155,7 +155,7 @@ TEST_CASE("the store reads each element's envelope, low-pass filter and LFO in b
                                   "<decay2Rate>0.367366</decay2Rate><releaseRate>0.534033</releaseRate>"
                                   "<attackLevel>0</attackLevel><decay1Level>0</decay1Level>"
                                   "<decay2Level>-48</decay2Level></amplitudeBlock>"
-                                  "<filterBlock><dcfFilterType>LPF(YS5)</dcfFilterType><dcfCutoff>7018.73</dcfCutoff>"
+                                  "<filterBlock><dcfFilterType>LPF(YS5)</dcfFilterType><dcfCutoff>3000</dcfCutoff>"
                                   "</filterBlock><lfoBlock><frequency>4</frequency><amDepth>-6</amDepth></lfoBlock>"},
          SyntheticVoice{.name = "Pad",
                         .zones = {SyntheticZone{.wave = wave}},
@@ -167,9 +167,14 @@ TEST_CASE("the store reads each element's envelope, low-pass filter and LFO in b
                                   "<resonance>1.0</resonance></filterBlock>"
                                   "<lfoBlock><frequency>5</frequency><delayTime>250</delayTime>"
                                   "<pitchModulationDepth>20</pitchModulationDepth></lfoBlock>"},
-         SyntheticVoice{.name = "Plain", .zones = {SyntheticZone{.wave = wave}}}});
+         SyntheticVoice{.name = "Plain", .zones = {SyntheticZone{.wave = wave}}},
+         SyntheticVoice{.name = "Wide",
+                        .zones = {SyntheticZone{.wave = wave}},
+                        .blocks = "<filterBlock><dcfFilterType>LPF(YS5)</dcfFilterType><dcfCutoff>7018.73</dcfCutoff>"
+                                  "</filterBlock>"}});
     const Store loaded = loadStore(store.folder());
-    REQUIRE(loaded.voices.size() == 3);
+    REQUIRE(loaded.voices.size() == 4);
+    CHECK_FALSE(loaded.voices[3].zones.at(0).lowPass.has_value());
 
     const Zone& drum = loaded.voices[0].zones.at(0);
     REQUIRE(drum.envelope.has_value());
@@ -179,7 +184,7 @@ TEST_CASE("the store reads each element's envelope, low-pass filter and LFO in b
     CHECK(drum.envelope->releaseSeconds == Catch::Approx(0.5).epsilon(1e-4));
     CHECK(drum.envelope->sustainGain == Catch::Approx(0.003981).epsilon(1e-3));
     REQUIRE(drum.lowPass.has_value());
-    CHECK(drum.lowPass->hertz == Catch::Approx(7018.73));
+    CHECK(drum.lowPass->hertz == Catch::Approx(3000.0));
     CHECK(drum.lfo.hertz == 4.0);
     CHECK(drum.lfo.amplitudeDb == -6.0);
 

@@ -111,7 +111,8 @@ struct Store {
     std::unordered_map<std::string, std::filesystem::path> waves;
 };
 
-// The folder Yamaha Expansion Manager keeps its packs in on this computer, or empty where it has none.
+// The folder kFolderVariable names, else the folder Yamaha Expansion Manager keeps its packs in on this computer, or
+// empty where it has none.
 std::filesystem::path defaultStoreFolder();
 
 // Reads every pack in the folder, leaving out the zones whose waves we cannot decode; a missing or empty folder is an

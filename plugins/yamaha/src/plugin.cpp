@@ -1,6 +1,8 @@
 #include "emerick/yamaha/plugin.hpp"
 
+#include <QByteArray>
 #include <QQmlEngine>
+#include <QtEnvironmentVariables>
 #include <cstdint>
 #include <iterator>
 #include <memory>
@@ -20,6 +22,7 @@
 #include "emerick/yamaha/sysex.hpp"
 #include "registration.hpp"
 #include "style_library.hpp"
+#include "voices_params.hpp"
 
 namespace emerick::yamaha {
 
@@ -100,6 +103,33 @@ void registerDeviceProfile(app::Registry& registry) {
         profile.channelIcons[part.channel] = std::string(part.icon);
     }
     registry.addMidiDeviceProfile(std::move(profile));
+}
+
+// Expansion Voices runs as a CLAP plugin that cannot read our settings, so we hand it the folder in the environment and
+// have each instance load its own state again, which re-reads the store when its folder changed.
+void followVoicesFolder(app::Registry& registry, app::ProjectController& controller) {
+    auto apply = [&registry, &controller, applied = std::optional<std::string>{}]() mutable {
+        const auto folder = registry.settingValue(kVoicesFolderSetting).get<std::string>();
+        if (folder == applied) {
+            return;
+        }
+        applied = folder;
+        if (folder.empty()) {
+            qunsetenv(voices::kFolderVariable);
+        } else {
+            qputenv(voices::kFolderVariable, QByteArray::fromStdString(folder));
+        }
+        for (const model::Track& track : controller.project().document().tracks) {
+            const auto instrument = track.instrument && track.instrument->pluginId == kVoicesPluginId
+                                        ? controller.instruments().find(track.id)
+                                        : nullptr;
+            if (const auto state = instrument ? instrument->saveState() : std::nullopt) {
+                instrument->loadState(*state);
+            }
+        }
+    };
+    apply();
+    QObject::connect(&registry, &app::Registry::settingsChanged, &controller, apply);
 }
 
 // The last section plays its bars, or an Ending without bars plays the loaded style's Ending to its end.
@@ -234,6 +264,16 @@ void registerSettings(app::Registry& registry, app::ProjectController& controlle
                             },
                         .menus = {kYamahaMenu},
                         .dialog = app::FileDialog{.param = "path", .nameFilter = "Voice lists (*.csv)"}});
+    addSetting(registry,
+               {.id = kVoicesFolderSetting,
+                .title = "Expansion Voices folder",
+                .aliases = {"expansion packs folder", "voices store"},
+                .type = app::SettingType::String,
+                .defaultValue = "",
+                .hint = "Pick the folder of expansion packs Expansion Voices reads when its state names none, "
+                        "or leave it empty to use Expansion Manager's folder",
+                .merge = app::readablePath(registry)});
+    followVoicesFolder(registry, controller);
 }
 
 void registerTrackKinds(app::Registry& registry, const app::ProjectController& controller, const StyleSync& sync) {

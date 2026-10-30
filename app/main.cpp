@@ -71,7 +71,7 @@ private:
 bool runsWithoutWindow(int argc, char** argv) {
     return std::ranges::any_of(std::span{argv, static_cast<std::size_t>(argc)}, [](const char* arg) {
         const std::string_view flag{arg};
-        return flag == "--headless" || flag == "--script" || flag.starts_with("--script=");
+        return flag == "--headless" || flag == "--script" || flag == "-s" || flag.starts_with("--script=");
     });
 }
 
@@ -122,7 +122,7 @@ int run(int argc, char** argv) {
                                             "Let MCP and Lua requests write files only inside this folder.", "folder");
     const QCommandLineOption headlessOption("headless", "Run with no window, driven over MCP, which needs a port.");
     const QCommandLineOption scriptOption(
-        "script", "Run this Lua script with no window and exit; pass its arguments after --.", "file");
+        {"s", "script"}, "Run this Lua script with no window and exit; pass its arguments after --.", "file");
     parser.addOptions({headlessOption, scriptOption, mcpPort, mcpBindAny, noLuaMcp, audio, midi, profile, agentReadRoot,
                        agentWriteRoot});
     parser.addPositionalArgument("args", "Arguments the script reads from its arg table.", "[-- args...]");

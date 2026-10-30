@@ -178,6 +178,26 @@ TEST_CASE("choosing a style switches the part tracks it has voices for between E
     CHECK(plugin(3).empty());
 }
 
+TEST_CASE("the Expansion Voices folder setting gives instances whose state names no folder its store") {
+    ArrangerRig rig;
+    voices::test::SyntheticStore store;
+    const std::string wave = store.addWave(voices::test::linearBlob(voices::test::sine(440.0, 44100.0, 441), 44100.0));
+    store.addPack("Pack", {voices::test::SyntheticVoice{.name = "Bass", .program = 33, .zones = {{.wave = wave}}}});
+    rig.run("track.addMidi");
+    const model::TrackId track = rig.document().tracks.back().id;
+    rig.run("instrument.load", {{"track", track.value}, {"plugin", yamaha::kVoicesPluginId}});
+    rig.controller->flush();
+    const auto choices = [&] { return rig.controller->instruments().describe(track).at("params").at(0).at("choices"); };
+    REQUIRE(processUntil([&] { return choices() == Json::array({"None"}); }, 10000));
+
+    rig.registry.setSetting(yamaha::kVoicesFolderSetting, store.folder().string());
+    REQUIRE(processUntil([&] { return choices().size() == 2; }, 10000));
+    CHECK(choices().at(1) == "Pack / Bass");
+
+    rig.registry.setSetting(yamaha::kVoicesFolderSetting, "");
+    REQUIRE(processUntil([&] { return choices() == Json::array({"None"}); }, 10000));
+}
+
 TEST_CASE("a part without an installed voice plays its part's General MIDI default and warns which pack it needs") {
     ArrangerRig rig;
     rig.run("arranger.setup");

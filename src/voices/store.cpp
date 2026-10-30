@@ -15,6 +15,7 @@
 #include <sstream>
 #include <tuple>
 
+#include "voices_params.hpp"
 #include "wave.hpp"
 
 namespace emerick::voices {
@@ -326,6 +327,10 @@ std::optional<int> yamahaNote(std::string_view name) {
 }
 
 fs::path defaultStoreFolder() {
+    // NOLINTNEXTLINE(concurrency-mt-unsafe): the host sets it and we read it on the main thread only.
+    if (const char* chosen = std::getenv(kFolderVariable); chosen != nullptr && *chosen != '\0') {
+        return chosen;
+    }
 #ifdef __APPLE__
     const char* home = std::getenv("HOME");  // NOLINT(concurrency-mt-unsafe): we read it once while loading a store.
     return home != nullptr ? fs::path{home} / "Library/Application Support/Yamaha/Expansion Manager/Packs" : fs::path{};

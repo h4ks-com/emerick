@@ -16,4 +16,7 @@ inline constexpr std::uint32_t kParamCount = 6;
 // The Voice param's label for no voice while the store loads, which hosts read to wait for the store.
 inline constexpr std::string_view kLoadingLabel = "Loading voices";
 
+// The environment variable naming the store folder of every instance whose state names none, which the host sets.
+inline constexpr const char* kFolderVariable = "EMERICK_VOICES_FOLDER";
+
 }  // namespace emerick::voices

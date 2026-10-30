@@ -48,6 +48,9 @@ public:
     void noteOn(const Bank& bank, int key, int velocity, int channel, const PlaySettings& settings);
     void noteOff(int key, int channel);
     void setSustain(int channel, bool down);
+    // Sets the channel's level and its pan from -1 (left) to 1 (right), which sounding notes glide to.
+    void setMix(int channel, float level, float pan);
+    void setBend(int channel, double semitones);
     void releaseAll();
     void silence();
     // Adds the playing notes to both channels.
@@ -66,8 +69,11 @@ private:
         double outputRate = 0.0;
         double position = 0.0;
         double step = 0.0;
-        float gainLeft = 0.0F;
-        float gainRight = 0.0F;
+        float gain = 0.0F;
+        float mixLeft = 0.0F;
+        float mixRight = 0.0F;
+        float targetLeft = 0.0F;
+        float targetRight = 0.0F;
         Envelope envelope;
         double level = 0.0;
         double attackStep = 0.0;
@@ -84,15 +90,23 @@ private:
         double lfoDelay = 0.0;
     };
 
+    struct Channel {
+        bool sustain = false;
+        float level = 1.0F;
+        float pan = 0.0F;
+        double bendRatio = 1.0;
+    };
+
     Note& freeNote();
     void chokeGroup(int group, int key, int channel);
+    void aim(Note& note) const;
     static void release(Note& note);
     static bool advanceEnvelope(Note& note);
     static bool advanceCutoff(Note& note, const CutoffEnvelope& envelope);
-    static void renderNote(Note& note, std::span<float> left, std::span<float> right);
+    static void renderNote(Note& note, double bendRatio, std::span<float> left, std::span<float> right);
 
     std::array<Note, kPolyphony> notes_{};
-    std::array<bool, kChannels> sustain_{};
+    std::array<Channel, kChannels> channels_{};
     std::uint64_t clock_ = 0;
 };
 

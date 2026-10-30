@@ -7,6 +7,7 @@
 #include <cstdint>
 #include <memory>
 #include <nlohmann/json.hpp>
+#include <numbers>
 #include <ranges>
 #include <span>
 #include <string>
@@ -90,19 +91,25 @@ Json voiceNamed(const std::string& name, int program) {
     return Json{{"voice", {{"pack", "Test Pack"}, {"name", name}, {"msb", 8}, {"lsb", 0}, {"program", program}}}};
 }
 
-std::vector<float> render(ClapInstrument& instrument, const std::vector<Message>& messages, int blocks) {
+std::array<std::vector<float>, 2> renderStereo(ClapInstrument& instrument, const std::vector<Message>& messages,
+                                               int blocks) {
     for (const Message& message : messages) {
         instrument.queueMidi(message, 0);
     }
-    std::vector<float> left;
+    std::array<std::vector<float>, 2> sides;
     for (int block = 0; block < blocks; ++block) {
-        std::vector<float> chunk(kBlock);
+        std::vector<float> left(kBlock);
         std::vector<float> right(kBlock);
-        const std::array<float*, 2> mix{chunk.data(), right.data()};
+        const std::array<float*, 2> mix{left.data(), right.data()};
         instrument.processBlock(mix, kBlock, 0);
-        left.insert(left.end(), chunk.begin(), chunk.end());
+        sides[0].insert(sides[0].end(), left.begin(), left.end());
+        sides[1].insert(sides[1].end(), right.begin(), right.end());
     }
-    return left;
+    return sides;
+}
+
+std::vector<float> render(ClapInstrument& instrument, const std::vector<Message>& messages, int blocks) {
+    return renderStereo(instrument, messages, blocks)[0];
 }
 
 float loudest(std::span<const float> samples) {
@@ -283,6 +290,31 @@ TEST_CASE("the Volume param scales the output") {
     quiet->setParam(kVolume, -20.0);
     const float full = loudest(render(*loud, {{0x90, 69, 100}}, 10));
     CHECK(loudest(render(*quiet, {{0x90, 69, 100}}, 10)) == Catch::Approx(full * 0.1F).epsilon(0.02));
+}
+
+TEST_CASE("channel volume, expression and pan set a channel's level and side, and reset all controllers keeps volume") {
+    const Rig rig;
+    const auto steady = [](std::span<const float> samples) { return loudest(samples.last(4800)); };
+    const auto instrument = rig.instrument(voiceNamed("Sine", 3));
+    const float full = steady(render(*instrument, {{0x90, 69, 100}}, 20));
+    CHECK(steady(render(*instrument, {{0xB0, 7, 50}}, 20)) == Catch::Approx(full * 0.25F).epsilon(0.02));
+    const float expressed = 0.25F * std::pow(64.0F / 127.0F, 2.0F);
+    CHECK(steady(render(*instrument, {{0xB0, 11, 64}}, 20)) == Catch::Approx(full * expressed).epsilon(0.02));
+    CHECK(steady(render(*instrument, {{0xB0, 121, 0}}, 20)) == Catch::Approx(full * 0.25F).epsilon(0.02));
+
+    const auto sides = renderStereo(*instrument, {{0xB0, 10, 0}}, 20);
+    CHECK(steady(sides[0]) == Catch::Approx(full * 0.25F * std::numbers::sqrt2_v<float>).epsilon(0.02));
+    CHECK(steady(sides[1]) < 1e-4F * full);
+}
+
+TEST_CASE("pitch bend retunes a sounding note by the bend range RPN 0 sets, and reset all controllers centers it") {
+    const Rig rig;
+    const auto instrument = rig.instrument(voiceNamed("Sine", 3));
+    render(*instrument, {{0x90, 69, 100}}, 5);
+    CHECK(cents(frequency(render(*instrument, {{0xE0, 0x7F, 0x7F}}, 20)), 440.0) == Catch::Approx(200.0).margin(2.0));
+    const std::vector<Message> octave{{0xB0, 101, 0}, {0xB0, 100, 0}, {0xB0, 6, 12}};
+    CHECK(cents(frequency(render(*instrument, octave, 20)), 440.0) == Catch::Approx(1200.0).margin(2.0));
+    CHECK(std::abs(cents(frequency(render(*instrument, {{0xB0, 121, 0}}, 20)), 440.0)) < 2.0);
 }
 
 TEST_CASE("program changes pick the voice at that bank address while the instrument follows them") {

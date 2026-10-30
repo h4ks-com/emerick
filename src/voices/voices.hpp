@@ -29,6 +29,18 @@ struct VoiceKey {
     VoiceAddress address;
 };
 
+// A channel's controllers at their General MIDI defaults; 127 in both RPN bytes selects no parameter.
+struct ChannelControls {
+    int volume = 100;
+    int expression = 127;
+    int pan = 64;
+    int bend = 8192;
+    int bendSemitones = 2;
+    int bendCents = 0;
+    int rpnMsb = 127;
+    int rpnLsb = 127;
+};
+
 // A store read on its own thread, shared by the instances that wait for the same folder.
 struct StoreLoad;
 
@@ -66,6 +78,7 @@ struct Plugin {
     Sampler sampler;
     std::array<int, kChannels> bankMsb{};
     std::array<int, kChannels> bankLsb{};
+    std::array<ChannelControls, kChannels> controls{};
     // The bank that played last, which keeps sounding while a program change waits for its new bank.
     const Bank* playingBank = nullptr;
     bool voiceChanged = false;

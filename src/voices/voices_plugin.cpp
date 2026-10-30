@@ -11,12 +11,14 @@
 #include <cstdint>
 #include <cstring>
 #include <memory>
+#include <ranges>
 #include <span>
 
 #include "voices.hpp"
 
 namespace {
 
+using emerick::voices::ChannelControls;
 using emerick::voices::eventAs;
 using emerick::voices::kChannels;
 using emerick::voices::kParams;
@@ -28,11 +30,26 @@ using emerick::voices::pluginOf;
 using emerick::voices::VoiceAddress;
 
 constexpr int kBankMsb = 0;
+constexpr int kDataEntry = 6;
+constexpr int kVolume = 7;
+constexpr int kPan = 10;
+constexpr int kExpression = 11;
 constexpr int kBankLsb = 32;
+constexpr int kDataEntryLsb = 38;
 constexpr int kSustain = 64;
+constexpr int kNrpnLsb = 98;
+constexpr int kNrpnMsb = 99;
+constexpr int kRpnLsb = 100;
+constexpr int kRpnMsb = 101;
 constexpr int kAllSoundOff = 120;
+constexpr int kResetControllers = 121;
 constexpr int kAllNotesOff = 123;
 constexpr int kSustainDown = 64;
+constexpr int kNoRpn = 127;
+constexpr int kPanCenter = 64;
+constexpr int kBendCenter = 8192;
+constexpr float kControllerTop = 127.0F;
+constexpr double kCentsPerSemitone = 100.0;
 
 PlaySettings settingsOf(const Plugin& plugin) {
     return PlaySettings{.outputRate = plugin.sampleRate,
@@ -42,6 +59,51 @@ PlaySettings settingsOf(const Plugin& plugin) {
                         .releaseSeconds = plugin.release.load(std::memory_order_relaxed)};
 }
 
+// We follow General MIDI's level curve for volume and expression, the square of the value, as FluidSynth does.
+float levelOf(int value) {
+    const float share = static_cast<float>(value) / kControllerTop;
+    return share * share;
+}
+
+void applyControls(Plugin& plugin, int channel) {
+    const ChannelControls& controls = plugin.controls.at(static_cast<std::size_t>(channel));
+    plugin.sampler.setMix(channel, levelOf(controls.volume) * levelOf(controls.expression),
+                          static_cast<float>(controls.pan - kPanCenter) / kPanCenter);
+    const double range = controls.bendSemitones + (controls.bendCents / kCentsPerSemitone);
+    plugin.sampler.setBend(channel, static_cast<double>(controls.bend - kBendCenter) / kBendCenter * range);
+}
+
+void resetAllControls(Plugin& plugin) {
+    plugin.controls.fill({});
+    for (const int channel : std::views::iota(0, static_cast<int>(kChannels))) {
+        applyControls(plugin, channel);
+    }
+}
+
+// Reset all controllers keeps volume, pan and the bend range, as General MIDI's recommended practice and FluidSynth do.
+void resetControllers(Plugin& plugin, int channel) {
+    ChannelControls& controls = plugin.controls.at(static_cast<std::size_t>(channel));
+    const ChannelControls kept = controls;
+    controls = {};
+    controls.volume = kept.volume;
+    controls.pan = kept.pan;
+    controls.bendSemitones = kept.bendSemitones;
+    controls.bendCents = kept.bendCents;
+    plugin.sampler.setSustain(channel, false);
+    applyControls(plugin, channel);
+}
+
+void enterData(ChannelControls& controls, int controller, int value) {
+    if (controls.rpnMsb != 0 || controls.rpnLsb != 0) {
+        return;
+    }
+    if (controller == kDataEntry) {
+        controls.bendSemitones = value;
+    } else {
+        controls.bendCents = value;
+    }
+}
+
 bool activate(const clap_plugin* plugin, double sampleRate, std::uint32_t /*unused*/, std::uint32_t /*unused*/) {
     Plugin& voices = pluginOf(plugin);
     emerick::voices::publishLoadedStore(voices);
@@ -49,6 +111,7 @@ bool activate(const clap_plugin* plugin, double sampleRate, std::uint32_t /*unus
     emerick::voices::buildBank(voices, voices.selected.load(std::memory_order_relaxed));
     voices.sampleRate = sampleRate;
     voices.sampler.silence();
+    resetAllControls(voices);
     voices.playingBank = nullptr;
     voices.active = true;
     return true;
@@ -98,6 +161,7 @@ void changeProgram(Plugin& plugin, int channel, int program) {
 
 void controlChange(Plugin& plugin, int channel, int controller, int value) {
     const auto index = static_cast<std::size_t>(channel);
+    ChannelControls& controls = plugin.controls.at(index);
     switch (controller) {
         case kBankMsb:
             plugin.bankMsb[index] = value;
@@ -105,11 +169,42 @@ void controlChange(Plugin& plugin, int channel, int controller, int value) {
         case kBankLsb:
             plugin.bankLsb[index] = value;
             break;
+        case kVolume:
+            controls.volume = value;
+            applyControls(plugin, channel);
+            break;
+        case kExpression:
+            controls.expression = value;
+            applyControls(plugin, channel);
+            break;
+        case kPan:
+            controls.pan = value;
+            applyControls(plugin, channel);
+            break;
+        case kRpnMsb:
+            controls.rpnMsb = value;
+            break;
+        case kRpnLsb:
+            controls.rpnLsb = value;
+            break;
+        case kNrpnMsb:
+        case kNrpnLsb:
+            controls.rpnMsb = kNoRpn;
+            controls.rpnLsb = kNoRpn;
+            break;
+        case kDataEntry:
+        case kDataEntryLsb:
+            enterData(controls, controller, value);
+            applyControls(plugin, channel);
+            break;
         case kSustain:
             plugin.sampler.setSustain(channel, value >= kSustainDown);
             break;
         case kAllSoundOff:
             plugin.sampler.silence();
+            break;
+        case kResetControllers:
+            resetControllers(plugin, channel);
             break;
         case kAllNotesOff:
             plugin.sampler.releaseAll();
@@ -139,6 +234,10 @@ void playMidi(Plugin& plugin, const std::array<std::uint8_t, 3>& data) {
             break;
         case 0xC0:
             changeProgram(plugin, channel, first);
+            break;
+        case 0xE0:
+            plugin.controls.at(static_cast<std::size_t>(channel)).bend = first | (second << 7);
+            applyControls(plugin, channel);
             break;
         default:
             break;
@@ -302,7 +401,10 @@ const clap_plugin* createPlugin(const clap_plugin_factory* /*unused*/, const cla
                       [](const clap_plugin* plugin) { pluginOf(plugin).active = false; },
                       [](const clap_plugin*) { return true; },
                       [](const clap_plugin*) {},
-                      [](const clap_plugin* plugin) { pluginOf(plugin).sampler.silence(); },
+                      [](const clap_plugin* plugin) {
+                          pluginOf(plugin).sampler.silence();
+                          resetAllControls(pluginOf(plugin));
+                      },
                       process,
                       extension,
                       onMainThread};

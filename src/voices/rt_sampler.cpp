@@ -16,6 +16,7 @@ constexpr double kEnvelopeFloor = 1.5849e-5;
 constexpr double kHighestCutoff = 0.45;
 constexpr double kChokeSeconds = 0.005;
 constexpr std::size_t kReleaseSegment = 4;
+constexpr double kMixGlideSeconds = 0.005;
 
 double framesOf(double seconds, double rate) { return std::max(1.0, seconds * rate); }
 
@@ -131,8 +132,10 @@ void Sampler::noteOn(const Bank& bank, int key, int velocity, int channel, const
         note.started = ++clock_;
         note.outputRate = rate;
         note.step = info.sampleRate / rate * std::exp2(semitonesOf(info, key, settings) / 12.0);
-        note.gainLeft = gain * std::min(1.0F, 1.0F - info.pan);
-        note.gainRight = gain * std::min(1.0F, 1.0F + info.pan);
+        note.gain = gain;
+        aim(note);
+        note.mixLeft = note.targetLeft;
+        note.mixRight = note.targetRight;
         note.envelope = info.envelope.value_or(
             Envelope{.attackSeconds = settings.attackSeconds, .releaseSeconds = settings.releaseSeconds});
         const Envelope& envelope = note.envelope;
@@ -154,6 +157,30 @@ void Sampler::noteOn(const Bank& bank, int key, int velocity, int channel, const
         note.lfoStep = moves(info.lfo) ? info.lfo.hertz / rate : 0.0;
         note.lfoDelay = info.lfo.delaySeconds * rate;
     }
+}
+
+// We pan with equal power as General MIDI synths do, scaled so a centered note keeps its full level on both sides.
+void Sampler::aim(Note& note) const {
+    const Channel& channel = channels_.at(static_cast<std::size_t>(note.channel));
+    const float pan = std::clamp(note.zone->zone->pan + channel.pan, -1.0F, 1.0F);
+    const float angle = (pan + 1.0F) * std::numbers::pi_v<float> / 4.0F;
+    note.targetLeft = channel.level * std::numbers::sqrt2_v<float> * std::cos(angle);
+    note.targetRight = channel.level * std::numbers::sqrt2_v<float> * std::sin(angle);
+}
+
+void Sampler::setMix(int channel, float level, float pan) {
+    Channel& mix = channels_.at(static_cast<std::size_t>(channel));
+    mix.level = level;
+    mix.pan = pan;
+    for (Note& note : notes_) {
+        if (note.stage != Stage::idle && note.channel == channel) {
+            aim(note);
+        }
+    }
+}
+
+void Sampler::setBend(int channel, double semitones) {
+    channels_.at(static_cast<std::size_t>(channel)).bendRatio = std::exp2(semitones / 12.0);
 }
 
 void Sampler::release(Note& note) {
@@ -182,7 +209,7 @@ void Sampler::noteOff(int key, int channel) {
     for (Note& note : notes_) {
         if (note.stage != Stage::idle && note.stage != Stage::release && note.key == key && note.channel == channel &&
             releasesOnNoteOff(*note.zone)) {
-            if (sustain_.at(static_cast<std::size_t>(channel))) {
+            if (channels_.at(static_cast<std::size_t>(channel)).sustain) {
                 note.sustained = true;
             } else {
                 release(note);
@@ -192,7 +219,7 @@ void Sampler::noteOff(int key, int channel) {
 }
 
 void Sampler::setSustain(int channel, bool down) {
-    sustain_.at(static_cast<std::size_t>(channel)) = down;
+    channels_.at(static_cast<std::size_t>(channel)).sustain = down;
     if (down) {
         return;
     }
@@ -204,7 +231,9 @@ void Sampler::setSustain(int channel, bool down) {
 }
 
 void Sampler::releaseAll() {
-    sustain_.fill(false);
+    for (Channel& channel : channels_) {
+        channel.sustain = false;
+    }
     for (Note& note : notes_) {
         if (note.stage != Stage::idle) {
             release(note);
@@ -213,7 +242,9 @@ void Sampler::releaseAll() {
 }
 
 void Sampler::silence() {
-    sustain_.fill(false);
+    for (Channel& channel : channels_) {
+        channel.sustain = false;
+    }
     for (Note& note : notes_) {
         note.stage = Stage::idle;
     }
@@ -276,8 +307,9 @@ bool Sampler::advanceCutoff(Note& note, const CutoffEnvelope& envelope) {
     return true;
 }
 
-void Sampler::renderNote(Note& note, std::span<float> left, std::span<float> right) {
+void Sampler::renderNote(Note& note, double bendRatio, std::span<float> left, std::span<float> right) {
     const Zone& info = *note.zone->zone;
+    const auto glide = static_cast<float>(1.0 - std::exp(-1.0 / (kMixGlideSeconds * note.outputRate)));
     const Wave& leftWave = *note.zone->left;
     const Wave& rightWave = note.zone->right != nullptr ? *note.zone->right : leftWave;
     const bool looped = loops(*note.zone);
@@ -288,8 +320,10 @@ void Sampler::renderNote(Note& note, std::span<float> left, std::span<float> rig
         if (!advanceEnvelope(note)) {
             return;
         }
-        double step = note.step;
+        double step = note.step * bendRatio;
         double level = note.level;
+        note.mixLeft += glide * (note.targetLeft - note.mixLeft);
+        note.mixRight += glide * (note.targetRight - note.mixRight);
         double lfoCents = 0.0;
         bool retune = info.lowPass && info.lowPass->envelope && advanceCutoff(note, *info.lowPass->envelope);
         if (note.lfoDelay > 0.0) {
@@ -312,8 +346,8 @@ void Sampler::renderNote(Note& note, std::span<float> left, std::span<float> rig
             leftSample = lowPassed(note.filter, 0, leftSample);
             rightSample = lowPassed(note.filter, 1, rightSample);
         }
-        left[frame] += static_cast<float>(note.gainLeft * level * leftSample);
-        right[frame] += static_cast<float>(note.gainRight * level * rightSample);
+        left[frame] += static_cast<float>(note.gain * note.mixLeft * level * leftSample);
+        right[frame] += static_cast<float>(note.gain * note.mixRight * level * rightSample);
         note.position += step;
         if (looped) {
             while (note.position >= loopEnd) {
@@ -329,7 +363,7 @@ void Sampler::renderNote(Note& note, std::span<float> left, std::span<float> rig
 void Sampler::render(std::span<float> left, std::span<float> right) {
     for (Note& note : notes_) {
         if (note.stage != Stage::idle) {
-            renderNote(note, left, right);
+            renderNote(note, channels_.at(static_cast<std::size_t>(note.channel)).bendRatio, left, right);
         }
     }
 }

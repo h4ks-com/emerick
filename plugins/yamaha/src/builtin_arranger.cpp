@@ -202,6 +202,20 @@ bool playsVoice(const Json& params) {
 void loadPartInstrument(BuiltinArranger& builtin, app::Registry& registry, app::ProjectController& controller,
                         const model::TrackId& id, std::size_t part, std::optional<arranger::PartVoice> voice);
 
+// A part asks for the style's voice until someone loads another instrument or picks another voice on it.
+bool asksForVoice(const model::Track& track, const arranger::PartVoice& voice) {
+    if (!track.instrument || track.instrument->pluginId != kVoicesPluginId) {
+        return false;
+    }
+    const Json state = Json::parse(track.instrument->state.begin(), track.instrument->state.end(), nullptr, false);
+    if (!state.is_object() || !state.contains("voice") || !state.at("voice").is_object()) {
+        return false;
+    }
+    const Json& asked = state.at("voice");
+    return asked.value("msb", -1) == voice.bankMsb && asked.value("lsb", -1) == voice.bankLsb &&
+           asked.value("program", -1) == voice.program;
+}
+
 // Once Expansion Voices read its store, a waiting part whose voice it lacks switches to its General MIDI stand-in.
 void loadStandInsForMissingVoices(BuiltinArranger& builtin, app::Registry& registry,
                                   app::ProjectController& controller) {
@@ -213,7 +227,7 @@ void loadStandInsForMissingVoices(BuiltinArranger& builtin, app::Registry& regis
             const model::TrackId id{track};
             const model::Track* found = controller.project().track(id);
             const Json described = controller.instruments().describe(id);
-            const bool voices = found != nullptr && found->instrument && found->instrument->pluginId == kVoicesPluginId;
+            const bool voices = found != nullptr && asksForVoice(*found, waiting.voice);
             if (voices && !described.is_null() && voicesLoading(described.at("params"))) {
                 continue;
             }

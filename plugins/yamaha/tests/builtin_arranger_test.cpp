@@ -470,6 +470,17 @@ TEST_CASE("a part waiting for Expansion Voices to read its store warns until the
     CHECK(waitWarnings() == 0);
 }
 
+TEST_CASE("a part someone loads Expansion Voices on while the store loads keeps it once the store is read") {
+    ArrangerRig rig;
+    rig.run("arranger.setup");
+    const std::string style = rig.trackOfKind("yamaha.style");
+    rig.YamahaRig::run("arranger.style.load", {{"track", style}, {"path", rig.demo.string()}});
+    const std::string bass = rig.document().tracks.at(4).id.value;
+    rig.run("instrument.load", {{"track", bass}, {"plugin", yamaha::kVoicesPluginId}});
+    rig.controller->flush();
+    CHECK(rig.track(bass).instrument->pluginId == yamaha::kVoicesPluginId);
+}
+
 TEST_CASE("a style whose Mains leave Rhythm 1 empty plays no drums, as an Audio Style") {
     arranger::Style style = arranger::parseStyle(arranger::test::demoStyle());
     CHECK(yamaha::stylePlaysDrums(style));

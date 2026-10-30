@@ -4,7 +4,6 @@
 
 #include <algorithm>
 #include <array>
-#include <bit>
 #include <cmath>
 #include <cstddef>
 #include <fstream>
@@ -109,7 +108,6 @@ constexpr std::size_t kFrameBytes = 32;
 constexpr std::size_t kFrameWords = 16;
 constexpr std::size_t kModeCount = 8;
 constexpr int kLastScale = 63;
-constexpr double kFadeSeconds = 0.005;
 
 using Words = std::array<std::uint16_t, kFrameWords>;
 using Params = std::array<std::uint16_t, 3>;
@@ -160,11 +158,11 @@ struct Mode {
     int boost;
 };
 
-// We have no decoder for mode 5, so a wave ends at the first frame that uses it.
-constexpr std::array<std::optional<Mode>, kModeCount> kModes{Mode{2, kLevels2, {}, 4}, Mode{3, kLevels3, {}, 4},
-                                                             Mode{4, kLevels4, {}, 4}, Mode{6, kLevels6, {}, 4},
-                                                             Mode{4, {}, kPairs4, 8},  std::nullopt,
-                                                             Mode{4, kLevels4, {}, 8}, Mode{3, {}, kPairs7, 8}};
+// Mode 5 yields 64 samples a frame, as every wave's APCp sample count shows, so we read it as mode 1 with the boost of
+// the modes above 4, as mode 6 is mode 2.
+constexpr std::array<Mode, kModeCount> kModes{
+    Mode{2, kLevels2, {}, 4}, Mode{3, kLevels3, {}, 4}, Mode{4, kLevels4, {}, 4}, Mode{6, kLevels6, {}, 4},
+    Mode{4, {}, kPairs4, 8},  Mode{3, kLevels3, {}, 8}, Mode{4, kLevels4, {}, 8}, Mode{3, {}, kPairs7, 8}};
 
 constexpr int scaleFactor(int index) { return (4 + (index % 4)) << (1 + (index / 4)); }
 
@@ -226,44 +224,31 @@ void decodeFrame(const Words& words, const FrameParams& frame, const Mode& mode,
     }
 }
 
-void fadeOut(std::vector<float>& samples, double sampleRate) {
-    const std::size_t length =
-        std::clamp<std::size_t>(static_cast<std::size_t>(std::lround(sampleRate * kFadeSeconds)), 1, samples.size());
-    for (std::size_t step = 0; step < length; ++step) {
-        samples[samples.size() - length + step] *= static_cast<float>(length - 1 - step) / static_cast<float>(length);
-    }
-}
-
-bool startsDecodable(Bytes wxc1Head) {
-    return wxc1Head.size() >= kWxcParams + 6 && kModes.at(be16(wxc1Head, kWxcParams + 4) & 7U).has_value();
-}
-
-// A frame in a mode we cannot decode ends the wave with a short fade, and a loop it cuts short plays as a one-shot.
 std::optional<Wave> decodeWxc1(Bytes wxc1, Bytes apcp) {
-    if (wxc1.size() < kWxcHeader + kFrameBytes || apcp.size() < 16 || !startsDecodable(wxc1)) {
+    if (wxc1.size() < kWxcHeader + kFrameBytes || apcp.size() < 16) {
         return std::nullopt;
     }
-    const auto sampleRate = std::bit_cast<double>((std::uint64_t{be32(apcp, 8)} << 32U) | be32(apcp, 12));
     Params params{be16(wxc1, kWxcParams), be16(wxc1, kWxcParams + 2), be16(wxc1, kWxcParams + 4)};
     std::array<int, 3> history{};
-    Wave wave{.samples = {}, .loopStart = be32(wxc1, 6), .loopEnd = be32(wxc1, 10)};
+    Wave wave;
+    std::vector<std::uint32_t> frameStarts;
     for (std::size_t at = kWxcHeader; at + kFrameBytes <= wxc1.size(); at += kFrameBytes) {
+        frameStarts.push_back(static_cast<std::uint32_t>(wave.samples.size()));
         const FrameParams frame = unpack(params);
-        const std::optional<Mode>& mode = kModes.at(frame.mode);
-        if (!mode) {
-            fadeOut(wave.samples, sampleRate);
-            if (wave.loopEnd > wave.samples.size()) {
-                wave.loopStart = 0;
-                wave.loopEnd = 0;
-            }
-            break;
-        }
         Words words{};
         for (std::size_t word = 0; word < kFrameWords; ++word) {
             words.at(word) = descramble(be16(wxc1, at + (2 * word)));
         }
-        decodeFrame(words, frame, *mode, history, wave.samples);
+        decodeFrame(words, frame, kModes.at(frame.mode), history, wave.samples);
         params = paramsAfter(words);
+    }
+    // The header names the loop by frame: it runs from the start of its first frame to the end of its last.
+    const std::uint32_t loopFirst = be32(wxc1, 6);
+    const std::uint32_t loopLast = be32(wxc1, 10);
+    frameStarts.push_back(static_cast<std::uint32_t>(wave.samples.size()));
+    if (loopFirst <= loopLast && loopLast + 1 < frameStarts.size()) {
+        wave.loopStart = frameStarts[loopFirst];
+        wave.loopEnd = frameStarts[loopLast + 1];
     }
     return wave;
 }
@@ -324,10 +309,7 @@ bool isDecodableWave(const std::filesystem::path& path) {
         comm = comm || tagIs(chunk, 0, "COMM");
         ssnd = ssnd || tagIs(chunk, 0, "SSND");
         apcp = apcp || tagIs(chunk, 0, "APCp");
-        if (tagIs(chunk, 0, "WXC1")) {
-            std::array<std::uint8_t, kWxcParams + 6> head{};
-            wxc1 = size >= kWxcHeader + kFrameBytes && readBytes(file, head) && startsDecodable(head);
-        }
+        wxc1 = wxc1 || (tagIs(chunk, 0, "WXC1") && size >= kWxcHeader + kFrameBytes);
         file.seekg(next);
     }
     return (comm && ssnd) || (apcp && wxc1);

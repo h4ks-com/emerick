@@ -57,9 +57,11 @@ int sampleValue(const Wave& wave, std::size_t index) { return static_cast<int>(w
 }  // namespace
 
 TEST_CASE("WXC1 frames in cracked modes decode bit-exactly") {
-    const auto wave = decodeWave(wxc1Blob(8000.0, kFirstParams, crackedFrames(), {10, 100}));
+    const auto wave = decodeWave(wxc1Blob(8000.0, kFirstParams, crackedFrames(), {1, 1}));
     REQUIRE(wave.has_value());
     REQUIRE(wave->samples.size() == 128);
+    CHECK(wave->loopStart == 96);
+    CHECK(wave->loopEnd == 128);
     CHECK(sampleValue(*wave, 0) == -15);
     CHECK(sampleValue(*wave, 7) == -35);
     CHECK(sampleValue(*wave, 59) == -84);
@@ -88,20 +90,13 @@ TEST_CASE("WXC1 frames in the pair modes 4 and 7 decode bit-exactly") {
     CHECK(sampleValue(*wave, 223) == -924);
 }
 
-TEST_CASE("a WXC1 wave ends with a fade at its first frame in an unknown mode") {
+TEST_CASE("a WXC1 frame in mode 5 decodes 64 samples, and a loop past the last frame plays as a one-shot") {
     std::vector<WxcFrame> frames = crackedFrames();
     frames.push_back(WxcFrame{});
-    const auto wave = decodeWave(wxc1Blob(8000.0, kFirstParams, frames, {10, 200}));
+    const auto wave = decodeWave(wxc1Blob(8000.0, kFirstParams, frames, {1, 3}));
     REQUIRE(wave.has_value());
-    REQUIRE(wave->samples.size() == 128);
-    CHECK(sampleValue(*wave, 87) == -42);
-    CHECK(wave->samples[101] == Catch::Approx(368.0F / 32768.0F * 26.0F / 40.0F));
-    CHECK(wave->samples.back() == 0.0F);
+    CHECK(wave->samples.size() == 192);
     CHECK_FALSE(wave->looped());
-}
-
-TEST_CASE("a WXC1 wave whose first frame is in an unknown mode is not decoded") {
-    CHECK_FALSE(decodeWave(wxc1Blob(8000.0, {.mode = 5}, crackedFrames())).has_value());
     CHECK_FALSE(decodeWave(std::vector<std::uint8_t>{1, 2, 3}).has_value());
 }
 
@@ -264,21 +259,21 @@ TEST_CASE("the store reads a legacy element's filter type, cutoff, curves and cu
 TEST_CASE("the store leaves out zones whose waves are undecodable or missing, and voices left with none") {
     SyntheticStore store;
     const std::string linear = store.addWave(linearBlob(sine(440.0, 44100.0, 441), 44100.0));
-    const std::string partial = store.addWave(wxc1Blob(44100.0, kFirstParams, crackedFrames()));
-    const std::string compressed = store.addWave(wxc1Blob(44100.0, {.mode = 5}, crackedFrames()));
+    const std::string compressed = store.addWave(wxc1Blob(44100.0, kFirstParams, crackedFrames()));
+    const std::string empty = store.addWave(wxc1Blob(44100.0, kFirstParams, {}));
     store.addPack("Pack",
                   {SyntheticVoice{.name = "Plays", .zones = {SyntheticZone{.wave = linear}}},
-                   SyntheticVoice{.name = "Partly", .zones = {SyntheticZone{.wave = partial, .waveType = "WXC"}}},
+                   SyntheticVoice{.name = "Packed", .zones = {SyntheticZone{.wave = compressed, .waveType = "WXC"}}},
                    SyntheticVoice{.name = "Compressed",
                                   .zones = {SyntheticZone{.keyHi = "C3", .wave = linear},
-                                            SyntheticZone{.keyLo = "C#3", .wave = compressed}}},
+                                            SyntheticZone{.keyLo = "C#3", .wave = empty}}},
                    SyntheticVoice{.name = "Missing", .zones = {SyntheticZone{.wave = std::string(40, 'f')}}}});
     const Store loaded = loadStore(store.folder());
     REQUIRE(loaded.voices.size() == 3);
     CHECK(loaded.voices[0].name == "Compressed");
     REQUIRE(loaded.voices[0].zones.size() == 1);
     CHECK(loaded.voices[0].zones[0].keyHi == 60);
-    CHECK(loaded.voices[1].name == "Partly");
+    CHECK(loaded.voices[1].name == "Packed");
     CHECK(loaded.voices[2].name == "Plays");
 }
 

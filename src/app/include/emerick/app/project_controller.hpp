@@ -29,6 +29,7 @@ namespace emerick::app {
 
 inline constexpr int kMidiChannels = 16;
 inline constexpr int kTrackColors = 8;
+inline constexpr std::string_view kAutosaveSetting = "project.autosave";
 
 // A take in progress as the tracks area draws it, until it lands as a clip and one undo step.
 struct TakePreview {
@@ -108,9 +109,11 @@ public:
     [[nodiscard]] const std::vector<engine::SessionError>& routeErrors() const { return routeErrors_; }
 
     // Each of these first stops the transport and keeps every pending take in the current project. Leaving a
-    // project saves it, and an untitled project with nothing in it is deleted.
+    // project saves it while autosave is on and the file is ours, and an untitled project with nothing in it is
+    // deleted.
     void newProject();
-    // Takes the bundle or the project.json inside it.
+    // Takes the bundle or the project.json inside it. Opening the open project reloads it when its file changed on
+    // disk since we last read or wrote it.
     void open(const std::filesystem::path& path);
     void save();
     // Adds the .erk suffix when it is missing. An untitled bundle moves to the new path, any other is copied.
@@ -249,6 +252,9 @@ private:
     void discardIfEmpty();
     void write();
     void autosave();
+    [[nodiscard]] bool autosaves() const;
+    [[nodiscard]] bool changedOnDisk() const;
+    void rememberDiskTime();
     void setEdited(bool value);
     void scheduleFlush();
     void settleTakes();
@@ -285,6 +291,7 @@ private:
     std::filesystem::path folder_;
     bool untitled_ = false;
     bool edited_ = false;
+    std::filesystem::file_time_type writtenAt_;
     QTimer autosaveTimer_;
     EngineTrackCache engineTracks_;
     std::set<std::string> sessionTracks_;

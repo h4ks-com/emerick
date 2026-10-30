@@ -14,6 +14,8 @@ namespace emerick::app {
 
 // Every project, track, clip, transport, device and export action, and the "project", "transport" and "devices"
 // state providers.
+// The tempo with the bpm, numerator and denominator params applied, or an AppError naming the valid range.
+core::TempoMap tempoFromParams(const Json& params, core::TempoMap tempo);
 void registerProjectActions(Registry& registry, ProjectController& controller, Nav& nav);
 
 // The audio and MIDI track kinds with their add actions, and every track action.

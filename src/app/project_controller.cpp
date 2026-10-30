@@ -143,6 +143,7 @@ void ProjectController::moveTo(const std::filesystem::path& folder, model::Docum
     takeErrors_.clear();
     project_.reset(std::move(document));
     emit projectReplaced();
+    rememberDiskTime();
     setEdited(false);
     emit fileChanged();
     checkHealth();
@@ -170,10 +171,32 @@ void ProjectController::write() {
     } catch (const std::runtime_error& error) {
         throw AppError(error.what());
     }
+    rememberDiskTime();
     setEdited(false);
 }
 
+void ProjectController::rememberDiskTime() {
+    std::error_code error;
+    writtenAt_ = std::filesystem::last_write_time(folder_ / "project.json", error);
+}
+
+bool ProjectController::changedOnDisk() const {
+    std::error_code error;
+    const auto now = std::filesystem::last_write_time(folder_ / "project.json", error);
+    return !error && now != writtenAt_;
+}
+
+bool ProjectController::autosaves() const {
+    const Setting* setting = registry_.setting(std::string{kAutosaveSetting});
+    return setting == nullptr || registry_.settingValue(std::string{kAutosaveSetting}).get<bool>();
+}
+
+// Someone else may have saved the file since we read it, so we leave their save in place.
 void ProjectController::autosave() {
+    if (changedOnDisk()) {
+        qWarning("not autosaving %s: it changed on disk, save it to overwrite", folder_.c_str());
+        return;
+    }
     try {
         write();
     } catch (const AppError& error) {
@@ -182,7 +205,7 @@ void ProjectController::autosave() {
 }
 
 void ProjectController::setEdited(bool value) {
-    if (value) {
+    if (value && autosaves()) {
         autosaveTimer_.start();
     } else {
         autosaveTimer_.stop();
@@ -194,7 +217,7 @@ void ProjectController::setEdited(bool value) {
 
 void ProjectController::leave() {
     settleTakes();
-    if (edited_) {
+    if (edited_ && autosaves() && !changedOnDisk()) {
         write();
     }
     discardIfEmpty();
@@ -228,8 +251,8 @@ void ProjectController::newProject() {
 
 void ProjectController::open(const std::filesystem::path& path) {
     const std::filesystem::path bundle = bundleOf(path);
-    if (bundle == folder_) {
-        save();
+    const bool reopening = bundle == folder_;
+    if (reopening && !changedOnDisk()) {
         return;
     }
     model::Document document;
@@ -241,7 +264,11 @@ void ProjectController::open(const std::filesystem::path& path) {
         throw AppError("cannot read " + (bundle / "project.json").string() + ": " + error.what());
     }
     repairDeviceIds(document, engine_.audioDevices());
-    leave();
+    if (reopening) {
+        settleTakes();
+    } else {
+        leave();
+    }
     moveTo(bundle, std::move(document));
 }
 

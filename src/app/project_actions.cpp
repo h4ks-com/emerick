@@ -54,21 +54,7 @@ void registerProjectEditActions(Registry& registry, ProjectController& controlle
                                      {"numerator", {{"type", "integer"}}},
                                      {"denominator", {{"type", "integer"}}}}}},
                         .run = [&controller](const Json& params) {
-                            core::TempoMap tempo = controller.project().document().tempo;
-                            tempo.bpm = optionalParam<double>(params, "bpm").value_or(tempo.bpm);
-                            tempo.meter.numerator =
-                                optionalParam<int>(params, "numerator").value_or(tempo.meter.numerator);
-                            tempo.meter.denominator =
-                                optionalParam<int>(params, "denominator").value_or(tempo.meter.denominator);
-                            if (std::isnan(tempo.bpm) || tempo.bpm < kMinBpm || tempo.bpm > kMaxBpm) {
-                                throw AppError("bpm must be 20 to 400");
-                            }
-                            if (tempo.meter.numerator < 1 ||
-                                std::ranges::find(kDenominators, tempo.meter.denominator) == kDenominators.end()) {
-                                throw AppError(
-                                    "the meter needs a numerator of 1 or more and a denominator of 1, 2, 4, "
-                                    "8 or 16");
-                            }
+                            const core::TempoMap tempo = tempoFromParams(params, controller.project().document().tempo);
                             controller.project().setTempo(tempo);
                             return tempoState(tempo);
                         }});
@@ -251,6 +237,19 @@ void registerTransportActions(Registry& registry, ProjectController& controller)
 }
 
 }  // namespace
+
+core::TempoMap tempoFromParams(const Json& params, core::TempoMap tempo) {
+    tempo.bpm = optionalParam<double>(params, "bpm").value_or(tempo.bpm);
+    tempo.meter.numerator = optionalParam<int>(params, "numerator").value_or(tempo.meter.numerator);
+    tempo.meter.denominator = optionalParam<int>(params, "denominator").value_or(tempo.meter.denominator);
+    if (std::isnan(tempo.bpm) || tempo.bpm < kMinBpm || tempo.bpm > kMaxBpm) {
+        throw AppError("bpm must be 20 to 400");
+    }
+    if (tempo.meter.numerator < 1 || std::ranges::find(kDenominators, tempo.meter.denominator) == kDenominators.end()) {
+        throw AppError("the meter needs a numerator of 1 or more and a denominator of 1, 2, 4, 8 or 16");
+    }
+    return tempo;
+}
 
 void registerProjectActions(Registry& registry, ProjectController& controller, Nav& nav) {
     registry.addStateProvider("project", [&controller] { return projectState(controller); });

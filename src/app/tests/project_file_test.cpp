@@ -1,6 +1,7 @@
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_string.hpp>
+#include <chrono>
 #include <filesystem>
 #include <fstream>
 #include <string>
@@ -22,6 +23,17 @@ Json savedProject(const std::filesystem::path& folder) {
     std::ifstream file(folder / "project.json");
     return Json::parse(file);
 }
+
+// Writes the project file the way another program saving it would, with a later modification time.
+void saveElsewhere(const std::filesystem::path& folder, double bpm) {
+    Json project = savedProject(folder);
+    project["tempo"]["bpm"] = bpm;
+    std::ofstream(folder / "project.json") << project.dump();
+    const auto file = folder / "project.json";
+    std::filesystem::last_write_time(file, std::filesystem::last_write_time(file) + std::chrono::seconds{2});
+}
+
+double tempoOf(const ProjectRig& rig) { return rig.run("project.summary").at("tempo").at("bpm").get<double>(); }
 
 std::vector<std::string> recent(const ProjectRig& rig) {
     return rig.registry.settingValue("project.recent").get<std::vector<std::string>>();
@@ -78,6 +90,50 @@ TEST_CASE("save as moves an untitled bundle, copies a named one, and the bundle 
     CHECK(opened.at("path") == song.string());
     CHECK(model::toJson(rig.controller->project().document()) == before);
     CHECK(rig.controller->edited() == false);
+}
+
+TEST_CASE("a new project can start saved at a path with a tempo") {
+    ProjectRig rig;
+    const auto song = rig.path("Songs/Funk.erk");
+    const Json state = rig.run("project.new", {{"path", rig.path("Songs/Funk").string()}, {"bpm", 120}});
+    CHECK(state.at("path") == song.string());
+    CHECK(state.at("untitled") == false);
+    CHECK(savedProject(song).at("tempo").at("bpm") == 120.0);
+    CHECK_THROWS_AS(rig.run("project.new", {{"path", song.string()}}), AppError);
+}
+
+TEST_CASE("autosave leaves a file another program saved, and opening the open project reloads it") {
+    ProjectRig rig;
+    const auto song = rig.path("Songs/Funk.erk");
+    rig.run("project.new", {{"path", song.string()}, {"bpm", 120}});
+    rig.run("project.setTempo", {{"bpm", 100}});
+    saveElsewhere(song, 140);
+    rig.run("project.open", {{"path", song.string()}});
+    CHECK(tempoOf(rig) == 140.0);
+
+    rig.run("project.setTempo", {{"bpm", 100}});
+    saveElsewhere(song, 150);
+    rig.run("project.new");
+    CHECK(savedProject(song).at("tempo").at("bpm") == 150.0);
+
+    rig.run("project.open", {{"path", song.string()}});
+    rig.run("project.open", {{"path", song.string()}});
+    CHECK(tempoOf(rig) == 150.0);
+}
+
+TEST_CASE("with autosave off, the file keeps what was last saved") {
+    ProjectRig rig;
+    rig.registry.setSetting("project.autosave", false);
+    const auto song = rig.path("Songs/Funk.erk");
+    rig.run("project.new", {{"path", song.string()}, {"bpm", 120}});
+    rig.run("project.setTempo", {{"bpm", 100}});
+    rig.run("project.new");
+    CHECK(savedProject(song).at("tempo").at("bpm") == 120.0);
+
+    rig.run("project.open", {{"path", song.string()}});
+    rig.run("project.setTempo", {{"bpm", 90}});
+    rig.run("project.save");
+    CHECK(savedProject(song).at("tempo").at("bpm") == 90.0);
 }
 
 TEST_CASE("autosave writes project.json about two seconds after a take") {

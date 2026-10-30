@@ -7,6 +7,7 @@
 #endif
 #include <algorithm>
 #include <filesystem>
+#include <optional>
 #include <ranges>
 #include <string>
 #include <vector>
@@ -68,11 +69,37 @@ void registerProjectFileActions(Registry& registry, ProjectController& controlle
                          .category = "Project",
                          .type = SettingType::List,
                          .defaultValue = Json::array()});
+    registry.addSetting({.id = std::string{kAutosaveSetting},
+                         .title = "Autosave",
+                         .aliases = {"save automatically"},
+                         .category = "Project",
+                         .type = SettingType::Boolean,
+                         .defaultValue = true,
+                         .hint = "Save the project a moment after each edit and when you leave it. Turn it off to "
+                                 "save only when you choose Save",
+                         .location = "settings.general"});
     rememberRecent(registry, controller.folder());
     QObject::connect(&controller, &ProjectController::fileChanged, &registry,
                      [&registry, &controller] { rememberRecent(registry, controller.folder()); });
     const auto startNew = [&controller](const Json&) {
         controller.newProject();
+        return projectState(controller);
+    };
+    const auto createNew = [&registry, &controller](const Json& params) {
+        const core::TempoMap tempo = tempoFromParams(params, core::TempoMap{});
+        const auto path = optionalParam<std::string>(params, "path");
+        const std::optional<std::filesystem::path> target =
+            path ? std::optional{registry.checkedPath(*path, PathAccess::Write)} : std::nullopt;
+        if (target && (std::filesystem::exists(*target) || std::filesystem::exists(target->string() + ".erk"))) {
+            throw AppError(target->string() + " already exists, pass another path");
+        }
+        controller.newProject();
+        if (params.contains("bpm") || params.contains("numerator") || params.contains("denominator")) {
+            controller.project().setTempo(tempo);
+        }
+        if (target) {
+            controller.saveAs(*target);
+        }
         return projectState(controller);
     };
     const auto openPath = [&registry, &controller](const Json& params) {
@@ -82,10 +109,16 @@ void registerProjectFileActions(Registry& registry, ProjectController& controlle
 
     registry.addAction({.id = "project.new",
                         .title = "New project",
+                        .description = "Starts an untitled project, or one saved at path, with an optional tempo.",
                         .aliases = {"start over", "empty project"},
                         .category = "Project",
                         .shortcut = "Ctrl+N",
-                        .run = startNew,
+                        .schema = {{"properties",
+                                    {{"path", {{"type", "string"}}},
+                                     {"bpm", {{"type", "number"}}},
+                                     {"numerator", {{"type", "integer"}}},
+                                     {"denominator", {{"type", "integer"}}}}}},
+                        .run = createNew,
                         .menus = {kFileMenu, kProjectMenu}});
     registry.addAction(
         {.id = "project.open",

@@ -416,6 +416,9 @@ void registerTrackEditActions(Registry& registry, ProjectController& controller,
          .run = [&controller, &nav](const Json& params) {
              const auto target = trackParam(controller.project(), params);
              const auto wanted = param<double>(params, "db");
+             if (wanted < kAutomationGainMinDb || wanted > kAutomationGainMaxDb) {
+                 throw AppError(std::format("db must be from {} to {}", kAutomationGainMinDb, kAutomationGainMaxDb));
+             }
              const double change = wanted - controller.project().track(target)->gainDb;
              return editTargets(controller, nav, params, "set track gain", [&](const model::TrackId& id) {
                  const double db = id == target ? wanted

@@ -52,6 +52,7 @@ TEST_CASE("track and clip actions round trip through undo and redo") {
     CHECK(rig.run("track.setGain", {{"track", "Lead"}, {"db", -6.0}}).at("gainDb") == -6.0);
     CHECK(rig.run("track.setPan", {{"track", "Lead"}, {"value", -0.5}}).at("pan") == -0.5);
     CHECK_THROWS_AS(rig.run("track.setPan", {{"track", id}, {"value", 1.5}}), AppError);
+    CHECK_THROWS_AS(rig.run("track.setGain", {{"track", id}, {"db", 24.0}}), AppError);
     CHECK_THROWS_AS(rig.run("track.setMute", {{"track", "nobody"}, {"value", true}}), AppError);
     CHECK_THROWS_AS(rig.run("track.setAudioIn", {{"track", id}, {"device", "interface"}, {"channels", {3}}}), AppError);
 

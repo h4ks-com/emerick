@@ -37,6 +37,27 @@ struct SyntheticVoice {
     std::string drumSetup;
 };
 
+// A legacy filterBlock. An empty curve is a preset table with no steps, and all zero levels leave the cutoff envelope
+// still.
+struct SyntheticLegacyFilter {
+    std::string type = "LPF(YS5)";
+    double cutoff = 112300.0;
+    std::vector<int> velocityCurve;
+    std::vector<int> keyCurve;
+    int egDepth = 100;
+    int holdTime = 0;
+    // The initial, 1st, 2nd, 3rd, sustain and release levels in cents.
+    std::array<double, 6> levels{};
+    // The 1st, 2nd, 3rd, sustain and release rates.
+    std::array<double, 5> rates{};
+};
+
+std::string legacyFilterBlock(const SyntheticLegacyFilter& filter);
+// A legacy amplitudeBlock that names only its touch curve.
+std::string touchCurveBlock(const std::vector<int>& curve);
+// 128 steps rising evenly from the first to the last value.
+std::vector<int> ramp(int first, int last);
+
 std::vector<std::int16_t> sine(double frequency, double sampleRate, std::size_t frames);
 // A FORM YTWV blob of 16-bit linear audio, with a sustain loop when one is given.
 std::vector<std::uint8_t> linearBlob(const std::vector<std::int16_t>& samples, double sampleRate,

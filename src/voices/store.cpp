@@ -12,6 +12,7 @@
 #include <map>
 #include <pugixml.hpp>
 #include <ranges>
+#include <sstream>
 #include <tuple>
 
 #include "wave.hpp"
@@ -29,6 +30,12 @@ constexpr double kFloorDb = -96.0;
 constexpr double kDrumRateOffset = 0.534033;
 constexpr double kOpenCutoff = 14000.0;
 constexpr double kButterworthQ = 0.7071;
+constexpr double kOpenLegacyCutoff = 112300.0;
+// We calibrate the units of legacy curves and cutoff envelopes against Genos2 recordings.
+constexpr double kCutoffCentsPerStep = 100.0;
+constexpr double kTouchDbPerStep = 0.375;
+constexpr double kCutoffSwingCents = 9600.0;
+constexpr double kHoldSecondsPerUnit = 0.001;
 
 bool isWaveName(std::string_view name) {
     return name.size() == kWaveNameLength && std::ranges::all_of(name, [](char letter) {
@@ -79,6 +86,7 @@ struct Element {
     int alternateGroup = 0;
     std::optional<Envelope> envelope;
     std::optional<LowPass> lowPass;
+    std::optional<Curve> velocityDb;
     Lfo lfo;
 };
 
@@ -115,14 +123,72 @@ std::optional<Envelope> envelopeOf(const pugi::xml_node& amplitude) {
     return envelope;
 }
 
+// A legacy curve table lists one step per velocity or key; one that names only a preset table holds no curve.
+std::optional<Curve> curveOf(const pugi::xml_node& table, double perStep) {
+    std::istringstream steps(table.child_value("table"));
+    Curve curve{};
+    std::size_t filled = 0;
+    for (double step = 0.0; filled < curve.size() && steps >> step; ++filled) {
+        curve.at(filled) = step * perStep;
+    }
+    return filled == curve.size() ? std::optional{curve} : std::nullopt;
+}
+
+// A cutoff envelope rate is the time a full swing takes, as a drum rate is, so the cutoff moves at a fixed speed.
+std::optional<CutoffEnvelope> cutoffEnvelopeOf(const pugi::xml_node& filter) {
+    const double depth = filter.child("EGDepth").text().as_double(100.0) / 100.0;
+    const auto segment = [&](const char* level, const char* rate) {
+        return CutoffSegment{.cents = depth * decimal(filter, level),
+                             .centsPerSecond = kCutoffSwingCents / drumSeconds(decimal(filter, rate))};
+    };
+    const CutoffEnvelope envelope{
+        .initialCents = depth * decimal(filter, "cegInitialLevel"),
+        .holdSeconds = kHoldSecondsPerUnit * decimal(filter, "cegHoldTime"),
+        .segments = {segment("ceg1stLevel", "ceg1stRate"), segment("ceg2ndLevel", "ceg2ndRate"),
+                     segment("ceg3rdLevel", "ceg3rdRate"), segment("cegSustainLevel", "cegSustainRate"),
+                     segment("cegReleaseLevel", "cegReleaseRate")}};
+    const bool still =
+        envelope.initialCents == 0.0 &&
+        std::ranges::all_of(envelope.segments, [](double cents) { return cents == 0.0; }, &CutoffSegment::cents);
+    if (!isOn(filter, "dcfCegEnable") || still) {
+        return std::nullopt;
+    }
+    return envelope;
+}
+
+// We keep legacy voices at the Butterworth Q until we know the scale of their resonance.
+std::optional<LowPass> legacyLowPassOf(const pugi::xml_node& filter) {
+    const std::string_view type = filter.child_value("dcfFilterType");
+    const LowPass lowPass{.hertz = decimal(filter, "dcfCutoff"),
+                          .q = kButterworthQ,
+                          .onePole = type.starts_with("LPF_6DBOCT"),
+                          .velocityCents = curveOf(filter.child("dcfVelToCutoffTable"), kCutoffCentsPerStep),
+                          .keyCents = curveOf(filter.child("dcfCutoffScalingTable"), kCutoffCentsPerStep),
+                          .envelope = cutoffEnvelopeOf(filter)};
+    const bool open =
+        lowPass.hertz >= kOpenLegacyCutoff && !lowPass.velocityCents && !lowPass.keyCents && !lowPass.envelope;
+    if (!type.starts_with("LPF") || lowPass.hertz <= 0.0 || open) {
+        return std::nullopt;
+    }
+    return lowPass;
+}
+
 // The resonance is the peak in decibels halved, and 14 kHz means the filter is open.
 std::optional<LowPass> lowPassOf(const pugi::xml_node& filter) {
+    if (!filter.child("dcfFilterType").empty()) {
+        return legacyLowPassOf(filter);
+    }
     const double cutoff = filter.child("cutoffFrequency").text().as_double(kOpenCutoff);
     if (!std::string_view(filter.child_value("filterType")).starts_with("LPF") || cutoff <= 0.0 ||
         cutoff >= kOpenCutoff) {
         return std::nullopt;
     }
-    return LowPass{.hertz = cutoff, .q = std::max(kButterworthQ, std::pow(10.0, decimal(filter, "resonance") / 10.0))};
+    return LowPass{.hertz = cutoff,
+                   .q = std::max(kButterworthQ, std::pow(10.0, decimal(filter, "resonance") / 10.0)),
+                   .onePole = false,
+                   .velocityCents = std::nullopt,
+                   .keyCents = std::nullopt,
+                   .envelope = std::nullopt};
 }
 
 // Drum kits name the depths pmDepth, fmDepth and amDepth, other voices spell them out.
@@ -150,6 +216,7 @@ Element elementOf(const pugi::xml_node& node) {
                    .alternateGroup = number(drumSetup, "alternateGroup", 0),
                    .envelope = envelopeOf(blocks.child("amplitudeBlock")),
                    .lowPass = lowPassOf(blocks.child("filterBlock")),
+                   .velocityDb = curveOf(blocks.child("amplitudeBlock").child("touchCurveTable"), kTouchDbPerStep),
                    .lfo = lfoOf(blocks.child("lfoBlock"))};
 }
 
@@ -174,6 +241,7 @@ std::optional<Zone> zoneOf(const Element& element, const pugi::xml_node& keybank
               .alternateGroup = element.alternateGroup,
               .sampleRate = keybank.child("samplingFrequency").text().as_double(44100.0),
               .gain = static_cast<float>(gainOf(commonDb + element.volumeDb + decimal(keybank, "volume"))),
+              .velocityDb = element.velocityDb,
               .pan = static_cast<float>(std::clamp(element.pan + decimal(keybank, "pan"), -1.0, 1.0)),
               .leftWave = {},
               .rightWave = {},

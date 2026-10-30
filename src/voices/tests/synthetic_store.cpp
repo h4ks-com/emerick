@@ -118,7 +118,47 @@ std::string voiceXml(const SyntheticVoice& voice) {
         voice.keyShift, voice.blocks, voice.drumSetup, voice.name, voice.msb, voice.lsb, voice.program, zones);
 }
 
+std::string curveXml(std::string_view tag, const std::vector<int>& curve) {
+    if (curve.empty()) {
+        return std::format("<{0} number=\"0\"><name></name><presetTable>-1</presetTable></{0}>", tag);
+    }
+    std::string steps;
+    for (const int step : curve) {
+        steps += std::format("{} ", step);
+    }
+    return std::format("<{0} number=\"0\"><name></name><table>{1}</table></{0}>", tag, steps);
+}
+
 }  // namespace
+
+std::string legacyFilterBlock(const SyntheticLegacyFilter& filter) {
+    const auto& [initial, first, second, third, sustain, release] = filter.levels;
+    const auto& [firstRate, secondRate, thirdRate, sustainRate, releaseRate] = filter.rates;
+    return std::format(
+        "<filterBlock xsi:type=\"uvf:FILTER_BLOCK_EKB_LEGACY\"><dcfFilterType>{}</dcfFilterType>"
+        "<dcfResonance>0.000000</dcfResonance><dcfCutoff>{:.6f}</dcfCutoff><EGDepth>{}</EGDepth>"
+        "<cegHoldTime>{}</cegHoldTime><ceg1stRate>{:.6f}</ceg1stRate><ceg2ndRate>{:.6f}</ceg2ndRate>"
+        "<ceg3rdRate>{:.6f}</ceg3rdRate><cegReleaseRate>{:.6f}</cegReleaseRate>"
+        "<cegSustainRate>{:.6f}</cegSustainRate><cegInitialLevel>{:.6f}</cegInitialLevel>"
+        "<ceg1stLevel>{:.6f}</ceg1stLevel><ceg2ndLevel>{:.6f}</ceg2ndLevel><ceg3rdLevel>{:.6f}</ceg3rdLevel>"
+        "<cegReleaseLevel>{:.6f}</cegReleaseLevel><cegSustainLevel>{:.6f}</cegSustainLevel>"
+        "<dcfCegEnable>ON</dcfCegEnable>{}{}</filterBlock>",
+        filter.type, filter.cutoff, filter.egDepth, filter.holdTime, firstRate, secondRate, thirdRate, releaseRate,
+        sustainRate, initial, first, second, third, release, sustain,
+        curveXml("dcfCutoffScalingTable", filter.keyCurve), curveXml("dcfVelToCutoffTable", filter.velocityCurve));
+}
+
+std::string touchCurveBlock(const std::vector<int>& curve) {
+    return std::format("<amplitudeBlock xsi:type=\"uvf:AMPLITUDE_BLOCK_EKB_LEGACY\">{}</amplitudeBlock>",
+                       curveXml("touchCurveTable", curve));
+}
+
+std::vector<int> ramp(int first, int last) {
+    return std::views::iota(0, 128) | std::views::transform([&](int index) {
+               return first + static_cast<int>(std::lround((last - first) * index / 127.0));
+           }) |
+           std::ranges::to<std::vector>();
+}
 
 std::vector<std::int16_t> sine(double frequency, double sampleRate, std::size_t frames) {
     constexpr double kAmplitude = 16000.0;

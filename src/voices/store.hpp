@@ -1,5 +1,6 @@
 #pragma once
 
+#include <array>
 #include <compare>
 #include <filesystem>
 #include <optional>
@@ -30,9 +31,31 @@ struct Envelope {
     double sustainGain = 1.0;
 };
 
+// One value per MIDI velocity or key.
+using Curve = std::array<double, 128>;
+
+struct CutoffSegment {
+    double cents = 0.0;
+    double centsPerSecond = 0.0;
+};
+
+// A cutoff envelope in cents: it holds its initial offset, moves through the first four segments, stays at the fourth
+// and moves through the last after note off.
+struct CutoffEnvelope {
+    double initialCents = 0.0;
+    double holdSeconds = 0.0;
+    std::array<CutoffSegment, 5> segments{};
+};
+
+// A two-pole low-pass, or a 6 dB per octave one-pole, whose cutoff the note's velocity, its key and the envelope move
+// in cents.
 struct LowPass {
     double hertz = 0.0;
     double q = 0.0;
+    bool onePole = false;
+    std::optional<Curve> velocityCents;
+    std::optional<Curve> keyCents;
+    std::optional<CutoffEnvelope> envelope;
 };
 
 // A triangle LFO that starts after its delay and moves pitch, cutoff and level by up to its depths.
@@ -63,6 +86,8 @@ struct Zone {
     int alternateGroup = 0;
     double sampleRate = 44100.0;
     float gain = 1.0F;
+    // Empty when the element names no touch curve, which scales the level by the velocity.
+    std::optional<Curve> velocityDb;
     float pan = 0.0F;
     std::string leftWave;
     // Empty for a mono zone, which plays leftWave on both sides.

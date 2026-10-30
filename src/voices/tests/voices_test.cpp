@@ -225,6 +225,57 @@ TEST_CASE("a voice plays its element's envelope and low-pass filter") {
     CHECK(loudest(std::span<const float>(render(*shaped("Dark", 2), {{0x90, 69, 100}}, 30)).last(4800)) < 0.1F * full);
 }
 
+TEST_CASE("a legacy voice darkens a note by its cutoff, filter type, velocity and cutoff envelope") {
+    Rig rig;
+    const std::string high =
+        rig.store.addWave(linearBlob(sine(6000.0, 44100.0, 44100), 44100.0, std::pair{0U, 44100U}));
+    const std::string flatTouch = touchCurveBlock(ramp(0, 0));
+    const auto voice = [&](const char* name, int program, const std::string& blocks) {
+        return SyntheticVoice{
+            .name = name, .program = program, .zones = {SyntheticZone{.wave = high}}, .blocks = blocks};
+    };
+    rig.store.addPack(
+        "Legacy", {voice("Open", 1, flatTouch),
+                   voice("One Pole", 2, legacyFilterBlock({.type = "LPF_6DBOCT(YS5)", .cutoff = 1000.0})),
+                   voice("Two Pole", 3, legacyFilterBlock({.cutoff = 1000.0})),
+                   voice("Velocity", 4, legacyFilterBlock({.velocityCurve = ramp(-80, 0)}) + flatTouch),
+                   voice("Swept", 5,
+                         legacyFilterBlock({.levels = {-9600, 0, 0, 0, 0, 0}, .rates = {0.55, 1.0, 1.0, 1.0, 1.0}}))});
+    const auto legacy = [&](const char* name, int program) {
+        return rig.instrument(
+            Json{{"voice", {{"pack", "Legacy"}, {"name", name}, {"msb", 0}, {"lsb", 0}, {"program", program}}}});
+    };
+    const auto held = [&](const char* name, int program, std::uint8_t velocity) {
+        return loudest(std::span<const float>(render(*legacy(name, program), {{0x90, 69, velocity}}, 30)).last(4800));
+    };
+
+    const float open = held("Open", 1, 127);
+    const float onePole = held("One Pole", 2, 127);
+    CHECK(onePole < 0.25F * open);
+    CHECK(held("Two Pole", 3, 127) < 0.5F * onePole);
+    CHECK(held("Velocity", 4, 127) == Catch::Approx(open).epsilon(0.05));
+    CHECK(held("Velocity", 4, 20) < 0.3F * open);
+
+    const auto swept = legacy("Swept", 5);
+    const float early = loudest(render(*swept, {{0x90, 69, 127}}, 5));
+    CHECK(early < 0.1F * loudest(std::span<const float>(render(*swept, {}, 150)).last(4800)));
+}
+
+TEST_CASE("a legacy voice's touch curve sets the level of each velocity") {
+    Rig rig;
+    const std::string wave = rig.store.addWave(linearBlob(sine(440.0, 44100.0, 44100), 44100.0, std::pair{0U, 44100U}));
+    rig.store.addPack("Touch", {SyntheticVoice{.name = "Touch",
+                                               .program = 1,
+                                               .zones = {SyntheticZone{.wave = wave}},
+                                               .blocks = touchCurveBlock(ramp(-128, 0))}});
+    const auto played = [&](std::uint8_t velocity) {
+        const auto instrument = rig.instrument(
+            Json{{"voice", {{"pack", "Touch"}, {"name", "Touch"}, {"msb", 0}, {"lsb", 0}, {"program", 1}}}});
+        return loudest(std::span<const float>(render(*instrument, {{0x90, 69, velocity}}, 30)).last(4800));
+    };
+    CHECK(played(64) == Catch::Approx(played(127) * std::pow(10.0F, -63.0F * 0.375F / 20.0F)).epsilon(0.02));
+}
+
 TEST_CASE("the Volume param scales the output") {
     const Rig rig;
     const auto loud = rig.instrument(voiceNamed("Sine", 3));

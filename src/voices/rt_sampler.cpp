@@ -15,6 +15,7 @@ constexpr float kVelocityScale = 127.0F;
 constexpr double kEnvelopeFloor = 1.5849e-5;
 constexpr double kHighestCutoff = 0.45;
 constexpr double kChokeSeconds = 0.005;
+constexpr std::size_t kReleaseSegment = 4;
 
 double framesOf(double seconds, double rate) { return std::max(1.0, seconds * rate); }
 
@@ -34,12 +35,22 @@ bool reached(double& level, double ratio, double target) {
 
 void tune(Filter& filter, double hertz, double q, double rate) {
     const double g = std::tan(std::numbers::pi * std::min(hertz, kHighestCutoff * rate) / rate);
+    if (filter.onePole) {
+        filter.a1 = g / (1.0 + g);
+        return;
+    }
     filter.a1 = 1.0 / (1.0 + (g * (g + (1.0 / q))));
     filter.a2 = g * filter.a1;
     filter.a3 = g * filter.a2;
 }
 
 double lowPassed(Filter& filter, std::size_t side, double input) {
+    if (filter.onePole) {
+        const double v = filter.a1 * (input - filter.ic1.at(side));
+        const double output = v + filter.ic1.at(side);
+        filter.ic1.at(side) = output + v;
+        return output;
+    }
     const double v3 = input - filter.ic2.at(side);
     const double v1 = (filter.a1 * filter.ic1.at(side)) + (filter.a2 * v3);
     const double v2 = filter.ic2.at(side) + (filter.a2 * filter.ic1.at(side)) + (filter.a3 * v3);
@@ -57,6 +68,17 @@ bool moves(const Lfo& lfo) {
 double semitonesOf(const Zone& zone, int key, const PlaySettings& settings) {
     const double keyed = zone.fixedPitch ? 0.0 : key + zone.keyShift - zone.rootKey;
     return keyed + zone.tuneCents / 100.0 + settings.tuneSemitones;
+}
+
+float velocityGain(const Zone& zone, int velocity) {
+    if (!zone.velocityDb) {
+        return static_cast<float>(velocity) / kVelocityScale;
+    }
+    return static_cast<float>(std::pow(10.0, zone.velocityDb->at(static_cast<std::size_t>(velocity)) / 20.0));
+}
+
+double centsAt(const std::optional<Curve>& curve, int index) {
+    return curve ? curve->at(static_cast<std::size_t>(index)) : 0.0;
 }
 
 bool loops(const BankZone& zone) { return zone.left->looped() && !zone.zone->oneShot; }
@@ -96,7 +118,7 @@ void Sampler::noteOn(const Bank& bank, int key, int velocity, int channel, const
         if (key < info.keyLo || key > info.keyHi || velocity < info.velocityLo || velocity > info.velocityHi) {
             continue;
         }
-        const float gain = settings.volume * info.gain * (static_cast<float>(velocity) / kVelocityScale);
+        const float gain = settings.volume * info.gain * velocityGain(info, velocity);
         if (info.alternateGroup != 0) {
             chokeGroup(info.alternateGroup, key, channel);
         }
@@ -118,7 +140,16 @@ void Sampler::noteOn(const Bank& bank, int key, int velocity, int channel, const
         note.decay1Ratio = ratioOver(envelope.attackGain, envelope.decay1Gain, envelope.decay1Seconds, rate);
         note.decay2Ratio = ratioOver(envelope.decay1Gain, envelope.sustainGain, envelope.decay2Seconds, rate);
         if (info.lowPass) {
-            tune(note.filter, info.lowPass->hertz, info.lowPass->q, rate);
+            const LowPass& lowPass = *info.lowPass;
+            note.cutoffHertz =
+                lowPass.hertz *
+                std::exp2((centsAt(lowPass.velocityCents, velocity) + centsAt(lowPass.keyCents, key)) / 1200.0);
+            if (lowPass.envelope) {
+                note.cutoffCents = lowPass.envelope->initialCents;
+                note.cutoffHold = lowPass.envelope->holdSeconds * rate;
+            }
+            note.filter.onePole = lowPass.onePole;
+            tune(note.filter, note.cutoffHertz * std::exp2(note.cutoffCents / 1200.0), lowPass.q, rate);
         }
         note.lfoStep = moves(info.lfo) ? info.lfo.hertz / rate : 0.0;
         note.lfoDelay = info.lfo.delaySeconds * rate;
@@ -127,6 +158,8 @@ void Sampler::noteOn(const Bank& bank, int key, int velocity, int channel, const
 
 void Sampler::release(Note& note) {
     note.sustained = false;
+    note.cutoffSegment = std::max(note.cutoffSegment, kReleaseSegment);
+    note.cutoffHold = 0.0;
     if (note.level <= kEnvelopeFloor) {
         note.stage = Stage::idle;
         return;
@@ -221,6 +254,28 @@ bool Sampler::advanceEnvelope(Note& note) {
     return note.stage != Stage::idle;
 }
 
+// Moves the note one frame along its cutoff envelope and reports whether the cutoff moved.
+bool Sampler::advanceCutoff(Note& note, const CutoffEnvelope& envelope) {
+    if (note.cutoffHold > 0.0) {
+        note.cutoffHold -= 1.0;
+        return false;
+    }
+    if (note.cutoffSegment >= envelope.segments.size() ||
+        (note.cutoffSegment == kReleaseSegment && note.stage != Stage::release)) {
+        return false;
+    }
+    const CutoffSegment& segment = envelope.segments.at(note.cutoffSegment);
+    const double step = segment.centsPerSecond / note.outputRate;
+    const double distance = segment.cents - note.cutoffCents;
+    if (std::abs(distance) <= step) {
+        note.cutoffCents = segment.cents;
+        ++note.cutoffSegment;
+    } else {
+        note.cutoffCents += std::copysign(step, distance);
+    }
+    return true;
+}
+
 void Sampler::renderNote(Note& note, std::span<float> left, std::span<float> right) {
     const Zone& info = *note.zone->zone;
     const Wave& leftWave = *note.zone->left;
@@ -235,6 +290,8 @@ void Sampler::renderNote(Note& note, std::span<float> left, std::span<float> rig
         }
         double step = note.step;
         double level = note.level;
+        double lfoCents = 0.0;
+        bool retune = info.lowPass && info.lowPass->envelope && advanceCutoff(note, *info.lowPass->envelope);
         if (note.lfoDelay > 0.0) {
             note.lfoDelay -= 1.0;
         } else if (note.lfoStep > 0.0) {
@@ -242,10 +299,12 @@ void Sampler::renderNote(Note& note, std::span<float> left, std::span<float> rig
             note.lfoPhase = std::fmod(note.lfoPhase + note.lfoStep, 1.0);
             step *= std::exp2(info.lfo.pitchCents * wobble / 1200.0);
             level *= std::pow(10.0, info.lfo.amplitudeDb * (1.0 + wobble) / 40.0);
-            if (info.lowPass && info.lfo.cutoffCents != 0.0) {
-                tune(note.filter, info.lowPass->hertz * std::exp2(info.lfo.cutoffCents * wobble / 1200.0),
-                     info.lowPass->q, note.outputRate);
-            }
+            lfoCents = info.lfo.cutoffCents * wobble;
+            retune = retune || info.lfo.cutoffCents != 0.0;
+        }
+        if (info.lowPass && retune) {
+            tune(note.filter, note.cutoffHertz * std::exp2((note.cutoffCents + lfoCents) / 1200.0), info.lowPass->q,
+                 note.outputRate);
         }
         double leftSample = sampleAt(leftWave, note.position);
         double rightSample = sampleAt(rightWave, note.position);

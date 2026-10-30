@@ -178,7 +178,8 @@ TEST_CASE("the store reads each element's envelope, low-pass filter and LFO in b
     CHECK(drum.envelope->decay2Seconds == Catch::Approx(5.0).epsilon(1e-4));
     CHECK(drum.envelope->releaseSeconds == Catch::Approx(0.5).epsilon(1e-4));
     CHECK(drum.envelope->sustainGain == Catch::Approx(0.003981).epsilon(1e-3));
-    CHECK_FALSE(drum.lowPass.has_value());
+    REQUIRE(drum.lowPass.has_value());
+    CHECK(drum.lowPass->hertz == Catch::Approx(7018.73));
     CHECK(drum.lfo.hertz == 4.0);
     CHECK(drum.lfo.amplitudeDb == -6.0);
 
@@ -199,6 +200,60 @@ TEST_CASE("the store reads each element's envelope, low-pass filter and LFO in b
     const Zone& plain = loaded.voices[2].zones.at(0);
     CHECK_FALSE(plain.envelope.has_value());
     CHECK_FALSE(plain.lowPass.has_value());
+}
+
+TEST_CASE("the store reads a legacy element's filter type, cutoff, curves and cutoff envelope") {
+    SyntheticStore store;
+    const std::string wave = store.addWave(linearBlob(sine(440.0, 44100.0, 441), 44100.0));
+    const SyntheticLegacyFilter sweep{.type = "LPF_6DBOCT(YS5)",
+                                      .cutoff = 27.48,
+                                      .velocityCurve = ramp(-127, 0),
+                                      .keyCurve = ramp(0, 10),
+                                      .egDepth = 50,
+                                      .holdTime = 250,
+                                      .levels = {4950, 9450, 8000, 7000, 6000, 2000},
+                                      .rates = {1.0, 0.534033, 0.534033, 0.534033, 0.534033}};
+    store.addPack("Pack", {SyntheticVoice{.name = "Swept",
+                                          .zones = {SyntheticZone{.wave = wave}},
+                                          .blocks = legacyFilterBlock(sweep) + touchCurveBlock(ramp(-128, 0))},
+                           SyntheticVoice{
+                               .name = "Open", .zones = {SyntheticZone{.wave = wave}}, .blocks = legacyFilterBlock({})},
+                           SyntheticVoice{.name = "Velocity",
+                                          .zones = {SyntheticZone{.wave = wave}},
+                                          .blocks = legacyFilterBlock({.velocityCurve = ramp(-64, 0)})}});
+    const Store loaded = loadStore(store.folder());
+    REQUIRE(loaded.voices.size() == 3);
+
+    CHECK_FALSE(loaded.voices[0].zones.at(0).lowPass.has_value());
+
+    const Zone& swept = loaded.voices[1].zones.at(0);
+    REQUIRE(swept.lowPass.has_value());
+    CHECK(swept.lowPass->hertz == Catch::Approx(27.48));
+    CHECK(swept.lowPass->onePole);
+    REQUIRE(swept.lowPass->velocityCents.has_value());
+    CHECK(swept.lowPass->velocityCents->front() == Catch::Approx(-12700.0));
+    CHECK(swept.lowPass->velocityCents->back() == 0.0);
+    REQUIRE(swept.lowPass->keyCents.has_value());
+    CHECK(swept.lowPass->keyCents->back() == Catch::Approx(1000.0));
+    REQUIRE(swept.lowPass->envelope.has_value());
+    const CutoffEnvelope& envelope = *swept.lowPass->envelope;
+    CHECK(envelope.initialCents == Catch::Approx(2475.0));
+    CHECK(envelope.holdSeconds == Catch::Approx(0.25));
+    CHECK(envelope.segments[0].cents == Catch::Approx(4725.0));
+    CHECK(envelope.segments[3].cents == Catch::Approx(3000.0));
+    CHECK(envelope.segments[4].cents == Catch::Approx(1000.0));
+    CHECK(envelope.segments[1].centsPerSecond == Catch::Approx(9600.0).epsilon(1e-4));
+    REQUIRE(swept.velocityDb.has_value());
+    CHECK(swept.velocityDb->front() == Catch::Approx(-48.0));
+    CHECK(swept.velocityDb->back() == 0.0);
+
+    const Zone& velocity = loaded.voices[2].zones.at(0);
+    REQUIRE(velocity.lowPass.has_value());
+    CHECK_FALSE(velocity.lowPass->onePole);
+    CHECK(velocity.lowPass->hertz == 112300.0);
+    CHECK_FALSE(velocity.lowPass->envelope.has_value());
+    CHECK_FALSE(velocity.lowPass->keyCents.has_value());
+    CHECK_FALSE(velocity.velocityDb.has_value());
 }
 
 TEST_CASE("the store leaves out zones whose waves are undecodable or missing, and voices left with none") {

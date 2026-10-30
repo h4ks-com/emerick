@@ -29,8 +29,9 @@ struct PlaySettings {
     double releaseSeconds = 0.0;
 };
 
-// A state variable low-pass filter for both sides of a note.
+// A state variable low-pass filter for both sides of a note, or a one-pole that uses only a1 and ic1.
 struct Filter {
+    bool onePole = false;
     double a1 = 0.0;
     double a2 = 0.0;
     double a3 = 0.0;
@@ -74,6 +75,10 @@ private:
         double decay2Ratio = 1.0;
         double releaseRatio = 1.0;
         Filter filter;
+        double cutoffHertz = 0.0;
+        double cutoffCents = 0.0;
+        std::size_t cutoffSegment = 0;
+        double cutoffHold = 0.0;
         double lfoPhase = 0.0;
         double lfoStep = 0.0;
         double lfoDelay = 0.0;
@@ -83,6 +88,7 @@ private:
     void chokeGroup(int group, int key, int channel);
     static void release(Note& note);
     static bool advanceEnvelope(Note& note);
+    static bool advanceCutoff(Note& note, const CutoffEnvelope& envelope);
     static void renderNote(Note& note, std::span<float> left, std::span<float> right);
 
     std::array<Note, kPolyphony> notes_{};

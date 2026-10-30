@@ -63,6 +63,16 @@ TEST_CASE("the console prints, shows values and names the line of an error") {
     CHECK(fixture.lines(ConsoleLine::Error).back() == "console:1: no action nothing.here");
 }
 
+TEST_CASE("console prints also reach the print sink that was set before") {
+    ConsoleRig fixture;
+    std::vector<std::string> outer;
+    fixture.lua.setPrintSink([&outer](const std::string& line) { outer.push_back(line); });
+    fixture.console.eval("print('inner')");
+    fixture.lua.eval("print('after')");
+    CHECK(fixture.lines(ConsoleLine::Print) == std::vector<std::string>{"inner"});
+    CHECK(outer == std::vector<std::string>{"inner", "after"});
+}
+
 TEST_CASE("a runaway console line stops at the instruction limit") {
     ConsoleRig fixture;
     CHECK(fixture.console.eval("while true do end").at("ok") == false);

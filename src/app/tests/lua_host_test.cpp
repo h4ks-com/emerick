@@ -1,7 +1,15 @@
 #include "emerick/app/lua_host.hpp"
 
 #include <QTemporaryDir>
+#include <QTimer>
 #include <catch2/catch_test_macros.hpp>
+#include <filesystem>
+#include <fstream>
+#include <sstream>
+#include <string>
+#include <vector>
+
+#include "qt_app.hpp"
 
 using namespace emerick::app;
 
@@ -115,4 +123,75 @@ TEST_CASE("ui.set sets a setting like the MCP tool does") {
     const Json result = fixture.lua.eval("return emerick.ui.set('audio.bufferSize', 1024).setting.value");
     CHECK(result.at("result") == 1024);
     CHECK(fixture.lua.eval("return emerick.ui.set('nothing', 1)").at("ok") == false);
+}
+
+namespace {
+
+struct ScriptRun {
+    int code = 0;
+    std::string out;
+    std::string err;
+};
+
+ScriptRun runScript(Fixture& fixture, const std::string& code, const std::vector<std::string>& args = {}) {
+    const std::filesystem::path script = fixture.dir.filePath("build.lua").toStdString();
+    std::ofstream(script) << code;
+    std::ostringstream out;
+    std::ostringstream err;
+    const int exitCode = runCommandLineScript(fixture.lua, script, args, out, err);
+    return {.code = exitCode, .out = out.str(), .err = err.str()};
+}
+
+}  // namespace
+
+TEST_CASE("a command line script reads its arguments and reports its error with the line") {
+    Fixture fixture;
+    const ScriptRun ok = runScript(fixture, "print(arg[0]:find('build.lua') ~= nil, arg[1], arg[2], #arg)", {"a", "b"});
+    CHECK(ok.code == 0);
+    CHECK(ok.out == "true\ta\tb\t2\n");
+    CHECK(ok.err.empty());
+
+    const ScriptRun failed = runScript(fixture, "print('before')\nerror('boom')");
+    CHECK(failed.code == 1);
+    CHECK(failed.out == "before\n");
+    CHECK(failed.err == "build.lua:2: boom\n");
+
+    std::ostringstream out;
+    std::ostringstream err;
+    CHECK(runCommandLineScript(fixture.lua, fixture.dir.filePath("missing.lua").toStdString(), {}, out, err) == 2);
+    CHECK(err.str().starts_with("cannot read script"));
+}
+
+TEST_CASE("only a command line script can wait, and it lets queued work run") {
+    ensureApplication();
+    Fixture fixture;
+    const Json refused = fixture.lua.eval("emerick.wait(0)");
+    CHECK(refused.at("ok") == false);
+    CHECK(refused.at("error").get<std::string>().find("--script") != std::string::npos);
+
+    bool ready = false;
+    fixture.registry.addAction(
+        {.id = "test.ready", .title = "Ready", .run = [&ready](const Json&) { return Json(ready); }});
+    QTimer::singleShot(20, [&ready] { ready = true; });
+    const ScriptRun waited = runScript(fixture,
+                                       "print(emerick.wait(5, function() return emerick.run('test.ready') end))\n"
+                                       "print(emerick.wait(0.01))");
+    CHECK(waited.code == 0);
+    CHECK(waited.out == "true\nfalse\n");
+
+    const ScriptRun nested = runScript(fixture, "emerick.wait(1, function() return emerick.wait(0) end)");
+    CHECK(nested.code == 1);
+    CHECK(nested.err.find("--script") != std::string::npos);
+    const ScriptRun recovered = runScript(fixture,
+                                          "print(pcall(emerick.wait, -1))\n"
+                                          "print(pcall(emerick.wait, 0 / 0))\n"
+                                          "print(pcall(emerick.wait, 1, function() error('x') end))\n"
+                                          "print(emerick.wait(0))");
+    CHECK(recovered.code == 0);
+    CHECK(
+        recovered.out.starts_with("false\temerick.wait takes from 0 to 86400 seconds\n"
+                                  "false\temerick.wait takes from 0 to 86400 seconds\n"
+                                  "false\tbuild.lua:3: x\n"));
+    CHECK(recovered.out.ends_with("\nfalse\n"));
+    CHECK(fixture.lua.eval("emerick.wait(0)").at("ok") == false);
 }

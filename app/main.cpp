@@ -4,6 +4,7 @@
 #include <QIcon>
 #include <QQmlApplicationEngine>
 #include <QStandardPaths>
+#include <QTimer>
 #include <QtEnvironmentVariables>
 #include <QtLogging>
 #include <QtSystemDetection>
@@ -11,10 +12,14 @@
 #include <cstddef>
 #include <exception>
 #include <filesystem>
+#include <iostream>
 #include <optional>
+#include <ranges>
 #include <span>
+#include <string>
 #include <string_view>
 #include <utility>
+#include <vector>
 
 #include "emerick/app/backends.hpp"
 #include "emerick/app/console.hpp"
@@ -62,10 +67,12 @@ private:
     const Registry& registry_;
 };
 
-// We read --headless before QGuiApplication exists, because Qt picks its platform plugin when it is built.
-bool hasHeadlessFlag(int argc, char** argv) {
-    return std::ranges::any_of(std::span{argv, static_cast<std::size_t>(argc)},
-                               [](const char* arg) { return std::string_view{arg} == "--headless"; });
+// We read --headless and --script before QGuiApplication exists, because Qt picks its platform plugin when it is built.
+bool runsWithoutWindow(int argc, char** argv) {
+    return std::ranges::any_of(std::span{argv, static_cast<std::size_t>(argc)}, [](const char* arg) {
+        const std::string_view flag{arg};
+        return flag == "--headless" || flag == "--script" || flag.starts_with("--script=");
+    });
 }
 
 int runWindow(Registry& registry, Nav& nav, ProjectController& controller, Console& console) {
@@ -89,7 +96,7 @@ int run(int argc, char** argv) {
     // A theme meant for Linux desktops, such as qt5ct, replaces the Cocoa theme, and with it the native file dialogs.
     qunsetenv("QT_QPA_PLATFORMTHEME");
 #endif
-    const bool headless = hasHeadlessFlag(argc, argv);
+    const bool headless = runsWithoutWindow(argc, argv);
     if (headless) {
         qputenv("QT_QPA_PLATFORM", "offscreen");
     }
@@ -114,9 +121,13 @@ int run(int argc, char** argv) {
     const QCommandLineOption agentWriteRoot("agent-write-root",
                                             "Let MCP and Lua requests write files only inside this folder.", "folder");
     const QCommandLineOption headlessOption("headless", "Run with no window, driven over MCP, which needs a port.");
-    parser.addOptions(
-        {headlessOption, mcpPort, mcpBindAny, noLuaMcp, audio, midi, profile, agentReadRoot, agentWriteRoot});
+    const QCommandLineOption scriptOption(
+        "script", "Run this Lua script with no window and exit; pass its arguments after --.", "file");
+    parser.addOptions({headlessOption, scriptOption, mcpPort, mcpBindAny, noLuaMcp, audio, midi, profile, agentReadRoot,
+                       agentWriteRoot});
+    parser.addPositionalArgument("args", "Arguments the script reads from its arg table.", "[-- args...]");
     parser.process(application);
+    const bool script = parser.isSet(scriptOption);
 
     const QString profileFolder = parser.value(profile);
     Registry registry(profileFolder.isEmpty() ? QString{} : profileFolder + "/settings.ini");
@@ -151,13 +162,15 @@ int run(int argc, char** argv) {
     registerInstrumentActions(registry, controller, nav, plugins);
     const auto yamaha = emerick::yamaha::registerWith(registry, controller, nav);
     bool validPort = true;
-    const auto port = parser.isSet(mcpPort) ? parser.value(mcpPort).toUShort(&validPort)
-                                            : registry.settingValue("mcp.port").get<quint16>();
+    quint16 port = script ? 0 : registry.settingValue("mcp.port").get<quint16>();
+    if (parser.isSet(mcpPort)) {
+        port = parser.value(mcpPort).toUShort(&validPort);
+    }
     if (!validPort) {
         qCritical("--mcp-port expects a number from 0 to 65535");
         return 2;
     }
-    if (headless && port == 0) {
+    if (headless && !script && port == 0) {
         qCritical("--headless needs an MCP port: pass --mcp-port or set mcp.port");
         return 2;
     }
@@ -182,6 +195,15 @@ int run(int argc, char** argv) {
         qInfo("MCP on http://%s:%u/mcp", parser.isSet(mcpBindAny) ? "0.0.0.0" : "127.0.0.1", bound);
     }
 
+    if (script) {
+        QTimer::singleShot(0, &application, [&] {
+            const auto args = parser.positionalArguments() |
+                              std::views::transform([](const QString& arg) { return arg.toStdString(); }) |
+                              std::ranges::to<std::vector>();
+            QCoreApplication::exit(
+                runCommandLineScript(lua, parser.value(scriptOption).toStdString(), args, std::cout, std::cerr));
+        });
+    }
     return headless ? QGuiApplication::exec() : runWindow(registry, nav, controller, console);
 }
 

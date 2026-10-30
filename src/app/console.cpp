@@ -6,9 +6,11 @@
 #include <QTextCursor>
 #include <algorithm>
 #include <fstream>
+#include <functional>
 #include <iterator>
 #include <optional>
 #include <ranges>
+#include <utility>
 
 #include "emerick/app/console_completion.hpp"
 #include "emerick/app/lua_text.hpp"
@@ -49,12 +51,6 @@ std::optional<qsizetype> codeStart(ConsoleLine kind) {
     return std::nullopt;
 }
 
-// The message and its line read better in the console than sol's traceback after them.
-std::string errorOf(const Json& result) {
-    const auto error = result.at("error").get<std::string>();
-    return error.substr(0, error.find("\nstack traceback:"));
-}
-
 // QML counts text in UTF-16 units and the completer in UTF-8 bytes.
 int utf16Length(const std::string& text, std::size_t bytes) {
     return static_cast<int>(QString::fromUtf8(text.data(), static_cast<qsizetype>(bytes)).size());
@@ -75,14 +71,21 @@ Console::Console(Registry& registry, LuaHost& lua, QObject* parent) : QObject(pa
 }
 
 Json Console::runChunk(const LuaChunk& chunk) {
+    std::function<void(const std::string&)> outer;
     if (depth_ == 0) {
-        lua_.setPrintSink([this](const std::string& line) { append(ConsoleLine::Print, line); });
+        outer = lua_.setPrintSink({});
+        lua_.setPrintSink([this, outer](const std::string& line) {
+            append(ConsoleLine::Print, line);
+            if (outer) {
+                outer(line);
+            }
+        });
     }
     ++depth_;
     Json result = lua_.eval(chunk);
     --depth_;
     if (depth_ == 0) {
-        lua_.setPrintSink({});
+        lua_.setPrintSink(std::move(outer));
     }
     return result;
 }

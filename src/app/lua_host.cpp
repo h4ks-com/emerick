@@ -1,14 +1,25 @@
 #include "emerick/app/lua_host.hpp"
 
+#include <QDeadlineTimer>
+#include <QEventLoop>
+#include <QScopeGuard>
 #include <QString>
+#include <QTimer>
+#include <algorithm>
 #include <array>
+#include <chrono>
+#include <cmath>
 #include <cstdint>
 #include <cstdlib>
 #include <exception>
+#include <fstream>
+#include <iterator>
 #include <optional>
 #include <ranges>
 #include <sol/sol.hpp>
 #include <string_view>
+#include <system_error>
+#include <utility>
 
 #include "emerick/app/lua_text.hpp"
 
@@ -205,7 +216,37 @@ constexpr std::array kLuaMembers{
     LuaMember{"ui.reveal", "ui.reveal(id)", "Open the UI path to an action, setting or location."},
     LuaMember{"ui.set", "ui.set(id, value, property?)", "Set a setting, or a property of the UI item with that id."},
     LuaMember{"ui.invoke", "ui.invoke(id)", "Run an action, or click the UI item with that id."},
+    LuaMember{"wait", "wait(seconds, done?)",
+              "Let background work run for up to seconds, or until done() returns true, and return whether it did; "
+              "call it from a script started with --script."},
 };
+
+constexpr double kMaxWaitSeconds = 86'400;
+constexpr std::chrono::milliseconds kWaitSlice{50};
+
+bool holds(const sol::protected_function& done) {
+    const sol::protected_function_result call = done();
+    if (!call.valid()) {
+        throw sol::error(call.get<sol::error>());
+    }
+    return call.get<bool>();
+}
+
+bool waitFor(double seconds, const sol::optional<sol::protected_function>& done) {
+    const QDeadlineTimer deadline(std::chrono::milliseconds{std::llround(seconds * 1000)});
+    while (!(done && holds(*done))) {
+        if (deadline.hasExpired()) {
+            return false;
+        }
+        QEventLoop loop;
+        QTimer::singleShot(
+            std::min(std::chrono::duration_cast<std::chrono::milliseconds>(deadline.remainingTimeAsDuration()),
+                     kWaitSlice),
+            &loop, &QEventLoop::quit);
+        loop.exec();
+    }
+    return true;
+}
 
 }  // namespace
 
@@ -217,6 +258,7 @@ struct LuaHost::State {
     std::string output;
     std::function<void(const std::string&)> printSink;
     int depth = 0;
+    bool canWait = false;
 
     void print(const std::string& line) {
         output += line + '\n';
@@ -236,6 +278,13 @@ struct LuaHost::State {
     }
 
     Json run(const LuaChunk& code) {
+        if (code.commandLine) {
+            sol::table arg = lua.create_table(static_cast<int>(code.commandLine->size()), 0);
+            for (std::size_t i = 0; i < code.commandLine->size(); ++i) {
+                arg[i] = (*code.commandLine)[i];
+            }
+            lua["arg"] = arg;
+        }
         const sol::load_result chunk = load(code);
         if (!chunk.valid()) {
             return {{"error", chunk.get<sol::error>().what()}};
@@ -299,6 +348,20 @@ LuaHost::LuaHost(Registry& registry, const UiApi& ui) : registry_(&registry), st
     };
     emerick["project"] = [&registry](sol::this_state current) { return toLua(current, registry.state("project")); };
 
+    // An MCP request or a console line that ran the event loop could start another request inside its own, so we
+    // let only a command line script wait, and never inside its own wait.
+    emerick["wait"] = [this](double seconds, const sol::optional<sol::protected_function>& done) {
+        if (!state_->canWait) {
+            throw AppError("emerick.wait runs only in a script started with --script");
+        }
+        if (std::isnan(seconds) || seconds < 0 || seconds > kMaxWaitSeconds) {
+            throw AppError("emerick.wait takes from 0 to 86400 seconds");
+        }
+        state_->canWait = false;
+        const auto restore = qScopeGuard([this] { state_->canWait = true; });
+        return waitFor(seconds, done);
+    };
+
     sol::table uiTable = emerick.create_named("ui");
     uiTable["find"] = [&ui](const std::string& query, sol::this_state current) {
         return toLua(current, ui.find(query));
@@ -332,7 +395,9 @@ LuaHost::LuaHost(Registry& registry, const UiApi& ui) : registry_(&registry), st
 
 LuaHost::~LuaHost() = default;
 
-void LuaHost::setPrintSink(std::function<void(const std::string&)> sink) { state_->printSink = std::move(sink); }
+std::function<void(const std::string&)> LuaHost::setPrintSink(std::function<void(const std::string&)> sink) {
+    return std::exchange(state_->printSink, std::move(sink));
+}
 
 Json LuaHost::eval(const LuaChunk& chunk) {
     State& state = *state_;
@@ -342,6 +407,8 @@ Json LuaHost::eval(const LuaChunk& chunk) {
     const std::size_t mark = state.output.size();
     Json result{{"ok", false}};
     {
+        const auto restore = qScopeGuard([&state, outer = state.canWait] { state.canWait = outer; });
+        state.canWait = chunk.commandLine.has_value();
         std::optional<InstructionLimit> limit;
         if (state.depth == 0) {
             limit.emplace(state.lua.lua_state());
@@ -356,6 +423,33 @@ Json LuaHost::eval(const LuaChunk& chunk) {
     }
     result["output"] = state.output.substr(mark);
     return result;
+}
+
+std::string errorOf(const Json& result) {
+    const auto error = result.at("error").get<std::string>();
+    return error.substr(0, error.find("\nstack traceback:"));
+}
+
+int runCommandLineScript(LuaHost& lua, const std::filesystem::path& script, std::span<const std::string> args,
+                         std::ostream& out, std::ostream& err) {
+    std::error_code error;
+    std::ifstream file(script);
+    if (!std::filesystem::is_regular_file(script, error) || !file) {
+        err << "cannot read script " << script.string() << '\n';
+        return 2;
+    }
+    std::vector<std::string> commandLine{script.string()};
+    commandLine.insert(commandLine.end(), args.begin(), args.end());
+    auto outer = lua.setPrintSink([&out](const std::string& line) { out << line << '\n' << std::flush; });
+    const Json result = lua.eval({.code = {std::istreambuf_iterator<char>(file), {}},
+                                  .name = "=" + script.filename().string(),
+                                  .commandLine = std::move(commandLine)});
+    lua.setPrintSink(std::move(outer));
+    if (result.at("ok") != true) {
+        err << errorOf(result) << '\n';
+        return 1;
+    }
+    return 0;
 }
 
 }  // namespace emerick::app

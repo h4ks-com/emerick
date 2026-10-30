@@ -37,11 +37,12 @@ TEST_CASE("the sandbox removes file, process and module access") {
     Fixture fixture;
     const Json result = fixture.lua.eval(
         "return {io == nil, os == nil, package == nil, debug == nil, dofile == nil, loadfile == nil, require == nil, "
-        "coroutine == nil, string.gsub == nil}");
+        "coroutine == nil}");
     CHECK(result.at("ok") == true);
-    CHECK(result.at("result") == Json::array({true, true, true, true, true, true, true, true, true}));
+    CHECK(result.at("result") == Json::array({true, true, true, true, true, true, true, true}));
     CHECK(fixture.lua.eval("return string.upper('ok')").at("result") == "OK");
-    CHECK(fixture.lua.eval("return string.find('a.b', '.', 1)").at("result") == 2);
+    CHECK(fixture.lua.eval("return ('E7(#9)'):match('^([A-G])([#b]?)')").at("result") == "E");
+    CHECK(fixture.lua.eval("return (('a-b'):gsub('-', '+'))").at("result") == "a+b");
 }
 
 TEST_CASE("a script cannot take more memory than its budget") {

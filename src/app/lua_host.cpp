@@ -33,12 +33,6 @@ constexpr std::size_t kMemoryLimit = std::size_t{256} << 20;
 constexpr std::array kRemovedGlobals{"dofile", "loadfile", "load", "require"};
 // Lua patterns backtrack without a bound and run in C, where the instruction hook never fires, so scripts get only
 // plain string.find.
-constexpr auto kPlainStringSearch = R"(
-local find = string.find
-string.find = function(text, needle, init) return find(text, needle, init, true) end
-string.match, string.gmatch, string.gsub = nil, nil, nil
-)";
-
 struct MemoryBudget {
     std::size_t used = 0;
 };
@@ -303,7 +297,6 @@ LuaHost::LuaHost(Registry& registry, const UiApi& ui) : registry_(&registry), st
     for (const char* name : kRemovedGlobals) {
         lua[name] = sol::lua_nil;
     }
-    lua.script(kPlainStringSearch);
     lua.set_exception_handler(errorWithLocation);
 
     lua["print"] = [this](sol::variadic_args args, sol::this_state current) {

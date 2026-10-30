@@ -440,6 +440,25 @@ TEST_CASE("export mix and stems render the part tracks the Arranger plays from t
     CHECK(loudest(rig.path("stems") / "Bass.wav") > 0.01F);
 }
 
+TEST_CASE("a soloed part track still plays what the Arranger sends it") {
+    ArrangerRig rig;
+    rig.run("arranger.setup");
+    const std::string style = rig.trackOfKind("yamaha.style");
+    rig.run("arranger.style.load", {{"track", style}, {"path", rig.demo.string()}});
+    rig.controller->project().editTrack(
+        model::TrackId{rig.trackOfKind("yamaha.chord")}, "chords",
+        [](model::Track& track) { track.data = Json::parse(R"([{"at":0,"chord":"C"}])"); });
+    rig.controller->project().editTrack(model::TrackId{style}, "sections", [](model::Track& track) {
+        track.data = Json::parse(R"([{"at":0,"kind":"main","variation":0}])");
+    });
+    const auto bass = std::ranges::find(rig.document().tracks, std::string{"Bass"}, &model::Track::name);
+    REQUIRE(bass != rig.document().tracks.end());
+    rig.run("track.setSolo", {{"track", bass->id.value}, {"value", true}});
+
+    rig.run("export.mix", {{"path", rig.path("solo.wav").string()}});
+    CHECK(loudest(rig.path("solo.wav")) > 0.01F);
+}
+
 TEST_CASE("an export runs to the end of the style's Ending when the Style lane ends on one") {
     ArrangerRig rig;
     rig.run("arranger.setup");

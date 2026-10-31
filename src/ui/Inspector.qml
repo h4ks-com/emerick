@@ -391,6 +391,11 @@ Rectangle {
                     route: panel.midiOut
                     mixed: inspector.mixed("midiOut")
                 }
+                TrackAnalysisRow {
+                    visible: panel.playsAudio
+                    trackId: panel.trackId
+                    Layout.topMargin: Theme.space2
+                }
                 WarningBadge {
                     objectName: "inspector.trackErrors"
                     message: Project.trackErrors[panel.trackId] ?? ""

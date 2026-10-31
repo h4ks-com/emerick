@@ -7,6 +7,7 @@
 #include "emerick/app/control_curve.hpp"
 #include "emerick/app/effect_catalog.hpp"
 #include "emerick/app/enums.hpp"
+#include "emerick/app/track_analysis.hpp"
 #include "emerick/app/transport_clock.hpp"
 #include "emerick/app/waveform.hpp"
 
@@ -24,6 +25,8 @@ void exposeToQml(QQmlEngine& engine, Registry& registry, Nav& nav, ProjectContro
     qmlRegisterSingletonInstance("Emerick.App", 1, 0, "Clock",
                                  std::make_unique<TransportClock>(controller, &engine).release());
     qmlRegisterSingletonInstance("Emerick.App", 1, 0, "Effects", std::make_unique<EffectCatalog>(&engine).release());
+    qmlRegisterSingletonInstance("Emerick.App", 1, 0, "Analysis",
+                                 std::make_unique<TrackAnalysis>(registry, controller, &engine).release());
     qmlRegisterSingletonInstance("Emerick.App", 1, 0, "Peaks", &peaks);
     QObject::connect(&controller, &ProjectController::takePeaks, &peaks, &PeakCache::addLive);
     QObject::connect(&controller, &ProjectController::audioTakeLanded, &peaks, &PeakCache::forgetLive);

@@ -7,6 +7,8 @@
 #include <cmath>
 #include <cstddef>
 #include <fstream>
+#include <functional>
+#include <numeric>
 #include <ranges>
 #include <string_view>
 #include <utility>
@@ -111,6 +113,10 @@ constexpr std::size_t kFrameWords = 16;
 constexpr std::size_t kModeCount = 8;
 constexpr int kLastScale = 63;
 constexpr std::size_t kNoisyOneIn = 200;
+constexpr std::size_t kSwellBlock = 1024;
+constexpr std::size_t kAttackBlocks = 4;
+// A wave under about 250 Hz at 44.1 kHz crosses zero less often than once every 88 samples.
+constexpr std::size_t kLowPitchSamplesPerCrossing = 88;
 
 using Words = std::array<std::uint16_t, kFrameWords>;
 using Params = std::array<std::uint16_t, 3>;
@@ -235,6 +241,26 @@ void decodeFrame(const Words& words, const FrameParams& frame, const Mode& mode,
     }
 }
 
+bool swellsLow(std::span<const float> samples) {
+    const std::size_t blocks = samples.size() / kSwellBlock;
+    if (blocks <= kAttackBlocks) {
+        return false;
+    }
+    const auto energy = [&](std::size_t block) {
+        const auto part = samples.subspan(block * kSwellBlock, kSwellBlock);
+        return std::transform_reduce(part.begin(), part.end(), 0.0, std::plus{},
+                                     [](float sample) { return double{sample} * sample; });
+    };
+    const auto loudest = [&](std::size_t first, std::size_t last) {
+        return std::ranges::max(std::views::iota(first, last) | std::views::transform(energy));
+    };
+    const auto crossings = std::ranges::count_if(std::views::iota(std::size_t{1}, samples.size()), [&](std::size_t at) {
+        return (samples[at] < 0.0F) != (samples[at - 1] < 0.0F);
+    });
+    return loudest(kAttackBlocks, blocks) > loudest(0, kAttackBlocks) &&
+           static_cast<std::size_t>(crossings) * kLowPitchSamplesPerCrossing < samples.size();
+}
+
 std::optional<Wave> decodeWxc1(Bytes wxc1, Bytes apcp) {
     if (wxc1.size() < kWxcHeader + kFrameBytes || apcp.size() < 16) {
         return std::nullopt;
@@ -266,6 +292,7 @@ std::optional<Wave> decodeWxc1(Bytes wxc1, Bytes apcp) {
         wave.loopStart = frameStarts[loopFirst];
         wave.loopEnd = frameStarts[loopLast + 1];
     }
+    wave.swells = decoder.overflows > 0 && !wave.looped() && swellsLow(wave.samples);
     return wave;
 }
 

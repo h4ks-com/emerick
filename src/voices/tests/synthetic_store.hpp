@@ -35,6 +35,7 @@ struct SyntheticVoice {
     std::string blocks;
     // The fields of a drum kit element's drumSetup, such as rcvNoteOff and alternateGroup.
     std::string drumSetup;
+    std::string voiceType = "EKB_LEGACY";
 };
 
 // A legacy filterBlock. An empty curve is a preset table with no steps, and all zero levels leave the cutoff envelope

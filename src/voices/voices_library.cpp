@@ -115,11 +115,20 @@ std::string noteRange(int first, int last) {
     return first == last ? yamahaNoteName(first) : std::format("{} to {}", yamahaNoteName(first), yamahaNoteName(last));
 }
 
-bool isNoisy(const BankZone& zone) { return zone.left->noisy || (zone.right != nullptr && zone.right->noisy); }
+bool isNoisy(const BankZone& zone) {
+    const auto noisy = [&](const Wave* wave) {
+        return wave != nullptr && (wave->noisy || (zone.zone->drum && wave->swells));
+    };
+    return noisy(zone.left) || noisy(zone.right);
+}
 
-// The clean zone of the noisy zone's element and velocity layer whose root key lies nearest, or null.
+// The clean zone of the noisy zone's element and velocity layer whose root key lies nearest, or null. Each key of a
+// drum kit plays a different sound, so a drum key has none.
 const BankZone* nearestCleanZone(const std::vector<BankZone>& zones, const BankZone& noisy) {
     const Zone& wanted = *noisy.zone;
+    if (wanted.drum) {
+        return nullptr;
+    }
     auto candidates = zones | std::views::filter([&](const BankZone& zone) {
                           return !isNoisy(zone) && zone.zone->element == wanted.element &&
                                  zone.zone->velocityLo == wanted.velocityLo &&

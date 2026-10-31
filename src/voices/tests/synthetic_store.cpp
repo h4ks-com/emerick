@@ -104,7 +104,7 @@ std::string voiceXml(const SyntheticVoice& voice) {
     return std::format(
         "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
         "<uvf:voiceData version=\"1.5\" xmlns:uvf=\"http://www.yamaha.com/uvf\">\n"
-        " <voiceType>EKB_LEGACY</voiceType>\n"
+        " <voiceType>{}</voiceType>\n"
         " <voiceCommon><volume>0.000000</volume>\n"
         "  <voiceElement number=\"0\"><volume>0.000000</volume><pan>0.000000</pan><noteShift>{}</noteShift>"
         "<noteLimitHi>G8</noteLimitHi><noteLimitLo>C-2</noteLimitLo><velocityLimitHi>127</velocityLimitHi>"
@@ -115,7 +115,8 @@ std::string voiceXml(const SyntheticVoice& voice) {
         "<voicePcNum>{}</voicePcNum></information>\n"
         " <waveform number=\"7\">\n{} </waveform>\n"
         "</uvf:voiceData>\n",
-        voice.keyShift, voice.blocks, voice.drumSetup, voice.name, voice.msb, voice.lsb, voice.program, zones);
+        voice.voiceType, voice.keyShift, voice.blocks, voice.drumSetup, voice.name, voice.msb, voice.lsb, voice.program,
+        zones);
 }
 
 std::string curveXml(std::string_view tag, const std::vector<int>& curve) {

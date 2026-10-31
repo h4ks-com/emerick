@@ -78,6 +78,8 @@ struct Zone {
     int rootKey = 60;
     double tuneCents = 0.0;
     bool fixedPitch = false;
+    // A key of a drum kit; we play it at fixed pitch since drum kit elements have no pitch scaling.
+    bool drum = false;
     bool oneShot = false;
     // A drum key that ignores note off plays to its end.
     bool receivesNoteOff = true;

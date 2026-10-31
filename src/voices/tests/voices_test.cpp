@@ -521,6 +521,47 @@ TEST_CASE("a drum key that ignores note off plays out, and a key of its alternat
     CHECK(loudest(std::span<const float>(render(*hats, {{0x99, 62, 100}}, 5)).last(480)) < 1e-6F);
 }
 
+TEST_CASE("a drum kit plays each key's sample at its recorded pitch and never plays another key's for a noisy one") {
+    Rig rig;
+    const WxcParams runaway{.coefficients = {3000, -2946, 969}, .scale = 63, .mode = 0};
+    const std::string noisy =
+        rig.store.addWave(wxc1Blob(44100.0, runaway, std::vector<WxcFrame>(64, WxcFrame{.next = runaway})));
+    const std::string a440 = rig.store.addWave(linearBlob(sine(440.0, 44100.0, 44100), 44100.0, std::pair{0U, 44100U}));
+    rig.store.addPack(
+        "Kit", {SyntheticVoice{.name = "Congas",
+                               .msb = 127,
+                               .zones = {SyntheticZone{.keyLo = "C1", .keyHi = "C1", .rootKey = "C1", .wave = noisy},
+                                         SyntheticZone{.keyLo = "D1", .keyHi = "D1", .rootKey = "D1", .wave = a440},
+                                         SyntheticZone{.keyLo = "C5", .keyHi = "C5", .rootKey = "C3", .wave = a440}},
+                               .voiceType = "DRUM_KIT"}});
+    const auto congas = rig.instrument(
+        Json{{"voice", {{"pack", "Kit"}, {"name", "Congas"}, {"msb", 127}, {"lsb", 0}, {"program", 0}}}});
+    CHECK(std::abs(cents(frequency(render(*congas, {{0x99, 84, 100}}, 20)), 440.0)) < 2.0);
+    render(*congas, {{0x89, 84, 0}}, 100);
+    CHECK(longestClampedRun(render(*congas, {{0x99, 36, 100}}, 5)) > 48);
+}
+
+TEST_CASE("the noise warning names the drum keys whose samples swell into a drone, and a melodic swell is no noise") {
+    Rig rig;
+    const WxcParams rising{.coefficients = {1024, 0, 0}, .scale = 17, .mode = 0};
+    const std::string drone = rig.store.addWave(wxc1Blob(
+        44100.0, rising, std::vector<WxcFrame>(96, WxcFrame{.next = rising}), {0xFFFFFFFFU, 0}, {-4000, -4004, -4008}));
+    const std::string clean = rig.store.addWave(linearBlob(sine(440.0, 44100.0, 4410), 44100.0));
+    rig.store.addPack(
+        "Kit", {SyntheticVoice{.name = "Congas",
+                               .msb = 127,
+                               .zones = {SyntheticZone{.keyLo = "C5", .keyHi = "C5", .oneShot = true, .wave = drone},
+                                         SyntheticZone{.keyLo = "D5", .keyHi = "D5", .oneShot = true, .wave = clean}},
+                               .voiceType = "DRUM_KIT"},
+                SyntheticVoice{.name = "Tuba", .msb = 8, .zones = {SyntheticZone{.oneShot = true, .wave = drone}}}});
+    const auto kitVoice = [](const char* name, int msb) {
+        return Json{{"voice", {{"pack", "Kit"}, {"name", name}, {"msb", msb}, {"lsb", 0}, {"program", 0}}}};
+    };
+    CHECK(rig.instrument(kitVoice("Congas", 127))->paramText(kNoise, 0.0) ==
+          "Choose another voice for C5, where this voice's samples decode with noise");
+    CHECK(rig.instrument(kitVoice("Tuba", 8))->paramText(kNoise, 0.0).empty());
+}
+
 TEST_CASE("a key-off element stays silent while the key is held and plays once when it is released") {
     Rig rig;
     const std::string clunk = rig.store.addWave(linearBlob(sine(440.0, 44100.0, 4410), 44100.0, std::pair{0U, 4410U}));

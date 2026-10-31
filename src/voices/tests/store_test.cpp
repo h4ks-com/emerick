@@ -127,6 +127,34 @@ TEST_CASE("a WXC1 wave whose predictor runs away past full scale is noisy, and o
     CHECK_FALSE(clean->noisy);
 }
 
+TEST_CASE(
+    "a one-shot WXC1 wave that grows into full scale at a low pitch swells, unlike a hit, a high wave or a loop") {
+    const WxcParams rising{.coefficients = {1024, 0, 0}, .scale = 17, .mode = 0};
+    const std::vector<WxcFrame> ramp(96, WxcFrame{.next = rising});
+    const std::array<std::int16_t, 3> belowZero{-4000, -4004, -4008};
+    const auto drone = decodeWave(wxc1Blob(44100.0, rising, ramp, {0xFFFFFFFFU, 0}, belowZero));
+    REQUIRE(drone.has_value());
+    CHECK(sampleValue(*drone, 9215) == 32767);
+    CHECK_FALSE(drone->noisy);
+    CHECK(drone->swells);
+    CHECK_FALSE(decodeWave(wxc1Blob(44100.0, rising, ramp, {0, 95}, belowZero))->swells);
+
+    const WxcParams flipping{.coefficients = {-1024, 0, 0}, .scale = 17, .mode = 0};
+    WxcFrame alternating{.next = flipping};
+    alternating.codes.fill(0xCCC);
+    const auto high = decodeWave(wxc1Blob(44100.0, flipping, std::vector<WxcFrame>(96, alternating)));
+    REQUIRE(high.has_value());
+    CHECK(std::abs(sampleValue(*high, 9215)) >= 32767);
+    CHECK_FALSE(high->swells);
+
+    const WxcParams decaying{.coefficients = {1000, 0, 0}, .scale = 0, .mode = 0};
+    const auto hit = decodeWave(wxc1Blob(44100.0, rising, std::vector<WxcFrame>(64, WxcFrame{.next = decaying}),
+                                         {0xFFFFFFFFU, 0}, {32767, 32767, 32767}));
+    REQUIRE(hit.has_value());
+    CHECK(sampleValue(*hit, 0) == 32767);
+    CHECK_FALSE(hit->swells);
+}
+
 TEST_CASE("Yamaha note names name each MIDI note") {
     CHECK(yamahaNoteName(0) == "C-2");
     CHECK(yamahaNoteName(41) == "F1");
@@ -338,4 +366,23 @@ TEST_CASE("the store reads whether a key takes note off, its alternate group and
     CHECK(piano.alternateGroup == 0);
     CHECK(piano.keyOff);
     CHECK_FALSE(hat.keyOff);
+}
+
+TEST_CASE("the store plays every key of a drum kit at fixed pitch") {
+    SyntheticStore store;
+    const std::string wave = store.addWave(linearBlob(sine(440.0, 44100.0, 441), 44100.0));
+    store.addPack("Kit",
+                  {SyntheticVoice{.name = "Congas",
+                                  .msb = 127,
+                                  .zones = {SyntheticZone{.keyLo = "C5", .keyHi = "C5", .rootKey = "C3", .wave = wave}},
+                                  .voiceType = "DRUM_KIT"},
+                   SyntheticVoice{.name = "Piano", .msb = 8, .zones = {SyntheticZone{.wave = wave}}}});
+    const Store loaded = loadStore(store.folder());
+    REQUIRE(loaded.voices.size() == 2);
+    const Zone& conga = loaded.voices[0].zones.at(0);
+    CHECK(conga.drum);
+    CHECK(conga.fixedPitch);
+    const Zone& piano = loaded.voices[1].zones.at(0);
+    CHECK_FALSE(piano.drum);
+    CHECK_FALSE(piano.fixedPitch);
 }

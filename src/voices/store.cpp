@@ -233,7 +233,7 @@ std::string waveName(const pugi::xml_node& sample) {
 
 // A zone plays where its element's note and velocity limits overlap its key bank's, with the key bank's notes
 // counted after the element's note shift.
-std::optional<Zone> zoneOf(const Element& element, const pugi::xml_node& keybank, double commonDb) {
+std::optional<Zone> zoneOf(const Element& element, const pugi::xml_node& keybank, double commonDb, bool drum) {
     Zone zone{.keyLo = std::max({element.keyLo, note(keybank, "noteLimitLo", 0) - element.keyShift, 0}),
               .keyHi = std::min({element.keyHi, note(keybank, "noteLimitHi", 127) - element.keyShift, 127}),
               .velocityLo = std::max(element.velocityLo, number(keybank, "velocityLimitLo", 0)),
@@ -241,7 +241,8 @@ std::optional<Zone> zoneOf(const Element& element, const pugi::xml_node& keybank
               .keyShift = element.keyShift,
               .rootKey = note(keybank, "centerNote", 60),
               .tuneCents = element.tuneCents + tuneCents(keybank),
-              .fixedPitch = isOn(keybank, "fixedPitch"),
+              .fixedPitch = drum || isOn(keybank, "fixedPitch"),
+              .drum = drum,
               .oneShot = isOn(keybank, "oneShot"),
               .receivesNoteOff = element.receivesNoteOff,
               .alternateGroup = element.alternateGroup,
@@ -293,6 +294,7 @@ std::optional<Voice> voiceOf(const fs::path& file, const std::string& pack) {
         waveforms[waveform.attribute("number").as_int(-1)] = waveform;
     }
     const pugi::xml_node common = root.child("voiceCommon");
+    const bool drum = std::string_view(root.child_value("voiceType")) == "DRUM_KIT";
     Voice voice{.pack = pack,
                 .name = information.child_value("voiceName"),
                 .address = {.msb = number(information, "voiceMsb", 0),
@@ -308,7 +310,7 @@ std::optional<Voice> voiceOf(const fs::path& file, const std::string& pack) {
             continue;
         }
         for (const pugi::xml_node keybank : waveform->second.children("keybank")) {
-            if (auto zone = zoneOf(element, keybank, decimal(common, "volume"))) {
+            if (auto zone = zoneOf(element, keybank, decimal(common, "volume"), drum)) {
                 zone->element = elementIndex;
                 voice.zones.push_back(std::move(*zone));
             }

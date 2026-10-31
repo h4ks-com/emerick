@@ -144,14 +144,6 @@ private:
     std::vector<double> power_;
 };
 
-double integratedLoudness(const Channels& channels, double sampleRate) {
-    LoudnessSteps steps(channels.size(), sampleRate);
-    for (std::size_t channel = 0; channel < channels.size(); ++channel) {
-        steps.add(channel, channels[channel], 0);
-    }
-    return steps.lufs(channels.front().size());
-}
-
 // The true peak of the frames from first to last of samples, with silence around them.
 double truePeak(std::span<const float> samples, std::size_t first, std::size_t last) {
     static const auto kTaps = interpolationTaps();
@@ -171,8 +163,6 @@ double truePeak(std::span<const float> samples, std::size_t first, std::size_t l
     }
     return peak;
 }
-
-double truePeak(const std::vector<float>& channel) { return truePeak(channel, 0, channel.size()); }
 
 double meanSquare(const Channels& channels, std::size_t begin, std::size_t end) {
     double sum = 0;
@@ -263,10 +253,6 @@ double medianActiveDb(std::vector<double> stepDb) {
     return *middle;
 }
 
-void addPower(std::vector<double>& sum, std::span<const float> frame) {
-    std::ranges::transform(sum, powerSpectrum(frame), sum.begin(), std::plus{});
-}
-
 }  // namespace
 
 struct TrackMeter::State {
@@ -275,8 +261,7 @@ struct TrackMeter::State {
           stepFrames(stepFramesAt(rate)),
           loudness(channels, rate),
           tails(channels),
-          toneFrames(channels),
-          spectrum((kToneFrame / 2) + 1) {}
+          spectra(channels, SpectrumSum(kToneFrame)) {}
 
     double sampleRate;
     std::size_t stepFrames;
@@ -289,8 +274,7 @@ struct TrackMeter::State {
     std::vector<std::vector<float>> tails;
     std::size_t tailStart = 0;
     std::size_t nextPeakFrame = 0;
-    std::vector<std::vector<float>> toneFrames;
-    std::vector<double> spectrum;
+    std::vector<SpectrumSum> spectra;
 
     void addChannel(std::size_t channel, const std::vector<float>& samples) {
         loudness.add(channel, samples, frames);
@@ -300,16 +284,7 @@ struct TrackMeter::State {
             samplePeak = std::max(samplePeak, std::abs(sample));
         }
         tails[channel].insert(tails[channel].end(), samples.begin(), samples.end());
-        std::vector<float>& frame = toneFrames[channel];
-        for (auto next = samples.begin(); next != samples.end();) {
-            const auto count = std::min(static_cast<std::ptrdiff_t>(kToneFrame - frame.size()), samples.end() - next);
-            frame.insert(frame.end(), next, next + count);
-            next += count;
-            if (frame.size() == kToneFrame) {
-                addPower(spectrum, frame);
-                frame.clear();
-            }
-        }
+        spectra[channel].add(samples);
     }
 
     [[nodiscard]] double tailPeak(std::size_t channel, std::size_t last) const {
@@ -345,13 +320,9 @@ struct TrackMeter::State {
                 return powerDb(stepSquares[step] / static_cast<double>(length * tails.size()));
             }) |
             std::ranges::to<std::vector>());
-        std::vector<double> power = spectrum;
-        for (const std::vector<float>& frame : toneFrames) {
-            if (!frame.empty()) {
-                std::vector<float> padded = frame;
-                padded.resize(kToneFrame, 0.0F);
-                addPower(power, padded);
-            }
+        std::vector<double> power((kToneFrame / 2) + 1);
+        for (const SpectrumSum& spectrum : spectra) {
+            std::ranges::transform(power, spectrum.sum(), power.begin(), std::plus{});
         }
         const double total = std::ranges::fold_left(power, 0.0, std::plus{});
         if (total == 0) {
@@ -412,44 +383,41 @@ InterpolationTaps interpolationTaps() {
     return taps;
 }
 
+namespace {
+
+TrackLevels wholeLevels(const Channels& channels, double sampleRate) {
+    TrackMeter meter(channels.size(), sampleRate);
+    if (!channels.empty()) {
+        meter.add(channels);
+    }
+    return meter.levels();
+}
+
+}  // namespace
+
 double integratedLufs(const Channels& channels, double sampleRate) {
-    return channels.empty() || channels.front().empty() ? kSilentDb : integratedLoudness(channels, sampleRate);
+    return wholeLevels(channels, sampleRate).integratedLufs;
 }
 
 double truePeakDbtp(const Channels& channels) {
-    return amplitudeDb(std::ranges::fold_left(channels, 0.0, [](double peak, const std::vector<float>& channel) {
-        return std::max(peak, truePeak(channel));
-    }));
+    // The true peak depends on no sample rate, so any rate the meter takes will do.
+    constexpr double kAnyRate = 48000;
+    return wholeLevels(channels, kAnyRate).truePeakDbtp;
 }
 
-ToneBalance analyzeTone(const Channels& channels, double sampleRate) {
-    if (channels.empty()) {
-        return {.activeRmsDb = kSilentDb};
-    }
-    TrackMeter meter(channels.size(), sampleRate);
-    meter.add(channels);
-    return meter.levels().tone;
-}
+ToneBalance analyzeTone(const Channels& channels, double sampleRate) { return wholeLevels(channels, sampleRate).tone; }
 
 AudioAnalysis analyzeAudio(const Channels& channels, const AnalysisTiming& timing) {
     AudioAnalysis analysis;
+    analysis.levels = wholeLevels(channels, timing.sampleRate);
     if (channels.empty() || channels.front().empty()) {
-        analysis.integratedLufs = analysis.truePeakDbtp = analysis.samplePeakDbfs = kSilentDb;
         analysis.bandDb.fill(kSilentDb);
         return analysis;
     }
-    analysis.integratedLufs = integratedLoudness(channels, timing.sampleRate);
-    float samplePeak = 0;
-    double interpolatedPeak = 0;
     for (const std::vector<float>& channel : channels) {
-        samplePeak = std::ranges::fold_left(channel, samplePeak,
-                                            [](float peak, float sample) { return std::max(peak, std::abs(sample)); });
         analysis.clippedSamples +=
             std::ranges::count_if(channel, [](float sample) { return std::abs(sample) >= kClipLevel; });
-        interpolatedPeak = std::max(interpolatedPeak, truePeak(channel));
     }
-    analysis.samplePeakDbfs = amplitudeDb(samplePeak);
-    analysis.truePeakDbtp = amplitudeDb(interpolatedPeak);
     analysis.bars = barLevels(channels, timing);
     std::ranges::transform(kFrequencyBands, analysis.bandDb.begin(),
                            [&](const FrequencyBand& band) { return bandDb(channels, band, timing.sampleRate); });

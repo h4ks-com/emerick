@@ -29,14 +29,15 @@ std::vector<float> sine(double hz, double amplitude, double seconds, double phas
 }  // namespace
 
 TEST_CASE("a full scale 997 Hz sine reads -3.01 LUFS and a 1 kHz sine at -20 dBFS about -23 LUFS") {
-    CHECK(analyzeAudio({sine(997, 1, 3)}, {.sampleRate = kRate}).integratedLufs == Approx(-3.01).margin(0.05));
-    CHECK(analyzeAudio({sine(1000, 0.1, 3)}, {.sampleRate = kRate}).integratedLufs == Approx(-23.01).margin(0.1));
+    CHECK(analyzeAudio({sine(997, 1, 3)}, {.sampleRate = kRate}).levels.integratedLufs == Approx(-3.01).margin(0.05));
+    CHECK(analyzeAudio({sine(1000, 0.1, 3)}, {.sampleRate = kRate}).levels.integratedLufs ==
+          Approx(-23.01).margin(0.1));
 }
 
 TEST_CASE("true peak finds the crest between samples that the sample peak misses") {
     const auto analysis = analyzeAudio({sine(kRate / 4, 1, 1, std::numbers::pi / 4)}, {.sampleRate = kRate});
-    CHECK(analysis.samplePeakDbfs == Approx(-3.01).margin(0.05));
-    CHECK(analysis.truePeakDbtp == Approx(0).margin(0.3));
+    CHECK(analysis.levels.samplePeakDbfs == Approx(-3.01).margin(0.05));
+    CHECK(analysis.levels.truePeakDbtp == Approx(0).margin(0.3));
 }
 
 TEST_CASE("bar levels follow the bar grid from the start position") {
@@ -127,9 +128,9 @@ TEST_CASE("a track meter fed in uneven chunks reads what the whole signal reads"
                                                   {right.begin() + first, right.begin() + end}});
     }
     const auto levels = meter.levels();
-    CHECK(levels.integratedLufs == Approx(analysis.integratedLufs).margin(1e-9));
-    CHECK(levels.samplePeakDbfs == analysis.samplePeakDbfs);
-    CHECK(levels.truePeakDbtp == analysis.truePeakDbtp);
+    CHECK(levels.integratedLufs == Approx(analysis.levels.integratedLufs).margin(1e-9));
+    CHECK(levels.samplePeakDbfs == analysis.levels.samplePeakDbfs);
+    CHECK(levels.truePeakDbtp == analysis.levels.truePeakDbtp);
     CHECK(levels.tone.activeRmsDb == Approx(tone.activeRmsDb).margin(1e-9));
     CHECK(levels.tone.centroidHz == Approx(tone.centroidHz).margin(1e-6));
     for (std::size_t band = 0; band < tone.bandShare.size(); ++band) {

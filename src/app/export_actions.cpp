@@ -122,9 +122,9 @@ Json analysisJson(const engine::AudioAnalysis& analysis) {
     for (const auto& [band, db] : std::views::zip(engine::kFrequencyBands, analysis.bandDb)) {
         bands[std::string{band.name}] = levelDb(db);
     }
-    Json result{{"integratedLufs", levelDb(analysis.integratedLufs)},
-                {"truePeakDbtp", levelDb(analysis.truePeakDbtp)},
-                {"samplePeakDbfs", levelDb(analysis.samplePeakDbfs)},
+    Json result{{"integratedLufs", levelDb(analysis.levels.integratedLufs)},
+                {"truePeakDbtp", levelDb(analysis.levels.truePeakDbtp)},
+                {"samplePeakDbfs", levelDb(analysis.levels.samplePeakDbfs)},
                 {"bars", analysis.bars | std::views::transform([](const engine::BarLevel& bar) {
                              return Json{{"bar", bar.bar}, {"rmsDb", levelDb(bar.rmsDb)}};
                          }) | std::ranges::to<Json::array_t>()},
@@ -294,7 +294,7 @@ Json analyzeSection(const AudioData& audio, const Json& params, const core::Temp
         section.audio.channels,
         {.sampleRate = audio.sampleRate, .barSeconds = barSeconds(tempo), .startSeconds = section.from});
     Json result = analysisJson(analysis);
-    result["message"] = loudnessMessage(analysis.integratedLufs, analysis.truePeakDbtp,
+    result["message"] = loudnessMessage(analysis.levels.integratedLufs, analysis.levels.truePeakDbtp,
                                         std::format("{} clipped samples", analysis.clippedSamples));
     result["from"] = rounded(section.from, 0.01);
     result["to"] = rounded(section.to, 0.01);

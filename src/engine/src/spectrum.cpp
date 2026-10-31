@@ -57,16 +57,38 @@ std::vector<double> powerSpectrum(std::span<const float> frame) {
     return power;
 }
 
-std::vector<double> averagePower(const std::vector<std::vector<float>>& channels, std::size_t frameSize) {
-    std::vector<double> sum(frameSize / 2 + 1);
-    std::vector<float> frame(frameSize);
-    for (const std::vector<float>& channel : channels) {
-        for (std::size_t begin = 0; begin < channel.size(); begin += frameSize) {
-            const std::size_t count = std::min(frameSize, channel.size() - begin);
-            std::ranges::fill(std::ranges::copy(std::span{channel}.subspan(begin, count), frame.begin()).out,
-                              frame.end(), 0.0F);
-            std::ranges::transform(sum, powerSpectrum(frame), sum.begin(), std::plus{});
+SpectrumSum::SpectrumSum(std::size_t frameSize) : frameSize_(frameSize), sum_((frameSize / 2) + 1) {
+    frame_.reserve(frameSize);
+}
+
+void SpectrumSum::add(std::span<const float> samples) {
+    while (!samples.empty()) {
+        const std::size_t count = std::min(frameSize_ - frame_.size(), samples.size());
+        frame_.insert(frame_.end(), samples.begin(), samples.begin() + static_cast<std::ptrdiff_t>(count));
+        samples = samples.subspan(count);
+        if (frame_.size() == frameSize_) {
+            std::ranges::transform(sum_, powerSpectrum(frame_), sum_.begin(), std::plus{});
+            frame_.clear();
         }
+    }
+}
+
+std::vector<double> SpectrumSum::sum() const {
+    std::vector<double> sum = sum_;
+    if (!frame_.empty()) {
+        std::vector<float> padded = frame_;
+        padded.resize(frameSize_, 0.0F);
+        std::ranges::transform(sum, powerSpectrum(padded), sum.begin(), std::plus{});
+    }
+    return sum;
+}
+
+std::vector<double> averagePower(const std::vector<std::vector<float>>& channels, std::size_t frameSize) {
+    std::vector<double> sum((frameSize / 2) + 1);
+    for (const std::vector<float>& channel : channels) {
+        SpectrumSum spectrum(frameSize);
+        spectrum.add(channel);
+        std::ranges::transform(sum, spectrum.sum(), sum.begin(), std::plus{});
     }
     return sum;
 }

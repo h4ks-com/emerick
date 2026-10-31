@@ -13,6 +13,20 @@ void fft(std::span<std::complex<double>> data);
 // Returns the unscaled power of each of the frame.size() / 2 + 1 bins of the Hann windowed frame. The frame size is a
 // power of two.
 std::vector<double> powerSpectrum(std::span<const float> frame);
+// Sums powerSpectrum over consecutive frames of frameSize samples of one signal handed over in chunks, the last frame
+// padded with silence. The frame size is a power of two.
+class SpectrumSum {
+public:
+    explicit SpectrumSum(std::size_t frameSize);
+    void add(std::span<const float> samples);
+    [[nodiscard]] std::vector<double> sum() const;
+
+private:
+    std::size_t frameSize_;
+    std::vector<float> frame_;
+    std::vector<double> sum_;
+};
+
 // Returns powerSpectrum summed over consecutive frames of frameSize samples of every channel, the last frame padded
 // with silence. The frame size is a power of two.
 std::vector<double> averagePower(const std::vector<std::vector<float>>& channels, std::size_t frameSize);

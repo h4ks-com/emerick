@@ -42,18 +42,6 @@ struct StereoImage {
     double balanceDb = 0;
 };
 
-// Every level in dB is minus infinity for digital silence.
-struct AudioAnalysis {
-    double integratedLufs = 0;
-    double truePeakDbtp = 0;
-    double samplePeakDbfs = 0;
-    std::vector<BarLevel> bars;
-    std::array<double, kFrequencyBands.size()> bandDb{};
-    std::vector<SilentRegion> silence;
-    std::int64_t clippedSamples = 0;
-    std::optional<StereoImage> stereo;
-};
-
 struct AnalysisTiming {
     double sampleRate = 48000;
     double barSeconds = 2;
@@ -84,6 +72,16 @@ struct TrackLevels {
     double samplePeakDbfs = 0;
     double truePeakDbtp = 0;
     ToneBalance tone;
+};
+
+// Every level in dB is minus infinity for digital silence.
+struct AudioAnalysis {
+    TrackLevels levels;
+    std::vector<BarLevel> bars;
+    std::array<double, kFrequencyBands.size()> bandDb{};
+    std::vector<SilentRegion> silence;
+    std::int64_t clippedSamples = 0;
+    std::optional<StereoImage> stereo;
 };
 
 // Measures the levels analyzeAudio and analyzeTone report of a signal handed over in consecutive chunks, so a long

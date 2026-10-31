@@ -16,10 +16,6 @@ constexpr double kLookaheadSeconds = 0.0015;
 // We aim a hair under the ceiling so float rounding never lands a peak just over it.
 constexpr float kCeilingMargin = 0.9999F;
 
-float decibelsToGain(float db) { return std::pow(10.0F, db / 20.0F); }
-
-float param(const EffectParams& params, LimiterParam index) { return params.at(static_cast<std::size_t>(index)); }
-
 }  // namespace
 
 Limiter::Limiter(std::size_t channels, double sampleRate)
@@ -33,10 +29,9 @@ Limiter::Limiter(std::size_t channels, double sampleRate)
       averagedSum_(static_cast<double>(window_)) {}
 
 void Limiter::update(const EffectParams& params, const EffectContext& context) {
-    ceiling_ = decibelsToGain(param(params, LimiterParam::ceiling)) * kCeilingMargin;
-    inputGain_ = decibelsToGain(param(params, LimiterParam::gain));
-    release_ = static_cast<float>(
-        std::exp(-1000.0 / (std::max(param(params, LimiterParam::release), 0.01F) * context.sampleRate)));
+    ceiling_ = dbToGain(param(params, LimiterParam::ceiling)) * kCeilingMargin;
+    inputGain_ = dbToGain(param(params, LimiterParam::gain));
+    release_ = timeCoefficient(param(params, LimiterParam::release), context.sampleRate);
 }
 
 // Takes the newest sample and returns the gain that keeps the peak around the sample kHalfTaps frames older under the

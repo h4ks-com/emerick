@@ -15,32 +15,16 @@ namespace {
 
 // NOLINTBEGIN(readability-magic-numbers): DSP constants are named where they are used.
 constexpr float kPercent = 100.0F;
-constexpr float kButterworthQ = std::numbers::sqrt2_v<float> / 2.0F;
+constexpr auto kFilterQ = static_cast<float>(kButterworthQ);
 constexpr float kMaxResonanceQ = 20.0F;
 constexpr double kNyquistLimit = 0.49;
 constexpr float kGateDetectorMs = 10.0F;
 constexpr double kDcBlockHz = 10.0;
 constexpr float kTubeBias = 0.3F;
 
-float param(const EffectParams& params, auto index) { return params.at(static_cast<std::size_t>(index)); }
-
-float dbToGain(float db) { return std::pow(10.0F, db / 20.0F); }
-
-float timeCoefficient(float milliseconds, double sampleRate) {
-    return static_cast<float>(std::exp(-1000.0 / (std::max(milliseconds, 0.01F) * sampleRate)));
-}
-
 template <typename Choice>
 Choice choiceParam(const EffectParams& params, auto index, std::size_t count) {
     return static_cast<Choice>(std::clamp(std::lround(param(params, index)), 0L, static_cast<long>(count) - 1));
-}
-
-float peakOf(std::span<float* const> channels, Frames frame) {
-    float peak = 0.0F;
-    for (float* channel : channels) {
-        peak = std::max(peak, std::abs(channel[frame]));
-    }
-    return peak;
 }
 
 // NOLINTEND(readability-magic-numbers)
@@ -81,7 +65,7 @@ void Filter::update(const EffectParams& params, const EffectContext& context) {
         std::clamp(static_cast<double>(param(params, FilterParam::cutoff)), 1.0, context.sampleRate * kNyquistLimit);
     targetG_ = static_cast<float>(std::tan(std::numbers::pi * cutoff / context.sampleRate));
     const float resonance = std::clamp(param(params, FilterParam::resonance) / kPercent, 0.0F, 1.0F);
-    targetK_ = 1.0F / (kButterworthQ * std::pow(kMaxResonanceQ / kButterworthQ, resonance));
+    targetK_ = 1.0F / (kFilterQ * std::pow(kMaxResonanceQ / kFilterQ, resonance));
     if (!primed_) {
         g_ = targetG_;
         k_ = targetK_;
@@ -121,7 +105,7 @@ void Filter::process(std::span<float* const> channels, Frames offset, Frames fra
             const float g = startG + (gStep * step);
             const float k = startK + (kStep * step);
             const float once = stage(first, samples[frame], g, k);
-            const float twice = stage(second, once, g, 1.0F / kButterworthQ);
+            const float twice = stage(second, once, g, 1.0F / kFilterQ);
             samples[frame] = steep_ ? twice : once;
         }
     }
@@ -185,10 +169,8 @@ void Chorus::process(std::span<float* const> channels, Frames offset, Frames fra
                 0.5 +
                 (0.5 * std::sin(2.0 * std::numbers::pi * (phase_ + (kQuarterCycle * static_cast<double>(channel)))));
             const double read = static_cast<double>(write_ + capacity) - delaySamples_ - (depthSamples_ * sweep);
-            const auto whole = static_cast<std::size_t>(std::floor(read));
-            const auto fraction = static_cast<float>(read - std::floor(read));
             std::vector<float>& line = lines_[channel];
-            const float wet = std::lerp(line[whole % capacity], line[(whole + 1) % capacity], fraction);
+            const float wet = readBetween(line, read);
             float& sample = channels[channel][frame];
             line[write_] = sample + (feedback_ * wet);
             sample = std::lerp(sample, wet, mix_);

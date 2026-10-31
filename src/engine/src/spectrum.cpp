@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
+#include <functional>
 #include <numbers>
 #include <utility>
 
@@ -54,6 +55,20 @@ std::vector<double> powerSpectrum(std::span<const float> frame) {
     std::ranges::transform(bins.begin(), bins.begin() + static_cast<std::ptrdiff_t>(power.size()), power.begin(),
                            [](const std::complex<double>& bin) { return std::norm(bin); });
     return power;
+}
+
+std::vector<double> averagePower(const std::vector<std::vector<float>>& channels, std::size_t frameSize) {
+    std::vector<double> sum(frameSize / 2 + 1);
+    std::vector<float> frame(frameSize);
+    for (const std::vector<float>& channel : channels) {
+        for (std::size_t begin = 0; begin < channel.size(); begin += frameSize) {
+            const std::size_t count = std::min(frameSize, channel.size() - begin);
+            std::ranges::fill(std::ranges::copy(std::span{channel}.subspan(begin, count), frame.begin()).out,
+                              frame.end(), 0.0F);
+            std::ranges::transform(sum, powerSpectrum(frame), sum.begin(), std::plus{});
+        }
+    }
+    return sum;
 }
 
 std::vector<double> spectrumDb(std::span<const float> frame) {

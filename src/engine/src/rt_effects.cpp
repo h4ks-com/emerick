@@ -19,7 +19,6 @@ namespace {
 constexpr Frames kGlideChunk = 32;
 constexpr double kGlideSeconds = 0.02;
 constexpr double kDelayGlideSeconds = 0.08;
-constexpr double kButterworthQ = std::numbers::sqrt2 / 2.0;
 constexpr double kLowCutRest = 5.0;
 constexpr double kHighCutRest = 0.49;
 constexpr float kSilenceDb = -160.0F;
@@ -93,19 +92,11 @@ float bandParam(const EffectParams& params, EqBand band, EqBandParam param) {
     return params.at((static_cast<std::size_t>(band) * kEqBandParams) + static_cast<std::size_t>(param));
 }
 
-float param(const EffectParams& params, auto index) { return params.at(static_cast<std::size_t>(index)); }
-
-float dbToGain(float db) { return std::pow(10.0F, db / 20.0F); }
-
 float gainToDb(float gain) { return gain > 0.0F ? 20.0F * std::log10(gain) : kSilenceDb; }
 
 // A coefficient that moves a value most of the way to its target over seconds, applied once per chunk of frames.
 double glideCoefficient(double seconds, Frames frames, double sampleRate) {
     return 1.0 - std::exp(-static_cast<double>(frames) / (seconds * sampleRate));
-}
-
-float timeCoefficient(float milliseconds, double sampleRate) {
-    return static_cast<float>(std::exp(-1000.0 / (std::max(milliseconds, 0.01F) * sampleRate)));
 }
 
 // NOLINTEND(readability-magic-numbers)
@@ -219,11 +210,7 @@ void Compressor::update(const EffectParams& params, const EffectContext& context
 void Compressor::process(std::span<float* const> channels, Frames offset, Frames frames) {
     float deepest = 0.0F;
     for (Frames frame = offset; frame < offset + frames; ++frame) {
-        float peak = 0.0F;
-        for (float* channel : channels) {
-            peak = std::max(peak, std::abs(channel[frame]));
-        }
-        const float levelDb = gainToDb(peak);
+        const float levelDb = gainToDb(peakOf(channels, frame));
         const float target = compressedDb(levelDb, threshold_, ratio_, knee_) - levelDb;
         const float coefficient = target < envelopeDb_ ? attack_ : release_;
         envelopeDb_ = target + (coefficient * (envelopeDb_ - target));
@@ -266,11 +253,9 @@ void Delay::process(std::span<float* const> channels, Frames offset, Frames fram
     for (Frames frame = 0; frame < frames; ++frame) {
         const double delay = from + ((samples_ - from) * static_cast<double>(frame + 1) / static_cast<double>(frames));
         const double read = static_cast<double>(write_ + capacity) - delay;
-        const auto whole = static_cast<std::size_t>(std::floor(read));
-        const auto fraction = static_cast<float>(read - std::floor(read));
         for (std::size_t channel = 0; channel < channels.size(); ++channel) {
             std::vector<float>& line = lines_[channel];
-            const float echo = std::lerp(line[whole % capacity], line[(whole + 1) % capacity], fraction);
+            const float echo = readBetween(line, read);
             filtered_[channel] = echo + (damping_ * (filtered_[channel] - echo));
             float& sample = channels[channel][offset + frame];
             line[write_] = sample + (feedback_ * filtered_[channel]);

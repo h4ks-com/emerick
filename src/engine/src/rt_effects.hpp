@@ -1,8 +1,11 @@
 #pragma once
 
+#include <algorithm>
 #include <array>
 #include <atomic>
+#include <cmath>
 #include <cstddef>
+#include <numbers>
 #include <span>
 #include <variant>
 #include <vector>
@@ -13,6 +16,35 @@
 #include "rt_standard_effects.hpp"
 
 namespace emerick::engine {
+
+inline constexpr double kButterworthQ = std::numbers::sqrt2 / 2.0;
+
+inline float param(const EffectParams& params, auto index) { return params.at(static_cast<std::size_t>(index)); }
+
+// NOLINTBEGIN(readability-magic-numbers): the decibel and millisecond scales.
+inline float dbToGain(float db) { return std::pow(10.0F, db / 20.0F); }
+
+// A one-pole coefficient that moves a value most of the way to its target over milliseconds.
+inline float timeCoefficient(float milliseconds, double sampleRate) {
+    return static_cast<float>(std::exp(-1000.0 / (std::max(milliseconds, 0.01F) * sampleRate)));
+}
+// NOLINTEND(readability-magic-numbers)
+
+// The loudest sample of any channel at frame.
+inline float peakOf(std::span<float* const> channels, Frames frame) {
+    float peak = 0.0F;
+    for (float* channel : channels) {
+        peak = std::max(peak, std::abs(channel[frame]));
+    }
+    return peak;
+}
+
+// The delay line's sample at a fractional position, which wraps around the line.
+inline float readBetween(const std::vector<float>& line, double position) {
+    const auto whole = static_cast<std::size_t>(std::floor(position));
+    const auto fraction = static_cast<float>(position - std::floor(position));
+    return std::lerp(line[whole % line.size()], line[(whole + 1) % line.size()], fraction);
+}
 
 struct Biquad {
     double b0 = 1.0;

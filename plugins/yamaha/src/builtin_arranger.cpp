@@ -187,12 +187,6 @@ void writeDrumMap(const VoiceList& list, app::ProjectController& controller, con
     controller.instruments().sync(controller.project().document());
 }
 
-bool voicesLoading(const Json& params) {
-    return std::ranges::any_of(params, [](const Json& param) {
-        return param.at("id") == voices::kVoiceParam && param.at("text") == voices::kLoadingLabel;
-    });
-}
-
 bool playsVoice(const Json& params) {
     return std::ranges::any_of(params, [](const Json& param) {
         return param.at("id") == voices::kVoiceParam && param.at("value").get<double>() >= 1.0;
@@ -228,7 +222,7 @@ void loadStandInsForMissingVoices(BuiltinArranger& builtin, app::Registry& regis
             const model::Track* found = controller.project().track(id);
             const Json described = controller.instruments().describe(id);
             const bool voices = found != nullptr && asksForVoice(*found, waiting.voice);
-            if (voices && !described.is_null() && voicesLoading(described.at("params"))) {
+            if (voices && voicesLoading(controller.instruments(), *found)) {
                 continue;
             }
             builtin.waitingParts.erase(track);
@@ -288,7 +282,7 @@ void loadPartInstrument(BuiltinArranger& builtin, app::Registry& registry, app::
         if (params && playsVoice(*params)) {
             return;
         }
-        if (params && voicesLoading(*params)) {
+        if (params && voicesLoading(controller.instruments(), *controller.project().track(id))) {
             builtin.waitingParts[id.value] = {part, *voice};
             return;
         }
@@ -353,13 +347,10 @@ std::vector<engine::SessionError> partWarnings(const model::Track& style, const 
             continue;
         }
         const model::Track& track = *model::findTrack(document, *id);
-        if (track.instrument && track.instrument->pluginId == kVoicesPluginId) {
-            const Json described = instruments.describe(*id);
-            if (!described.is_null() && voicesLoading(described.at("params"))) {
-                warnings.push_back({.trackId = id->value,
-                                    .message = "Wait for Expansion Voices to read its voice packs before you play or "
-                                               "render, since the part stays silent until then"});
-            }
+        if (voicesLoading(instruments, track)) {
+            warnings.push_back({.trackId = id->value,
+                                .message = "Wait for Expansion Voices to read its voice packs before you play or "
+                                           "render, since the part stays silent until then"});
         } else if (track.instrument && track.instrument->pluginId == app::kGeneralMidiPluginId) {
             warnings.push_back({.trackId = id->value,
                                 .message = std::format("Install the pack with voice {}/{}/{} and choose Expansion "

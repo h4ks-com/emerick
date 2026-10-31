@@ -120,9 +120,7 @@ void followVoicesFolder(app::Registry& registry, app::ProjectController& control
             qputenv(voices::kFolderVariable, QByteArray::fromStdString(folder));
         }
         for (const model::Track& track : controller.project().document().tracks) {
-            const auto instrument = track.instrument && track.instrument->pluginId == kVoicesPluginId
-                                        ? controller.instruments().find(track.id)
-                                        : nullptr;
+            const auto instrument = voicesInstrument(controller.instruments(), track);
             if (const auto state = instrument ? instrument->saveState() : std::nullopt) {
                 instrument->loadState(*state);
             }
@@ -136,9 +134,7 @@ void warnNoisyVoices(app::Registry& registry, const app::ProjectController& cont
     registry.addWarnings([&controller](const model::Document& document) {
         std::vector<engine::SessionError> warnings;
         for (const model::Track& track : document.tracks) {
-            const auto instrument = track.instrument && track.instrument->pluginId == kVoicesPluginId
-                                        ? controller.instruments().find(track.id)
-                                        : nullptr;
+            const auto instrument = voicesInstrument(controller.instruments(), track);
             if (std::string text = instrument ? instrument->paramText(voices::kNoiseParam, 0.0) : ""; !text.empty()) {
                 warnings.push_back({.trackId = track.id.value, .message = std::move(text)});
             }
@@ -147,14 +143,10 @@ void warnNoisyVoices(app::Registry& registry, const app::ProjectController& cont
     });
 }
 
-// Expansion Voices names no voice "Loading voices" until it has read its store, so we read that label as loading.
 void reportLoadingVoices(app::Registry& registry, const app::ProjectController& controller) {
     registry.addLoadingTracks([&controller](const model::Document& document) {
         return document.tracks | std::views::filter([&](const model::Track& track) {
-                   const auto instrument = track.instrument && track.instrument->pluginId == kVoicesPluginId
-                                               ? controller.instruments().find(track.id)
-                                               : nullptr;
-                   return instrument && instrument->paramText(voices::kVoiceParam, 0.0) == voices::kLoadingLabel;
+                   return voicesLoading(controller.instruments(), track);
                }) |
                std::views::transform(&model::Track::id) | std::ranges::to<std::vector>();
     });
@@ -181,6 +173,17 @@ core::Ticks sectionsEnd(const model::Track& style, const std::vector<SectionEven
 }
 
 }  // namespace
+
+std::shared_ptr<engine::ClapInstrument> voicesInstrument(const app::Instruments& instruments,
+                                                         const model::Track& track) {
+    return track.instrument && track.instrument->pluginId == kVoicesPluginId ? instruments.find(track.id) : nullptr;
+}
+
+// Expansion Voices names no voice "Loading voices" until it has read its store, so we read that label as loading.
+bool voicesLoading(const app::Instruments& instruments, const model::Track& track) {
+    const auto instrument = voicesInstrument(instruments, track);
+    return instrument && instrument->paramText(voices::kVoiceParam, 0.0) == voices::kLoadingLabel;
+}
 
 std::optional<std::vector<SectionEvent>> playingStyle(const model::Document& document) {
     for (const model::Track& track : document.tracks) {

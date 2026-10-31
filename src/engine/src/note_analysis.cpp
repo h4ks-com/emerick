@@ -3,9 +3,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
-#include <functional>
 #include <limits>
-#include <span>
 
 #include "emerick/engine/audio_analysis.hpp"
 #include "emerick/engine/spectrum.hpp"
@@ -18,20 +16,6 @@ constexpr std::size_t kNoteFrame = 16384;
 constexpr double kLowestHz = 20;
 constexpr double kHarmonicWidth = 0.1;
 constexpr double kHarmonicBins = 3;
-
-std::vector<double> summedPower(const std::vector<std::vector<float>>& channels) {
-    std::vector<double> sum(kNoteFrame / 2 + 1);
-    std::vector<float> frame(kNoteFrame);
-    for (const std::vector<float>& channel : channels) {
-        for (std::size_t begin = 0; begin < channel.size(); begin += kNoteFrame) {
-            const std::size_t count = std::min(kNoteFrame, channel.size() - begin);
-            std::ranges::fill(std::ranges::copy(std::span{channel}.subspan(begin, count), frame.begin()).out,
-                              frame.end(), 0.0F);
-            std::ranges::transform(sum, powerSpectrum(frame), sum.begin(), std::plus{});
-        }
-    }
-    return sum;
-}
 
 double harmonicShare(const std::vector<double>& power, double binHz, double fundamentalHz) {
     const double halfWidth = std::max(kHarmonicWidth * fundamentalHz, kHarmonicBins * binHz);
@@ -74,8 +58,8 @@ NoteAnalysis analyzeNote(const std::vector<std::vector<float>>& channels, double
     return {.peakDb = 20 * std::log10(peak),
             .activeRmsDb = tone.activeRmsDb,
             .centroidHz = tone.centroidHz,
-            .harmonicShare =
-                harmonicShare(summedPower(channels), sampleRate / static_cast<double>(kNoteFrame), fundamentalHz)};
+            .harmonicShare = harmonicShare(averagePower(channels, kNoteFrame),
+                                           sampleRate / static_cast<double>(kNoteFrame), fundamentalHz)};
 }
 
 }  // namespace emerick::engine

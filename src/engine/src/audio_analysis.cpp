@@ -245,20 +245,6 @@ double activeRms(const Channels& channels, double sampleRate) {
     return *middle;
 }
 
-std::vector<double> averagePower(const Channels& channels) {
-    std::vector<double> sum(kToneFrame / 2 + 1);
-    std::vector<float> frame(kToneFrame);
-    for (const std::vector<float>& channel : channels) {
-        for (std::size_t begin = 0; begin < channel.size(); begin += kToneFrame) {
-            const std::size_t count = std::min(kToneFrame, channel.size() - begin);
-            std::ranges::fill(std::ranges::copy(std::span{channel}.subspan(begin, count), frame.begin()).out,
-                              frame.end(), 0.0F);
-            std::ranges::transform(sum, powerSpectrum(frame), sum.begin(), std::plus{});
-        }
-    }
-    return sum;
-}
-
 }  // namespace
 
 InterpolationTaps interpolationTaps() {
@@ -291,7 +277,7 @@ ToneBalance analyzeTone(const Channels& channels, double sampleRate) {
         return tone;
     }
     tone.activeRmsDb = activeRms(channels, sampleRate);
-    const std::vector<double> power = averagePower(channels);
+    const std::vector<double> power = averagePower(channels, kToneFrame);
     const double total = std::ranges::fold_left(power, 0.0, std::plus{});
     if (total == 0) {
         return tone;

@@ -11,6 +11,7 @@ RowLayout {
     readonly property var result: Analysis.results[trackId]
     readonly property bool busy: Analysis.busyTrack === trackId
     readonly property var bands: result?.bands ?? []
+    readonly property real loudestShare: Math.max(...bands.map(band => band.share), Number.EPSILON)
     spacing: Theme.space2
 
     function level(value) {
@@ -62,30 +63,32 @@ RowLayout {
         run: () => Analysis.analyze(row.trackId)
     }
 
-    RowLayout {
+    ColumnLayout {
         objectName: "track.analyze:" + row.trackId + ":readout"
         visible: row.result !== undefined
         opacity: row.busy ? Theme.mutedOpacity : 1
-        spacing: Theme.space2
-        Reading {
-            value: row.result?.integratedLufs ?? null
-            unit: "LUFS"
-            tip: "Integrated loudness over the whole render. Streaming services play near -14 LUFS"
-        }
-        Reading {
-            value: row.result?.truePeakDbtp ?? null
-            unit: "TP"
-            tip: "True peak in dBTP, between samples. Keep it below -1 dBTP"
-        }
-        Reading {
-            value: row.result?.activeRmsDb ?? null
-            unit: "RMS"
-            tip: "Active RMS in dB: the median level of the parts that play, so silence leaves it alone"
+        spacing: Theme.space1
+        RowLayout {
+            spacing: Theme.space2
+            Reading {
+                value: row.result?.integratedLufs ?? null
+                unit: "LUFS"
+                tip: "Integrated loudness over the whole render. Streaming services play near -14 LUFS"
+            }
+            Reading {
+                value: row.result?.truePeakDbtp ?? null
+                unit: "TP"
+                tip: "True peak in dBTP, between samples. Keep it below -1 dBTP"
+            }
+            Reading {
+                value: row.result?.activeRmsDb ?? null
+                unit: "RMS"
+                tip: "Active RMS in dB: the median level of the parts that play, so silence leaves it alone"
+            }
         }
         Row {
             id: bands
             spacing: Theme.meterGap
-            Layout.alignment: Qt.AlignVCenter
             Repeater {
                 model: row.bands
                 Item {
@@ -95,7 +98,7 @@ RowLayout {
                     Rectangle {
                         anchors.bottom: parent.bottom
                         width: parent.width
-                        height: Math.max(Theme.hairline, parent.height * parent.modelData.share)
+                        height: Math.max(Theme.hairline, parent.height * parent.modelData.share / row.loudestShare)
                         color: Theme.inkDim
                     }
                 }

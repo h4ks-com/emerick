@@ -110,3 +110,22 @@ TEST_CASE("active RMS skips silence, and silence reads minus infinity with no ba
     CHECK(silence.bandShare == std::array<double, 5>{});
     CHECK(silence.centroidHz == 0);
 }
+
+TEST_CASE("matching loudness lifts a quiet mix to the target and keeps its true peak under the ceiling") {
+    std::vector<float> quiet = sine(220, 0.02, 4);
+    for (std::size_t frame = 0; frame < quiet.size(); frame += 12000) {
+        quiet[frame] = 0.2F;
+    }
+    std::vector<std::vector<float>> channels{quiet, quiet};
+    const double reached = emerick::engine::matchLoudness(channels, kRate, -14, -1);
+    CHECK(reached == Approx(-14).margin(0.5));
+    CHECK(emerick::engine::integratedLufs(channels, kRate) == Approx(reached));
+    CHECK(emerick::engine::truePeakDbtp(channels) <= -1.0);
+    CHECK(channels.front().size() == quiet.size());
+}
+
+TEST_CASE("matching loudness leaves digital silence alone") {
+    std::vector<std::vector<float>> silence{std::vector<float>(48000)};
+    CHECK(std::isinf(emerick::engine::matchLoudness(silence, kRate, -14, -1)));
+    CHECK(silence.front() == std::vector<float>(48000));
+}

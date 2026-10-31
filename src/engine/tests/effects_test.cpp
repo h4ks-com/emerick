@@ -7,6 +7,7 @@
 #include <string_view>
 #include <vector>
 
+#include "emerick/engine/audio_analysis.hpp"
 #include "rig.hpp"
 #include "rt_effects.hpp"
 
@@ -180,6 +181,29 @@ TEST_CASE("turning bypass on crossfades to the dry signal and then passes it unt
     CHECK(largestStep(std::span(fading).first(kBlock)) <
           0.1F * 4.0F * 2.0F * std::numbers::pi_v<float> * 1000.0F / kRate);
     CHECK(run(effect, input, params, true) == input);
+}
+
+TEST_CASE("a limiter keeps a sine pushed 12 dB over its ceiling at or below the ceiling in true peak") {
+    const float overCeiling = std::pow(10.0F, 11.0F / 20.0F);
+    for (const double frequency : {997.0, 11025.0, kRate / 4.0 - 1.0}) {
+        const std::vector<float> output =
+            run(EffectType::limiter, sine(frequency, 48000, overCeiling), paramsWith(EffectType::limiter, {}));
+        CHECK(truePeakDbtp({output}) <= -1.0);
+        CHECK(truePeakDbtp({std::vector<float>(output.begin() + 24000, output.end())}) > -2.0);
+    }
+    const std::vector<float> gained = run(EffectType::limiter, sine(997, 48000, std::pow(10.0F, -1.0F / 20.0F)),
+                                          paramsWith(EffectType::limiter, {{"gain", 12}}));
+    CHECK(truePeakDbtp({gained}) <= -1.0);
+}
+
+TEST_CASE("a limiter below its ceiling passes the signal unchanged, only later by its lookahead") {
+    const std::vector<float> input = sine(1000, 4800, 0.25F);
+    const std::vector<float> output = run(EffectType::limiter, input, paramsWith(EffectType::limiter, {}));
+    const Limiter limiter{1, kRate};
+    const auto latency = static_cast<std::ptrdiff_t>(limiter.latency());
+    for (std::size_t frame = static_cast<std::size_t>(latency); frame < output.size(); ++frame) {
+        REQUIRE(output[frame] == Approx(input[frame - static_cast<std::size_t>(latency)]).margin(1e-6));
+    }
 }
 
 namespace {

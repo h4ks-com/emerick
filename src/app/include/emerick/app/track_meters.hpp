@@ -89,7 +89,7 @@ public:
     Q_INVOKABLE QObject* output(const QString& trackId);
     Q_INVOKABLE static double fraction(double db) { return meterFraction(db); }
     [[nodiscard]] static double floorDb() { return kMeterFloorDb; }
-    // The deepest gain reduction of each compressor insert over the last poll, in dB by insert id.
+    // The deepest gain reduction of each compressor and limiter insert over the last poll, in dB by insert id.
     [[nodiscard]] QVariantMap reductions() const { return reductions_; }
     void updateReductions(const std::vector<engine::GainReduction>& readings);
 

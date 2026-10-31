@@ -382,8 +382,8 @@ void Reverb::process(std::span<float* const> channels, Frames offset, Frames fra
 
 namespace {
 
-std::variant<Equalizer, Compressor, Delay, Reverb> makeProcessor(EffectType type, std::size_t channels,
-                                                                 double sampleRate) {
+std::variant<Equalizer, Compressor, Delay, Reverb, Limiter> makeProcessor(EffectType type, std::size_t channels,
+                                                                          double sampleRate) {
     switch (type) {
         case EffectType::eq:
             return Equalizer{channels};
@@ -393,6 +393,8 @@ std::variant<Equalizer, Compressor, Delay, Reverb> makeProcessor(EffectType type
             return Delay{channels, sampleRate};
         case EffectType::reverb:
             return Reverb{channels, sampleRate};
+        case EffectType::limiter:
+            return Limiter{channels, sampleRate};
     }
     return Equalizer{channels};
 }
@@ -468,12 +470,13 @@ void Effect::process(std::span<float* const> channels, Frames frames, const Effe
         }
         wet_ = wetTarget;
     }
-    std::visit(core::Overloaded{[&](const Compressor& compressor) {
-                                    if (compressor.reductionDb() < reductionDb_.load(std::memory_order_relaxed)) {
-                                        reductionDb_.store(compressor.reductionDb(), std::memory_order_relaxed);
-                                    }
-                                },
-                                [](const auto&) {}},
+    const auto report = [&](float reduction) {
+        if (reduction < reductionDb_.load(std::memory_order_relaxed)) {
+            reductionDb_.store(reduction, std::memory_order_relaxed);
+        }
+    };
+    std::visit(core::Overloaded{[&](const Compressor& compressor) { report(compressor.reductionDb()); },
+                                [&](const Limiter& limiter) { report(limiter.reductionDb()); }, [](const auto&) {}},
                processor_);
 }
 

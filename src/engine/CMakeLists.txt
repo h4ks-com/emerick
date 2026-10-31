@@ -10,11 +10,13 @@ add_library(emerick_engine
     src/engine.cpp
     src/interleaved_io.cpp
     src/libremidi_backend.cpp
+    src/loudness_match.cpp
     src/metronome_sounds.cpp
     src/midi_ports.cpp
     src/rt_clap.cpp
     src/rt_metronome.cpp
     src/rt_effects.cpp
+    src/rt_limiter.cpp
     src/rt_midi.cpp
     src/rt_process.cpp
     src/snapshot_builder.cpp

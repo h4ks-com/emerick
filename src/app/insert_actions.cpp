@@ -220,7 +220,8 @@ void registerInsertActions(Registry& registry, ProjectController& controller, Na
     registry.addAction(
         {.id = "insert.add",
          .title = "Add insert",
-         .aliases = {"add effect", "insert plugin", "add eq", "add compressor", "add delay", "add reverb"},
+         .aliases = {"add effect", "insert plugin", "add eq", "add compressor", "add delay", "add reverb",
+                     "add limiter"},
          .category = kCategory,
          .schema =
              {{"required", {"type"}},

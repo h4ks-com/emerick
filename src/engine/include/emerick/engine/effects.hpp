@@ -9,8 +9,8 @@
 
 namespace emerick::engine {
 
-// The built-in insert effects. Every one reports no latency.
-enum class EffectType : std::uint8_t { eq, compressor, delay, reverb };
+// The built-in insert effects. Every one reports no latency, though the limiter delays its track by its lookahead.
+enum class EffectType : std::uint8_t { eq, compressor, delay, reverb, limiter };
 
 enum class ParamKind : std::uint8_t { number, toggle, choice };
 
@@ -51,6 +51,7 @@ inline constexpr std::array<std::string_view, 4> kCutSlopes{"12 dB/oct", "24 dB/
 enum class CompressorParam : std::uint8_t { threshold, ratio, attack, release, knee, makeup, autoMakeup };
 enum class DelayParam : std::uint8_t { time, sync, note, feedback, mix, highCut };
 enum class ReverbParam : std::uint8_t { size, decay, damping, preDelay, mix };
+enum class LimiterParam : std::uint8_t { ceiling, release, gain };
 
 // A synced delay's note values and their lengths in quarter notes.
 inline constexpr std::array<std::string_view, 13> kNoteNames{"1/1",  "1/2",  "1/2.", "1/4",   "1/4.",  "1/4t", "1/8",
@@ -124,6 +125,12 @@ inline constexpr std::array kReverbParams{
     EffectParam{"preDelay", "Pre-delay", "ms", 0, kMaxPreDelayMs, 10},
     EffectParam{"mix", "Mix", "%", 0, 100, 20},
 };
+
+inline constexpr std::array kLimiterParams{
+    EffectParam{"ceiling", "Ceiling", "dBTP", -12, 0, -1},
+    EffectParam{"release", "Release", "ms", 1, 1000, 50, ParamKind::number, true},
+    EffectParam{"gain", "Input gain", "dB", -12, 24, 0},
+};
 // NOLINTEND(readability-magic-numbers)
 
 // We index the table by EffectType, so its rows follow the enum's order.
@@ -132,6 +139,7 @@ inline constexpr std::array kEffects{
     EffectSpec{EffectType::compressor, "compressor", "Compressor", kCompressorParams},
     EffectSpec{EffectType::delay, "delay", "Delay", kDelayParams},
     EffectSpec{EffectType::reverb, "reverb", "Reverb", kReverbParams},
+    EffectSpec{EffectType::limiter, "limiter", "Limiter", kLimiterParams},
 };
 
 const EffectSpec& effectSpec(EffectType type);

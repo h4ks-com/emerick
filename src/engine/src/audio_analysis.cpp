@@ -11,6 +11,7 @@
 #include <span>
 
 #include "emerick/engine/spectrum.hpp"
+#include "true_peak.hpp"
 
 namespace emerick::engine {
 
@@ -25,9 +26,6 @@ constexpr std::size_t kStepsPerBlock = 4;
 constexpr double kSilenceLevel = 0.001;
 constexpr double kMinSilenceSeconds = 0.5;
 constexpr float kClipLevel = 0.999F;
-constexpr std::size_t kOversampling = 4;
-constexpr std::size_t kTapsPerPhase = 12;
-constexpr std::size_t kHalfTaps = kTapsPerPhase / 2;
 constexpr double kBandEdgeLimit = 0.45;
 constexpr double kActiveGateDb = -60;
 constexpr std::size_t kToneFrame = 4096;
@@ -130,21 +128,6 @@ double integratedLoudness(const Channels& channels, double sampleRate) {
         return kSilentDb;
     }
     return loudness(gatedMean(std::max(kAbsoluteGateLufs, loudness(absoluteMean) + kRelativeGateLu)));
-}
-
-// Windowed sinc taps that interpolate three points between each pair of samples, after BS.1770 Annex 2.
-std::array<std::array<double, kTapsPerPhase>, kOversampling> interpolationTaps() {
-    std::array<std::array<double, kTapsPerPhase>, kOversampling> taps{};
-    for (std::size_t phase = 0; phase < kOversampling; ++phase) {
-        for (std::size_t tap = 0; tap < kTapsPerPhase; ++tap) {
-            const double t = static_cast<double>(tap) - kHalfTaps +
-                             (static_cast<double>(phase) / static_cast<double>(kOversampling));
-            const double sinc = t == 0 ? 1 : std::sin(std::numbers::pi * t) / (std::numbers::pi * t);
-            const double window = 0.5 * (1 + std::cos(std::numbers::pi * t / kHalfTaps));
-            taps[phase][tap] = sinc * window;
-        }
-    }
-    return taps;
 }
 
 double truePeak(const std::vector<float>& channel) {
@@ -277,6 +260,30 @@ std::vector<double> averagePower(const Channels& channels) {
 }
 
 }  // namespace
+
+InterpolationTaps interpolationTaps() {
+    InterpolationTaps taps{};
+    for (std::size_t phase = 0; phase < kOversampling; ++phase) {
+        for (std::size_t tap = 0; tap < kTapsPerPhase; ++tap) {
+            const double t = static_cast<double>(tap) - kHalfTaps +
+                             (static_cast<double>(phase) / static_cast<double>(kOversampling));
+            const double sinc = t == 0 ? 1 : std::sin(std::numbers::pi * t) / (std::numbers::pi * t);
+            const double window = 0.5 * (1 + std::cos(std::numbers::pi * t / kHalfTaps));
+            taps[phase][tap] = sinc * window;
+        }
+    }
+    return taps;
+}
+
+double integratedLufs(const Channels& channels, double sampleRate) {
+    return channels.empty() || channels.front().empty() ? kSilentDb : integratedLoudness(channels, sampleRate);
+}
+
+double truePeakDbtp(const Channels& channels) {
+    return amplitudeDb(std::ranges::fold_left(channels, 0.0, [](double peak, const std::vector<float>& channel) {
+        return std::max(peak, truePeak(channel));
+    }));
+}
 
 ToneBalance analyzeTone(const Channels& channels, double sampleRate) {
     ToneBalance tone{.activeRmsDb = kSilentDb};

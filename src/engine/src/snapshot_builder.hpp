@@ -39,7 +39,7 @@ public:
     using Meters = std::map<std::string, std::weak_ptr<LevelMeter>>;
     // The input meter of every audio track with an input, by track id.
     [[nodiscard]] const Meters& inputMeters() const { return inputMeters_; }
-    // The effect of every compressor insert, by insert id.
+    // The effect of every compressor and limiter insert, by insert id.
     [[nodiscard]] const std::map<std::string, std::weak_ptr<Effect>>& compressors() const { return compressors_; }
     // The output meter of every track with an audio output, by track id.
     [[nodiscard]] const Meters& outputMeters() const { return outputMeters_; }

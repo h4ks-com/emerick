@@ -79,4 +79,13 @@ ToneBalance analyzeTone(const std::vector<std::vector<float>>& channels, double 
 // -3.01 LUFS. Every channel has the same length.
 AudioAnalysis analyzeAudio(const std::vector<std::vector<float>>& channels, const AnalysisTiming& timing);
 
+// The integrated loudness and the true peak analyzeAudio reports, measured alone.
+double integratedLufs(const std::vector<std::vector<float>>& channels, double sampleRate);
+double truePeakDbtp(const std::vector<std::vector<float>>& channels);
+
+// Turns the channels by one gain to targetLufs and keeps their true peak at or below ceilingDbtp with the limiter
+// insert's algorithm, and returns the integrated loudness they end at. Leaves digital silence as it is.
+double matchLoudness(std::vector<std::vector<float>>& channels, double sampleRate, double targetLufs,
+                     double ceilingDbtp);
+
 }  // namespace emerick::engine

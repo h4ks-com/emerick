@@ -67,7 +67,7 @@ private:
     std::unique_ptr<engine::Engine> engine_;
 };
 
-// Sets up the render of one track or bus as its stem plays, or of the mix when trackId is empty.
+// Sets up the render of one track or bus as its stem plays.
 std::unique_ptr<OfflineRender> trackRender(const engine::Session& session, const Registry& registry,
                                            const PlaybackContext& context, const std::string& trackId,
                                            double sampleRate);

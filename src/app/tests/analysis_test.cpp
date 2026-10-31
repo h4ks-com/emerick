@@ -108,9 +108,8 @@ TEST_CASE("render analyze measures the rendered mix") {
     CHECK(mix.at("stereo").at("correlation") == 1.0);
 }
 
-TEST_CASE("track analyze measures one track as its stem, the mix without a track, and checks its params") {
+TEST_CASE("track analyze measures one track as its stem with its five bands in order, and checks its params") {
     ProjectRig rig;
-    CHECK_THROWS_AS(rig.run("track.analyze"), AppError);
     const std::string vox = rig.run("track.addAudio", {{"name", "Vox"}}).at("id");
     const std::string bass = rig.run("track.addAudio", {{"name", "Bass"}}).at("id");
     const std::string keys = rig.run("track.addMidi", {{"name", "Keys"}}).at("id");
@@ -119,27 +118,31 @@ TEST_CASE("track analyze measures one track as its stem, the mix without a track
     rig.run("clip.import", {{"track", vox}, {"path", rig.path("tone.wav").string()}});
     rig.run("clip.import", {{"track", bass}, {"path", rig.path("low.wav").string()}});
 
+    CHECK_THROWS_AS(rig.run("track.analyze"), AppError);
     const Json tone = rig.run("track.analyze", {{"track", vox}});
     CHECK(tone.at("track") == vox);
-    CHECK(tone.at("bandShare").at("mid").get<double>() > 0.95);
+    REQUIRE(tone.at("bands").size() == 5);
+    CHECK(tone.at("bands")[1].at("name") == "body");
+    CHECK(tone.at("bands")[1].at("lowHz") == 120.0);
+    CHECK(tone.at("bands")[1].at("highHz") == 500.0);
+    CHECK(tone.at("bands")[2].at("name") == "middle");
+    CHECK(tone.at("bands")[2].at("share").get<double>() > 0.95);
+    CHECK(tone.at("bands")[4].at("highHz").is_null());
     CHECK(tone.at("centroidHz").get<double>() == Approx(1000).epsilon(0.05));
     CHECK(tone.at("samplePeakDbfs").get<double>() < 0);
     CHECK(tone.at("truePeakDbtp").get<double>() >= tone.at("samplePeakDbfs").get<double>());
     CHECK(tone.at("activeRmsDb").get<double>() == Approx(tone.at("samplePeakDbfs").get<double>() - 3.01).margin(0.2));
     CHECK(tone.at("integratedLufs").is_number());
 
-    const Json mix = rig.run("track.analyze");
-    CHECK(mix.at("track").is_null());
-    CHECK(mix.at("bandShare").at("low").get<double>() > 0.3);
-    CHECK(mix.at("bandShare").at("mid").get<double>() > 0.3);
+    CHECK(rig.run("track.analyze", {{"track", bass}}).at("bands")[0].at("share").get<double>() > 0.95);
 
     const Json second = rig.run("track.analyze", {{"track", vox}, {"from", "2.1.0"}});
     CHECK(second.at("from").at("seconds").get<double>() == Approx(2.0));
     CHECK(second.at("to").at("seconds").get<double>() == Approx(4.0));
-    CHECK(second.at("bandShare").at("mid").get<double>() > 0.95);
+    CHECK(second.at("bands")[2].at("share").get<double>() > 0.95);
 
     CHECK_THROWS_AS(rig.run("track.analyze", {{"track", "nope"}}), AppError);
     CHECK_THROWS_AS(rig.run("track.analyze", {{"track", keys}}), AppError);
     CHECK_THROWS_AS(rig.run("track.analyze", {{"track", vox}, {"from", "2.1.0"}, {"to", "1.3.0"}}), AppError);
-    CHECK_THROWS_AS(rig.run("track.analyze", {{"from", -5}}), AppError);
+    CHECK_THROWS_AS(rig.run("track.analyze", {{"track", vox}, {"from", -5}}), AppError);
 }

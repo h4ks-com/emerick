@@ -338,9 +338,6 @@ void OfflineRender::idleInstruments() {
 std::unique_ptr<OfflineRender> trackRender(const engine::Session& session, const Registry& registry,
                                            const PlaybackContext& context, const std::string& trackId,
                                            double sampleRate) {
-    if (trackId.empty()) {
-        return std::make_unique<OfflineRender>(mixSession(session, *context.document), registry, context, sampleRate);
-    }
     const auto track = std::ranges::find(session.tracks, trackId, &engine::Track::id);
     if (track == session.tracks.end()) {
         throw AppError("no track " + trackId + " in the session");

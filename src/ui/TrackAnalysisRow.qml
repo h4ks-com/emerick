@@ -10,12 +10,21 @@ RowLayout {
     required property string trackId
     readonly property var result: Analysis.results[trackId]
     readonly property bool busy: Analysis.busyTrack === trackId
-    readonly property var bandNames: ["low", "lowMid", "mid", "highMid", "high"]
-    readonly property var bandTitles: ["Below 120 Hz", "120 to 500 Hz", "500 Hz to 2 kHz", "2 to 6 kHz", "Above 6 kHz"]
+    readonly property var bands: result?.bands ?? []
     spacing: Theme.space2
 
     function level(value) {
         return value === null || value === undefined ? "-inf" : value.toFixed(1)
+    }
+
+    function frequency(hz) {
+        return hz >= 1000 ? hz / 1000 + " kHz" : hz + " Hz"
+    }
+
+    function edges(band) {
+        return band.lowHz === 0 ? "below " + frequency(band.highHz)
+             : band.highHz === null ? "above " + frequency(band.lowHz)
+             : frequency(band.lowHz) + " to " + frequency(band.highHz)
     }
 
     component Reading: Label {
@@ -71,22 +80,22 @@ RowLayout {
             spacing: Theme.meterGap
             Layout.alignment: Qt.AlignVCenter
             Repeater {
-                model: row.bandNames
+                model: row.bands
                 Item {
-                    required property string modelData
+                    required property var modelData
                     width: Theme.meterBar * 2
                     height: Theme.iconSize
                     Rectangle {
                         anchors.bottom: parent.bottom
                         width: parent.width
-                        height: Math.max(Theme.hairline, parent.height * (row.result?.bandShare[parent.modelData] ?? 0))
+                        height: Math.max(Theme.hairline, parent.height * parent.modelData.share)
                         color: Theme.inkDim
                     }
                 }
             }
             HoverHandler { id: bandsHover }
-            ToolTip.text: row.bandNames.map((name, index) => row.bandTitles[index] + ": "
-                              + Math.round(100 * (row.result?.bandShare[name] ?? 0)) + "%").join("\n")
+            ToolTip.text: row.bands.map(band => band.name + ", " + row.edges(band) + ": "
+                              + Math.round(100 * band.share) + "%").join("\n")
                           + "\nCentroid: " + Math.round(row.result?.centroidHz ?? 0) + " Hz"
             ToolTip.visible: bandsHover.hovered
             ToolTip.delay: Theme.tooltipDelay

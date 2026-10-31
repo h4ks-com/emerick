@@ -5,7 +5,9 @@
 #include <QVariantMap>
 #include <memory>
 #include <stop_token>
+#include <string>
 #include <thread>
+#include <vector>
 
 #include "emerick/app/project_controller.hpp"
 #include "emerick/app/registry.hpp"
@@ -13,8 +15,28 @@
 
 namespace emerick::app {
 
-// Adds track.analyze, which renders a track as its stem or the mix offline and measures its loudness and tone.
-void registerTrackAnalysis(Registry& registry, ProjectController& controller);
+inline constexpr const char* kTrackAnalyzeAction = "track.analyze";
+
+// What track.analyze measures of a render, which any thread can read.
+struct AnalysisRange {
+    core::TempoMap tempo;
+    std::string trackId;
+    core::Ticks from = 0;
+    core::Ticks to = 0;
+    double sampleRate = 0;
+
+    [[nodiscard]] engine::Frames endFrame() const { return tempo.ticksToFrames(to, sampleRate); }
+};
+
+struct TrackRender {
+    std::unique_ptr<OfflineRender> render;
+    AnalysisRange range;
+};
+
+// UI thread: checks track.analyze's params and sets up the render of its track.
+TrackRender prepareTrackRender(ProjectController& controller, const Registry& registry, const Json& params);
+// Any thread: track.analyze's result for the channels the render returned.
+Json measureTrack(const AnalysisRange& range, std::vector<std::vector<float>> channels);
 
 // Runs track.analyze for the inspector and keeps each track's last result. The UI thread sets up and tears down the
 // render and idles its instruments, and a worker thread processes it and measures, so the window keeps drawing.

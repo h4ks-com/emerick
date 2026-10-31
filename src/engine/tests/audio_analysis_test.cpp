@@ -87,7 +87,7 @@ TEST_CASE("band energy is highest in the band that holds the tone") {
     }
 }
 
-TEST_CASE("tone balance puts a 1 kHz sine in the mid band at its level, with its centroid at 1 kHz") {
+TEST_CASE("tone balance puts a 1 kHz sine in the middle band at its level, with its centroid at 1 kHz") {
     const auto tone = analyzeTone({sine(1000, 0.5, 2), sine(1000, 0.5, 2)}, kRate);
     CHECK(tone.activeRmsDb == Approx(20 * std::log10(0.5 / std::numbers::sqrt2)).margin(0.05));
     CHECK(tone.bandShare[2] > 0.99);

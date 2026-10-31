@@ -23,6 +23,7 @@
 #include "emerick/app/project_state.hpp"
 #include "emerick/app/session_mapping.hpp"
 #include "emerick/app/stem_export.hpp"
+#include "emerick/app/track_analysis.hpp"
 #include "emerick/engine/audio_analysis.hpp"
 
 namespace emerick::app {
@@ -139,6 +140,27 @@ Json analysisJson(const engine::AudioAnalysis& analysis) {
     return result;
 }
 
+std::string loudnessMessage(const engine::AudioAnalysis& analysis, const std::string& detail) {
+    return std::format("{:.1f} LUFS integrated, {:.1f} dBTP true peak, {}", analysis.integratedLufs,
+                       analysis.truePeakDbtp, detail);
+}
+
+Json toneBandsJson(const engine::ToneBalance& tone) {
+    return std::views::zip(engine::kToneBands, tone.bandShare) | std::views::transform([](const auto& entry) {
+               const auto& [band, share] = entry;
+               return Json{{"name", std::string{band.name}},
+                           {"lowHz", band.low},
+                           {"highHz", std::isfinite(band.high) ? Json(band.high) : Json(nullptr)},
+                           {"share", std::round(share * 1000) / 1000}};
+           }) |
+           std::ranges::to<Json::array_t>();
+}
+
+Json analyzeTrackRender(const TrackRender& job) {
+    OfflineRender& render = *job.render;
+    return measureTrack(job.range, render.process(job.range.endFrame(), [&render] { render.idleInstruments(); }));
+}
+
 struct AudioSection {
     AudioData audio;
     double from = 0;
@@ -174,8 +196,7 @@ Json analyzeSection(const AudioData& audio, const Json& params, const core::Temp
         section.audio.channels,
         {.sampleRate = audio.sampleRate, .barSeconds = barSeconds(tempo), .startSeconds = section.from});
     Json result = analysisJson(analysis);
-    result["message"] = std::format("{:.1f} LUFS integrated, {:.1f} dBTP true peak, {} clipped samples",
-                                    analysis.integratedLufs, analysis.truePeakDbtp, analysis.clippedSamples);
+    result["message"] = loudnessMessage(analysis, std::format("{} clipped samples", analysis.clippedSamples));
     result["from"] = rounded(section.from, 0.01);
     result["to"] = rounded(section.to, 0.01);
     result["channels"] = audio.channels.size();
@@ -222,6 +243,53 @@ Json writeAudioImage(const AudioData& audio, const Json& params, const std::file
 }
 
 }  // namespace
+
+TrackRender prepareTrackRender(ProjectController& controller, const Registry& registry, const Json& params) {
+    const model::Document document = liveDocument(controller);
+    const model::TrackId id = findTrackByIdOrName(controller.project(), param<std::string>(params, "track"));
+    const model::Track& source = *model::findTrack(document, id);
+    if (const TrackType* type = registry.trackType(source.kind); type == nullptr || !playsAudio(*type, source)) {
+        throw AppError(playsNoAudio(type, source, "pick an audio track or a bus"));
+    }
+    const engine::Session session = toSession(document, registry, controller.folder());
+    const core::TempoMap& tempo = document.tempo;
+    const core::Ticks end = exportEnd(session, document);
+    if (end <= 0) {
+        throw AppError("the project has no clips to analyze, add a clip first");
+    }
+    AnalysisRange range;
+    range.tempo = tempo;
+    range.trackId = id.value;
+    range.from = optionalPosition(params, "from", tempo).value_or(0);
+    range.to = std::min(optionalPosition(params, "to", tempo).value_or(end), end);
+    range.sampleRate = controller.sampleRate();
+    if (range.from < 0 || range.from >= range.to) {
+        throw AppError(std::format("give from before to, both from {} to the project end {}",
+                                   tempo.toBarBeatTick(0).format(), tempo.toBarBeatTick(end).format()));
+    }
+    return {.render =
+                trackRender(session, registry, playbackContext(controller, document), range.trackId, range.sampleRate),
+            .range = std::move(range)};
+}
+
+Json measureTrack(const AnalysisRange& range, std::vector<std::vector<float>> channels) {
+    const auto skipped = static_cast<std::ptrdiff_t>(range.tempo.ticksToFrames(range.from, range.sampleRate));
+    for (std::vector<float>& channel : channels) {
+        channel.erase(channel.begin(), channel.begin() + std::min(skipped, std::ssize(channel)));
+    }
+    const engine::AudioAnalysis levels = engine::analyzeAudio(channels, {.sampleRate = range.sampleRate});
+    const engine::ToneBalance tone = engine::analyzeTone(channels, range.sampleRate);
+    return {{"track", range.trackId},
+            {"from", positionState(range.from, range.tempo)},
+            {"to", positionState(range.to, range.tempo)},
+            {"integratedLufs", levelDb(levels.integratedLufs)},
+            {"samplePeakDbfs", levelDb(levels.samplePeakDbfs)},
+            {"truePeakDbtp", levelDb(levels.truePeakDbtp)},
+            {"activeRmsDb", levelDb(tone.activeRmsDb)},
+            {"bands", toneBandsJson(tone)},
+            {"centroidHz", std::round(tone.centroidHz)},
+            {"message", loudnessMessage(levels, std::format("{:.1f} dB active RMS", tone.activeRmsDb))}};
+}
 
 void registerExportActions(Registry& registry, ProjectController& controller) {
     const Json tracksSchema{{"tracks", {{"type", "array"}}}};
@@ -374,6 +442,23 @@ void registerExportActions(Registry& registry, ProjectController& controller) {
                  return withWarnings(analyzeSection(readAudio(file), params, document.tempo), controller);
              },
          .menus = {kFileMenu},
+         .notifies = true});
+    registry.addAction(
+        {.id = kTrackAnalyzeAction,
+         .title = "Analyze track",
+         .description = "Render a track or bus alone and dry as its stem does, and measure integrated LUFS, sample "
+                        "peak, true peak, active RMS (the median of 100 ms blocks above -60 dBFS), the share of the "
+                        "energy in five bands with their edges, and the spectral centroid in Hz. from and to take "
+                        "ticks or bar.beat.tick and default to the project start and end.",
+         .keywords = {"loudness", "lufs", "true peak", "rms", "spectrum", "tone", "balance", "centroid"},
+         .category = "Analyze",
+         .schema = {{"required", {"track"}},
+                    {"properties",
+                     {{"track", {{"type", "string"}}}, {"from", Json::object()}, {"to", Json::object()}}}},
+         .run =
+             [&controller, &registry](const Json& params) {
+                 return analyzeTrackRender(prepareTrackRender(controller, registry, params));
+             },
          .notifies = true});
 }
 

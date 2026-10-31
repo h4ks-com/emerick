@@ -2,6 +2,7 @@
 
 #include <array>
 #include <cstdint>
+#include <limits>
 #include <optional>
 #include <string_view>
 #include <vector>
@@ -57,8 +58,12 @@ struct AnalysisTiming {
     double startSeconds = 0;
 };
 
-inline constexpr std::array<FrequencyBand, 5> kToneBands{
-    {{"low", 0, 120}, {"lowMid", 120, 500}, {"mid", 500, 2000}, {"highMid", 2000, 6000}, {"high", 6000, 1e9}}};
+// Five broad bands for a track's tone balance, named apart from kFrequencyBands so a result never mixes the two up.
+inline constexpr std::array<FrequencyBand, 5> kToneBands{{{"low", 0, 120},
+                                                          {"body", 120, 500},
+                                                          {"middle", 500, 2000},
+                                                          {"edge", 2000, 6000},
+                                                          {"top", 6000, std::numeric_limits<double>::infinity()}}};
 
 struct ToneBalance {
     // The median RMS of the 100 ms blocks above -60 dBFS, so silent stretches leave it alone.

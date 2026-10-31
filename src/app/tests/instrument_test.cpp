@@ -10,6 +10,7 @@
 #include <span>
 #include <vector>
 
+#include "emerick/app/instruments.hpp"
 #include "emerick/app/plugin_actions.hpp"
 #include "emerick/app/plugin_catalog.hpp"
 #include "emerick/model/json.hpp"
@@ -309,7 +310,7 @@ TEST_CASE("picking a General MIDI sound shows its name and undoes to the piano")
     CHECK(sound().at("text") == "Acoustic Grand Piano");
 }
 
-TEST_CASE("instrument.setParam picks a stepped param's choice by its exact text and names a text no choice has") {
+TEST_CASE("instrument.setParam picks a stepped param's choice by its text and names a text no choice has") {
     InstrumentRig rig;
     rig.registry.setSetting(kClapFoldersSetting, Json::array({bundledClapFolder(EMERICK_GM_APP_FOLDER).string()}));
     const model::TrackId id{
@@ -318,16 +319,56 @@ TEST_CASE("instrument.setParam picks a stepped param's choice by its exact text 
     const Json set = rig.run("instrument.setParam", {{"track", id.value}, {"param", 0}, {"value", "Clavi"}});
     CHECK(set.at("text") == "Clavi");
     CHECK(set.at("value") == 7.0);
-    CHECK(rig.run("instrument.setParam", {{"track", id.value}, {"param", 0}, {"value", 40}}).at("text") == "Violin");
+    CHECK(rig.run("instrument.setParam", {{"track", id.value}, {"param", 0}, {"value", "violin"}}).at("text") ==
+          "Violin");
 
     const auto state = rig.controller->project().track(id)->instrument->state;
     try {
-        rig.run("instrument.setParam", {{"track", id.value}, {"param", 0}, {"value", "clavi"}});
+        rig.run("instrument.setParam", {{"track", id.value}, {"param", 0}, {"value", "clavx"}});
         FAIL("a text no choice has must throw");
     } catch (const AppError& error) {
         const std::string message = error.what();
-        CHECK(message.contains("\"clavi\""));
+        CHECK(message.contains("\"clavx\""));
         CHECK_FALSE(message.contains("Violin"));
     }
     CHECK(rig.controller->project().track(id)->instrument->state == state);
+}
+
+TEST_CASE("a choice text picks the exact match first, else the only case-insensitive match") {
+    const engine::ClapParam voice{
+        .id = 0,
+        .name = "Voice",
+        .choices = {"Colors Of Iberia Genos / Italian TenorSax", "Colors of Iberia Genos / Italian TenorSax",
+                    "Colors of Iberia 2 Genos / Italian TenorSax", "Pop Genos / Clean Guitar"}};
+    CHECK(choiceIndex(voice, "Colors of Iberia Genos / Italian TenorSax") == 1);
+    CHECK(choiceIndex(voice, "pop genos / clean guitar") == 3);
+}
+
+TEST_CASE("an ambiguous or unknown choice text names up to three close choices") {
+    const engine::ClapParam voice{
+        .id = 0,
+        .name = "Voice",
+        .choices = {"Colors Of Iberia Genos / Italian TenorSax", "Colors of Iberia Genos / Italian TenorSax",
+                    "Colors of Iberia 2 Genos / Italian TenorSax", "Pop Genos / Clean Guitar",
+                    "Iberia Genos / Tenor Sax"}};
+    const auto message = [&](const std::string& text) {
+        try {
+            (void)choiceIndex(voice, text);
+        } catch (const AppError& error) {
+            return std::string{error.what()};
+        }
+        FAIL("the text must not pick a choice");
+        return std::string{};
+    };
+    const std::string ambiguous = message("colors of iberia genos / italian tenorsax");
+    CHECK(ambiguous.contains("did you mean"));
+    CHECK(ambiguous.contains("\"Colors Of Iberia Genos / Italian TenorSax\""));
+    CHECK(ambiguous.contains("\"Colors of Iberia Genos / Italian TenorSax\""));
+    CHECK_FALSE(ambiguous.contains("Clean Guitar"));
+
+    const std::string unknown = message("iberia tenorsax");
+    CHECK(unknown.contains("did you mean"));
+    CHECK(std::ranges::count(unknown, '/') == 3);
+    CHECK_FALSE(unknown.contains("Clean Guitar"));
+    CHECK(message("trumpet") == "Voice has no choice \"trumpet\", run instrument.params for its choices");
 }

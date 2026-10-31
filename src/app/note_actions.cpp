@@ -120,7 +120,11 @@ void registerNoteEdits(Registry& registry, ProjectController& controller, Nav& n
                       {"start", {{"type", "integer"}}},
                       {"length", {{"type", "integer"}}},
                       {"velocity", {{"type", "integer"}, {"minimum", 1}, {"maximum", model::kMaxVelocity}}},
-                      {"channel", {{"type", "integer"}, {"minimum", 1}, {"maximum", kMaxChannel}}}}}},
+                      {"channel",
+                       {{"type", "integer"},
+                        {"minimum", 1},
+                        {"maximum", kMaxChannel},
+                        {"description", "default 1; General MIDI plays drums on channel 10"}}}}}},
          .run = [&controller, &nav, defaults](const Json& params) {
              return addNote(controller, nav, *defaults, params);
          }});

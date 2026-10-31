@@ -125,7 +125,7 @@ qt_add_resources(emerick_app example_scripts
         ${PROJECT_SOURCE_DIR}/scripts/examples/rename-from-list.lua)
 target_compile_definitions(emerick_app PRIVATE EMERICK_VERSION="${PROJECT_VERSION}" SOL_PRINT_ERRORS=0)
 target_link_libraries(emerick_app
-    PRIVATE lua54 sol2::sol2 tree_sitter_lua PkgConfig::SNDFILE libremidi
+    PRIVATE lua54 sol2::sol2 tree_sitter_lua PkgConfig::SNDFILE libremidi emerick_gm_sounds
     PUBLIC Qt6::Core Qt6::Gui Qt6::Quick Qt6::HttpServer emerick_core emerick_model emerick_engine
         nlohmann_json::nlohmann_json)
 emerick_target(emerick_app)

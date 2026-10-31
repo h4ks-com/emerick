@@ -22,8 +22,9 @@ namespace emerick::app {
 
 namespace {
 
-constexpr int kMaxNotes = 32;
+constexpr int kMaxNotes = 128;
 constexpr double kMaxSeconds = 10;
+constexpr double kMaxRenderSeconds = 320;
 constexpr double kMinSeconds = 0.1;
 constexpr int kMaxMidi = 127;
 // A note holds for 3/4 of its time, so most of its release fades inside its own measurement.
@@ -140,13 +141,11 @@ Audition prepareAudition(const Registry& registry, ProjectController& controller
     audition.slot = *track.instrument;
     audition.param = info.id;
     audition.slot.state = live->saveState().value_or(track.instrument->state);
+    audition.channel = channelParam(audition.slot, info.id).value_or(ChannelParam{}).channel;
     if (const auto voice = optionalParam<std::string>(params, "voice")) {
-        const auto found = std::ranges::find(info.choices, *voice);
-        if (found == info.choices.end()) {
-            throw AppError(live->name() + " has no voice \"" + *voice + "\", run instrument.params for its choices");
-        }
-        audition.voice = *voice;
-        audition.value = info.min + static_cast<double>(found - info.choices.begin());
+        const std::size_t index = choiceIndex(info, *voice);
+        audition.voice = info.choices[index];
+        audition.value = info.min + static_cast<double>(index);
     } else {
         audition.value = std::round(live->paramValue(info.id).value_or(info.defaultValue));
         audition.voice = live->paramText(info.id, audition.value);
@@ -155,6 +154,10 @@ Audition prepareAudition(const Registry& registry, ProjectController& controller
     audition.seconds = optionalParam<double>(params, "seconds").value_or(1);
     if (audition.seconds < kMinSeconds || audition.seconds > kMaxSeconds || std::isnan(audition.seconds)) {
         throw AppError(std::format("give seconds per note from {} to {}", kMinSeconds, kMaxSeconds));
+    }
+    if (audition.seconds * static_cast<double>(audition.notes.size()) > kMaxRenderSeconds) {
+        throw AppError(std::format("give at most {} seconds of notes in all, since the render holds them in memory",
+                                   kMaxRenderSeconds));
     }
     audition.velocity = optionalParam<int>(params, "velocity").value_or(audition.velocity);
     if (audition.velocity < 1 || audition.velocity > kMaxMidi) {
@@ -184,9 +187,13 @@ RenderJob auditionJob(const Audition& audition) {
     engine::MidiClip clip{.start = 0, .events = {}, .length = count * ticks};
     for (std::ptrdiff_t index = 0; index < count; ++index) {
         const auto pitch = static_cast<std::uint8_t>(audition.notes[static_cast<std::size_t>(index)]);
+        const auto channel = static_cast<std::uint8_t>(audition.channel - 1);
         const core::Ticks start = index * ticks;
-        clip.events.push_back({start, {core::midi::kNoteOn, pitch, static_cast<std::uint8_t>(audition.velocity)}});
-        clip.events.push_back({start + (ticks * kHeldParts / kNoteParts), {core::midi::kNoteOff, pitch, 0}});
+        clip.events.push_back({start,
+                               {static_cast<std::uint8_t>(core::midi::kNoteOn | channel), pitch,
+                                static_cast<std::uint8_t>(audition.velocity)}});
+        clip.events.push_back({start + (ticks * kHeldParts / kNoteParts),
+                               {static_cast<std::uint8_t>(core::midi::kNoteOff | channel), pitch, 0}});
     }
     return {.render = instrumentRender(instrument, std::move(clip), kAuditionTempo, audition.sampleRate),
             .frames = noteFrame(audition, count),
@@ -201,10 +208,12 @@ void registerAuditionAction(Registry& registry, ProjectController& controller) {
         {.id = kVoicesAuditionAction,
          .title = "Preview voice",
          .description =
-             "Renders notes through a temporary copy of the track's instrument set to a voice, the exact text of a "
-             "choice of its first param with choices or of param, by default its current one. The track and the "
-             "project stay as they are. notes default to MIDI notes 36, 48, 60, 72 and 84, each held for 3/4 of "
-             "seconds (default 1). Returns per note the peak, the active RMS, the spectral centroid in Hz and the "
+             "Renders notes through a temporary copy of the track's instrument set to a voice, the text of a choice "
+             "of its first param with choices or of param, by default its current one. The track and the project "
+             "stay as they are. notes default to MIDI notes 36, 48, 60, 72 and 84, each held for 3/4 of seconds "
+             "(default 1), up to 128 notes and 320 seconds in all. A param whose choices play on one channel, such "
+             "as the General MIDI Drum kit on channel 10, renders on that channel. Returns per note the peak, the "
+             "active RMS, the spectral centroid in Hz and the "
              "harmonic share: the energy near multiples of the note's pitch over all energy, which a voice with "
              "decode artifacts or noise reads low. path writes the render to a WAV, and play plays it on the track.",
          .aliases = {"audition voice", "audition sound", "hear voice", "screen voices"},
@@ -213,9 +222,15 @@ void registerAuditionAction(Registry& registry, ProjectController& controller) {
          .schema = {{"required", {"track"}},
                     {"properties",
                      {{"track", {{"type", "string"}}},
-                      {"voice", {{"type", "string"}, {"description", "the exact text of one of the param's choices"}}},
+                      {"voice",
+                       {{"type", "string"},
+                        {"description", "one of the param's choices, exact or the only case-insensitive match"}}},
                       {"param", {{"type", "integer"}, {"description", "a param id from instrument.params"}}},
-                      {"notes", {{"type", "array"}, {"items", {{"type", "integer"}}}}},
+                      {"notes",
+                       {{"type", "array"},
+                        {"minItems", 1},
+                        {"maxItems", kMaxNotes},
+                        {"items", {{"type", "integer"}, {"minimum", 0}, {"maximum", kMaxMidi}}}}},
                       {"seconds", {{"type", "number"}}},
                       {"velocity", {{"type", "integer"}}},
                       {"path", {{"type", "string"}}},

@@ -1,11 +1,14 @@
 #pragma once
 
 #include <QWindow>
+#include <cstddef>
 #include <cstdint>
 #include <map>
 #include <memory>
 #include <nlohmann/json.hpp>
+#include <optional>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -24,6 +27,18 @@ struct ParamSet {
     double value = 0.0;
     std::string text;
 };
+
+// A param whose choices the instrument plays on one MIDI channel, from 1, as General MIDI plays its drum kits on 10.
+struct ChannelParam {
+    int channel = 1;
+    std::string_view description;
+};
+
+[[nodiscard]] std::optional<ChannelParam> channelParam(const model::PluginSlot& slot, std::uint32_t param);
+
+// The index of the choice the text names: the exact match, else the only case-insensitive match. Throws AppError naming
+// up to three close choices when there is neither.
+[[nodiscard]] std::size_t choiceIndex(const engine::ClapParam& info, const std::string& text);
 
 // The live CLAP instrument of every track whose slot names one, with its editor window. A track keeps its instrument
 // while its slot names the same plugin, so the plugin keeps the state the user gave it since the project loaded.

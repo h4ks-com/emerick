@@ -2,7 +2,9 @@
 #include <chrono>
 #include <cmath>
 #include <filesystem>
+#include <ranges>
 #include <string>
+#include <vector>
 
 #include "emerick/app/audio_file.hpp"
 #include "emerick/app/plugin_actions.hpp"
@@ -72,4 +74,30 @@ TEST_CASE("voices.audition plays the track's current voice by default, writes a 
 
     CHECK_THROWS_AS(rig.run("voices.audition", {{"track", rig.id}, {"voice", "No Such Voice"}}), AppError);
     CHECK_THROWS_AS(rig.run("voices.audition", {{"track", rig.id}, {"notes", {200}}}), AppError);
+}
+
+TEST_CASE("voices.audition plays a General MIDI drum kit on channel 10 and takes a voice in any case") {
+    GeneralMidiRig rig;
+    const Json piano = rig.run("voices.audition", {{"track", rig.id}, {"notes", {42}}});
+    const Json hiHat =
+        rig.run("voices.audition", {{"track", rig.id}, {"param", 1}, {"voice", "standard"}, {"notes", {42}}});
+    CHECK(hiHat.at("voice") == "Standard");
+    CHECK(hiHat.at("notes")[0].at("centroidHz").get<double>() >
+          4 * piano.at("notes")[0].at("centroidHz").get<double>());
+}
+
+TEST_CASE("voices.audition takes every MIDI note and caps the render at 320 seconds") {
+    GeneralMidiRig rig;
+    const Json notes = std::views::iota(0, 128) | std::ranges::to<std::vector>();
+    CHECK(rig.run("voices.audition", {{"track", rig.id}, {"notes", notes}, {"seconds", 0.1}}).at("notes").size() ==
+          128);
+    Json tooMany = notes;
+    tooMany.push_back(60);
+    CHECK_THROWS_AS(rig.run("voices.audition", {{"track", rig.id}, {"notes", tooMany}, {"seconds", 0.1}}), AppError);
+    try {
+        rig.run("voices.audition", {{"track", rig.id}, {"notes", notes}, {"seconds", 10}});
+        FAIL("a render over 320 seconds must throw");
+    } catch (const AppError& error) {
+        CHECK(std::string{error.what()}.contains("memory"));
+    }
 }

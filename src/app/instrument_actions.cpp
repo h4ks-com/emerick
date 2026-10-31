@@ -167,7 +167,8 @@ void registerInstrumentActions(Registry& registry, ProjectController& controller
         {.id = "instrument.setParam",
          .title = "Set instrument setting",
          .description = "Sets a param of the track's CLAP instrument, such as the General MIDI sound, as one undo "
-                        "step. A stepped param also takes the exact text of one of its choices, such as \"Clavi\". "
+                        "step. A stepped param also takes the text of one of its choices, such as \"Clavi\", exact "
+                        "or the only case-insensitive match. "
                         "The instrument's saved state keeps the value.",
          .aliases = {"pick sound", "change sound", "set plugin param"},
          .category = "Tracks",
@@ -175,7 +176,7 @@ void registerInstrumentActions(Registry& registry, ProjectController& controller
                     {"properties",
                      {{"track", {{"type", "string"}}},
                       {"param", {{"type", "integer"}, {"description", "a param id from instrument.params"}}},
-                      {"value", {{"description", "a number, or the exact text of one of the param's choices"}}}}}},
+                      {"value", {{"description", "a number, or the text of one of the param's choices"}}}}}},
          .run = [&registry, &controller, &nav](const Json& params) {
              const model::TrackId id = instrumentTrack(registry, controller, nav, params);
              const auto paramId = param<std::uint32_t>(params, "param");

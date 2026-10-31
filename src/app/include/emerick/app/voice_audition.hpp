@@ -24,6 +24,8 @@ struct Audition {
     double value = 0;
     std::string voice;
     std::vector<int> notes;
+    // The MIDI channel, from 1, the instrument plays the param's choices on.
+    int channel = 1;
     double seconds = 1;
     int velocity = 100;
     double sampleRate = 48000;

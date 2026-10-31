@@ -285,6 +285,8 @@ Rectangle {
                             return {id: "instrument.setParam", params: {track: panel.trackId, param: setting.modelData.id, value: value}}
                         }
 
+                        readonly property bool previewsVoice:
+                            panel.instrument?.params.findIndex(param => param.choices.length > 0) === index
                         readonly property bool isSwitch: setting.modelData.stepped && setting.modelData.min === 0
                                                          && setting.modelData.max === 1
                         RouteLabel { text: setting.modelData.name; visible: !setting.isSwitch }
@@ -315,6 +317,9 @@ Rectangle {
                                 currentId: String(Math.round(setting.modelData.value))
                                 missingText: setting.modelData.text
                                 toolTip: Registry.actionInfo("instrument.setParam").title
+                                previewName: setting.previewsVoice ? "voices.audition:" + panel.trackId : ""
+                                previewBusy: VoicePreview.busyTrack === panel.trackId
+                                onPreviewRequested: entry => VoicePreview.play(panel.trackId, setting.modelData.id, entry.name)
                                 onPicked: entry => {
                                     const call = setting.set(Number(entry.id))
                                     Registry.runAction(call.id, call.params)

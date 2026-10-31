@@ -66,6 +66,7 @@ qt_add_library(emerick_app STATIC
     include/emerick/app/track_meters.hpp
     include/emerick/app/transport_clock.hpp
     include/emerick/app/ui_api.hpp
+    include/emerick/app/voice_audition.hpp
     include/emerick/app/waveform.hpp
     insert_actions.cpp
     instrument_actions.cpp
@@ -110,6 +111,7 @@ qt_add_library(emerick_app STATIC
     track_meters.cpp
     transport_clock.cpp
     ui_api.cpp
+    voice_audition.cpp
     waveform.cpp)
 target_include_directories(emerick_app PUBLIC include)
 qt_add_resources(emerick_app example_scripts
@@ -163,7 +165,8 @@ if(EMERICK_BUILD_TESTS)
         tests/summary_test.cpp
         tests/take_preview_test.cpp
         tests/track_hooks_test.cpp
-        tests/transport_test.cpp)
+        tests/transport_test.cpp
+        tests/voice_audition_test.cpp)
     target_link_libraries(emerick_app_tests
         PRIVATE emerick_app emerick_test_clap emerick_gm_clap emerick_voices_clap Qt6::Network Qt6::Qml Qt6::QuickControls2 PkgConfig::SNDFILE libremidi)
 endif()

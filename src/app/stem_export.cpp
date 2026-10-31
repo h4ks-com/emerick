@@ -268,6 +268,18 @@ std::optional<MixLevels> exportMix(const engine::Session& session, const Registr
 
 OfflineRender::OfflineRender(engine::Session session, const Registry& registry, const PlaybackContext& context,
                              double sampleRate) {
+    instruments_ = attachInstruments(session, *context.document);
+    chase_ = chaseStart(session, registry, context);
+    start(std::move(session), sampleRate);
+}
+
+OfflineRender::OfflineRender(engine::Session session, std::vector<std::shared_ptr<engine::ClapInstrument>> instruments,
+                             double sampleRate)
+    : instruments_(std::move(instruments)) {
+    start(std::move(session), sampleRate);
+}
+
+void OfflineRender::start(engine::Session session, double sampleRate) {
     for (engine::Track& track : session.tracks) {
         track.armed = false;
         track.monitor = false;
@@ -277,8 +289,6 @@ OfflineRender::OfflineRender(engine::Session session, const Registry& registry, 
         track.midiThru = false;
     }
     session.clockPorts.clear();
-    instruments_ = attachInstruments(session, *context.document);
-    chase_ = chaseStart(session, registry, context);
     auto backend =
         std::make_unique<engine::OfflineBackend>(std::vector<engine::AudioDeviceInfo>{{kRenderDevice, "Render", 0, 2}});
     offline_ = backend.get();
@@ -343,6 +353,23 @@ void OfflineRender::idleInstruments() {
     for (const auto& instrument : instruments_) {
         instrument->idle();
     }
+}
+
+std::vector<std::vector<float>> renderInstrument(std::shared_ptr<engine::ClapInstrument> instrument,
+                                                 engine::MidiClip clip, const core::TempoMap& tempo,
+                                                 engine::Frames frames, double sampleRate,
+                                                 const std::stop_token& stop) {
+    engine::Track track;
+    track.id = "render";
+    track.kind = engine::TrackKind::midi;
+    track.audioOut = renderRoute();
+    track.midiClips.push_back(std::move(clip));
+    track.instrument = instrument;
+    engine::Session session;
+    session.tempo = tempo;
+    session.tracks.push_back(std::move(track));
+    OfflineRender render(std::move(session), {std::move(instrument)}, sampleRate);
+    return render.process(frames, [&render] { render.idleInstruments(); }, stop);
 }
 
 std::unique_ptr<OfflineRender> trackRender(const engine::Session& session, const Registry& registry,

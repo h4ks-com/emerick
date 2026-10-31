@@ -41,3 +41,38 @@ TEST_CASE("the inspector shows the Sound picker of a General MIDI track, and pic
     CHECK(processUntil([&] { return picker->property("displayText").toString() == "Acoustic Grand Piano"; }));
     MainWindow::settle();
 }
+
+TEST_CASE("the highlighted sound shows a preview button that auditions it without picking it") {
+    const QTemporaryDir cache;
+    PluginCatalog catalog({.cacheFolder = cache.path().toStdString(), .scanner = EMERICK_CLAP_SCANNER, .folders = {}});
+    auto* main = new MainWindow([&catalog](ProjectRig& rig) {
+        registerPluginActions(rig.registry, rig.nav, catalog);
+        registerInstrumentActions(rig.registry, *rig.controller, rig.nav, catalog);
+        rig.registry.setSetting(kClapFoldersSetting, Json::array({bundledClapFolder(EMERICK_GM_APP_FOLDER).string()}));
+    });
+    const std::string id = main->rig.run("track.addInstrument", {{"plugin", kGeneralMidiPluginId}}).at("id");
+    main->rig.nav.setSelectedTrack(QString::fromStdString(id));
+    std::vector<Json> auditions;
+    QObject::connect(&main->rig.registry, &Registry::actionRan,
+                     [&](const std::string& action, const Json& params, ActionSource) {
+                         if (action == "voices.audition") {
+                             auditions.push_back(params);
+                         }
+                     });
+
+    QQuickItem* picker = main->item(QString::fromStdString("instrument.setParam:" + id + ":0"));
+    REQUIRE(QMetaObject::invokeMethod(picker, "open"));
+    for (const char letter : std::string{"violin"}) {
+        QTest::keyClick(main->window, letter);
+    }
+    QQuickItem* preview = main->item(QString::fromStdString("voices.audition:" + id + ":40"));
+    CHECK(preview->property("text").toString() == "Preview voice");
+    main->click(preview);
+    REQUIRE(auditions.size() == 1);
+    CHECK(auditions[0].at("voice") == "Violin");
+    CHECK(processUntil([&] { return main->rig.controller->engine().previewPlaying(); }));
+    CHECK(picker->property("popup").value<QObject*>()->property("opened").toBool());
+    CHECK(picker->property("displayText").toString() == "Acoustic Grand Piano");
+    QTest::keyClick(main->window, Qt::Key_Escape);
+    MainWindow::settle();
+}

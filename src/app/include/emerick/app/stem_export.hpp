@@ -60,6 +60,9 @@ public:
     };
 
     OfflineRender(engine::Session session, const Registry& registry, const PlaybackContext& context, double sampleRate);
+    // Renders a session whose tracks already hold their instruments, which this thread created.
+    OfflineRender(engine::Session session, std::vector<std::shared_ptr<engine::ClapInstrument>> instruments,
+                  double sampleRate);
     ~OfflineRender();
     OfflineRender(const OfflineRender&) = delete;
     OfflineRender& operator=(const OfflineRender&) = delete;
@@ -74,11 +77,20 @@ public:
     void idleInstruments();
 
 private:
+    void start(engine::Session session, double sampleRate);
+
     std::vector<std::shared_ptr<engine::ClapInstrument>> instruments_;
     std::vector<InstrumentMessage> chase_;
     engine::OfflineBackend* offline_ = nullptr;
     std::unique_ptr<engine::Engine> engine_;
 };
+
+// Plays the clip through the instrument, which this thread created, and returns frames of its stereo output from the
+// start. Returns no channels once stop is requested.
+std::vector<std::vector<float>> renderInstrument(std::shared_ptr<engine::ClapInstrument> instrument,
+                                                 engine::MidiClip clip, const core::TempoMap& tempo,
+                                                 engine::Frames frames, double sampleRate,
+                                                 const std::stop_token& stop = {});
 
 // Sets up the render of one track or bus as its stem plays.
 std::unique_ptr<OfflineRender> trackRender(const engine::Session& session, const Registry& registry,

@@ -8,6 +8,7 @@
 #include "emerick/app/action_params.hpp"
 #include "emerick/app/plugin_actions.hpp"
 #include "emerick/app/project_actions.hpp"
+#include "emerick/app/voice_audition.hpp"
 
 namespace emerick::app {
 
@@ -187,6 +188,7 @@ void registerInstrumentActions(Registry& registry, ProjectController& controller
                        [&set](model::Track& track) { track.instrument->state = std::move(set.state); });
              return Json{{"track", id.value}, {"param", paramId}, {"value", set.value}, {"text", set.text}};
          }});
+    registerAuditionAction(registry, controller);
 }
 
 }  // namespace emerick::app

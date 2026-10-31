@@ -18,6 +18,9 @@ Item {
     // Delete or Backspace before any typing emits deleteRequested instead of editing the empty search.
     property bool deletesWhenUntouched: false
     property bool touched: false
+    // With a name, the highlighted or hovered entry shows a play button named previewName + ":" + its id.
+    property string previewName
+    property bool previewBusy: false
     readonly property var current: model.find(entry => entry.id === currentId)
     readonly property string displayText: mixed ? "Mixed" : current !== undefined ? current.name : missingText
     readonly property alias popup: popup
@@ -36,6 +39,7 @@ Item {
     signal picked(var entry)
     signal typed(string text)
     signal deleteRequested
+    signal previewRequested(var entry)
 
     implicitWidth: Theme.labelWidth
     implicitHeight: Theme.buttonHeight
@@ -167,7 +171,9 @@ Item {
                     list.currentIndex = index
                     control.accept()
                 }
+                readonly property bool previewShown: control.previewName !== "" && (row.highlighted || row.hovered)
                 contentItem: Text {
+                    rightPadding: row.previewShown ? Theme.buttonHeight : 0
                     text: row.modelData.name
                     color: row.modelData.dim ? Theme.inkDim : Theme.ink
                     font.pixelSize: Theme.textLabel
@@ -177,6 +183,19 @@ Item {
                 background: Rectangle {
                     radius: Theme.radiusClip
                     color: row.highlighted || row.hovered ? Theme.lift : Theme.clear
+                }
+                ChromeButton {
+                    objectName: control.previewName + ":" + row.modelData.id
+                    actionId: "voices.audition"
+                    visible: row.previewShown
+                    anchors.right: parent.right
+                    height: parent.height
+                    focusPolicy: Qt.NoFocus
+                    iconName: "play"
+                    iconColor: Theme.inkDim
+                    active: control.previewBusy
+                    activeColor: Theme.inkDim
+                    run: () => control.previewRequested(row.modelData)
                 }
             }
             Text {

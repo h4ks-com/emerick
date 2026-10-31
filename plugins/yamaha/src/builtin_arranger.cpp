@@ -2,16 +2,12 @@
 #include <array>
 #include <filesystem>
 #include <format>
-#include <fstream>
 #include <map>
 #include <memory>
 #include <optional>
 #include <ranges>
-#include <span>
 #include <string>
 #include <string_view>
-#include <system_error>
-#include <tuple>
 #include <vector>
 
 #include "emerick/app/action_params.hpp"
@@ -33,7 +29,6 @@ namespace {
 using app::AppError;
 using app::Json;
 
-constexpr std::size_t kFirstPart = 8;
 // MegaVoices play strum and fret noises from C6 (MIDI 96) up, which a General MIDI sound plays as ringing notes.
 constexpr int kMegaVoiceBank = 8;
 constexpr int kHighestMegaVoiceNote = 95;
@@ -230,7 +225,7 @@ using PartTracks = std::array<std::optional<model::TrackId>, arranger::kParts>;
 PartTracks partTracks(const model::Document& document, const model::TrackId& style) {
     PartTracks tracks;
     for (std::size_t part = 0; part < arranger::kParts; ++part) {
-        const int channel = genos2Parts().at(kFirstPart + part).channel;
+        const int channel = genos2Parts().at(static_cast<std::size_t>(arranger::kFirstPartChannel) + part).channel;
         const auto found = std::ranges::find_if(document.tracks, [&](const model::Track& track) {
             return track.midiIn.sourceTrack == style && track.midiIn.channel == channel;
         });
@@ -315,7 +310,7 @@ Json setup(BuiltinArranger& builtin, app::Registry& registry, app::ProjectContro
         const auto summary = loadedStyle(*controller.project().track(style));
         const PartTracks tracks = partTracks(controller.project().document(), style);
         for (std::size_t part = 0; part < arranger::kParts; ++part) {
-            const Part& info = genos2Parts().at(kFirstPart + part);
+            const Part& info = genos2Parts().at(static_cast<std::size_t>(arranger::kFirstPartChannel) + part);
             if (tracks.at(part)) {
                 continue;
             }

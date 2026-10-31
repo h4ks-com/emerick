@@ -600,11 +600,12 @@ TEST_CASE("style notes count what each part plays per section and map drum keys 
     const Json pad = rig.run("arranger.style.notes", {{"section", "Main B"}, {"part", "Pad"}});
     CHECK(pad.at("sections").at(0).at("parts").at(0).at("noteCount") == 0);
 
+    CHECK(rig.run("arranger.style.notes", {{"section", "main b"}, {"part", "rhythm 1"}}) == mainB);
     CHECK_THROWS_WITH(rig.run("arranger.style.notes", {{"section", "Main D"}}),
-                      Catch::Matchers::StartsWith("unknown section Main D, use one of Main A"));
-    CHECK_THROWS_WITH(rig.run("arranger.style.notes", {{"part", "Lead"}}),
-                      "unknown part Lead, use one of Rhythm 1, Rhythm 2, Bass, Chord 1, Chord 2, Pad, Phrase 1, "
-                      "Phrase 2");
+                      Catch::Matchers::StartsWith("section has no choice \"Main D\", use one of Main A, Main B"));
+    CHECK_THROWS_WITH(
+        rig.run("arranger.style.notes", {{"part", "Lead"}}),
+        Catch::Matchers::EndsWith("use one of Rhythm 1, Rhythm 2, Bass, Chord 1, Chord 2, Pad, Phrase 1, Phrase 2"));
 }
 
 TEST_CASE("style notes name a part's voice as the pack instrument playing it names it") {

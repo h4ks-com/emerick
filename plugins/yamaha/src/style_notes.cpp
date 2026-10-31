@@ -3,15 +3,14 @@
 #include <algorithm>
 #include <cstddef>
 #include <functional>
-#include <iterator>
 #include <map>
-#include <numeric>
 #include <optional>
 #include <ranges>
 #include <string>
 #include <string_view>
 #include <vector>
 
+#include "emerick/app/action_params.hpp"
 #include "emerick/yamaha/chart.hpp"
 #include "emerick/yamaha/profile.hpp"
 
@@ -19,22 +18,21 @@ namespace emerick::yamaha {
 
 namespace {
 
-using app::AppError;
 using app::Json;
 
-constexpr std::size_t kFirstPart = 8;
+const Part& partInfo(std::size_t part) {
+    return genos2Parts().at(static_cast<std::size_t>(arranger::kFirstPartChannel) + part);
+}
 
-std::string_view partName(std::size_t part) { return genos2Parts().at(kFirstPart + part).name; }
+std::string_view partName(std::size_t part) { return partInfo(part).name; }
 
 std::string sectionLabel(const arranger::StyleSection& section) {
     return sectionName({.at = 0, .kind = section.kind, .variation = section.variation, .bars = 0});
 }
 
-std::string joined(const std::vector<std::string>& names) {
-    return names.empty()
-               ? std::string{}
-               : std::accumulate(std::next(names.begin()), names.end(), names.front(),
-                                 [](const std::string& all, const std::string& name) { return all + ", " + name; });
+std::size_t chosenIndex(std::string_view name, const std::vector<std::string_view>& choices, const std::string& text) {
+    const std::string known = choices | std::views::join_with(std::string_view{", "}) | std::ranges::to<std::string>();
+    return app::choiceIndex(name, choices, text, "use one of " + known);
 }
 
 std::vector<const arranger::StyleSection*> chosenSections(const arranger::Style& style,
@@ -44,27 +42,20 @@ std::vector<const arranger::StyleSection*> chosenSections(const arranger::Style&
     if (!name) {
         return all;
     }
-    const auto found = std::ranges::find(all, *name, [](const auto* section) { return sectionLabel(*section); });
-    if (found == all.end()) {
-        const auto names = all | std::views::transform([](const auto* section) { return sectionLabel(*section); }) |
-                           std::ranges::to<std::vector>();
-        throw AppError("unknown section " + *name + ", use one of " + joined(names));
-    }
-    return {*found};
+    const std::vector<std::string> labels =
+        all | std::views::transform([](const auto* section) { return sectionLabel(*section); }) |
+        std::ranges::to<std::vector>();
+    return {all.at(chosenIndex("section", labels | std::ranges::to<std::vector<std::string_view>>(), *name))};
 }
 
 std::optional<std::size_t> chosenPart(const std::optional<std::string>& name) {
     if (!name) {
         return std::nullopt;
     }
-    const auto parts = std::views::iota(std::size_t{0}, std::size_t{arranger::kParts});
-    const auto found = std::ranges::find(parts, std::string_view{*name}, partName);
-    if (found == parts.end()) {
-        const auto names = parts | std::views::transform([](std::size_t part) { return std::string{partName(part)}; }) |
-                           std::ranges::to<std::vector>();
-        throw AppError("unknown part " + *name + ", use one of " + joined(names));
-    }
-    return *found;
+    return chosenIndex("part",
+                       std::views::iota(std::size_t{0}, std::size_t{arranger::kParts}) |
+                           std::views::transform(partName) | std::ranges::to<std::vector>(),
+                       *name);
 }
 
 Json voiceJson(const std::optional<arranger::PartVoice>& voice, const VoiceList& list,
@@ -113,7 +104,7 @@ Json partJson(std::size_t part, const std::map<int, int>& notes, const VoiceList
               const std::optional<arranger::PartVoice>& voice, const std::optional<std::string>& packName) {
     const int count = std::ranges::fold_left(notes | std::views::values, 0, std::plus{});
     Json result{{"part", partName(part)},
-                {"channel", genos2Parts().at(kFirstPart + part).channel},
+                {"channel", partInfo(part).channel},
                 {"voice", voiceJson(voice, list, packName)},
                 {"noteCount", count}};
     if (voice && gm::isDrumBank(voice->bankMsb)) {

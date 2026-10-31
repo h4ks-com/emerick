@@ -10,7 +10,18 @@
 namespace emerick::engine {
 
 // The built-in insert effects. Every one reports no latency, though the limiter delays its track by its lookahead.
-enum class EffectType : std::uint8_t { eq, compressor, delay, reverb, limiter };
+enum class EffectType : std::uint8_t {
+    eq,
+    compressor,
+    delay,
+    reverb,
+    limiter,
+    gate,
+    filter,
+    saturation,
+    chorus,
+    utility
+};
 
 enum class ParamKind : std::uint8_t { number, toggle, choice };
 
@@ -52,6 +63,19 @@ enum class CompressorParam : std::uint8_t { threshold, ratio, attack, release, k
 enum class DelayParam : std::uint8_t { time, sync, note, feedback, mix, highCut };
 enum class ReverbParam : std::uint8_t { size, decay, damping, preDelay, mix };
 enum class LimiterParam : std::uint8_t { ceiling, release, gain };
+enum class GateParam : std::uint8_t { threshold, range, attack, hold, release };
+enum class FilterParam : std::uint8_t { mode, cutoff, resonance, slope };
+enum class SaturationParam : std::uint8_t { drive, character, output, mix };
+enum class ChorusParam : std::uint8_t { rate, depth, delay, feedback, mix };
+enum class UtilityParam : std::uint8_t { gain, width, mono, invertLeft, invertRight, balance };
+
+enum class FilterMode : std::uint8_t { lowPass, highPass, bandPass };
+inline constexpr std::array<std::string_view, 3> kFilterModes{"Low pass", "High pass", "Band pass"};
+inline constexpr std::array<std::string_view, 2> kFilterSlopes{"12 dB/oct", "24 dB/oct"};
+enum class SaturationCharacter : std::uint8_t { softClip, tape, tube };
+inline constexpr std::array<std::string_view, 3> kSaturationCharacters{"Soft clip", "Tape", "Tube"};
+inline constexpr float kMaxChorusDelayMs = 30.0F;
+inline constexpr float kMaxChorusDepthMs = 5.0F;
 
 // A synced delay's note values and their lengths in quarter notes.
 inline constexpr std::array<std::string_view, 13> kNoteNames{"1/1",  "1/2",  "1/2.", "1/4",   "1/4.",  "1/4t", "1/8",
@@ -131,6 +155,46 @@ inline constexpr std::array kLimiterParams{
     EffectParam{"release", "Release", "ms", 1, 1000, 50, ParamKind::number, true},
     EffectParam{"gain", "Input gain", "dB", -12, 24, 0},
 };
+
+inline constexpr std::array kGateParams{
+    EffectParam{"threshold", "Threshold", "dB", -80, 0, -40},
+    EffectParam{"range", "Range", "dB", 0, 80, 80},
+    EffectParam{"attack", "Attack", "ms", 0.01F, 50, 1, ParamKind::number, true},
+    EffectParam{"hold", "Hold", "ms", 0, 500, 20},
+    EffectParam{"release", "Release", "ms", 5, 2000, 100, ParamKind::number, true},
+};
+
+inline constexpr std::array kFilterParams{
+    EffectParam{"mode", "Mode", "", 0, kFilterModes.size() - 1, 0, ParamKind::choice, false, kFilterModes},
+    EffectParam{"cutoff", "Cutoff", "Hz", kMinFrequency, kMaxFrequency, 2000, ParamKind::number, true},
+    EffectParam{"resonance", "Resonance", "%", 0, 100, 0},
+    EffectParam{"slope", "Slope", "", 0, kFilterSlopes.size() - 1, 0, ParamKind::choice, false, kFilterSlopes},
+};
+
+inline constexpr std::array kSaturationParams{
+    EffectParam{"drive", "Drive", "dB", 0, 36, 6},
+    EffectParam{"character", "Character", "", 0, kSaturationCharacters.size() - 1, 0, ParamKind::choice, false,
+                kSaturationCharacters},
+    EffectParam{"output", "Output", "dB", -24, 24, 0},
+    EffectParam{"mix", "Mix", "%", 0, 100, 100},
+};
+
+inline constexpr std::array kChorusParams{
+    EffectParam{"rate", "Rate", "Hz", 0.05F, 5, 0.8F, ParamKind::number, true},
+    EffectParam{"depth", "Depth", "%", 0, 100, 50},
+    EffectParam{"delay", "Delay", "ms", 5, kMaxChorusDelayMs, 12},
+    EffectParam{"feedback", "Feedback", "%", 0, 90, 0},
+    EffectParam{"mix", "Mix", "%", 0, 100, 50},
+};
+
+inline constexpr std::array kUtilityParams{
+    EffectParam{"gain", "Gain", "dB", -60, 24, 0},
+    EffectParam{"width", "Width", "%", 0, 200, 100},
+    EffectParam{"mono", "Mono", "", 0, 1, 0, ParamKind::toggle},
+    EffectParam{"invertLeft", "Invert left", "", 0, 1, 0, ParamKind::toggle},
+    EffectParam{"invertRight", "Invert right", "", 0, 1, 0, ParamKind::toggle},
+    EffectParam{"balance", "Balance", "%", -100, 100, 0},
+};
 // NOLINTEND(readability-magic-numbers)
 
 // We index the table by EffectType, so its rows follow the enum's order.
@@ -140,6 +204,11 @@ inline constexpr std::array kEffects{
     EffectSpec{EffectType::delay, "delay", "Delay", kDelayParams},
     EffectSpec{EffectType::reverb, "reverb", "Reverb", kReverbParams},
     EffectSpec{EffectType::limiter, "limiter", "Limiter", kLimiterParams},
+    EffectSpec{EffectType::gate, "gate", "Gate", kGateParams},
+    EffectSpec{EffectType::filter, "filter", "Filter", kFilterParams},
+    EffectSpec{EffectType::saturation, "saturation", "Saturation", kSaturationParams},
+    EffectSpec{EffectType::chorus, "chorus", "Chorus", kChorusParams},
+    EffectSpec{EffectType::utility, "utility", "Utility", kUtilityParams},
 };
 
 const EffectSpec& effectSpec(EffectType type);

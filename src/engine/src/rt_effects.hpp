@@ -10,6 +10,7 @@
 #include "emerick/engine/effects.hpp"
 #include "emerick/engine/session.hpp"
 #include "rt_limiter.hpp"
+#include "rt_standard_effects.hpp"
 
 namespace emerick::engine {
 
@@ -141,7 +142,7 @@ private:
 
     EffectType type_;
     EffectContext context_;
-    std::variant<Equalizer, Compressor, Delay, Reverb, Limiter> processor_;
+    std::variant<Equalizer, Compressor, Delay, Reverb, Limiter, Gate, Filter, Saturation, Chorus, Utility> processor_;
     EffectParams current_{};
     bool primed_ = false;
     float wet_ = 1.0F;

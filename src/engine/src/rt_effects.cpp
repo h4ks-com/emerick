@@ -382,8 +382,8 @@ void Reverb::process(std::span<float* const> channels, Frames offset, Frames fra
 
 namespace {
 
-std::variant<Equalizer, Compressor, Delay, Reverb, Limiter> makeProcessor(EffectType type, std::size_t channels,
-                                                                          double sampleRate) {
+std::variant<Equalizer, Compressor, Delay, Reverb, Limiter, Gate, Filter, Saturation, Chorus, Utility> makeProcessor(
+    EffectType type, std::size_t channels, double sampleRate) {
     switch (type) {
         case EffectType::eq:
             return Equalizer{channels};
@@ -395,6 +395,16 @@ std::variant<Equalizer, Compressor, Delay, Reverb, Limiter> makeProcessor(Effect
             return Reverb{channels, sampleRate};
         case EffectType::limiter:
             return Limiter{channels, sampleRate};
+        case EffectType::gate:
+            return Gate{};
+        case EffectType::filter:
+            return Filter{channels};
+        case EffectType::saturation:
+            return Saturation{channels};
+        case EffectType::chorus:
+            return Chorus{channels, sampleRate};
+        case EffectType::utility:
+            return Utility{};
     }
     return Equalizer{channels};
 }

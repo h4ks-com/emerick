@@ -131,3 +131,34 @@ TEST_CASE("an insert's number and switch params are automation params, and their
     CHECK(lanes.front().insert == eq);
     CHECK(lanes.front().param == 14);
 }
+
+TEST_CASE("each standard effect adds by its type, takes a param and automates another") {
+    struct Case {
+        std::string type;
+        std::string param;
+        Json value;
+        double expected;
+        std::string automated;
+        std::size_t automatedIndex;
+    };
+    const std::vector<Case> cases{{"gate", "threshold", -30, -30.0, "release", 4},
+                                  {"filter", "slope", "24 dB/oct", 1.0, "cutoff", 1},
+                                  {"saturation", "character", "Tube", 2.0, "drive", 0},
+                                  {"chorus", "rate", 2, 2.0, "mix", 4},
+                                  {"utility", "invertLeft", 1, 1.0, "width", 1}};
+    for (const Case& tested : cases) {
+        INFO(tested.type);
+        ProjectRig rig;
+        const std::string vox = rig.run("track.addAudio").at("id");
+        const std::string id = rig.run("insert.add", {{"track", vox}, {"type", tested.type}}).at("id");
+        CHECK(rig.run("insert.setParam", {{"param", id + "." + tested.param}, {"value", tested.value}})
+                  .at("params")
+                  .at(tested.param) == tested.expected);
+        rig.run("automation.addPoint",
+                {{"track", vox}, {"param", id + "." + tested.automated}, {"tick", 0}, {"value", 30.0}});
+        const auto lanes = toSession(rig.controller->project().document(), rig.registry, {}).tracks.at(0).automation;
+        REQUIRE(lanes.size() == 1);
+        CHECK(lanes.front().insert == id);
+        CHECK(lanes.front().param == tested.automatedIndex);
+    }
+}

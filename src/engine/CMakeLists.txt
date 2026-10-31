@@ -19,6 +19,7 @@ add_library(emerick_engine
     src/rt_limiter.cpp
     src/rt_midi.cpp
     src/rt_process.cpp
+    src/rt_standard_effects.cpp
     src/snapshot_builder.cpp
     src/spectrum.cpp
     src/take_recorder.cpp
@@ -44,7 +45,7 @@ emerick_target(emerick-clap-scanner)
 if(EMERICK_BUILD_TESTS)
     emerick_test(emerick_engine_tests tests/audio_analysis_test.cpp tests/automation_test.cpp tests/bus_test.cpp tests/clap_test.cpp tests/effects_test.cpp tests/engine_test.cpp tests/fade_test.cpp tests/gm_test.cpp tests/interleaved_io_test.cpp
         tests/metronome_test.cpp tests/cycle_test.cpp tests/midi_chase_test.cpp tests/midi_route_test.cpp
-        tests/recording_test.cpp tests/spectrum_test.cpp tests/stream_health_test.cpp tests/take_progress_test.cpp)
+        tests/recording_test.cpp tests/spectrum_test.cpp tests/standard_effects_test.cpp tests/stream_health_test.cpp tests/take_progress_test.cpp)
     target_include_directories(emerick_engine_tests PRIVATE src)
 
     # Test instruments as CLAP bundles: a sine synth, and copies whose entry crashes or hangs.

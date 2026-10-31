@@ -123,5 +123,6 @@ Store loadStore(const std::filesystem::path& folder);
 
 // A Yamaha note name such as C-2, F#3 or G8, where C-2 is MIDI note 0.
 std::optional<int> yamahaNote(std::string_view name);
+std::string yamahaNoteName(int note);
 
 }  // namespace emerick::voices

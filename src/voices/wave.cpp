@@ -9,6 +9,7 @@
 #include <fstream>
 #include <ranges>
 #include <string_view>
+#include <utility>
 
 namespace emerick::voices {
 
@@ -109,6 +110,7 @@ constexpr std::size_t kFrameBytes = 32;
 constexpr std::size_t kFrameWords = 16;
 constexpr std::size_t kModeCount = 8;
 constexpr int kLastScale = 63;
+constexpr std::size_t kNoisyOneIn = 200;
 
 using Words = std::array<std::uint16_t, kFrameWords>;
 using Params = std::array<std::uint16_t, 3>;
@@ -200,8 +202,14 @@ Params paramsAfter(const Words& words) {
             static_cast<std::uint16_t>(packed[2])};
 }
 
-void decodeFrame(const Words& words, const FrameParams& frame, const Mode& mode, std::array<int, 3>& history,
-                 std::vector<float>& samples) {
+struct Decoder {
+    std::array<int, 3> history;
+    std::vector<float> samples;
+    std::size_t overflows = 0;
+};
+
+void decodeFrame(const Words& words, const FrameParams& frame, const Mode& mode, Decoder& decoder) {
+    auto& history = decoder.history;
     const auto [a1, a2, a3] = frame.coefficients;
     const unsigned mask = (1U << mode.bits) - 1;
     for (const std::uint16_t word : words) {
@@ -209,9 +217,11 @@ void decodeFrame(const Words& words, const FrameParams& frame, const Mode& mode,
         const auto emit = [&](int level) {
             const int prediction = std::clamp(
                 ((history[0] * a1) >> 8) + ((history[1] * a2) >> 8) + ((history[2] * a3) >> 8), -0x20000, 0x1FFFF);
-            const int sample = std::clamp((((scale * level) >> 8) + prediction) >> 2, -0x8000, 0x7FFF);
+            const int unclamped = (((scale * level) >> 8) + prediction) >> 2;
+            const int sample = std::clamp(unclamped, -0x8000, 0x7FFF);
+            decoder.overflows += sample != unclamped ? 1 : 0;
             history = {sample, history[0], history[1]};
-            samples.push_back(static_cast<float>(sample) / kFullScale);
+            decoder.samples.push_back(static_cast<float>(sample) / kFullScale);
         };
         for (unsigned shift = 0; shift + mode.bits <= 12; shift += mode.bits) {
             const unsigned code = (word >> shift) & mask;
@@ -234,19 +244,20 @@ std::optional<Wave> decodeWxc1(Bytes wxc1, Bytes apcp) {
     const auto stored = [&](std::size_t index) {
         return int{static_cast<std::int16_t>(be16(wxc1, kWxcHistory + (2 * index)))};
     };
-    std::array<int, 3> history{stored(0), stored(1), stored(2)};
-    Wave wave;
+    Decoder decoder{.history = {stored(0), stored(1), stored(2)}, .samples = {}, .overflows = 0};
     std::vector<std::uint32_t> frameStarts;
     for (std::size_t at = kWxcHeader; at + kFrameBytes <= wxc1.size(); at += kFrameBytes) {
-        frameStarts.push_back(static_cast<std::uint32_t>(wave.samples.size()));
+        frameStarts.push_back(static_cast<std::uint32_t>(decoder.samples.size()));
         const FrameParams frame = unpack(params);
         Words words{};
         for (std::size_t word = 0; word < kFrameWords; ++word) {
             words.at(word) = descramble(be16(wxc1, at + (2 * word)));
         }
-        decodeFrame(words, frame, kModes.at(frame.mode), history, wave.samples);
+        decodeFrame(words, frame, kModes.at(frame.mode), decoder);
         params = paramsAfter(words);
     }
+    const bool noisy = decoder.overflows * kNoisyOneIn > decoder.samples.size();
+    Wave wave{.samples = std::move(decoder.samples), .noisy = noisy};
     // The header names the loop by frame: it runs from the start of its first frame to the end of its last.
     const std::uint32_t loopFirst = be32(wxc1, 6);
     const std::uint32_t loopLast = be32(wxc1, 10);

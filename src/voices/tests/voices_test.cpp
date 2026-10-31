@@ -29,6 +29,7 @@ constexpr emerick::core::Frames kBlock = 480;
 constexpr std::uint32_t kVoice = 0;
 constexpr std::uint32_t kVolume = 1;
 constexpr std::uint32_t kFollow = 5;
+constexpr std::uint32_t kNoise = 6;
 using Message = std::array<std::uint8_t, 3>;
 
 // Runs the main thread until the plugin publishes the store its thread read, which rescans the params.
@@ -151,6 +152,25 @@ TEST_CASE("the expansion voices instrument loads through the CLAP host and lists
     CHECK(params[1].name == "Volume");
     CHECK(params[5].name == "Follow program changes");
     CHECK(params[5].choices == std::vector<std::string>{"Off", "On"});
+}
+
+TEST_CASE("the noise warning names the notes of the picked voice whose waves decode with noise") {
+    Rig rig;
+    const WxcParams runaway{.coefficients = {3000, -2946, 969}, .scale = 63, .mode = 0};
+    const std::string noisy = rig.store.addWave(wxc1Blob(44100.0, runaway, {WxcFrame{}}));
+    const std::string clean = rig.store.addWave(linearBlob(sine(440.0, 44100.0, 4410), 44100.0));
+    rig.store.addPack("Noisy Pack",
+                      {SyntheticVoice{.name = "Bass",
+                                      .zones = {SyntheticZone{.keyLo = "F1", .keyHi = "E3", .wave = noisy},
+                                                SyntheticZone{.keyLo = "F3", .wave = clean},
+                                                SyntheticZone{.keyHi = "C1", .wave = noisy}}}});
+    const auto instrument = rig.instrument({{"voice", {{"pack", "Noisy Pack"}, {"name", "Bass"}}}});
+    CHECK(instrument->paramText(kNoise, 0.0) ==
+          "Choose another voice for C-2 to C1, F1 to E3, where this voice's samples decode with noise");
+    CHECK(*instrument->paramValue(kNoise) == 1.0);
+    CHECK(instrument->params().size() == 6);
+
+    CHECK(rig.instrument(voiceNamed("Sine", 3))->paramText(kNoise, 0.0).empty());
 }
 
 TEST_CASE("a state that names a voice only by its bank and program picks the voice at that address") {

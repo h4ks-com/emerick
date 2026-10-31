@@ -132,6 +132,21 @@ void followVoicesFolder(app::Registry& registry, app::ProjectController& control
     QObject::connect(&registry, &app::Registry::settingsChanged, &controller, apply);
 }
 
+void warnNoisyVoices(app::Registry& registry, const app::ProjectController& controller) {
+    registry.addWarnings([&controller](const model::Document& document) {
+        std::vector<engine::SessionError> warnings;
+        for (const model::Track& track : document.tracks) {
+            const auto instrument = track.instrument && track.instrument->pluginId == kVoicesPluginId
+                                        ? controller.instruments().find(track.id)
+                                        : nullptr;
+            if (std::string text = instrument ? instrument->paramText(voices::kNoiseParam, 0.0) : ""; !text.empty()) {
+                warnings.push_back({.trackId = track.id.value, .message = std::move(text)});
+            }
+        }
+        return warnings;
+    });
+}
+
 // The last section plays its bars, or an Ending without bars plays the loaded style's Ending to its end.
 core::Ticks sectionsEnd(const model::Track& style, const std::vector<SectionEvent>& sections,
                         const core::TempoMap& tempo) {
@@ -274,6 +289,7 @@ void registerSettings(app::Registry& registry, app::ProjectController& controlle
                         "or leave it empty to use Expansion Manager's folder",
                 .merge = app::readablePath(registry)});
     followVoicesFolder(registry, controller);
+    warnNoisyVoices(registry, controller);
 }
 
 void registerTrackKinds(app::Registry& registry, const app::ProjectController& controller, const StyleSync& sync) {

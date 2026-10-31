@@ -32,7 +32,7 @@ struct ParamRange {
     bool stepped;
 };
 
-constexpr std::array<ParamRange, kParamCount - 1> kRanges{{
+constexpr std::array<ParamRange, kParamCount - 2> kRanges{{
     {kVolumeParam, "Volume", "volume", -60.0, 12.0, 0.0, false},
     {kTuneParam, "Tune", "tune", -24.0, 24.0, 0.0, false},
     {kAttackParam, "Attack", "attack", 0.0, 5.0, kDefaultAttack, false},
@@ -178,6 +178,12 @@ bool paramInfo(const clap_plugin* plugin, std::uint32_t index, clap_param_info* 
         info->max_value = static_cast<double>(voices.labels.size());
         return true;
     }
+    if (index == kNoiseParam) {
+        info->flags = CLAP_PARAM_IS_HIDDEN | CLAP_PARAM_IS_READONLY;
+        std::strncpy(std::data(info->name), "Noise warning", std::size(info->name));
+        info->max_value = 1.0;
+        return true;
+    }
     const ParamRange& range = *rangeOf(index);
     info->flags |= range.stepped ? CLAP_PARAM_IS_STEPPED | CLAP_PARAM_IS_ENUM : 0U;
     std::strncpy(std::data(info->name), range.name, std::size(info->name));
@@ -191,6 +197,8 @@ bool paramValue(const clap_plugin* plugin, clap_id id, double* value) {
     Plugin& voices = pluginOf(plugin);
     if (id == kVoiceParam) {
         *value = voices.selected.load(std::memory_order_relaxed) + 1;
+    } else if (id == kNoiseParam) {
+        *value = noiseWarning(voices).empty() ? 0.0 : 1.0;
     } else if (id == kFollowParam) {
         *value = voices.followProgramChanges.load(std::memory_order_relaxed) ? 1.0 : 0.0;
     } else if (std::atomic<float>* number = numberOf(voices, id)) {
@@ -212,6 +220,8 @@ std::string paramLabel(const Plugin& plugin, clap_id id, double value) {
         }
         case kFollowParam:
             return std::string{kSwitchLabels[value >= 0.5 ? 1 : 0]};
+        case kNoiseParam:
+            return noiseWarning(plugin);
         case kVolumeParam:
             return std::format("{:.1f} dB", value);
         case kTuneParam:

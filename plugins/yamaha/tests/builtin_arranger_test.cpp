@@ -198,6 +198,38 @@ TEST_CASE("the Expansion Voices folder setting gives instances whose state names
     REQUIRE(processUntil([&] { return choices() == Json::array({"None"}); }, 10000));
 }
 
+TEST_CASE("a track whose Expansion Voices voice decodes with noise warns which notes in the project summary") {
+    ArrangerRig rig;
+    voices::test::SyntheticStore store;
+    const voices::test::WxcParams runaway{.coefficients = {3000, -2946, 969}, .scale = 63, .mode = 0};
+    const std::string wave = store.addWave(voices::test::wxc1Blob(44100.0, runaway, {voices::test::WxcFrame{}}));
+    store.addPack("Pack", {voices::test::SyntheticVoice{.name = "Bass",
+                                                        .zones = {{.keyLo = "F1", .keyHi = "E3", .wave = wave}}}});
+    rig.registry.setSetting(yamaha::kVoicesFolderSetting, store.folder().string());
+    rig.run("track.addMidi");
+    const std::string track = rig.document().tracks.back().id.value;
+    rig.run("instrument.load", {{"track", track}, {"plugin", yamaha::kVoicesPluginId}});
+    rig.controller->flush();
+    REQUIRE(processUntil(
+        [&] {
+            return rig.controller->instruments()
+                       .describe(model::TrackId{track})
+                       .at("params")
+                       .at(0)
+                       .at("choices")
+                       .size() == 2;
+        },
+        10000));
+    rig.run("instrument.setParam", {{"track", track}, {"param", 0}, {"value", 1}});
+    const auto warning = [&] {
+        const Json tracks = rig.run("project.summary").at("tracks");
+        const auto found = std::ranges::find(tracks, Json(track), [](const Json& entry) { return entry.at("id"); });
+        return found != tracks.end() ? found->value("warning", std::string{}) : std::string{};
+    };
+    REQUIRE(processUntil([&] { return !warning().empty(); }, 10000));
+    CHECK(warning() == "Choose another voice for F1 to E3, where this voice's samples decode with noise");
+}
+
 TEST_CASE("a part without an installed voice plays its part's General MIDI default and warns which pack it needs") {
     ArrangerRig rig;
     rig.run("arranger.setup");

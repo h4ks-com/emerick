@@ -109,6 +109,31 @@ TEST_CASE("a WXC1 frame in mode 5 decodes 64 samples, and a loop past the last f
     CHECK_FALSE(decodeWave(std::vector<std::uint8_t>{1, 2, 3}).has_value());
 }
 
+TEST_CASE("a WXC1 wave whose predictor runs away past full scale is noisy, and one that holds full scale is not") {
+    const WxcParams runaway{.coefficients = {3000, -2946, 969}, .scale = 63, .mode = 0};
+    const auto noisy = decodeWave(wxc1Blob(44100.0, runaway, {WxcFrame{}}));
+    REQUIRE(noisy.has_value());
+    CHECK(sampleValue(*noisy, 95) == 32767);
+    CHECK(noisy->noisy);
+
+    const WxcParams holdLast{.coefficients = {1024, 0, 0}, .scale = 0, .mode = 0};
+    const auto loud = decodeWave(wxc1Blob(44100.0, holdLast, {WxcFrame{}}, {0xFFFFFFFFU, 0}, {32767, 32767, 32767}));
+    REQUIRE(loud.has_value());
+    CHECK(sampleValue(*loud, 95) == 32767);
+    CHECK_FALSE(loud->noisy);
+
+    const auto clean = decodeWave(wxc1Blob(8000.0, kFirstParams, crackedFrames()));
+    REQUIRE(clean.has_value());
+    CHECK_FALSE(clean->noisy);
+}
+
+TEST_CASE("Yamaha note names name each MIDI note") {
+    CHECK(yamahaNoteName(0) == "C-2");
+    CHECK(yamahaNoteName(41) == "F1");
+    CHECK(yamahaNoteName(66) == "F#3");
+    CHECK(yamahaNoteName(127) == "G8");
+}
+
 TEST_CASE("the store reads each voice's pack, name, address and zones") {
     SyntheticStore store;
     const std::string wave = store.addWave(linearBlob(sine(440.0, 32000.0, 3200), 32000.0));

@@ -336,6 +336,10 @@ void Registry::addStateProvider(const std::string& name, std::function<Json()> p
     stateProviders_[name] = std::move(provider);
 }
 
+void Registry::addWarnings(std::function<std::vector<engine::SessionError>(const model::Document&)> warnings) {
+    warnings_.push_back(std::move(warnings));
+}
+
 const Action* Registry::action(const std::string& id) const {
     const auto found = std::ranges::find(actions_, id, &Action::id);
     return found == actions_.end() ? nullptr : &*found;

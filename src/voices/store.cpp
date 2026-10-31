@@ -8,6 +8,7 @@
 #include <cctype>
 #include <cmath>
 #include <cstdlib>
+#include <format>
 #include <fstream>
 #include <map>
 #include <pugixml.hpp>
@@ -329,6 +330,10 @@ std::optional<int> yamahaNote(std::string_view name) {
     }
     const auto pitch = static_cast<int>(std::distance(kNoteNames.begin(), std::ranges::find(kNoteNames, *found)));
     return static_cast<int>(value - kLowestOctave) * 12 + pitch;
+}
+
+std::string yamahaNoteName(int note) {
+    return std::format("{}{}", kNoteNames.at(static_cast<std::size_t>(note % 12)), (note / 12) + kLowestOctave);
 }
 
 fs::path defaultStoreFolder() {

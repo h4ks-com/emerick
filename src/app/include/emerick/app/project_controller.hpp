@@ -300,7 +300,7 @@ private:
     std::string sessionError_;
     std::vector<engine::SessionError> takeErrors_;
     std::vector<engine::SessionError> routeErrors_;
-    std::vector<engine::SessionError> typeWarnings_;
+    std::vector<engine::SessionError> registeredWarnings_;
     engine::Metronome metronome_;
     engine::PanLaw panLaw_ = engine::PanLaw::compensated;
     bool chaseMidi_ = true;

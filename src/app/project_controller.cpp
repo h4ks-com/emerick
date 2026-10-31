@@ -77,12 +77,15 @@ std::vector<std::string> takeProblems(const engine::RecordedTake& take, double s
     return problems;
 }
 
-std::vector<engine::SessionError> trackTypeWarnings(const model::Document& document, const Registry& registry) {
+std::vector<engine::SessionError> registeredWarnings(const model::Document& document, const Registry& registry) {
     std::vector<engine::SessionError> warnings;
     for (const model::Track& track : document.tracks) {
         if (const TrackType* type = registry.trackType(track.kind); type != nullptr && type->warnings) {
             std::ranges::move(type->warnings(track, document), std::back_inserter(warnings));
         }
+    }
+    for (const auto& source : registry.warnings()) {
+        std::ranges::move(source(document), std::back_inserter(warnings));
     }
     return warnings;
 }
@@ -611,7 +614,7 @@ void ProjectController::publish() {
     session.cycle = engineCycle();
     applyPasses(session);
     routeErrors_ = dropUnusableDevices(session, engine_.audioDevices(), options_.sampleRate);
-    typeWarnings_ = trackTypeWarnings(project_.document(), registry_);
+    registeredWarnings_ = registeredWarnings(project_.document(), registry_);
     std::set<std::string> ids;
     std::set<std::string> audioIds;
     for (const engine::Track& track : session.tracks) {
@@ -676,7 +679,7 @@ void ProjectController::keepWarmWhileActive() {
 void ProjectController::updateTrackErrors() {
     QVariantMap errors;
     for (const auto* list : {&engine_.sessionErrors(), &std::as_const(routeErrors_), &std::as_const(takeErrors_),
-                             &instruments_.errors(), &std::as_const(typeWarnings_)}) {
+                             &instruments_.errors(), &std::as_const(registeredWarnings_)}) {
         for (const engine::SessionError& error : *list) {
             const QString id = QString::fromStdString(error.trackId);
             const QString previous = errors.value(id).toString();
@@ -705,7 +708,7 @@ void ProjectController::poll() {
         setEdited(true);
     }
     if (instruments_.takeParamsChanged()) {
-        typeWarnings_ = trackTypeWarnings(project_.document(), registry_);
+        registeredWarnings_ = registeredWarnings(project_.document(), registry_);
         emit projectChanged();
     }
     const core::Ticks ticks = engine_.position().ticks;

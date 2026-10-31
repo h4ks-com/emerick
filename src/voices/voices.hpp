@@ -110,6 +110,8 @@ void dropStoreLoad(Plugin& plugin);
 void pickStateVoice(Plugin& plugin);
 // Main thread: decodes the voice's waves once and publishes its bank to the audio thread.
 void buildBank(Plugin& plugin, int voice);
+// Main thread: the warning that names the notes of the picked voice whose waves decode with noise, or empty.
+std::string noiseWarning(const Plugin& plugin);
 // Picks a voice, or none for -1. On the audio thread it asks the main thread to build the bank.
 void selectVoice(Plugin& plugin, int voice, bool audioThread);
 // Stores a param change; Voice changes on the audio thread leave the bank to the main thread.

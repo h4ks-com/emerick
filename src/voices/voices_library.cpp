@@ -102,12 +102,16 @@ std::filesystem::path stateFolder(const Plugin& plugin) {
     return plugin.folder.empty() ? defaultStoreFolder() : std::filesystem::path{plugin.folder};
 }
 
-void rescanParams(const Plugin& plugin) {
+void rescanParams(const Plugin& plugin, clap_param_rescan_flags flags) {
     const auto* params =
         static_cast<const clap_host_params*>(plugin.host->get_extension(plugin.host, std::data(CLAP_EXT_PARAMS)));
     if (params != nullptr) {
-        params->rescan(plugin.host, CLAP_PARAM_RESCAN_ALL);
+        params->rescan(plugin.host, flags);
     }
+}
+
+std::string noteRange(int first, int last) {
+    return first == last ? yamahaNoteName(first) : std::format("{} to {}", yamahaNoteName(first), yamahaNoteName(last));
 }
 
 void publishStore(Plugin& plugin, std::shared_ptr<const Store> store, const std::filesystem::path& folder) {
@@ -130,7 +134,7 @@ void publishStore(Plugin& plugin, std::shared_ptr<const Store> store, const std:
     std::ranges::stable_sort(plugin.addresses, {}, &std::pair<VoiceAddress, int>::first);
     plugin.selected.store(-1, std::memory_order_relaxed);
     pickStateVoice(plugin);
-    rescanParams(plugin);
+    rescanParams(plugin, CLAP_PARAM_RESCAN_ALL);
 }
 
 }  // namespace
@@ -238,6 +242,39 @@ void buildBank(Plugin& plugin, int voice) {
     }
     plugin.banks[static_cast<std::size_t>(voice)].store(bank.get(), std::memory_order_release);
     plugin.ownedBanks.push_back(std::move(bank));
+    rescanParams(plugin, CLAP_PARAM_RESCAN_TEXT);
+}
+
+std::string noiseWarning(const Plugin& plugin) {
+    const int voice = plugin.selected.load(std::memory_order_relaxed);
+    const Bank* bank = voiceExists(plugin, voice)
+                           ? plugin.banks[static_cast<std::size_t>(voice)].load(std::memory_order_acquire)
+                           : nullptr;
+    if (bank == nullptr) {
+        return {};
+    }
+    std::vector<std::pair<int, int>> keys =
+        bank->zones | std::views::filter([](const BankZone& zone) {
+            return zone.left->noisy || (zone.right != nullptr && zone.right->noisy);
+        }) |
+        std::views::transform([](const BankZone& zone) { return std::pair{zone.zone->keyLo, zone.zone->keyHi}; }) |
+        std::ranges::to<std::vector>();
+    if (keys.empty()) {
+        return {};
+    }
+    std::ranges::sort(keys);
+    std::vector<std::pair<int, int>> merged;
+    for (const auto& [first, last] : keys) {
+        if (!merged.empty() && first <= merged.back().second + 1) {
+            merged.back().second = std::max(merged.back().second, last);
+        } else {
+            merged.emplace_back(first, last);
+        }
+    }
+    return std::format(
+        "Choose another voice for {}, where this voice's samples decode with noise",
+        merged | std::views::transform([](const auto& range) { return noteRange(range.first, range.second); }) |
+            std::views::join_with(std::string{", "}) | std::ranges::to<std::string>());
 }
 
 void selectVoice(Plugin& plugin, int voice, bool audioThread) {

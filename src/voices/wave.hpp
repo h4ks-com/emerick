@@ -13,6 +13,8 @@ struct Wave {
     std::vector<float> samples;
     std::uint32_t loopStart = 0;
     std::uint32_t loopEnd = 0;
+    // Set when the WXC1 predictor ran away, pushing more samples past full scale than real audio does.
+    bool noisy = false;
     [[nodiscard]] bool looped() const { return loopEnd > loopStart && loopEnd <= samples.size(); }
 };
 

@@ -11,6 +11,9 @@ inline constexpr std::uint32_t kSoundParam = 0;
 inline constexpr std::uint32_t kDrumKitParam = 1;
 inline constexpr std::uint32_t kFollowParam = 2;
 inline constexpr std::uint32_t kHighestNoteParam = 3;
+inline constexpr std::uint32_t kDrumsEverywhereParam = 4;
+// General MIDI plays drums on channel 10, which counts from zero as 9.
+inline constexpr int kDrumChannel = 9;
 inline constexpr int kNotes = 128;
 
 // The state key of an optional drum map: the General MIDI note each incoming note plays, or -1 to drop it.

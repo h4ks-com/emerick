@@ -14,15 +14,18 @@ namespace emerick::gm {
 
 namespace {
 
-constexpr int kDrumChannel = 9;
 constexpr int kBankSelect = 0;
 constexpr int kDrumBank = 128;
 
-bool isDrumChannel(const Gm& gm, int channel) { return gm.drumChannels.at(static_cast<std::size_t>(channel)); }
+bool isDrumChannel(const Gm& gm, int channel) {
+    return gm.drumsEverywhere.load(std::memory_order_relaxed) || gm.drumChannels.at(static_cast<std::size_t>(channel));
+}
 
+// We keep what the MIDI made each channel, so turning Drums on every channel off brings the melodic channels back.
 void setDrums(Gm& gm, int channel, bool drums) {
-    fluid_synth_set_channel_type(gm.synth.get(), channel, drums ? CHANNEL_TYPE_DRUM : CHANNEL_TYPE_MELODIC);
     gm.drumChannels.at(static_cast<std::size_t>(channel)) = drums;
+    fluid_synth_set_channel_type(gm.synth.get(), channel,
+                                 isDrumChannel(gm, channel) ? CHANNEL_TYPE_DRUM : CHANNEL_TYPE_MELODIC);
 }
 
 void selectBank(Gm& gm, int channel, int msb) {
@@ -139,9 +142,9 @@ void sendPrograms(Gm& gm) {
     fluid_synth_t* synth = gm.synth.get();
     gm.drumChannels.at(static_cast<std::size_t>(kDrumChannel)) = true;
     for (const int channel : std::views::iota(0, kChannels)) {
-        const bool drums = isDrumChannel(gm, channel);
-        setDrums(gm, channel, drums);
-        if (drums) {
+        setDrums(gm, channel, gm.drumChannels.at(static_cast<std::size_t>(channel)));
+        if (isDrumChannel(gm, channel)) {
+            fluid_synth_bank_select(synth, channel, kDrumBank);
             fluid_synth_program_change(synth, channel, pickedKit(gm));
         } else {
             fluid_synth_bank_select(synth, channel, 0);

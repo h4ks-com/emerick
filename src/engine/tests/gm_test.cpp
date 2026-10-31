@@ -37,6 +37,7 @@ constexpr std::uint32_t kSound = 0;
 constexpr std::uint32_t kDrumKit = 1;
 constexpr std::uint32_t kFollow = 2;
 constexpr std::uint32_t kHighestNote = 3;
+constexpr std::uint32_t kDrumsEverywhere = 4;
 constexpr double kFlute = 73.0;
 constexpr std::uint8_t kOrgan = 16;
 
@@ -156,7 +157,7 @@ TEST_CASE("a program change plays another General MIDI sound") {
 
 TEST_CASE("the General MIDI instrument lists its sounds, drum kits and Follow program changes as params") {
     const std::vector<ClapParam> params = generalMidi()->params();
-    REQUIRE(params.size() == 4);
+    REQUIRE(params.size() == 5);
     CHECK(params[0].name == "Sound");
     CHECK(params[0].enumerated);
     REQUIRE(params[0].choices.size() == 128);
@@ -174,6 +175,8 @@ TEST_CASE("the General MIDI instrument lists its sounds, drum kits and Follow pr
     CHECK(params[3].max == 127.0);
     CHECK(params[3].defaultValue == 127.0);
     CHECK(params[3].choices.at(95) == "95");
+    CHECK(params[4].name == "Play drums on every channel");
+    CHECK(params[4].defaultValue == 0.0);
 }
 
 TEST_CASE("the Highest note param drops note-ons above it and keeps their note-offs") {
@@ -270,6 +273,24 @@ TEST_CASE("channel 10 plays the drum kit") {
     CHECK(zeroCrossings(hiHat) > 4 * zeroCrossings(keys));
 }
 
+TEST_CASE("Play drums on every channel plays the drum kit on channel 1") {
+    const std::vector<float> keys = render({{0x90, 42, 100}});
+    const std::vector<float> hiHat = render({{0x90, 42, 100}}, {{kDrumsEverywhere, 1.0}});
+    REQUIRE(loudest(hiHat) > 0.01F);
+    CHECK(zeroCrossings(hiHat) > 4 * zeroCrossings(keys));
+}
+
+TEST_CASE("turning Play drums on every channel off plays the sound again on channel 1") {
+    Synth synth;
+    synth.gm().drumsEverywhere.store(true);
+    emerick::gm::sendPrograms(synth.gm());
+    CHECK(synth.preset(0).first == kDrumBank);
+    synth.gm().drumsEverywhere.store(false);
+    emerick::gm::sendPrograms(synth.gm());
+    CHECK(synth.preset(0) == std::pair{0, 0});
+    CHECK(synth.preset(9).first == kDrumBank);
+}
+
 TEST_CASE("bank select MSB 127 plays a drum kit on any channel until a melodic bank is selected") {
     const std::vector<float> keys = render({{0x98, 42, 100}});
     const std::vector<float> hiHat = render({{0xB8, 0, 127}, {0xC8, 0, 0}, {0x98, 42, 100}});
@@ -337,26 +358,31 @@ TEST_CASE(
     instrument->setParam(kDrumKit, 4.0);
     instrument->setParam(kFollow, 0.0);
     instrument->setParam(kHighestNote, 95.0);
+    instrument->setParam(kDrumsEverywhere, 1.0);
     const auto saved = instrument->saveState();
     REQUIRE(saved.has_value());
     CHECK(std::string(saved->begin(), saved->end()) ==
-          R"({"drumKit":4,"followProgramChanges":false,"highestNote":95,"sound":73,"soundFont":""})");
+          R"({"drumKit":4,"drumsEverywhere":true,"followProgramChanges":false,"highestNote":95,"sound":73,)"
+          R"("soundFont":""})");
     const std::shared_ptr<ClapInstrument> reloaded = generalMidi();
     REQUIRE(reloaded->loadState(*saved));
     CHECK(reloaded->paramValue(kSound) == kFlute);
     CHECK(reloaded->paramText(kDrumKit, *reloaded->paramValue(kDrumKit)) == "TR-808");
     CHECK(reloaded->paramValue(kFollow) == 0.0);
     CHECK(reloaded->paramValue(kHighestNote) == 95.0);
+    CHECK(reloaded->paramValue(kDrumsEverywhere) == 1.0);
 
     const std::string missing = "/no/such/sounds.sf2";
     REQUIRE(reloaded->loadState(std::vector<std::uint8_t>(missing.begin(), missing.end())));
     CHECK(reloaded->paramValue(kSound) == 0.0);
     CHECK(reloaded->paramValue(kFollow) == 1.0);
     CHECK(reloaded->paramValue(kHighestNote) == 127.0);
+    CHECK(reloaded->paramValue(kDrumsEverywhere) == 0.0);
     const auto plain = reloaded->saveState();
     REQUIRE(plain.has_value());
     CHECK(std::string(plain->begin(), plain->end()) ==
-          R"({"drumKit":0,"followProgramChanges":true,"highestNote":127,"sound":0,"soundFont":"/no/such/sounds.sf2"})");
+          R"({"drumKit":0,"drumsEverywhere":false,"followProgramChanges":true,"highestNote":127,"sound":0,)"
+          R"("soundFont":"/no/such/sounds.sf2"})");
     CHECK_FALSE(reloaded->activate(kRate, kBlock));
 }
 

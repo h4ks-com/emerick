@@ -42,6 +42,7 @@ struct Gm {
     std::atomic<int> drumKit{0};
     std::atomic<bool> followProgramChanges{true};
     std::atomic<int> highestNote{kHighestNote};
+    std::atomic<bool> drumsEverywhere{false};
     std::atomic<bool> programsPending{true};
     bool soundChanged = false;
     bool drumKitChanged = false;
@@ -73,7 +74,7 @@ inline int clampedIndex(double value, std::size_t count) {
     return std::clamp(static_cast<int>(std::lround(value)), 0, static_cast<int>(count) - 1);
 }
 
-// Stores a Sound, Drum kit, Follow program changes or Highest note change for the audio thread.
+// Stores a param change for the audio thread.
 void setParam(Gm& gm, const clap_event_param_value& change);
 
 void playMidi(Gm& gm, const std::array<std::uint8_t, 3>& data);

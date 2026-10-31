@@ -1,10 +1,15 @@
 #pragma once
 
+#include <cstdint>
 #include <filesystem>
+#include <functional>
+#include <memory>
+#include <stop_token>
 #include <string>
 #include <vector>
 
 #include "emerick/app/registry.hpp"
+#include "emerick/engine/engine.hpp"
 #include "emerick/engine/session.hpp"
 #include "emerick/model/document.hpp"
 
@@ -32,9 +37,39 @@ std::vector<std::filesystem::path> exportStems(const engine::Session& session, c
 void exportMix(const engine::Session& session, const Registry& registry, const PlaybackContext& context,
                const std::filesystem::path& file, double sampleRate);
 
-// Renders frames from the start of one track as its stem plays, or of the mix when trackId is empty.
-std::vector<std::vector<float>> renderTrack(const engine::Session& session, const Registry& registry,
-                                            const PlaybackContext& context, const std::string& trackId,
-                                            engine::Frames frames, double sampleRate);
+// One render's fresh instruments and offline engine. The thread that constructs it is the instruments' main thread:
+// it creates, loads, activates, idles and destroys them, and reads the registry. Any one thread can then process.
+class OfflineRender {
+public:
+    struct InstrumentMessage {
+        std::string trackId;
+        std::vector<std::uint8_t> bytes;
+    };
+
+    OfflineRender(engine::Session session, const Registry& registry, const PlaybackContext& context, double sampleRate);
+    ~OfflineRender();
+    OfflineRender(const OfflineRender&) = delete;
+    OfflineRender& operator=(const OfflineRender&) = delete;
+    OfflineRender(OfflineRender&&) = delete;
+    OfflineRender& operator=(OfflineRender&&) = delete;
+
+    // Renders frames from the start, calling idle between blocks, which must have the main thread run idleInstruments
+    // before it returns. Returns no channels once stop is requested.
+    std::vector<std::vector<float>> process(engine::Frames frames, const std::function<void()>& idle,
+                                            const std::stop_token& stop = {});
+    // Main thread: runs what the instruments asked of it, such as loading a voice after a program change.
+    void idleInstruments();
+
+private:
+    std::vector<std::shared_ptr<engine::ClapInstrument>> instruments_;
+    std::vector<InstrumentMessage> chase_;
+    engine::OfflineBackend* offline_ = nullptr;
+    std::unique_ptr<engine::Engine> engine_;
+};
+
+// Sets up the render of one track or bus as its stem plays, or of the mix when trackId is empty.
+std::unique_ptr<OfflineRender> trackRender(const engine::Session& session, const Registry& registry,
+                                           const PlaybackContext& context, const std::string& trackId,
+                                           double sampleRate);
 
 }  // namespace emerick::app

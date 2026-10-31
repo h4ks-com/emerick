@@ -2,10 +2,12 @@
 
 #include <algorithm>
 #include <cmath>
-#include <filesystem>
+#include <condition_variable>
 #include <format>
-#include <optional>
+#include <memory>
+#include <mutex>
 #include <ranges>
+#include <stop_token>
 #include <string>
 #include <utility>
 #include <vector>
@@ -22,67 +24,71 @@ namespace {
 
 constexpr const char* kActionId = "track.analyze";
 
-// Everything the render reads, copied on the UI thread, so the worker thread never touches the live project.
-struct TrackRender {
-    model::Document document;
-    engine::Session session;
-    std::filesystem::path folder;
+// What the analysis measures of a render, which the worker thread reads.
+struct AnalysisRange {
+    core::TempoMap tempo;
     // Empty for the mix.
     std::string trackId;
     core::Ticks from = 0;
     core::Ticks to = 0;
     double sampleRate = 0;
+
+    [[nodiscard]] engine::Frames endFrame() const { return tempo.ticksToFrames(to, sampleRate); }
+};
+
+struct TrackRender {
+    std::unique_ptr<OfflineRender> render;
+    AnalysisRange range;
 };
 
 TrackRender prepareRender(ProjectController& controller, const Registry& registry, const Json& params) {
-    TrackRender job;
-    job.document = controller.instruments().withStates(controller.project().document());
-    job.folder = controller.folder();
-    job.sampleRate = controller.sampleRate();
+    const model::Document document = controller.instruments().withStates(controller.project().document());
+    AnalysisRange range;
+    range.tempo = document.tempo;
+    range.sampleRate = controller.sampleRate();
     if (const auto track = optionalParam<std::string>(params, "track")) {
         const model::TrackId id = findTrackByIdOrName(controller.project(), *track);
-        const model::Track& source = *model::findTrack(job.document, id);
+        const model::Track& source = *model::findTrack(document, id);
         const TrackType* type = registry.trackType(source.kind);
         if (type == nullptr || !playsAudio(*type, source)) {
             throw AppError(playsNoAudio(type, source, "pick an audio track or a bus"));
         }
-        job.trackId = id.value;
+        range.trackId = id.value;
     }
-    job.session = toSession(job.document, registry, job.folder);
-    const core::TempoMap& tempo = job.document.tempo;
-    const core::Ticks end = exportEnd(job.session, job.document);
+    const engine::Session session = toSession(document, registry, controller.folder());
+    const core::TempoMap& tempo = document.tempo;
+    const core::Ticks end = exportEnd(session, document);
     if (end <= 0) {
         throw AppError("the project has no clips to analyze, add a clip first");
     }
-    job.from = optionalPosition(params, "from", tempo).value_or(0);
-    job.to = std::min(optionalPosition(params, "to", tempo).value_or(end), end);
-    if (job.from < 0 || job.from >= job.to) {
+    range.from = optionalPosition(params, "from", tempo).value_or(0);
+    range.to = std::min(optionalPosition(params, "to", tempo).value_or(end), end);
+    if (range.from < 0 || range.from >= range.to) {
         throw AppError(std::format("give from before to, both from {} to the project end {}",
                                    tempo.toBarBeatTick(0).format(), tempo.toBarBeatTick(end).format()));
     }
-    return job;
+    const PlaybackContext context{.tempo = tempo, .folder = controller.folder(), .document = &document};
+    return {.render = trackRender(session, registry, context, range.trackId, range.sampleRate),
+            .range = std::move(range)};
 }
 
 Json levelDb(double value) { return std::isfinite(value) ? Json(std::round(value * 10) / 10) : Json(nullptr); }
 
-Json analyzeRender(const TrackRender& job, const Registry& registry) {
-    const core::TempoMap& tempo = job.document.tempo;
-    const PlaybackContext context{.tempo = tempo, .folder = job.folder, .document = &job.document};
-    std::vector<std::vector<float>> channels = renderTrack(job.session, registry, context, job.trackId,
-                                                           tempo.ticksToFrames(job.to, job.sampleRate), job.sampleRate);
-    const auto skipped = static_cast<std::ptrdiff_t>(tempo.ticksToFrames(job.from, job.sampleRate));
+Json measure(const AnalysisRange& range, std::vector<std::vector<float>> channels) {
+    const core::TempoMap& tempo = range.tempo;
+    const auto skipped = static_cast<std::ptrdiff_t>(tempo.ticksToFrames(range.from, range.sampleRate));
     for (std::vector<float>& channel : channels) {
         channel.erase(channel.begin(), channel.begin() + std::min(skipped, std::ssize(channel)));
     }
-    const engine::AudioAnalysis levels = engine::analyzeAudio(channels, {.sampleRate = job.sampleRate});
-    const engine::ToneBalance tone = engine::analyzeTone(channels, job.sampleRate);
+    const engine::AudioAnalysis levels = engine::analyzeAudio(channels, {.sampleRate = range.sampleRate});
+    const engine::ToneBalance tone = engine::analyzeTone(channels, range.sampleRate);
     Json bands = Json::object();
     for (const auto& [band, share] : std::views::zip(engine::kToneBands, tone.bandShare)) {
         bands[std::string{band.name}] = std::round(share * 1000) / 1000;
     }
-    return {{"track", job.trackId.empty() ? Json(nullptr) : Json(job.trackId)},
-            {"from", positionState(job.from, tempo)},
-            {"to", positionState(job.to, tempo)},
+    return {{"track", range.trackId.empty() ? Json(nullptr) : Json(range.trackId)},
+            {"from", positionState(range.from, tempo)},
+            {"to", positionState(range.to, tempo)},
             {"integratedLufs", levelDb(levels.integratedLufs)},
             {"samplePeakDbfs", levelDb(levels.samplePeakDbfs)},
             {"truePeakDbtp", levelDb(levels.truePeakDbtp)},
@@ -91,6 +97,11 @@ Json analyzeRender(const TrackRender& job, const Registry& registry) {
             {"centroidHz", std::round(tone.centroidHz)},
             {"message", std::format("{:.1f} LUFS integrated, {:.1f} dBTP true peak, {:.1f} dB active RMS",
                                     levels.integratedLufs, levels.truePeakDbtp, tone.activeRmsDb)}};
+}
+
+Json analyzeRender(const TrackRender& job) {
+    OfflineRender& render = *job.render;
+    return measure(job.range, render.process(job.range.endFrame(), [&render] { render.idleInstruments(); }));
 }
 
 }  // namespace
@@ -109,10 +120,8 @@ void registerTrackAnalysis(Registry& registry, ProjectController& controller) {
          .category = "Analyze",
          .schema = {{"properties",
                      {{"track", {{"type", "string"}}}, {"from", Json::object()}, {"to", Json::object()}}}},
-         .run =
-             [&controller, &registry](const Json& params) {
-                 return analyzeRender(prepareRender(controller, registry, params), registry);
-             },
+         .run = [&controller,
+                 &registry](const Json& params) { return analyzeRender(prepareRender(controller, registry, params)); },
          .notifies = true});
 }
 
@@ -124,7 +133,7 @@ void TrackAnalysis::analyze(const QString& track) {
         return;
     }
     const Json params{{"track", track.toStdString()}};
-    std::optional<TrackRender> job;
+    TrackRender job;
     try {
         job = prepareRender(controller_, registry_, params);
     } catch (const AppError& error) {
@@ -134,11 +143,17 @@ void TrackAnalysis::analyze(const QString& track) {
     emit registry_.actionRan(kActionId, params, ActionSource::Ui);
     busyTrack_ = track;
     emit busyTrackChanged();
-    worker_ = std::jthread([this, track, job = std::move(*job)] {
+    render_ = std::move(job.render);
+    worker_ = std::jthread([this, track, range = std::move(job.range)](const std::stop_token& stop) {
         Json result;
         QString error;
         try {
-            result = analyzeRender(job, registry_);
+            std::vector<std::vector<float>> channels =
+                render_->process(range.endFrame(), [this, &stop] { idleOnUiThread(stop); }, stop);
+            if (stop.stop_requested()) {
+                return;
+            }
+            result = measure(range, std::move(channels));
         } catch (const AppError& failure) {
             error = qs(failure.what());
         }
@@ -148,7 +163,26 @@ void TrackAnalysis::analyze(const QString& track) {
     });
 }
 
+void TrackAnalysis::idleOnUiThread(const std::stop_token& stop) {
+    std::mutex mutex;
+    std::condition_variable_any idled;
+    bool done = false;
+    QMetaObject::invokeMethod(
+        this,
+        [this, &mutex, &idled, &done] {
+            render_->idleInstruments();
+            const std::scoped_lock lock(mutex);
+            done = true;
+            idled.notify_one();
+        },
+        Qt::QueuedConnection);
+    std::unique_lock lock(mutex);
+    idled.wait(lock, stop, [&done] { return done; });
+}
+
 void TrackAnalysis::finish(const QString& track, const Json& result, const QString& error) {
+    worker_.join();
+    render_.reset();
     busyTrack_.clear();
     emit busyTrackChanged();
     if (!error.isEmpty()) {

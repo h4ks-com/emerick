@@ -145,28 +145,23 @@ RenderInstruments attachInstruments(engine::Session& session, const model::Docum
     return created;
 }
 
-// Plugins do main-thread work, such as loading a voice after a program change, through host callbacks.
-void idle(const RenderInstruments& instruments) {
-    for (const auto& instrument : instruments) {
-        instrument->idle();
-    }
-}
-
 // Track types put their devices in their state at bar 1, such as a Style's first section, as they do on play.
-void chaseStart(engine::Engine& engine, const engine::Session& session, const Registry& registry,
-                const PlaybackContext& context) {
+std::vector<OfflineRender::InstrumentMessage> chaseStart(const engine::Session& session, const Registry& registry,
+                                                         const PlaybackContext& context) {
+    std::vector<OfflineRender::InstrumentMessage> messages;
     for (const engine::Track& track : session.tracks) {
         const model::Track* source = model::findTrack(*context.document, model::TrackId{track.id});
         const TrackType* type = source != nullptr ? registry.trackType(source->kind) : nullptr;
         if (!track.instrument || type == nullptr || !type->chase) {
             continue;
         }
-        for (const MidiMessage& message : type->chase(*source, 0, context)) {
+        for (MidiMessage& message : type->chase(*source, 0, context)) {
             if (message.port.empty()) {
-                engine.sendInstrumentMidi(track.id, message.bytes);
+                messages.push_back({.trackId = track.id, .bytes = std::move(message.bytes)});
             }
         }
     }
+    return messages;
 }
 
 void waitForReadAhead(const engine::Engine& engine) {
@@ -181,62 +176,8 @@ void waitForReadAhead(const engine::Engine& engine) {
 
 std::vector<std::vector<float>> render(engine::Session session, const Registry& registry,
                                        const PlaybackContext& context, engine::Frames frames, double sampleRate) {
-    for (engine::Track& track : session.tracks) {
-        track.armed = false;
-        track.monitor = false;
-        track.audioIn = {};
-        track.midiIn.portId.clear();
-        track.midiOut = {};
-        track.midiThru = false;
-    }
-    session.clockPorts.clear();
-    const RenderInstruments instruments = attachInstruments(session, *context.document);
-    const engine::Session played = session;
-    auto backend =
-        std::make_unique<engine::OfflineBackend>(std::vector<engine::AudioDeviceInfo>{{kRenderDevice, "Render", 0, 2}});
-    engine::OfflineBackend& offline = *backend;
-    engine::Engine engine(
-        std::move(backend),
-        std::make_unique<engine::VirtualMidiBackend>(std::vector<std::string>{}, std::vector<std::string>{}),
-        {sampleRate, kBlock});
-    try {
-        engine.setSession(std::move(session));
-    } catch (const std::invalid_argument& error) {
-        throw AppError(std::string{"cannot render: "} + error.what());
-    } catch (const std::runtime_error& error) {
-        throw AppError(std::string{"cannot render: "} + error.what());
-    }
-    if (!engine.sessionErrors().empty()) {
-        std::string message = "cannot render every clip:";
-        for (const engine::SessionError& skipped : engine.sessionErrors()) {
-            message += " track " + skipped.trackId + ": " + skipped.message + ";";
-        }
-        throw AppError(message);
-    }
-    engine.locate(0);
-    // CLAP offers no way to ask a plugin whether it is ready, so we let the instruments settle for a few blocks.
-    for (int block = 0; block < kSettleBlocks; ++block) {
-        offline.process(kBlock);
-        idle(instruments);
-    }
-    waitForReadAhead(engine);
-    chaseStart(engine, played, registry, context);
-    engine.play();
-    const engine::Frames start = offline.processedFrames();
-    for (engine::Frames done = 0; done < frames; done += kChunk) {
-        const engine::Frames chunk = std::min(kChunk, frames - done);
-        for (engine::Frames block = 0; block < chunk; block += kBlock) {
-            offline.process(std::min(kBlock, chunk - block));
-            idle(instruments);
-        }
-        waitForReadAhead(engine);
-    }
-    std::vector<std::vector<float>> channels;
-    for (const int channel : {1, 2}) {
-        const std::vector<float> output = offline.output(kRenderDevice, channel);
-        channels.emplace_back(output.begin() + start, output.begin() + start + frames);
-    }
-    return channels;
+    OfflineRender render(std::move(session), registry, context, sampleRate);
+    return render.process(frames, [&render] { render.idleInstruments(); });
 }
 
 engine::Frames renderFrames(const engine::Session& session, const model::Document& document, double sampleRate) {
@@ -315,17 +256,96 @@ void exportMix(const engine::Session& session, const Registry& registry, const P
     writeWav(file, render(mixSession(session, *context.document), registry, context, frames, sampleRate), sampleRate);
 }
 
-std::vector<std::vector<float>> renderTrack(const engine::Session& session, const Registry& registry,
-                                            const PlaybackContext& context, const std::string& trackId,
-                                            engine::Frames frames, double sampleRate) {
+OfflineRender::OfflineRender(engine::Session session, const Registry& registry, const PlaybackContext& context,
+                             double sampleRate) {
+    for (engine::Track& track : session.tracks) {
+        track.armed = false;
+        track.monitor = false;
+        track.audioIn = {};
+        track.midiIn.portId.clear();
+        track.midiOut = {};
+        track.midiThru = false;
+    }
+    session.clockPorts.clear();
+    instruments_ = attachInstruments(session, *context.document);
+    chase_ = chaseStart(session, registry, context);
+    auto backend =
+        std::make_unique<engine::OfflineBackend>(std::vector<engine::AudioDeviceInfo>{{kRenderDevice, "Render", 0, 2}});
+    offline_ = backend.get();
+    engine_ = std::make_unique<engine::Engine>(
+        std::move(backend),
+        std::make_unique<engine::VirtualMidiBackend>(std::vector<std::string>{}, std::vector<std::string>{}),
+        engine::Engine::Options{.sampleRate = sampleRate, .blockFrames = kBlock});
+    try {
+        engine_->setSession(std::move(session));
+    } catch (const std::invalid_argument& error) {
+        throw AppError(std::string{"cannot render: "} + error.what());
+    } catch (const std::runtime_error& error) {
+        throw AppError(std::string{"cannot render: "} + error.what());
+    }
+    if (!engine_->sessionErrors().empty()) {
+        std::string message = "cannot render every clip:";
+        for (const engine::SessionError& skipped : engine_->sessionErrors()) {
+            message += " track " + skipped.trackId + ": " + skipped.message + ";";
+        }
+        throw AppError(message);
+    }
+    // We open the stream here, so the instruments activate on this thread and process never has to.
+    engine_->keepWarm(true);
+    engine_->locate(0);
+}
+
+OfflineRender::~OfflineRender() = default;
+
+std::vector<std::vector<float>> OfflineRender::process(engine::Frames frames, const std::function<void()>& idle,
+                                                       const std::stop_token& stop) {
+    // CLAP offers no way to ask a plugin whether it is ready, so we let the instruments settle for a few blocks.
+    for (int block = 0; block < kSettleBlocks; ++block) {
+        offline_->process(kBlock);
+        idle();
+    }
+    waitForReadAhead(*engine_);
+    for (const InstrumentMessage& message : chase_) {
+        engine_->sendInstrumentMidi(message.trackId, message.bytes);
+    }
+    engine_->play();
+    const engine::Frames start = offline_->processedFrames();
+    for (engine::Frames done = 0; done < frames; done += kChunk) {
+        const engine::Frames chunk = std::min(kChunk, frames - done);
+        for (engine::Frames block = 0; block < chunk; block += kBlock) {
+            if (stop.stop_requested()) {
+                return {};
+            }
+            offline_->process(std::min(kBlock, chunk - block));
+            idle();
+        }
+        waitForReadAhead(*engine_);
+    }
+    std::vector<std::vector<float>> channels;
+    for (const int channel : {1, 2}) {
+        const std::vector<float> output = offline_->output(kRenderDevice, channel);
+        channels.emplace_back(output.begin() + start, output.begin() + start + frames);
+    }
+    return channels;
+}
+
+void OfflineRender::idleInstruments() {
+    for (const auto& instrument : instruments_) {
+        instrument->idle();
+    }
+}
+
+std::unique_ptr<OfflineRender> trackRender(const engine::Session& session, const Registry& registry,
+                                           const PlaybackContext& context, const std::string& trackId,
+                                           double sampleRate) {
     if (trackId.empty()) {
-        return render(mixSession(session, *context.document), registry, context, frames, sampleRate);
+        return std::make_unique<OfflineRender>(mixSession(session, *context.document), registry, context, sampleRate);
     }
     const auto track = std::ranges::find(session.tracks, trackId, &engine::Track::id);
     if (track == session.tracks.end()) {
         throw AppError("no track " + trackId + " in the session");
     }
-    return render(stemSession(session, *track), registry, context, frames, sampleRate);
+    return std::make_unique<OfflineRender>(stemSession(session, *track), registry, context, sampleRate);
 }
 
 }  // namespace emerick::app

@@ -15,11 +15,6 @@ namespace emerick::app {
 inline constexpr const char* kTrackAnalyzeAction = "track.analyze";
 inline constexpr const char* kTracksAnalyzeAction = "tracks.analyze";
 
-// UI thread: checks track.analyze's params and sets up the render of its track and its measurement, keyed by its id.
-RenderJob prepareTrackRender(ProjectController& controller, const Registry& registry, const Json& params);
-// UI thread: checks tracks.analyze's params and sets up one render of every analyzable track and their measurements,
-// keyed by track id.
-RenderJob prepareTracksRender(ProjectController& controller, const Registry& registry, const Json& params);
 // The audio tracks and buses in track order.
 std::vector<model::TrackId> analyzableTracks(const Registry& registry, const model::Document& document);
 

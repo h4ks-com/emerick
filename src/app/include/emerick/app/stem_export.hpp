@@ -107,4 +107,10 @@ std::unique_ptr<OfflineRender> tracksRender(const engine::Session& session, cons
                                             const PlaybackContext& context, const std::vector<std::string>& trackIds,
                                             double sampleRate);
 
+// Sets up one render of the whole session with every track unmuted, in which output channels 1 and 2 carry the mix and
+// channels 2i + 3 and 2i + 4 the i-th listed track or bus as its stem plays it.
+std::unique_ptr<OfflineRender> mixAndTracksRender(const engine::Session& session, const Registry& registry,
+                                                  const PlaybackContext& context,
+                                                  const std::vector<std::string>& trackIds, double sampleRate);
+
 }  // namespace emerick::app

@@ -10,47 +10,23 @@
 #include <ranges>
 
 #include "emerick/engine/spectrum.hpp"
+#include "meter_detail.hpp"
 #include "true_peak.hpp"
 
 namespace emerick::engine {
 
 namespace {
 
-constexpr double kSilentDb = -std::numeric_limits<double>::infinity();
 constexpr double kAbsoluteGateLufs = -70;
 constexpr double kRelativeGateLu = -10;
 constexpr double kLoudnessOffset = -0.691;
-constexpr double kStepSeconds = 0.1;
 constexpr std::size_t kStepsPerBlock = 4;
 constexpr double kSilenceLevel = 0.001;
 constexpr double kMinSilenceSeconds = 0.5;
-constexpr float kClipLevel = 0.999F;
 constexpr double kBandEdgeLimit = 0.45;
 constexpr double kActiveGateDb = -60;
-constexpr std::size_t kToneFrame = 4096;
 
 using Channels = std::vector<std::vector<float>>;
-
-struct Biquad {
-    double b0 = 1;
-    double b1 = 0;
-    double b2 = 0;
-    double a1 = 0;
-    double a2 = 0;
-    double z1 = 0;
-    double z2 = 0;
-
-    double process(double x) {
-        const double y = (b0 * x) + z1;
-        z1 = (b1 * x) - (a1 * y) + z2;
-        z2 = (b2 * x) - (a2 * y);
-        return y;
-    }
-};
-
-double powerDb(double meanSquare) { return 10 * std::log10(meanSquare); }
-
-double amplitudeDb(double amplitude) { return 20 * std::log10(amplitude); }
 
 // The K-weighting stages of BS.1770 for any sample rate, from their analog prototypes as libebur128 derives them.
 std::array<Biquad, 2> kWeighting(double sampleRate) {
@@ -75,27 +51,12 @@ std::array<Biquad, 2> kWeighting(double sampleRate) {
     return {shelf, highPass};
 }
 
-Biquad butterworth(double hz, double sampleRate, bool highPass) {
-    const double w0 = 2 * std::numbers::pi * hz / sampleRate;
-    const double cosine = std::cos(w0);
-    const double alpha = std::sin(w0) / std::numbers::sqrt2;
-    const double a0 = 1 + alpha;
-    const double edge = highPass ? (1 + cosine) / 2 : (1 - cosine) / 2;
-    return {.b0 = edge / a0,
-            .b1 = (highPass ? -2 * edge : 2 * edge) / a0,
-            .b2 = edge / a0,
-            .a1 = -2 * cosine / a0,
-            .a2 = (1 - alpha) / a0};
-}
-
 // Two Butterworth stages on each edge give the band 24 dB per octave skirts.
 std::array<Biquad, 4> bandFilter(const FrequencyBand& band, double sampleRate) {
     const Biquad low = butterworth(band.low, sampleRate, true);
     const Biquad high = butterworth(std::min(band.high, kBandEdgeLimit * sampleRate), sampleRate, false);
     return {low, low, high, high};
 }
-
-std::size_t stepFramesAt(double sampleRate) { return static_cast<std::size_t>(std::lround(kStepSeconds * sampleRate)); }
 
 // The K-weighted power of every channel summed per 100 ms step, which BS.1770 gates in blocks of four steps.
 class LoudnessSteps {
@@ -243,6 +204,8 @@ StereoImage stereoImage(const std::vector<float>& left, const std::vector<float>
     return {.correlation = scale == 0 ? 0 : product / scale, .balanceDb = powerDb(leftPower) - powerDb(rightPower)};
 }
 
+}  // namespace
+
 double medianActiveDb(std::vector<double> stepDb) {
     std::erase_if(stepDb, [](double db) { return db <= kActiveGateDb; });
     if (stepDb.empty()) {
@@ -253,7 +216,19 @@ double medianActiveDb(std::vector<double> stepDb) {
     return *middle;
 }
 
-}  // namespace
+void setSpectrumTone(ToneBalance& tone, std::span<const double> power, double sampleRate) {
+    const double total = std::ranges::fold_left(power, 0.0, std::plus{});
+    if (total == 0) {
+        return;
+    }
+    const auto hz = [&](std::size_t bin) { return static_cast<double>(bin) * sampleRate / kToneFrame; };
+    for (std::size_t bin = 0; bin < power.size(); ++bin) {
+        const auto* const band =
+            std::ranges::find_if(kToneBands, [&](const FrequencyBand& entry) { return hz(bin) < entry.high; });
+        tone.bandShare.at(static_cast<std::size_t>(band - kToneBands.begin())) += power[bin] / total;
+        tone.centroidHz += hz(bin) * power[bin] / total;
+    }
+}
 
 struct TrackMeter::State {
     State(std::size_t channels, double rate)
@@ -324,17 +299,7 @@ struct TrackMeter::State {
         for (const SpectrumSum& spectrum : spectra) {
             std::ranges::transform(power, spectrum.sum(), power.begin(), std::plus{});
         }
-        const double total = std::ranges::fold_left(power, 0.0, std::plus{});
-        if (total == 0) {
-            return tone;
-        }
-        const auto hz = [&](std::size_t bin) { return static_cast<double>(bin) * sampleRate / kToneFrame; };
-        for (std::size_t bin = 0; bin < power.size(); ++bin) {
-            const auto* const band =
-                std::ranges::find_if(kToneBands, [&](const FrequencyBand& entry) { return hz(bin) < entry.high; });
-            tone.bandShare.at(static_cast<std::size_t>(band - kToneBands.begin())) += power[bin] / total;
-            tone.centroidHz += hz(bin) * power[bin] / total;
-        }
+        setSpectrumTone(tone, power, sampleRate);
         return tone;
     }
 };

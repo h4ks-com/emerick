@@ -6,6 +6,7 @@
 #include <catch2/catch_test_macros.hpp>
 #include <cmath>
 #include <numbers>
+#include <random>
 #include <string>
 #include <vector>
 
@@ -26,6 +27,49 @@ std::vector<float> sine(double hz, double amplitude, double seconds) {
             static_cast<float>(amplitude * std::sin(2 * std::numbers::pi * hz * static_cast<double>(frame) / kRate));
     }
     return samples;
+}
+
+std::vector<float> noise(double amplitude, double seconds) {
+    std::mt19937 random(11);
+    std::uniform_real_distribution<double> spread(-amplitude, amplitude);
+    std::vector<float> samples(static_cast<std::size_t>(seconds * kRate));
+    for (float& sample : samples) {
+        sample = static_cast<float>(spread(random));
+    }
+    return samples;
+}
+
+// A Hann shaped 20 ms blip of hz every interval seconds.
+std::vector<float> blips(double hz, double interval, double seconds) {
+    std::vector<float> samples = sine(hz, 0.5, seconds);
+    const auto period = static_cast<std::size_t>(interval * kRate);
+    constexpr std::size_t kBlip = 960;
+    for (std::size_t frame = 0; frame < samples.size(); ++frame) {
+        const std::size_t phase = frame % period;
+        samples[frame] *=
+            phase < kBlip
+                ? static_cast<float>(0.5 * (1 - std::cos(2 * std::numbers::pi * static_cast<double>(phase) / kBlip)))
+                : 0.0F;
+    }
+    return samples;
+}
+
+std::string addTrack(ProjectRig& rig, const std::string& name, const std::vector<float>& samples,
+                     const std::string& at = "1.1.0") {
+    const std::string id = rig.run("track.addAudio", {{"name", name}}).at("id");
+    writeWav(rig.path(name + ".wav"), {samples}, kRate);
+    rig.run("clip.import", {{"track", id}, {"path", rig.path(name + ".wav").string()}, {"at", at}});
+    return id;
+}
+
+std::vector<Json> issuesOf(const Json& inspection, const std::string& kind, const std::string& track = {}) {
+    std::vector<Json> found;
+    for (const Json& issue : inspection.at("issues")) {
+        if (issue.at("kind") == kind && (track.empty() || issue.at("track") == track)) {
+            found.push_back(issue);
+        }
+    }
+    return found;
 }
 
 }  // namespace
@@ -247,4 +291,84 @@ TEST_CASE("analyzing all tracks in one render measures each track and bus as ana
         }
     }
     CHECK(rig.run("tracks.analyze").at("tracks")[3].at("activeRmsDb").is_number());
+}
+
+TEST_CASE("analyzing with a resolution adds a window per bar, beat or step of seconds, with nulls in silence") {
+    ProjectRig rig;
+    const std::string tone = addTrack(rig, "Tone", sine(3000, 0.5, 4), "2.1.0");
+    CHECK_FALSE(rig.run("track.analyze", {{"track", tone}}).contains("windows"));
+
+    const Json bars = rig.run("track.analyze", {{"track", tone}, {"resolution", "bar"}}).at("windows");
+    REQUIRE(bars.size() == 3);
+    CHECK(bars[0].at("at").at("bbt") == "1.1.0");
+    CHECK(bars[0].at("activeRmsDb").is_null());
+    CHECK(bars[0].at("tonality").is_null());
+    CHECK(bars[0].at("peakDb").is_null());
+    CHECK(bars[1].at("at").at("bbt") == "2.1.0");
+    CHECK(bars[1].at("at").at("seconds") == Approx(2.0));
+    CHECK(bars[1].at("activeRmsDb").get<double>() == Approx(-9.0).margin(0.2));
+    CHECK(bars[1].at("tonalPeakHz").get<double>() == Approx(3000).epsilon(0.01));
+    CHECK(bars[1].at("tonality").get<double>() > 0.9);
+    CHECK(bars[1].at("crestDb").get<double>() == Approx(3.0).margin(0.2));
+    CHECK(bars[1].at("bands").size() == 5);
+    CHECK(bars[1].at("clipped") == 0);
+
+    CHECK(rig.run("track.analyze", {{"track", tone}, {"resolution", "beat"}, {"from", "2.1.0"}}).at("windows").size() ==
+          8);
+    CHECK(rig.run("track.analyze", {{"track", tone}, {"resolution", 0.5}}).at("windows").size() == 12);
+    const Json all = rig.run("tracks.analyze", {{"resolution", "bar"}}).at("tracks");
+    CHECK(all[0].at("windows") == bars);
+    CHECK_THROWS_AS(rig.run("track.analyze", {{"track", tone}, {"resolution", "phrase"}}), AppError);
+    CHECK_THROWS_AS(rig.run("track.analyze", {{"track", tone}, {"resolution", 0.001}}), AppError);
+    CHECK_THROWS_AS(rig.run("track.analyze", {{"track", tone}, {"resolution", true}}), AppError);
+}
+
+TEST_CASE("inspecting a mix finds a steady whine on its track and bars") {
+    ProjectRig rig;
+    addTrack(rig, "Room", noise(0.05, 20));
+    const std::string whine = addTrack(rig, "Whine", sine(6000, 0.1, 8), "3.1.0");
+
+    const Json inspection = rig.run("mix.inspect");
+    INFO(inspection.dump(2));
+    const std::vector<Json> whines = issuesOf(inspection, "whine", whine);
+    REQUIRE(whines.size() == 1);
+    CHECK(whines[0].at("from").at("bbt") == "3.1.0");
+    CHECK(whines[0].at("to").at("bbt") == "7.1.0");
+    CHECK(whines[0].at("evidence").at("hz").get<double>() == Approx(6000).epsilon(0.01));
+    CHECK(whines[0].at("severity") == "high");
+}
+
+TEST_CASE("inspecting a mix finds a high pitched blip every eighth note as a beep with its rate and pitch") {
+    ProjectRig rig;
+    addTrack(rig, "Room", noise(0.05, 16));
+    const std::string guitar = addTrack(rig, "Guitar", blips(3000, 0.25, 8), "5.1.0");
+
+    const Json inspection = rig.run("mix.inspect");
+    INFO(inspection.dump(2));
+    const std::vector<Json> beeps = issuesOf(inspection, "beep", guitar);
+    REQUIRE(beeps.size() == 1);
+    CHECK(beeps[0].at("from").at("bbt") == "5.1.0");
+    CHECK(beeps[0].at("evidence").at("hz").get<double>() == Approx(3000).epsilon(0.02));
+    CHECK(beeps[0].at("evidence").at("hitsPerBeat").get<double>() == Approx(2).margin(0.25));
+    CHECK(issuesOf(inspection, "whine").empty());
+}
+
+TEST_CASE("inspecting a clean mix finds no issues, and a too loud track is an imbalance") {
+    ProjectRig rig;
+    addTrack(rig, "Room", noise(0.1, 16));
+    addTrack(rig, "Bass", sine(80, 0.3, 16));
+    addTrack(rig, "Keys", sine(440, 0.2, 16));
+    const Json clean = rig.run("mix.inspect", {{"resolution", "beat"}});
+    INFO(clean.dump(2));
+    CHECK(clean.at("issues").empty());
+
+    const std::string loud = addTrack(rig, "Lead", sine(300, 0.9, 16));
+    const Json inspection = rig.run("mix.inspect", {{"from", "2.1.0"}, {"to", "6.1.0"}});
+    INFO(inspection.dump(2));
+    const std::vector<Json> imbalances = issuesOf(inspection, "imbalance");
+    REQUIRE(imbalances.size() == 1);
+    CHECK(imbalances[0].at("track") == loud);
+    CHECK(imbalances[0].at("from").at("bbt") == "2.1.0");
+    CHECK(imbalances[0].at("to").at("bbt") == "6.1.0");
+    CHECK(imbalances[0].at("evidence").at("offsetDb").get<double>() > 8);
 }

@@ -1,5 +1,6 @@
 qt_add_library(emerick_app STATIC
     action_params.cpp
+    analysis_render.cpp
     audio_file.cpp
     audio_image.cpp
     automation_actions.cpp
@@ -22,6 +23,7 @@ qt_add_library(emerick_app STATIC
     fade_actions.cpp
     export_actions.cpp
     include/emerick/app/action_params.hpp
+    include/emerick/app/analysis_render.hpp
     include/emerick/app/audio_file.hpp
     include/emerick/app/audio_image.hpp
     include/emerick/app/automation_params.hpp

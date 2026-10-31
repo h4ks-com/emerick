@@ -123,14 +123,17 @@ engine::Session mixSession(const engine::Session& session, const model::Document
 }
 
 // Every track plays unmuted into its buses and sends as in a bus stem, so each listed track's own output sounds as its
-// stem.
-engine::Session captureSession(const engine::Session& session, const std::vector<std::string>& trackIds) {
+// stem. With mixOf, output channels 1 and 2 also carry the mix of every track that plays audio in that document, and
+// the listed tracks move up two channels.
+engine::Session captureSession(const engine::Session& session, const std::vector<std::string>& trackIds,
+                               const model::Document* mixOf = nullptr) {
     std::vector<engine::Track> tracks =
         session.tracks | std::views::transform(audible) | std::ranges::to<std::vector>();
+    const int offset = mixOf != nullptr ? 2 : 0;
     for (engine::Track& track : tracks) {
-        track.audioOut = {};
+        track.audioOut = mixOf != nullptr && playsAudio(track, *mixOf) ? renderRoute() : engine::AudioRoute{};
         if (const auto found = std::ranges::find(trackIds, track.id); found != trackIds.end()) {
-            const auto first = static_cast<int>(2 * (found - trackIds.begin())) + 1;
+            const auto first = static_cast<int>(2 * (found - trackIds.begin())) + 1 + offset;
             track.captureOut = {kRenderDevice, {first, first + 1}};
         }
     }
@@ -419,6 +422,13 @@ std::unique_ptr<OfflineRender> tracksRender(const engine::Session& session, cons
                                             const PlaybackContext& context, const std::vector<std::string>& trackIds,
                                             double sampleRate) {
     return std::make_unique<OfflineRender>(captureSession(session, trackIds), registry, context, sampleRate);
+}
+
+std::unique_ptr<OfflineRender> mixAndTracksRender(const engine::Session& session, const Registry& registry,
+                                                  const PlaybackContext& context,
+                                                  const std::vector<std::string>& trackIds, double sampleRate) {
+    return std::make_unique<OfflineRender>(captureSession(session, trackIds, context.document), registry, context,
+                                           sampleRate);
 }
 
 }  // namespace emerick::app

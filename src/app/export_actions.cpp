@@ -20,6 +20,7 @@
 #include <vector>
 
 #include "emerick/app/action_params.hpp"
+#include "emerick/app/analysis_render.hpp"
 #include "emerick/app/audio_file.hpp"
 #include "emerick/app/audio_image.hpp"
 #include "emerick/app/midi_export.hpp"
@@ -33,15 +34,6 @@
 namespace emerick::app {
 
 namespace {
-
-// The project with each instrument's state as it plays now, which an export renders with fresh instances.
-model::Document liveDocument(ProjectController& controller) {
-    return controller.instruments().withStates(controller.project().document());
-}
-
-PlaybackContext playbackContext(ProjectController& controller, const model::Document& document) {
-    return {.tempo = document.tempo, .folder = controller.folder(), .document = &document};
-}
 
 // Listed tracks always export, with the tracks that send them MIDI when midiSources is set; without a list, skipMuted
 // leaves the muted ones out.
@@ -138,119 +130,6 @@ Json analysisJson(const engine::AudioAnalysis& analysis) {
                             {"balanceDb", levelDb(analysis.stereo->balanceDb)}};
     }
     return result;
-}
-
-std::string loudnessMessage(double integratedLufs, double truePeakDbtp, const std::string& detail) {
-    return std::format("{:.1f} LUFS integrated, {:.1f} dBTP true peak, {}", integratedLufs, truePeakDbtp, detail);
-}
-
-Json toneBandsJson(const engine::ToneBalance& tone) {
-    return std::views::zip(engine::kToneBands, tone.bandShare) | std::views::transform([](const auto& entry) {
-               const auto& [band, share] = entry;
-               return Json{{"name", std::string{band.name}},
-                           {"lowHz", band.low},
-                           {"highHz", std::isfinite(band.high) ? Json(band.high) : Json(nullptr)},
-                           {"share", std::round(share * 1000) / 1000}};
-           }) |
-           std::ranges::to<Json::array_t>();
-}
-
-struct AnalysisRange {
-    core::TempoMap tempo;
-    core::Ticks from = 0;
-    core::Ticks to = 0;
-    double sampleRate = 0;
-};
-
-Json levelsJson(const AnalysisRange& range, const std::string& trackId, const engine::TrackLevels& levels) {
-    return {{"track", trackId},
-            {"from", positionState(range.from, range.tempo)},
-            {"to", positionState(range.to, range.tempo)},
-            {"integratedLufs", levelDb(levels.integratedLufs)},
-            {"samplePeakDbfs", levelDb(levels.samplePeakDbfs)},
-            {"truePeakDbtp", levelDb(levels.truePeakDbtp)},
-            {"activeRmsDb", levelDb(levels.tone.activeRmsDb)},
-            {"bands", toneBandsJson(levels.tone)},
-            {"centroidHz", std::round(levels.tone.centroidHz)},
-            {"message", loudnessMessage(levels.integratedLufs, levels.truePeakDbtp,
-                                        std::format("{:.1f} dB active RMS", levels.tone.activeRmsDb))}};
-}
-
-// The meter of each track a render carries on output channels 2i and 2i + 1, fed from the frame the range starts at.
-struct TrackMeters {
-    std::ptrdiff_t skip = 0;
-    std::ptrdiff_t seen = 0;
-    std::vector<engine::TrackMeter> meters;
-
-    void add(const std::vector<std::vector<float>>& chunk) {
-        const std::ptrdiff_t length = std::ssize(chunk.front());
-        const std::ptrdiff_t first = std::clamp(skip - seen, std::ptrdiff_t{0}, length);
-        seen += length;
-        if (first == length) {
-            return;
-        }
-        // Each track's meter runs on its own thread, since measuring takes about as long as rendering.
-        std::vector<std::future<void>> measured;
-        measured.reserve(meters.size());
-        for (std::size_t index = 0; index < meters.size(); ++index) {
-            measured.push_back(std::async(std::launch::async, [this, &chunk, first, index] {
-                const auto channels = std::span{chunk}.subspan(2 * index, 2);
-                if (first == 0) {
-                    meters[index].add(channels);
-                    return;
-                }
-                meters[index].add(channels | std::views::transform([first](const std::vector<float>& channel) {
-                                      return std::vector<float>(channel.begin() + first, channel.end());
-                                  }) |
-                                  std::ranges::to<std::vector>());
-            }));
-        }
-        for (std::future<void>& meter : measured) {
-            meter.get();
-        }
-    }
-};
-
-// UI thread: checks from and to and sets up one render of the tracks, each as its stem plays, and their measurements
-// keyed by track id.
-RenderJob prepareAnalysis(ProjectController& controller, const Registry& registry, const Json& params,
-                          const std::vector<model::TrackId>& ids) {
-    const model::Document document = liveDocument(controller);
-    const engine::Session session = toSession(document, registry, controller.folder());
-    const core::TempoMap& tempo = document.tempo;
-    const core::Ticks end = exportEnd(session, document);
-    if (end <= 0) {
-        throw AppError("the project has no clips to analyze, add a clip first");
-    }
-    AnalysisRange range;
-    range.tempo = tempo;
-    range.from = optionalPosition(params, "from", tempo).value_or(0);
-    range.to = std::min(optionalPosition(params, "to", tempo).value_or(end), end);
-    range.sampleRate = controller.sampleRate();
-    if (range.from < 0 || range.from >= range.to) {
-        throw AppError(std::format("give from before to, both from {} to the project end {}",
-                                   tempo.toBarBeatTick(0).format(), tempo.toBarBeatTick(end).format()));
-    }
-    std::vector<std::string> trackIds =
-        ids | std::views::transform(&model::TrackId::value) | std::ranges::to<std::vector>();
-    const PlaybackContext context = playbackContext(controller, document);
-    auto meters = std::make_shared<TrackMeters>();
-    meters->skip = tempo.ticksToFrames(range.from, range.sampleRate);
-    meters->meters =
-        trackIds | std::views::transform([&](const std::string&) { return engine::TrackMeter(2, range.sampleRate); }) |
-        std::ranges::to<std::vector>();
-    return {.render = trackIds.size() == 1 ? trackRender(session, registry, context, trackIds.front(), range.sampleRate)
-                                           : tracksRender(session, registry, context, trackIds, range.sampleRate),
-            .frames = tempo.ticksToFrames(range.to, range.sampleRate),
-            .sink = [meters](const std::vector<std::vector<float>>& chunk) { meters->add(chunk); },
-            .finish =
-                [meters, range, trackIds = std::move(trackIds)] {
-                    Json json = Json::object();
-                    for (const auto& [id, meter] : std::views::zip(trackIds, meters->meters)) {
-                        json[id] = levelsJson(range, id, meter.levels());
-                    }
-                    return RenderResult{.channels = {}, .json = std::move(json)};
-                }};
 }
 
 Json analyzeTrack(ProjectController& controller, const Registry& registry, const Json& params) {
@@ -396,23 +275,6 @@ void registerExportSettings(Registry& registry) {
 }
 
 }  // namespace
-
-RenderJob prepareTrackRender(ProjectController& controller, const Registry& registry, const Json& params) {
-    const model::TrackId id = findTrackByIdOrName(controller.project(), param<std::string>(params, "track"));
-    const model::Track& source = *controller.project().track(id);
-    if (const TrackType* type = registry.trackType(source.kind); type == nullptr || !playsAudio(*type, source)) {
-        throw AppError(playsNoAudio(type, source, "pick an audio track or a bus"));
-    }
-    return prepareAnalysis(controller, registry, params, {id});
-}
-
-RenderJob prepareTracksRender(ProjectController& controller, const Registry& registry, const Json& params) {
-    const std::vector<model::TrackId> ids = analyzableTracks(registry, controller.project().document());
-    if (ids.empty()) {
-        throw AppError("the project has no audio tracks or buses to analyze, add one first");
-    }
-    return prepareAnalysis(controller, registry, params, ids);
-}
 
 void registerExportActions(Registry& registry, ProjectController& controller) {
     registerExportSettings(registry);
@@ -584,29 +446,34 @@ void registerExportActions(Registry& registry, ProjectController& controller) {
              },
          .menus = {kFileMenu},
          .notifies = true});
+    const Json rangeSchema{{"from", Json::object()}, {"to", Json::object()}, {"resolution", Json::object()}};
+    Json trackSchema = rangeSchema;
+    trackSchema["track"] = {{"type", "string"}};
     registry.addAction(
         {.id = kTrackAnalyzeAction,
          .title = "Analyze track",
-         .description = "Render a track or bus alone and dry as its stem does, and measure integrated LUFS, sample "
-                        "peak, true peak, active RMS (the median of 100 ms blocks above -60 dBFS), the share of the "
-                        "energy in five bands with their edges, and the spectral centroid in Hz. from and to take "
-                        "ticks or bar.beat.tick and default to the project start and end.",
-         .keywords = {"loudness", "lufs", "true peak", "rms", "spectrum", "tone", "balance", "centroid"},
+         .description =
+             "Render a track or bus alone and dry as its stem does, and measure integrated LUFS, sample peak, true "
+             "peak, active RMS (the median of 100 ms blocks above -60 dBFS), the share of the energy in five bands "
+             "with their edges, and the spectral centroid in Hz. from and to take ticks or bar.beat.tick and default "
+             "to the project start and end. With resolution (bar, beat or a number of seconds) it adds windows: at, "
+             "activeRmsDb, peakDb, centroidHz, the five band shares, tonalPeakHz (the strongest narrow peak above 1 "
+             "kHz) with its tonality (0 for noise to 1 for a pure tone), crestDb and clipped samples, null in silence.",
+         .keywords = {"loudness", "lufs", "true peak", "rms", "spectrum", "tone", "balance", "centroid", "windows"},
          .category = "Analyze",
-         .schema = {{"required", {"track"}},
-                    {"properties",
-                     {{"track", {{"type", "string"}}}, {"from", Json::object()}, {"to", Json::object()}}}},
+         .schema = {{"required", {"track"}}, {"properties", trackSchema}},
          .run = [&controller, &registry](const Json& params) { return analyzeTrack(controller, registry, params); },
          .notifies = true});
     registry.addAction(
         {.id = kTracksAnalyzeAction,
          .title = "Analyze all tracks",
          .description = "Render the project once and measure every audio track and bus as track.analyze does, and "
-                        "list each one's name, id, integrated LUFS, true peak, active RMS and five bands. from and to "
-                        "take ticks or bar.beat.tick and default to the project start and end.",
+                        "list each one's name, id, integrated LUFS, true peak, active RMS and five bands, and its "
+                        "windows with resolution. from and to take ticks or bar.beat.tick and default to the project "
+                        "start and end. Run mix.inspect to find issues by track and bar.",
          .keywords = {"loudness", "lufs", "rms", "mix balance"},
          .category = "Analyze",
-         .schema = {{"properties", {{"from", Json::object()}, {"to", Json::object()}}}},
+         .schema = {{"properties", rangeSchema}},
          .run =
              [&controller, &registry](const Json& params) {
                  const model::Document& document = controller.project().document();
@@ -615,16 +482,38 @@ void registerExportActions(Registry& registry, ProjectController& controller) {
                      ids.empty() ? Json::object() : renderNow(prepareTracksRender(controller, registry, params)).json;
                  const Json tracks = ids | std::views::transform([&](const model::TrackId& id) {
                                          const Json& levels = measured.at(id.value);
-                                         return Json{{"id", id.value},
-                                                     {"name", model::findTrack(document, id)->name},
-                                                     {"activeRmsDb", levels.at("activeRmsDb")},
-                                                     {"integratedLufs", levels.at("integratedLufs")},
-                                                     {"truePeakDbtp", levels.at("truePeakDbtp")},
-                                                     {"bands", levels.at("bands")}};
+                                         Json track{{"id", id.value},
+                                                    {"name", model::findTrack(document, id)->name},
+                                                    {"activeRmsDb", levels.at("activeRmsDb")},
+                                                    {"integratedLufs", levels.at("integratedLufs")},
+                                                    {"truePeakDbtp", levels.at("truePeakDbtp")},
+                                                    {"bands", levels.at("bands")}};
+                                         if (levels.contains("windows")) {
+                                             track["windows"] = levels.at("windows");
+                                         }
+                                         return track;
                                      }) |
                                      std::ranges::to<Json::array_t>();
                  return Json{{"message", std::format("{} tracks analyzed", tracks.size())}, {"tracks", tracks}};
              },
+         .notifies = true});
+    registry.addAction(
+        {.id = kMixInspectAction,
+         .title = "Inspect mix",
+         .description =
+             "Render the mix and every audio track and bus once, unmuted, and list the issues a listener would hear, "
+             "most severe first: whine (a steady narrow tone), beep (a repeating high pitched hit, with its hz and "
+             "hitsPerBeat), clipping, dc (a DC offset), imbalance (active RMS far from the median track), silent and "
+             "harsh (a section much brighter than the track's average). Each issue names its severity, kind, track "
+             "(an id, or master for the mix), from and to, a detail and the evidence that triggered it. from and to "
+             "take ticks or bar.beat.tick; resolution is bar (the default), beat or a number of seconds. Run it after "
+             "a render to find what to fix.",
+         .keywords = {"issues", "problems", "whine", "beep", "clipping", "harsh", "balance", "check"},
+         .category = "Analyze",
+         .schema = {{"properties", rangeSchema}},
+         .run = [&controller, &registry](
+                    const Json& params) { return renderNow(prepareMixInspection(controller, registry, params)).json; },
+         .menus = {kFileMenu},
          .notifies = true});
 }
 

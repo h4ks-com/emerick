@@ -3,6 +3,7 @@
 #include <optional>
 #include <ranges>
 
+#include "emerick/app/analysis_render.hpp"
 #include "emerick/app/project_state.hpp"
 
 namespace emerick::app {

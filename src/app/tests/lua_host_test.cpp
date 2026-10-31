@@ -293,3 +293,17 @@ TEST_CASE("emerick.waitReady waits for loading instruments and raises after its 
     QTimer::singleShot(20, [&loading] { loading = false; });
     CHECK(project.lua.eval("emerick.waitReady(5)").at("ok") == true);
 }
+
+TEST_CASE("a script reads the windows of track.analyze and the issues of mix.inspect") {
+    ProjectLua project;
+    test::writeConstant(project.rig.path("offset.wav"), 4 * static_cast<core::Frames>(test::kRate), 0.2F);
+    const Json result = project.eval(
+        "local id = emerick.run('track.addAudio', {name = 'Offset'}).id\n"
+        "emerick.run('clip.import', {track = id, path = '" +
+        project.rig.path("offset.wav").string() +
+        "'})\n"
+        "local windows = emerick.run('track.analyze', {track = id, resolution = 'bar'}).windows\n"
+        "local issues = emerick.run('mix.inspect').issues\n"
+        "return {#windows, windows[2].at.bbt, issues[1].kind}");
+    CHECK(result == Json{2, "2.1.0", "dc"});
+}

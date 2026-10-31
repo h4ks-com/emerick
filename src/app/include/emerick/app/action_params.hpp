@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cmath>
 #include <optional>
 #include <string>
 
@@ -15,5 +16,9 @@ model::ClipId clipParam(const model::Project& project, const Json& params, const
 // Accepts ticks or a "bar.beat.tick" string.
 std::optional<core::Ticks> optionalPosition(const Json& params, const std::string& key, const core::TempoMap& tempo);
 core::Ticks positionParam(const Json& params, const std::string& key, const core::TempoMap& tempo);
+
+inline double rounded(double value, double step) { return std::round(value / step) * step; }
+// A level in dB to a tenth, or null for silence.
+inline Json levelDb(double value) { return std::isfinite(value) ? Json(rounded(value, 0.1)) : Json(nullptr); }
 
 }  // namespace emerick::app

@@ -6,6 +6,8 @@
 #include <cstddef>
 #include <cstdint>
 #include <format>
+#include <memory>
+#include <optional>
 #include <ranges>
 #include <stdexcept>
 #include <utility>
@@ -31,10 +33,7 @@ constexpr core::Ticks kNoteParts = 4;
 constexpr std::array kSpread{36, 48, 60, 72, 84};
 constexpr std::array kPhrase{48, 52, 55, 60};
 constexpr double kPhraseSeconds = 0.4;
-
-double rounded(double value, double step) { return std::round(value / step) * step; }
-
-Json levelDb(double value) { return std::isfinite(value) ? Json(rounded(value, 0.1)) : Json(nullptr); }
+const core::TempoMap kAuditionTempo;
 
 const engine::ClapParam& voiceParam(const std::vector<engine::ClapParam>& params, const Json& given,
                                     const std::string& instrument) {
@@ -80,6 +79,45 @@ Json noteJson(int note, const engine::NoteAnalysis& analysis) {
             {"activeRmsDb", levelDb(analysis.activeRmsDb)},
             {"centroidHz", std::round(analysis.centroidHz)},
             {"harmonicShare", rounded(analysis.harmonicShare, 0.001)}};
+}
+
+core::Ticks noteTicks(const Audition& audition) {
+    return kAuditionTempo.framesToTicks(std::llround(audition.seconds * audition.sampleRate), audition.sampleRate);
+}
+
+engine::Frames noteFrame(const Audition& audition, std::ptrdiff_t index) {
+    return kAuditionTempo.ticksToFrames(index * noteTicks(audition), audition.sampleRate);
+}
+
+Json measureAudition(const Audition& audition, const std::vector<std::vector<float>>& channels) {
+    const auto count = std::ssize(audition.notes);
+    Json notes = Json::array();
+    double lowestShare = 1;
+    for (std::ptrdiff_t index = 0; index < count; ++index) {
+        const int note = audition.notes[static_cast<std::size_t>(index)];
+        const std::vector<std::vector<float>> played =
+            channels | std::views::transform([&](const std::vector<float>& channel) {
+                return std::vector<float>(channel.begin() + noteFrame(audition, index),
+                                          channel.begin() + noteFrame(audition, index + 1));
+            }) |
+            std::ranges::to<std::vector>();
+        const engine::NoteAnalysis analysis = engine::analyzeNote(played, audition.sampleRate, engine::noteHz(note));
+        lowestShare = std::min(lowestShare, analysis.harmonicShare);
+        notes.push_back(noteJson(note, analysis));
+    }
+    Json result{
+        {"track", audition.trackId},
+        {"param", audition.param},
+        {"voice", audition.voice},
+        {"seconds", audition.seconds},
+        {"velocity", audition.velocity},
+        {"notes", std::move(notes)},
+        {"message", std::format("{}: lowest harmonic share {:.2f} over {} notes", audition.voice, lowestShare, count)}};
+    if (audition.path) {
+        writeWav(*audition.path, channels, audition.sampleRate);
+        result["path"] = audition.path->string();
+    }
+    return result;
 }
 
 }  // namespace
@@ -130,7 +168,7 @@ Audition prepareAudition(const Registry& registry, ProjectController& controller
     return audition;
 }
 
-AuditionResult renderAudition(const Audition& audition, const std::stop_token& stop) {
+RenderJob auditionJob(const Audition& audition) {
     auto created = engine::ClapInstrument::create(audition.slot.bundle, audition.slot.pluginId);
     if (!created) {
         throw AppError("cannot audition " + audition.slot.name + ": " + created.error());
@@ -141,54 +179,21 @@ AuditionResult renderAudition(const Audition& audition, const std::stop_token& s
     }
     instrument->setParam(audition.param, audition.value);
 
-    const core::TempoMap tempo;
-    const core::Ticks noteTicks =
-        tempo.framesToTicks(std::llround(audition.seconds * audition.sampleRate), audition.sampleRate);
+    const core::Ticks ticks = noteTicks(audition);
     const auto count = std::ssize(audition.notes);
-    const auto noteFrame = [&](std::ptrdiff_t index) {
-        return static_cast<std::size_t>(tempo.ticksToFrames(index * noteTicks, audition.sampleRate));
-    };
-    engine::MidiClip clip{.start = 0, .events = {}, .length = count * noteTicks};
+    engine::MidiClip clip{.start = 0, .events = {}, .length = count * ticks};
     for (std::ptrdiff_t index = 0; index < count; ++index) {
         const auto pitch = static_cast<std::uint8_t>(audition.notes[static_cast<std::size_t>(index)]);
-        const core::Ticks start = index * noteTicks;
+        const core::Ticks start = index * ticks;
         clip.events.push_back({start, {core::midi::kNoteOn, pitch, static_cast<std::uint8_t>(audition.velocity)}});
-        clip.events.push_back({start + (noteTicks * kHeldParts / kNoteParts), {core::midi::kNoteOff, pitch, 0}});
+        clip.events.push_back({start + (ticks * kHeldParts / kNoteParts), {core::midi::kNoteOff, pitch, 0}});
     }
-    AuditionResult result;
-    result.channels = renderInstrument(instrument, std::move(clip), tempo,
-                                       static_cast<engine::Frames>(noteFrame(count)), audition.sampleRate, stop);
-    if (result.channels.empty()) {
-        return result;
-    }
-
-    Json notes = Json::array();
-    double lowestShare = 1;
-    for (std::ptrdiff_t index = 0; index < count; ++index) {
-        const int note = audition.notes[static_cast<std::size_t>(index)];
-        const std::vector<std::vector<float>> played =
-            result.channels | std::views::transform([&](const std::vector<float>& channel) {
-                return std::vector<float>(channel.begin() + static_cast<std::ptrdiff_t>(noteFrame(index)),
-                                          channel.begin() + static_cast<std::ptrdiff_t>(noteFrame(index + 1)));
-            }) |
-            std::ranges::to<std::vector>();
-        const engine::NoteAnalysis analysis = engine::analyzeNote(played, audition.sampleRate, engine::noteHz(note));
-        lowestShare = std::min(lowestShare, analysis.harmonicShare);
-        notes.push_back(noteJson(note, analysis));
-    }
-    result.json = {
-        {"track", audition.trackId},
-        {"param", audition.param},
-        {"voice", audition.voice},
-        {"seconds", audition.seconds},
-        {"velocity", audition.velocity},
-        {"notes", std::move(notes)},
-        {"message", std::format("{}: lowest harmonic share {:.2f} over {} notes", audition.voice, lowestShare, count)}};
-    if (audition.path) {
-        writeWav(*audition.path, result.channels, audition.sampleRate);
-        result.json["path"] = audition.path->string();
-    }
-    return result;
+    return {.render = instrumentRender(instrument, std::move(clip), kAuditionTempo, audition.sampleRate),
+            .frames = noteFrame(audition, count),
+            .measure = [audition = Audition{audition}](std::vector<std::vector<float>> channels) {
+                Json json = measureAudition(audition, channels);
+                return RenderResult{.channels = std::move(channels), .json = std::move(json)};
+            }};
 }
 
 void registerAuditionAction(Registry& registry, ProjectController& controller) {
@@ -218,7 +223,7 @@ void registerAuditionAction(Registry& registry, ProjectController& controller) {
          .run =
              [&registry, &controller](const Json& params) {
                  const Audition audition = prepareAudition(registry, controller, params);
-                 AuditionResult result = renderAudition(audition);
+                 RenderResult result = renderNow(auditionJob(audition));
                  if (audition.play) {
                      playOnTrack(controller, audition.trackId, std::move(result.channels));
                  }
@@ -228,57 +233,28 @@ void registerAuditionAction(Registry& registry, ProjectController& controller) {
 }
 
 VoicePreview::VoicePreview(const Registry& registry, ProjectController& controller, QObject* parent)
-    : QObject(parent), registry_(registry), controller_(controller) {}
+    : BackgroundRender(registry, parent), controller_(controller) {}
 
 void VoicePreview::play(const QString& track, int param, const QString& voice) {
-    if (!busyTrack_.isEmpty()) {
-        return;
-    }
     const Json params{{"track", track.toStdString()}, {"param", param},
                       {"voice", voice.toStdString()}, {"notes", kPhrase},
                       {"seconds", kPhraseSeconds},    {"play", true}};
-    Audition audition;
-    try {
-        audition = prepareAudition(registry_, controller_, params);
-    } catch (const AppError& error) {
-        emit registry_.noticeRaised(qs(registry_.action(kVoicesAuditionAction)->title), qs(error.what()));
+    if (!begin(kVoicesAuditionAction, params)) {
         return;
     }
-    emit registry_.actionRan(kVoicesAuditionAction, params, ActionSource::Ui);
-    busyTrack_ = track;
-    emit busyTrackChanged();
-    worker_ = std::jthread([this, track, audition = std::move(audition)](const std::stop_token& stop) {
-        AuditionResult result;
-        QString error;
-        try {
-            result = renderAudition(audition, stop);
-        } catch (const AppError& failure) {
-            error = qs(failure.what());
-        }
-        if (stop.stop_requested()) {
-            return;
-        }
-        QMetaObject::invokeMethod(
-            this, [this, track, result = std::move(result), error] { finish(track, result, error); },
-            Qt::QueuedConnection);
-    });
-}
-
-void VoicePreview::finish(const QString& track, const AuditionResult& result, const QString& error) {
-    worker_.join();
-    busyTrack_.clear();
-    emit busyTrackChanged();
-    QString failure = error;
-    if (failure.isEmpty()) {
-        try {
-            playOnTrack(controller_, track.toStdString(), result.channels);
-        } catch (const AppError& playing) {
-            failure = qs(playing.what());
-        }
-    }
-    if (!failure.isEmpty()) {
-        emit registry_.noticeRaised(qs(registry_.action(kVoicesAuditionAction)->title), failure);
-    }
+    render(
+        track, kVoicesAuditionAction,
+        [this, &params] { return auditionJob(prepareAudition(registry(), controller_, params)); },
+        [this, track](std::optional<RenderResult> result) {
+            if (!result) {
+                return;
+            }
+            try {
+                playOnTrack(controller_, track.toStdString(), std::move(result->channels));
+            } catch (const AppError& error) {
+                raiseNotice(kVoicesAuditionAction, qs(error.what()));
+            }
+        });
 }
 
 }  // namespace emerick::app

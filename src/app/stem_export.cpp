@@ -355,10 +355,8 @@ void OfflineRender::idleInstruments() {
     }
 }
 
-std::vector<std::vector<float>> renderInstrument(std::shared_ptr<engine::ClapInstrument> instrument,
-                                                 engine::MidiClip clip, const core::TempoMap& tempo,
-                                                 engine::Frames frames, double sampleRate,
-                                                 const std::stop_token& stop) {
+std::unique_ptr<OfflineRender> instrumentRender(std::shared_ptr<engine::ClapInstrument> instrument,
+                                                engine::MidiClip clip, const core::TempoMap& tempo, double sampleRate) {
     engine::Track track;
     track.id = "render";
     track.kind = engine::TrackKind::midi;
@@ -368,8 +366,8 @@ std::vector<std::vector<float>> renderInstrument(std::shared_ptr<engine::ClapIns
     engine::Session session;
     session.tempo = tempo;
     session.tracks.push_back(std::move(track));
-    OfflineRender render(std::move(session), {std::move(instrument)}, sampleRate);
-    return render.process(frames, [&render] { render.idleInstruments(); }, stop);
+    return std::make_unique<OfflineRender>(
+        std::move(session), std::vector<std::shared_ptr<engine::ClapInstrument>>{std::move(instrument)}, sampleRate);
 }
 
 std::unique_ptr<OfflineRender> trackRender(const engine::Session& session, const Registry& registry,

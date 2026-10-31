@@ -50,8 +50,8 @@ std::optional<MixLevels> exportMix(const engine::Session& session, const Registr
                                    const PlaybackContext& context, const std::filesystem::path& file, double sampleRate,
                                    const std::optional<LoudnessTarget>& target = {});
 
-// One render's fresh instruments and offline engine. The thread that constructs it is the instruments' main thread:
-// it creates, loads, activates, idles and destroys them, and reads the registry. Any one thread can then process.
+// One render's fresh instruments and offline engine. The UI thread constructs it, runs idleInstruments and destroys it,
+// and any one thread runs process.
 class OfflineRender {
 public:
     struct InstrumentMessage {
@@ -60,7 +60,7 @@ public:
     };
 
     OfflineRender(engine::Session session, const Registry& registry, const PlaybackContext& context, double sampleRate);
-    // Renders a session whose tracks already hold their instruments, which this thread created.
+    // Renders a session whose tracks already hold their instruments.
     OfflineRender(engine::Session session, std::vector<std::shared_ptr<engine::ClapInstrument>> instruments,
                   double sampleRate);
     ~OfflineRender();
@@ -73,7 +73,7 @@ public:
     // before it returns. Returns no channels once stop is requested.
     std::vector<std::vector<float>> process(engine::Frames frames, const std::function<void()>& idle,
                                             const std::stop_token& stop = {});
-    // Main thread: runs what the instruments asked of it, such as loading a voice after a program change.
+    // Runs what the instruments asked of the UI thread, such as loading a voice after a program change.
     void idleInstruments();
 
 private:
@@ -85,12 +85,9 @@ private:
     std::unique_ptr<engine::Engine> engine_;
 };
 
-// Plays the clip through the instrument, which this thread created, and returns frames of its stereo output from the
-// start. Returns no channels once stop is requested.
-std::vector<std::vector<float>> renderInstrument(std::shared_ptr<engine::ClapInstrument> instrument,
-                                                 engine::MidiClip clip, const core::TempoMap& tempo,
-                                                 engine::Frames frames, double sampleRate,
-                                                 const std::stop_token& stop = {});
+// Sets up the render of the clip played through the instrument.
+std::unique_ptr<OfflineRender> instrumentRender(std::shared_ptr<engine::ClapInstrument> instrument,
+                                                engine::MidiClip clip, const core::TempoMap& tempo, double sampleRate);
 
 // Sets up the render of one track or bus as its stem plays.
 std::unique_ptr<OfflineRender> trackRender(const engine::Session& session, const Registry& registry,

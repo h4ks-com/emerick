@@ -114,10 +114,6 @@ Json withWarnings(Json result, const ProjectController& controller) {
     return result;
 }
 
-double rounded(double value, double step) { return std::round(value / step) * step; }
-
-Json levelDb(double value) { return std::isfinite(value) ? Json(rounded(value, 0.1)) : Json(nullptr); }
-
 Json analysisJson(const engine::AudioAnalysis& analysis) {
     Json bands = Json::object();
     for (const auto& [band, db] : std::views::zip(engine::kFrequencyBands, analysis.bandDb)) {
@@ -157,9 +153,35 @@ Json toneBandsJson(const engine::ToneBalance& tone) {
            std::ranges::to<Json::array_t>();
 }
 
-Json analyzeTrackRender(const TrackRender& job) {
-    OfflineRender& render = *job.render;
-    return measureTrack(job.range, render.process(job.range.endFrame(), [&render] { render.idleInstruments(); }));
+struct AnalysisRange {
+    core::TempoMap tempo;
+    std::string trackId;
+    core::Ticks from = 0;
+    core::Ticks to = 0;
+    double sampleRate = 0;
+};
+
+Json measureTrack(const AnalysisRange& range, std::vector<std::vector<float>> channels) {
+    const auto skipped = static_cast<std::ptrdiff_t>(range.tempo.ticksToFrames(range.from, range.sampleRate));
+    for (std::vector<float>& channel : channels) {
+        channel.erase(channel.begin(), channel.begin() + std::min(skipped, std::ssize(channel)));
+    }
+    const engine::AudioAnalysis levels = engine::analyzeAudio(channels, {.sampleRate = range.sampleRate});
+    const engine::ToneBalance tone = engine::analyzeTone(channels, range.sampleRate);
+    return {{"track", range.trackId},
+            {"from", positionState(range.from, range.tempo)},
+            {"to", positionState(range.to, range.tempo)},
+            {"integratedLufs", levelDb(levels.integratedLufs)},
+            {"samplePeakDbfs", levelDb(levels.samplePeakDbfs)},
+            {"truePeakDbtp", levelDb(levels.truePeakDbtp)},
+            {"activeRmsDb", levelDb(tone.activeRmsDb)},
+            {"bands", toneBandsJson(tone)},
+            {"centroidHz", std::round(tone.centroidHz)},
+            {"message", loudnessMessage(levels, std::format("{:.1f} dB active RMS", tone.activeRmsDb))}};
+}
+
+Json analyzeTrack(ProjectController& controller, const Registry& registry, const Json& params) {
+    return renderNow(prepareTrackRender(controller, registry, params)).json;
 }
 
 struct AudioSection {
@@ -301,7 +323,7 @@ void registerExportSettings(Registry& registry) {
 
 }  // namespace
 
-TrackRender prepareTrackRender(ProjectController& controller, const Registry& registry, const Json& params) {
+RenderJob prepareTrackRender(ProjectController& controller, const Registry& registry, const Json& params) {
     const model::Document document = liveDocument(controller);
     const model::TrackId id = findTrackByIdOrName(controller.project(), param<std::string>(params, "track"));
     const model::Track& source = *model::findTrack(document, id);
@@ -326,26 +348,10 @@ TrackRender prepareTrackRender(ProjectController& controller, const Registry& re
     }
     return {.render =
                 trackRender(session, registry, playbackContext(controller, document), range.trackId, range.sampleRate),
-            .range = std::move(range)};
-}
-
-Json measureTrack(const AnalysisRange& range, std::vector<std::vector<float>> channels) {
-    const auto skipped = static_cast<std::ptrdiff_t>(range.tempo.ticksToFrames(range.from, range.sampleRate));
-    for (std::vector<float>& channel : channels) {
-        channel.erase(channel.begin(), channel.begin() + std::min(skipped, std::ssize(channel)));
-    }
-    const engine::AudioAnalysis levels = engine::analyzeAudio(channels, {.sampleRate = range.sampleRate});
-    const engine::ToneBalance tone = engine::analyzeTone(channels, range.sampleRate);
-    return {{"track", range.trackId},
-            {"from", positionState(range.from, range.tempo)},
-            {"to", positionState(range.to, range.tempo)},
-            {"integratedLufs", levelDb(levels.integratedLufs)},
-            {"samplePeakDbfs", levelDb(levels.samplePeakDbfs)},
-            {"truePeakDbtp", levelDb(levels.truePeakDbtp)},
-            {"activeRmsDb", levelDb(tone.activeRmsDb)},
-            {"bands", toneBandsJson(tone)},
-            {"centroidHz", std::round(tone.centroidHz)},
-            {"message", loudnessMessage(levels, std::format("{:.1f} dB active RMS", tone.activeRmsDb))}};
+            .frames = tempo.ticksToFrames(range.to, range.sampleRate),
+            .measure = [range](std::vector<std::vector<float>> channels) {
+                return RenderResult{.channels = {}, .json = measureTrack(range, std::move(channels))};
+            }};
 }
 
 void registerExportActions(Registry& registry, ProjectController& controller) {
@@ -530,10 +536,7 @@ void registerExportActions(Registry& registry, ProjectController& controller) {
          .schema = {{"required", {"track"}},
                     {"properties",
                      {{"track", {{"type", "string"}}}, {"from", Json::object()}, {"to", Json::object()}}}},
-         .run =
-             [&controller, &registry](const Json& params) {
-                 return analyzeTrackRender(prepareTrackRender(controller, registry, params));
-             },
+         .run = [&controller, &registry](const Json& params) { return analyzeTrack(controller, registry, params); },
          .notifies = true});
     registry.addAction(
         {.id = kTracksAnalyzeAction,
@@ -547,8 +550,7 @@ void registerExportActions(Registry& registry, ProjectController& controller) {
                  const model::Document document = controller.project().document();
                  const Json tracks =
                      analyzableTracks(registry, document) | std::views::transform([&](const model::TrackId& id) {
-                         const Json measured =
-                             analyzeTrackRender(prepareTrackRender(controller, registry, {{"track", id.value}}));
+                         const Json measured = analyzeTrack(controller, registry, {{"track", id.value}});
                          return Json{{"id", id.value},
                                      {"name", model::findTrack(document, id)->name},
                                      {"activeRmsDb", measured.at("activeRmsDb")},

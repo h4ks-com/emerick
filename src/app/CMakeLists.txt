@@ -5,6 +5,7 @@ qt_add_library(emerick_app STATIC
     automation_actions.cpp
     automation_params.cpp
     automation_writing.cpp
+    background_render.cpp
     backends.cpp
     clip_actions.cpp
     clip_edit_actions.cpp
@@ -24,6 +25,7 @@ qt_add_library(emerick_app STATIC
     include/emerick/app/audio_file.hpp
     include/emerick/app/audio_image.hpp
     include/emerick/app/automation_params.hpp
+    include/emerick/app/background_render.hpp
     include/emerick/app/backends.hpp
     include/emerick/app/clip_notes.hpp
     include/emerick/app/code_highlighter.hpp

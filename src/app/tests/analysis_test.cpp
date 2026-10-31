@@ -9,6 +9,8 @@
 #include <string>
 #include <vector>
 
+#include "emerick/app/audio_file.hpp"
+#include "emerick/engine/audio_analysis.hpp"
 #include "project_rig.hpp"
 
 using Catch::Approx;
@@ -106,6 +108,51 @@ TEST_CASE("render analyze measures the rendered mix") {
     CHECK(mix.at("bars").size() == 1);
     CHECK(mix.at("integratedLufs").is_number());
     CHECK(mix.at("stereo").at("correlation") == 1.0);
+}
+
+TEST_CASE("a limiter added through the registry holds the mix under its ceiling, and its ceiling automates") {
+    ProjectRig rig;
+    const std::string vox = rig.run("track.addAudio", {{"name", "Vox"}}).at("id");
+    writeWav(rig.path("loud.wav"), {sine(997, std::pow(10.0, -1.0 / 20.0), 2)}, kRate);
+    rig.run("clip.import", {{"track", vox}, {"path", rig.path("loud.wav").string()}});
+    const std::string limiter = rig.run("insert.add", {{"track", vox}, {"type", "limiter"}}).at("id");
+    CHECK(rig.run("insert.setParam", {{"insert", limiter}, {"param", "gain"}, {"value", 12}}).at("params").at("gain") ==
+          12.0);
+    const std::string mix = rig.path("mix.wav").string();
+    const auto truePeak = [&] { return emerick::engine::truePeakDbtp(readAudio(mix).channels); };
+
+    rig.run("export.mix", {{"path", mix}});
+    CHECK(truePeak() <= -1.0);
+    CHECK(truePeak() > -8.0);
+
+    rig.run("automation.addPoint", {{"track", vox}, {"param", limiter + ".ceiling"}, {"tick", 0}, {"value", -6.0}});
+    rig.run("export.mix", {{"path", mix}});
+    CHECK(truePeak() <= -6.0);
+    CHECK(truePeak() > -13.0);
+}
+
+TEST_CASE("export mix with a loudness target lands a quiet mix on it under the ceiling, also from the settings") {
+    ProjectRig rig;
+    const std::string vox = rig.run("track.addAudio", {{"name", "Vox"}}).at("id");
+    writeWav(rig.path("quiet.wav"), {sine(440, 0.01, 4)}, kRate);
+    rig.run("clip.import", {{"track", vox}, {"path", rig.path("quiet.wav").string()}});
+    const std::string mix = rig.path("mix.wav").string();
+
+    const Json plain = rig.run("export.mix", {{"path", mix}});
+    CHECK_FALSE(plain.contains("integratedLufs"));
+
+    const Json result = rig.run("export.mix", {{"path", mix}, {"targetLufs", -14}, {"ceilingDbtp", -1}});
+    CHECK(result.at("integratedLufs").get<double>() == Approx(-14).margin(0.5));
+    CHECK(result.at("truePeakDbtp").get<double>() <= -1.0);
+    const Json measured = rig.run("audio.analyze", {{"path", mix}});
+    CHECK(measured.at("integratedLufs").get<double>() == Approx(-14).margin(0.5));
+    CHECK(emerick::engine::truePeakDbtp(readAudio(mix).channels) <= -1.0);
+
+    rig.registry.setSetting("export.normalize", true);
+    rig.registry.setSetting("export.targetLufs", -20);
+    CHECK(rig.run("export.mix", {{"path", mix}}).at("integratedLufs").get<double>() == Approx(-20).margin(0.5));
+    CHECK_FALSE(rig.run("export.mix", {{"path", mix}, {"normalize", false}}).contains("integratedLufs"));
+    CHECK_THROWS_AS(rig.run("export.mix", {{"path", mix}, {"ceilingDbtp", 3}}), AppError);
 }
 
 TEST_CASE("track analyze measures one track as its stem with its five bands in order, and checks its params") {

@@ -9,6 +9,7 @@
 #include <cstdint>
 #include <filesystem>
 #include <format>
+#include <optional>
 #include <ranges>
 #include <string>
 #include <string_view>
@@ -242,6 +243,62 @@ Json writeAudioImage(const AudioData& audio, const Json& params, const std::file
             {"kind", kindName}};
 }
 
+constexpr const char* kNormalizeSetting = "export.normalize";
+constexpr const char* kTargetLufsSetting = "export.targetLufs";
+constexpr const char* kCeilingSetting = "export.ceilingDbtp";
+constexpr double kMinTargetLufs = -60;
+constexpr double kMinCeilingDbtp = -12;
+
+double boundedParam(const Json& params, const Registry& registry, const char* key, const char* setting,
+                    double minimum) {
+    const double value = optionalParam<double>(params, key).value_or(registry.settingValue(setting).get<double>());
+    if (value < minimum || value > 0) {
+        throw AppError(std::format("give {} from {} to 0", key, minimum));
+    }
+    return value;
+}
+
+std::optional<LoudnessTarget> loudnessTarget(const Registry& registry, const Json& params) {
+    const bool normalize = optionalParam<bool>(params, "normalize")
+                               .value_or(params.contains("targetLufs") || params.contains("ceilingDbtp") ||
+                                         registry.settingValue(kNormalizeSetting).get<bool>());
+    if (!normalize) {
+        return std::nullopt;
+    }
+    return LoudnessTarget{
+        .lufs = boundedParam(params, registry, "targetLufs", kTargetLufsSetting, kMinTargetLufs),
+        .ceilingDbtp = boundedParam(params, registry, "ceilingDbtp", kCeilingSetting, kMinCeilingDbtp)};
+}
+
+void registerExportSettings(Registry& registry) {
+    registry.addSetting({.id = kNormalizeSetting,
+                         .title = "Normalize mix exports",
+                         .aliases = {"loudness target", "lufs"},
+                         .category = "Settings / Audio",
+                         .type = SettingType::Boolean,
+                         .defaultValue = false,
+                         .hint = "Turn exported mixes to the target loudness under the true peak ceiling",
+                         .location = "settings.audio"});
+    registry.addSetting({.id = kTargetLufsSetting,
+                         .title = "Export loudness target",
+                         .category = "Settings / Audio",
+                         .type = SettingType::Number,
+                         .defaultValue = -14,
+                         .minimum = kMinTargetLufs,
+                         .maximum = 0,
+                         .hint = "Integrated LUFS a normalized mix export ends at",
+                         .location = "settings.audio"});
+    registry.addSetting({.id = kCeilingSetting,
+                         .title = "Export true peak ceiling",
+                         .category = "Settings / Audio",
+                         .type = SettingType::Number,
+                         .defaultValue = -1,
+                         .minimum = kMinCeilingDbtp,
+                         .maximum = 0,
+                         .hint = "dBTP a normalized mix export never goes over",
+                         .location = "settings.audio"});
+}
+
 }  // namespace
 
 TrackRender prepareTrackRender(ProjectController& controller, const Registry& registry, const Json& params) {
@@ -292,6 +349,7 @@ Json measureTrack(const AnalysisRange& range, std::vector<std::vector<float>> ch
 }
 
 void registerExportActions(Registry& registry, ProjectController& controller) {
+    registerExportSettings(registry);
     const Json tracksSchema{{"tracks", {{"type", "array"}}}};
     registry.addAction(
         {.id = "export.stems",
@@ -316,17 +374,34 @@ void registerExportActions(Registry& registry, ProjectController& controller) {
     registry.addAction(
         {.id = "export.mix",
          .title = "Export mix",
+         .description = "Render the mix to a stereo WAV at path. With normalize, or when targetLufs or ceilingDbtp is "
+                        "given, turn the mix to targetLufs integrated loudness and limit its true peak to "
+                        "ceilingDbtp, and report the integratedLufs and truePeakDbtp the file ends at. Each one "
+                        "defaults to its export setting.",
          .aliases = {"bounce mix", "render mix"},
+         .keywords = {"normalize", "loudness", "lufs", "true peak", "limiter"},
          .category = "Export",
-         .schema = {{"required", {"path"}}},
+         .schema = {{"required", {"path"}},
+                    {"properties",
+                     {{"path", {{"type", "string"}}},
+                      {"normalize", {{"type", "boolean"}}},
+                      {"targetLufs", {{"type", "number"}, {"minimum", kMinTargetLufs}, {"maximum", 0}}},
+                      {"ceilingDbtp", {{"type", "number"}, {"minimum", kMinCeilingDbtp}, {"maximum", 0}}}}}},
          .run =
              [&controller, &registry](const Json& params) {
                  const std::filesystem::path file =
                      registry.checkedPath(param<std::string>(params, "path"), PathAccess::Write);
                  const model::Document document = liveDocument(controller);
-                 exportMix(toSession(document, registry, controller.folder()), registry,
-                           playbackContext(controller, document), file, controller.sampleRate());
-                 return withWarnings(Json{{"file", file.string()}}, controller);
+                 const std::optional<MixLevels> levels =
+                     exportMix(toSession(document, registry, controller.folder()), registry,
+                               playbackContext(controller, document), file, controller.sampleRate(),
+                               loudnessTarget(registry, params));
+                 Json result{{"file", file.string()}};
+                 if (levels) {
+                     result["integratedLufs"] = levelDb(levels->integratedLufs);
+                     result["truePeakDbtp"] = levelDb(levels->truePeakDbtp);
+                 }
+                 return withWarnings(result, controller);
              },
          .menus = {kFileMenu},
          .dialog = FileDialog{

@@ -4,6 +4,7 @@
 #include <filesystem>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <stop_token>
 #include <string>
 #include <vector>
@@ -32,10 +33,22 @@ std::vector<std::filesystem::path> exportStems(const engine::Session& session, c
                                                const PlaybackContext& context, const std::filesystem::path& folder,
                                                double sampleRate, bool numbered = false);
 
+struct LoudnessTarget {
+    double lufs = -14;
+    double ceilingDbtp = -1;
+};
+
+struct MixLevels {
+    double integratedLufs = 0;
+    double truePeakDbtp = 0;
+};
+
 // Renders every audio track, instrument track and bus of the session with sends, mute and solo applied to one stereo
-// WAV.
-void exportMix(const engine::Session& session, const Registry& registry, const PlaybackContext& context,
-               const std::filesystem::path& file, double sampleRate);
+// WAV. With a target, it turns the mix to the target loudness under the true peak ceiling and returns the levels the
+// file ends at.
+std::optional<MixLevels> exportMix(const engine::Session& session, const Registry& registry,
+                                   const PlaybackContext& context, const std::filesystem::path& file, double sampleRate,
+                                   const std::optional<LoudnessTarget>& target = {});
 
 // One render's fresh instruments and offline engine. The thread that constructs it is the instruments' main thread:
 // it creates, loads, activates, idles and destroys them, and reads the registry. Any one thread can then process.

@@ -11,6 +11,7 @@
 #include <utility>
 
 #include "emerick/app/audio_file.hpp"
+#include "emerick/engine/audio_analysis.hpp"
 #include "emerick/engine/engine.hpp"
 #include "emerick/model/clip_edit.hpp"
 #include "emerick/model/document.hpp"
@@ -247,13 +248,22 @@ std::vector<std::filesystem::path> exportStems(const engine::Session& session, c
     return files;
 }
 
-void exportMix(const engine::Session& session, const Registry& registry, const PlaybackContext& context,
-               const std::filesystem::path& file, double sampleRate) {
+std::optional<MixLevels> exportMix(const engine::Session& session, const Registry& registry,
+                                   const PlaybackContext& context, const std::filesystem::path& file, double sampleRate,
+                                   const std::optional<LoudnessTarget>& target) {
     const engine::Frames frames = renderFrames(session, *context.document, sampleRate);
     if (!file.parent_path().empty()) {
         std::filesystem::create_directories(file.parent_path());
     }
-    writeWav(file, render(mixSession(session, *context.document), registry, context, frames, sampleRate), sampleRate);
+    std::vector<std::vector<float>> mix =
+        render(mixSession(session, *context.document), registry, context, frames, sampleRate);
+    std::optional<MixLevels> levels;
+    if (target) {
+        const double lufs = engine::matchLoudness(mix, sampleRate, target->lufs, target->ceilingDbtp);
+        levels = MixLevels{.integratedLufs = lufs, .truePeakDbtp = engine::truePeakDbtp(mix)};
+    }
+    writeWav(file, mix, sampleRate);
+    return levels;
 }
 
 OfflineRender::OfflineRender(engine::Session session, const Registry& registry, const PlaybackContext& context,

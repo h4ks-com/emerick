@@ -36,6 +36,7 @@ constexpr std::array kTrackFlags{
     TrackFlag{"track.setMonitor", "Monitor track input", "input monitoring", "", &model::Track::monitor, nullptr}};
 
 constexpr double kMaxRecordDelayMs = 1000.0;
+constexpr double kMaxTrimDb = 24.0;
 
 constexpr std::array<std::string_view, kTrackColors> kColorNames{"Teal",  "Blue",  "Violet", "Rose",
                                                                  "Amber", "Green", "Sand",   "Steel"};
@@ -428,6 +429,28 @@ void registerTrackEditActions(Registry& registry, ProjectController& controller,
                      editTrack(controller, id, "set track gain", [&](model::Track& track) { track.gainDb = db; });
                  }
                  controller.setLiveGain(id, db);
+             });
+         }});
+    registry.addAction(
+        {.id = "track.setTrim",
+         .title = "Set track trim",
+         .description = "Trims the track's input level by db, from -24 to 24, before its inserts and fader. With "
+                        "selection every selected track gets the trim.",
+         .aliases = {"input trim", "input gain", "preamp gain"},
+         .category = "Tracks",
+         .schema = {{"required", {"track", "db"}},
+                    {"properties",
+                     {{"track", {{"type", "string"}}},
+                      {"db", {{"type", "number"}, {"minimum", -kMaxTrimDb}, {"maximum", kMaxTrimDb}}},
+                      {"selection", {{"type", "boolean"}}}}}},
+         .run = [&controller, &nav](const Json& params) {
+             trackParam(controller.project(), params);
+             const auto db = param<double>(params, "db");
+             if (!(std::abs(db) <= kMaxTrimDb)) {
+                 throw AppError(std::format("db must be from {} to {}", -kMaxTrimDb, kMaxTrimDb));
+             }
+             return editTargets(controller, nav, params, "set track trim", [&](const model::TrackId& id) {
+                 editTrack(controller, id, "set track trim", [&](model::Track& track) { track.trimDb = db; });
              });
          }});
     registry.addAction(

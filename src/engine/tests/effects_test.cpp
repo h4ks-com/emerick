@@ -253,6 +253,23 @@ TEST_CASE("a track's fader scales what its inserts made") {
     CHECK(output.at(kBlock * 2) == Approx(0.5F * 0.5F * std::pow(10.0F, 12.0F / 20.0F)).margin(1e-3));
 }
 
+TEST_CASE("a track's trim scales its signal with its fader, and a trim change ramps over a block") {
+    EffectRig rig;
+    Track vox = rig.track({});
+    vox.gain = 0.5F;
+    vox.trim = 2.0F;
+    rig.rig.engine.setSession({.tracks = {vox}});
+    playOnceReadAhead(rig.rig);
+    CHECK(rig.play(kBlock * 2).back() == Approx(0.5F * 0.5F * 2.0F).margin(1e-4));
+
+    vox.trim = 4.0F;
+    rig.rig.engine.setSession({.tracks = {vox}});
+    const std::vector<float> ramp = rig.play(kBlock);
+    CHECK(ramp.front() > 0.5F);
+    CHECK(ramp.front() < 0.6F);
+    CHECK(ramp.back() == Approx(0.5F * 0.5F * 4.0F).margin(1e-4));
+}
+
 TEST_CASE("a compressor insert reports the deepest gain reduction since the last reading") {
     EffectRig rig;
     const Insert squash{.id = "squash",

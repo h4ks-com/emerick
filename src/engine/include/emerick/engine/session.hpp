@@ -105,6 +105,8 @@ struct Track {
     bool solo = false;
     bool monitor = false;
     float gain = 1.0F;
+    // Scales the track's signal before its inserts and fader.
+    float trim = 1.0F;
     float pan = 0.0F;  // -1 hard left, 0 center, 1 hard right
     AudioRoute audioIn;
     AudioRoute audioOut;

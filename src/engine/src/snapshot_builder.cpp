@@ -299,6 +299,8 @@ BuiltSnapshot SnapshotBuilder::build(const Session& session, const StreamLayout&
         state.solo = track.solo;
         state.monitor = track.monitor;
         state.gain = track.gain;
+        state.trim = track.trim;
+        state.trimFrom = track.trim;
         state.pan = track.pan;
         state.inputs = channelIndices("track " + track.id, track.audioIn, layout, true);
         if (track.outputBus.empty()) {

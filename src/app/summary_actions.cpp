@@ -180,6 +180,7 @@ Json trackSummary(const model::Track& track, const QVariantMap& warnings) {
                 {"mute", track.mute},
                 {"solo", track.solo},
                 {"gainDb", track.gainDb},
+                {"trimDb", track.trimDb},
                 {"pan", track.pan},
                 {"inserts", track.inserts | std::views::transform([](const model::Insert& insert) {
                                 return Json{{"name", insertState(insert).at("title")}, {"bypass", insert.bypass}};

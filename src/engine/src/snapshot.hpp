@@ -97,6 +97,9 @@ struct TrackState {
     bool solo = false;
     bool monitor = false;
     float gain = 1.0F;
+    float trim = 1.0F;
+    // The trim the last block ended on, so a trim change ramps like a fader.
+    float trimFrom = 1.0F;
     float pan = 0.0F;
     // An automated mute ramps the track to silence, so it never clicks.
     float muteGain = 1.0F;

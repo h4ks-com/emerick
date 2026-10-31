@@ -43,6 +43,9 @@ struct BlockTime {
 void keepOutputGains(const Snapshot& from, Snapshot& to) {
     for (TrackState& track : to.tracks) {
         const auto old = std::ranges::find(from.tracks, track.id, &TrackState::id);
+        if (old != from.tracks.end()) {
+            track.trimFrom = old->trimFrom;
+        }
         if (old != from.tracks.end() && old->outputGains.size() == track.outputGains.size()) {
             std::ranges::copy(old->outputGains, track.outputGains.begin());
         }
@@ -277,6 +280,17 @@ void rampGain(float* samples, Frames frames, float& from, float to) {
     from = to;
 }
 
+void applyTrim(TrackState& track, Frames frames) {
+    if (track.trim == 1.0F && track.trimFrom == 1.0F) {
+        return;
+    }
+    for (std::vector<float>& channel : track.mix) {
+        float from = track.trimFrom;
+        rampGain(channel.data(), frames, from, track.trim);
+    }
+    track.trimFrom = track.trim;
+}
+
 void addRamped(float* destination, const float* source, Frames frames, float from, float to) {
     const float step = (to - from) / static_cast<float>(frames);
     for (Frames index = 0; index < frames; ++index) {
@@ -354,9 +368,9 @@ void mixPart(Snapshot& snapshot, TrackState& track, Frames offset, Frames frames
 // An automated track mixes in parts this long, each ramping to the lanes' values at its end.
 constexpr Frames kAutomationStep = 32;
 
-// In mix order, so each bus has every source in its mix before its turn: runs each track's inserts, applies its
-// fader and pan, feeds
-// its sends, meters it, adds it to its outputs or its output bus and clears it for the next block.
+// In mix order, so each bus has every source in its mix before its turn: trims each track, runs its inserts, applies
+// its fader and pan, feeds its sends, meters it, adds it to its outputs or its output bus and clears it for the next
+// block.
 void mixTracks(Snapshot& snapshot, const AudioBlock& block, const BlockTime& time) {
     if (block.frames == 0) {
         return;
@@ -368,6 +382,7 @@ void mixTracks(Snapshot& snapshot, const AudioBlock& block, const BlockTime& tim
             if (!track.lanes.empty()) {
                 applyLanes(track, time.at(block.frames));
             }
+            applyTrim(track, block.frames);
             for (InsertState& insert : track.inserts) {
                 insert.effect->process(track.mixPointers, block.frames, insert.params, insert.bypass,
                                        snapshot.tempo.bpm);

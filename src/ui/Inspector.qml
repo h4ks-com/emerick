@@ -139,6 +139,7 @@ Rectangle {
                 required property real pan
                 required property real recordDelayMs
                 required property real gainDb
+                required property real trimDb
                 required property bool mute
                 required property bool solo
                 required property bool armed
@@ -186,6 +187,12 @@ Rectangle {
                             text: modelData.text
                             activeColor: modelData.color
                         }
+                    }
+                    TrimKnob {
+                        objectName: "track.setTrim:" + panel.trackId + ":inspector"
+                        visible: panel.playsAudio
+                        trackId: panel.trackId
+                        trimDb: panel.trimDb
                     }
                     GainReadout {
                         objectName: "track.setGain:" + panel.trackId + ":inspector"

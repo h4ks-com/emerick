@@ -63,6 +63,7 @@ qt_add_qml_module(emerick_ui
         TrackList.qml
         TransportBar.qml
         TransportDisplay.qml
+        TrimKnob.qml
         VelocityLane.qml
         WarningBadge.qml
     RESOURCES

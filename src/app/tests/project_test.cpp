@@ -107,6 +107,21 @@ TEST_CASE("track and clip actions round trip through undo and redo") {
     CHECK(devices.at("midiInputs").at(0).at("port") == kMidiPort);
 }
 
+TEST_CASE("track.setTrim rejects a trim outside 24 dB, undoes in one step and reaches the summary and the session") {
+    ProjectRig rig;
+    const std::string id = rig.run("track.addAudio", {{"name", "Vox"}}).at("id");
+    CHECK(rig.run("track.setTrim", {{"track", id}, {"db", 12.5}}).at("trimDb") == 12.5);
+    CHECK_THROWS_AS(rig.run("track.setTrim", {{"track", id}, {"db", 24.5}}), AppError);
+    CHECK_THROWS_AS(rig.run("track.setTrim", {{"track", id}, {"db", -30}}), AppError);
+    CHECK(rig.run("project.summary").at("tracks").at(0).at("trimDb") == 12.5);
+    CHECK(toSession(rig.controller->project().document(), rig.registry, "/projects/song").tracks[0].trim ==
+          Approx(std::pow(10.0, 12.5 / 20.0)));
+
+    const Json state = rig.run("project.undo");
+    CHECK(state.at("tracks").at(0).at("trimDb") == 0.0);
+    CHECK(state.at("redo") == "set track trim");
+}
+
 TEST_CASE("clip actions without a clip act on the selection and the selection drops removed clips") {
     ProjectRig rig;
     const std::string track = rig.run("track.addAudio").at("id");

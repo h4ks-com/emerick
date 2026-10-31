@@ -34,6 +34,7 @@ public:
         armed,
         monitor,
         gainDb,
+        trimDb,
         pan,
         audioIn,
         audioOut,

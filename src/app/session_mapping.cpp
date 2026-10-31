@@ -50,6 +50,7 @@ engine::Track commonFields(const model::Track& track, engine::TrackKind kind) {
             .solo = track.solo,
             .monitor = track.monitor,
             .gain = gainFromDb(track.gainDb),
+            .trim = gainFromDb(track.trimDb),
             .pan = static_cast<float>(track.pan),
             .audioIn = {},
             .audioOut = {},

@@ -131,6 +131,16 @@ TEST_CASE("an instrument and its state round trip, and a format 9 project loads 
     }
 }
 
+TEST_CASE("track trim round trips, and a project saved before trim loads at 0 dB") {
+    Document document = sampleDocument();
+    document.tracks[0].trimDb = 9.5;
+    CHECK(documentFromJson(toJson(document)).tracks[0].trimDb == 9.5);
+
+    auto json = toJson(document);
+    json["tracks"][0].erase("trimDb");
+    CHECK(documentFromJson(json).tracks[0].trimDb == 0.0);
+}
+
 TEST_CASE("clip mute and record delay round trip, and a format 7 project loads with neither") {
     Document document = sampleDocument();
     document.tracks[0].recordDelayMs = -12.5;

@@ -67,6 +67,35 @@ TEST_CASE("X opens the mixer, whose strips mute, solo, arm and set gain through 
     MainWindow::settle();
 }
 
+TEST_CASE("a mixer strip trim knob trims the track in one undo step, and a double click resets it to 0 dB") {
+    MainWindow& main = MainWindow::instance();
+    const std::string vox = main.rig.run("track.addAudio").at("id");
+    main.rig.nav.setMixerOpen(true);
+    MainWindow::settle();
+    const auto undoBefore = main.rig.controller->project().undoName();
+
+    QQuickItem* knob = inMixer(main, "track.setTrim:" + qid(vox) + ":knob");
+    main.drag(knob, {0, -40});
+    CHECK(trackOf(main, vox).trimDb == Catch::Approx(5.0));
+    CHECK(knob->property("toolTip").toString() == "Trim the track's input level   +5.0 dB");
+    CHECK(main.rig.controller->project().undoName() == "set track trim");
+    main.rig.run("project.undo");
+    CHECK(trackOf(main, vox).trimDb == 0.0);
+    CHECK(main.rig.controller->project().undoName() == undoBefore);
+
+    main.rig.run("track.setTrim", {{"track", vox}, {"db", -12}});
+    MainWindow::settle();
+    QTest::mouseDClick(main.window, Qt::LeftButton, Qt::NoModifier,
+                       knob->mapToScene({knob->width() / 2, knob->height() / 2}).toPoint());
+    CHECK(processUntil([&] { return trackOf(main, vox).trimDb == 0.0; }));
+
+    main.drag(main.item("track.setTrim:" + qid(vox) + ":inspector"), {-40, 0});
+    CHECK(trackOf(main, vox).trimDb == Catch::Approx(-5.0));
+
+    main.rig.nav.setMixerOpen(false);
+    MainWindow::settle();
+}
+
 TEST_CASE("a mixer strip adds a send from its bus picker, and a send level drag runs live and undoes in one step") {
     MainWindow& main = MainWindow::instance();
     const std::string vox = main.rig.run("track.addAudio").at("id");

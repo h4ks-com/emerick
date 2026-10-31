@@ -39,8 +39,8 @@ struct BlockTime {
     }
 };
 
-// A rebuilt snapshot starts each track from the gains the old one played, so an edit ramps to its new gain.
-void keepOutputGains(const Snapshot& from, Snapshot& to) {
+// A rebuilt snapshot starts each track from the gains and trim the old one played, so an edit ramps to its new value.
+void keepRampState(const Snapshot& from, Snapshot& to) {
     for (TrackState& track : to.tracks) {
         const auto old = std::ranges::find(from.tracks, track.id, &TrackState::id);
         if (old != from.tracks.end()) {
@@ -66,7 +66,7 @@ void adoptPending(RealtimeState& state) {
     }
     Snapshot* next = state.pending.exchange(nullptr, std::memory_order_acq_rel);
     if (state.current != nullptr) {
-        keepOutputGains(*state.current, *next);
+        keepRampState(*state.current, *next);
         state.retired.try_enqueue(state.current);
     }
     state.current = next;

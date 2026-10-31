@@ -275,6 +275,9 @@ struct Revealed {
     std::vector<std::string> chain;
 };
 
+// Warnings for any track, such as one whose instrument reports a problem, keyed as TrackType::warnings keys them.
+using DocumentWarnings = std::function<std::vector<engine::SessionError>(const model::Document&)>;
+
 class Registry : public QObject {
     Q_OBJECT
     Q_PROPERTY(QVariantMap settings READ settingsMap NOTIFY settingsChanged)
@@ -295,8 +298,7 @@ public:
     void addMidiDeviceProfile(MidiDeviceProfile profile);
     void addLocation(Location location);
     void addStateProvider(const std::string& name, std::function<Json()> provider);
-    // Warnings for any track, such as one whose instrument reports a problem, keyed as TrackType::warnings keys them.
-    void addWarnings(std::function<std::vector<engine::SessionError>(const model::Document&)> warnings);
+    void addWarnings(DocumentWarnings warnings);
     void setUndoSteps(UndoSteps steps);
 
     [[nodiscard]] const Action* action(const std::string& id) const;
@@ -306,10 +308,7 @@ public:
     [[nodiscard]] const std::vector<TrackType>& trackTypes() const { return trackTypes_; }
     [[nodiscard]] const TrackType* trackType(const std::string& kind) const;
     [[nodiscard]] const MidiDeviceProfile* midiDeviceProfile(const std::string& deviceName) const;
-    [[nodiscard]] const std::vector<std::function<std::vector<engine::SessionError>(const model::Document&)>>&
-    warnings() const {
-        return warnings_;
-    }
+    [[nodiscard]] const std::vector<DocumentWarnings>& warnings() const { return warnings_; }
 
     // Emits actionRan after an action that no other action ran, so the log shows what a person or agent asked for.
     Json run(const std::string& id, const Json& params = Json::object(),
@@ -396,7 +395,7 @@ private:
     std::vector<MidiDeviceProfile> midiDeviceProfiles_;
     std::vector<Location> locations_;
     std::map<std::string, std::function<Json()>> stateProviders_;
-    std::vector<std::function<std::vector<engine::SessionError>(const model::Document&)>> warnings_;
+    std::vector<DocumentWarnings> warnings_;
     // Runs the action and logs its failure, as every UI call does.
     std::optional<Json> runFromUi(const std::string& id, const Json& params) const;
     void runGesture();

@@ -215,3 +215,36 @@ TEST_CASE("analyzing all tracks lists each audio track and bus with its levels a
     CHECK(tracks[1].at("id") == verb);
     CHECK(tracks[1].at("activeRmsDb").is_null());
 }
+
+TEST_CASE("analyzing all tracks in one render measures each track and bus as analyzing it alone does") {
+    ProjectRig rig;
+    const std::string vox = rig.run("track.addAudio", {{"name", "Vox"}}).at("id");
+    const std::string bass = rig.run("track.addAudio", {{"name", "Bass"}}).at("id");
+    const std::string verb = rig.run("track.addBus", {{"name", "Verb"}}).at("id");
+    const std::string group = rig.run("track.addBus", {{"name", "Group"}}).at("id");
+    writeWav(rig.path("tone.wav"), {sine(1000, 0.5, 4)}, kRate);
+    writeWav(rig.path("low.wav"), {sine(80, 0.4, 3)}, kRate);
+    rig.run("clip.import", {{"track", vox}, {"path", rig.path("tone.wav").string()}});
+    rig.run("clip.import", {{"track", bass}, {"path", rig.path("low.wav").string()}, {"at", "2.1.0"}});
+    rig.run("insert.add", {{"track", verb}, {"type", "reverb"}});
+    rig.run("send.add", {{"track", vox}, {"bus", verb}, {"db", -6.0}});
+    rig.run("track.setPan", {{"track", vox}, {"value", -0.5}});
+    rig.run("track.setOutputBus", {{"track", bass}, {"bus", group}});
+    rig.run("track.setMute", {{"track", bass}, {"value", true}});
+
+    for (const Json& range : {Json::object(), Json{{"from", "2.1.0"}, {"to", "3.3.0"}}}) {
+        const Json all = rig.run("tracks.analyze", range).at("tracks");
+        REQUIRE(all.size() == 4);
+        for (const Json& track : all) {
+            Json params = range;
+            params["track"] = track.at("id");
+            const Json alone = rig.run("track.analyze", params);
+            INFO(track.at("name").get<std::string>());
+            for (const char* level : {"activeRmsDb", "integratedLufs", "truePeakDbtp"}) {
+                CHECK(track.at(level) == alone.at(level));
+            }
+            CHECK(track.at("bands") == alone.at("bands"));
+        }
+    }
+    CHECK(rig.run("tracks.analyze").at("tracks")[3].at("activeRmsDb").is_number());
+}

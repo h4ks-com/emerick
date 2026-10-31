@@ -70,17 +70,29 @@ AudioData readAudio(const std::filesystem::path& path) {
     return audio;
 }
 
-void writeWav(const std::filesystem::path& path, const std::vector<std::vector<float>>& channels, double sampleRate) {
+struct WavWriter::File {
+    std::filesystem::path path;
+    SndFile file;
+};
+
+WavWriter::WavWriter(const std::filesystem::path& path, std::size_t channels, double sampleRate) {
     SF_INFO info{.frames = 0,
                  .samplerate = static_cast<int>(std::lround(sampleRate)),
-                 .channels = static_cast<int>(channels.size()),
+                 .channels = static_cast<int>(channels),
                  .format = SF_FORMAT_WAV | SF_FORMAT_FLOAT,
                  .sections = 0,
                  .seekable = 0};
-    const SndFile file{sf_open(path.c_str(), SFM_WRITE, &info)};
-    if (!file) {
+    file_ = std::make_unique<File>(File{.path = path, .file = SndFile{sf_open(path.c_str(), SFM_WRITE, &info)}});
+    if (!file_->file) {
         throw AppError("cannot write " + path.string() + ": " + sf_strerror(nullptr));
     }
+}
+
+WavWriter::~WavWriter() = default;
+WavWriter::WavWriter(WavWriter&&) noexcept = default;
+WavWriter& WavWriter::operator=(WavWriter&&) noexcept = default;
+
+void WavWriter::write(std::span<const std::vector<float>> channels) {
     const std::size_t frames = channels.empty() ? 0 : channels.front().size();
     std::vector<float> interleaved(frames * channels.size());
     for (std::size_t frame = 0; frame < frames; ++frame) {
@@ -88,10 +100,14 @@ void writeWav(const std::filesystem::path& path, const std::vector<std::vector<f
             interleaved[frame * channels.size() + channel] = channels[channel][frame];
         }
     }
-    if (sf_writef_float(file.get(), interleaved.data(), static_cast<sf_count_t>(frames)) !=
+    if (sf_writef_float(file_->file.get(), interleaved.data(), static_cast<sf_count_t>(frames)) !=
         static_cast<sf_count_t>(frames)) {
-        throw AppError("cannot write " + path.string());
+        throw AppError("cannot write " + file_->path.string());
     }
+}
+
+void writeWav(const std::filesystem::path& path, const std::vector<std::vector<float>>& channels, double sampleRate) {
+    WavWriter(path, channels.size(), sampleRate).write(channels);
 }
 
 model::AudioClip clipFromFile(const std::filesystem::path& source, const std::filesystem::path& folder,

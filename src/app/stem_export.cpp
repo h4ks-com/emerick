@@ -119,6 +119,27 @@ engine::Session mixSession(const engine::Session& session, const model::Document
             .panLaw = session.panLaw};
 }
 
+// Every track plays unmuted into its buses and sends as in a bus stem, so each listed track's own output sounds as its
+// stem.
+engine::Session captureSession(const engine::Session& session, const std::vector<std::string>& trackIds) {
+    std::vector<engine::Track> tracks = session.tracks;
+    for (engine::Track& track : tracks) {
+        track.mute = false;
+        track.solo = false;
+        track.audioOut = {};
+        if (const auto found = std::ranges::find(trackIds, track.id); found != trackIds.end()) {
+            const auto first = static_cast<int>(2 * (found - trackIds.begin())) + 1;
+            track.captureOut = {kRenderDevice, {first, first + 1}};
+        }
+    }
+    return {.tempo = session.tempo,
+            .tracks = std::move(tracks),
+            .clockPorts = {},
+            .takeFolder = {},
+            .metronome = {},
+            .panLaw = session.panLaw};
+}
+
 // Each render plays fresh instances with the saved states, so the live instruments stay with the live engine.
 RenderInstruments attachInstruments(engine::Session& session, const model::Document& document) {
     RenderInstruments created;
@@ -243,8 +264,20 @@ std::vector<std::filesystem::path> exportStems(const engine::Session& session, c
             stem += "-" + track.id;
         }
         files.push_back(folder / (stem + ".wav"));
-        writeWav(files.back(), render(stemSession(session, track), registry, context, frames, sampleRate), sampleRate);
     }
+    std::vector<WavWriter> writers =
+        files |
+        std::views::transform([&](const std::filesystem::path& file) { return WavWriter(file, 2, sampleRate); }) |
+        std::ranges::to<std::vector>();
+    OfflineRender render(
+        captureSession(session, tracks | std::views::transform(&engine::Track::id) | std::ranges::to<std::vector>()),
+        registry, context, sampleRate);
+    render.setSink([&writers](std::vector<std::vector<float>> chunk) {
+        for (std::size_t index = 0; index < writers.size(); ++index) {
+            writers[index].write(std::span{chunk}.subspan(2 * index, 2));
+        }
+    });
+    render.process(frames, [&render] { render.idleInstruments(); });
     return files;
 }
 
@@ -289,8 +322,13 @@ void OfflineRender::start(engine::Session session, double sampleRate) {
         track.midiThru = false;
     }
     session.clockPorts.clear();
-    auto backend =
-        std::make_unique<engine::OfflineBackend>(std::vector<engine::AudioDeviceInfo>{{kRenderDevice, "Render", 0, 2}});
+    int outputs = 2;
+    for (const engine::Track& track : session.tracks) {
+        outputs =
+            std::ranges::fold_left(track.captureOut.channels, outputs, [](int a, int b) { return std::max(a, b); });
+    }
+    auto backend = std::make_unique<engine::OfflineBackend>(
+        std::vector<engine::AudioDeviceInfo>{{kRenderDevice, "Render", 0, outputs}});
     offline_ = backend.get();
     engine_ = std::make_unique<engine::Engine>(
         std::move(backend),
@@ -329,7 +367,8 @@ std::vector<std::vector<float>> OfflineRender::process(engine::Frames frames, co
         engine_->sendInstrumentMidi(message.trackId, message.bytes);
     }
     engine_->play();
-    const engine::Frames start = offline_->processedFrames();
+    offline_->takeOutputs();
+    std::vector<std::vector<float>> stereo(2);
     for (engine::Frames done = 0; done < frames; done += kChunk) {
         const engine::Frames chunk = std::min(kChunk, frames - done);
         for (engine::Frames block = 0; block < chunk; block += kBlock) {
@@ -340,13 +379,16 @@ std::vector<std::vector<float>> OfflineRender::process(engine::Frames frames, co
             idle();
         }
         waitForReadAhead(*engine_);
+        std::vector<std::vector<float>> outputs = offline_->takeOutputs();
+        if (sink_) {
+            sink_(std::move(outputs));
+        } else {
+            for (const std::size_t channel : {0U, 1U}) {
+                stereo[channel].insert(stereo[channel].end(), outputs[channel].begin(), outputs[channel].end());
+            }
+        }
     }
-    std::vector<std::vector<float>> channels;
-    for (const int channel : {1, 2}) {
-        const std::vector<float> output = offline_->output(kRenderDevice, channel);
-        channels.emplace_back(output.begin() + start, output.begin() + start + frames);
-    }
-    return channels;
+    return sink_ ? std::vector<std::vector<float>>{} : stereo;
 }
 
 void OfflineRender::idleInstruments() {
@@ -378,6 +420,12 @@ std::unique_ptr<OfflineRender> trackRender(const engine::Session& session, const
         throw AppError("no track " + trackId + " in the session");
     }
     return std::make_unique<OfflineRender>(stemSession(session, *track), registry, context, sampleRate);
+}
+
+std::unique_ptr<OfflineRender> tracksRender(const engine::Session& session, const Registry& registry,
+                                            const PlaybackContext& context, const std::vector<std::string>& trackIds,
+                                            double sampleRate) {
+    return std::make_unique<OfflineRender>(captureSession(session, trackIds), registry, context, sampleRate);
 }
 
 }  // namespace emerick::app

@@ -122,8 +122,12 @@ public:
     void process(Frames frames);
     // Feeds samples to a device input channel from the current frame on; silence follows them.
     void setInput(std::string_view deviceId, int channel, std::vector<float> samples);
-    // Every frame processed so far, at its index; frames from before the last open are silent.
+    // Every frame processed so far, at its index; frames from before the last open are silent. After takeOutputs it
+    // holds only the frames processed since.
     [[nodiscard]] std::vector<float> output(std::string_view deviceId, int channel) const;
+    // Returns the frames of every output channel, in stream order, kept since the open or the last take, and forgets
+    // them, so a long render holds one chunk at a time.
+    std::vector<std::vector<float>> takeOutputs();
     [[nodiscard]] Frames processedFrames() const { return processed_; }
     [[nodiscard]] bool isOpen() const { return static_cast<bool>(callback_); }
     [[nodiscard]] const StreamRequest& lastRequest() const { return request_; }

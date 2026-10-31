@@ -148,6 +148,10 @@ std::vector<float> OfflineBackend::output(std::string_view deviceId, int channel
     return outputs_[static_cast<std::size_t>(*index)];
 }
 
+std::vector<std::vector<float>> OfflineBackend::takeOutputs() {
+    return std::exchange(outputs_, std::vector<std::vector<float>>(outputs_.size()));
+}
+
 std::int64_t OfflineBackend::hostTimeAt(Frames frame) const {
     return startTimeNs_ + framesToNs(frame, layout_.sampleRate);
 }

@@ -9,8 +9,11 @@
 #include <cstdint>
 #include <filesystem>
 #include <format>
+#include <future>
+#include <memory>
 #include <optional>
 #include <ranges>
+#include <span>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -137,9 +140,8 @@ Json analysisJson(const engine::AudioAnalysis& analysis) {
     return result;
 }
 
-std::string loudnessMessage(const engine::AudioAnalysis& analysis, const std::string& detail) {
-    return std::format("{:.1f} LUFS integrated, {:.1f} dBTP true peak, {}", analysis.integratedLufs,
-                       analysis.truePeakDbtp, detail);
+std::string loudnessMessage(double integratedLufs, double truePeakDbtp, const std::string& detail) {
+    return std::format("{:.1f} LUFS integrated, {:.1f} dBTP true peak, {}", integratedLufs, truePeakDbtp, detail);
 }
 
 Json toneBandsJson(const engine::ToneBalance& tone) {
@@ -155,33 +157,106 @@ Json toneBandsJson(const engine::ToneBalance& tone) {
 
 struct AnalysisRange {
     core::TempoMap tempo;
-    std::string trackId;
     core::Ticks from = 0;
     core::Ticks to = 0;
     double sampleRate = 0;
 };
 
-Json measureTrack(const AnalysisRange& range, std::vector<std::vector<float>> channels) {
-    const auto skipped = static_cast<std::ptrdiff_t>(range.tempo.ticksToFrames(range.from, range.sampleRate));
-    for (std::vector<float>& channel : channels) {
-        channel.erase(channel.begin(), channel.begin() + std::min(skipped, std::ssize(channel)));
-    }
-    const engine::AudioAnalysis levels = engine::analyzeAudio(channels, {.sampleRate = range.sampleRate});
-    const engine::ToneBalance tone = engine::analyzeTone(channels, range.sampleRate);
-    return {{"track", range.trackId},
+Json levelsJson(const AnalysisRange& range, const std::string& trackId, const engine::TrackLevels& levels) {
+    return {{"track", trackId},
             {"from", positionState(range.from, range.tempo)},
             {"to", positionState(range.to, range.tempo)},
             {"integratedLufs", levelDb(levels.integratedLufs)},
             {"samplePeakDbfs", levelDb(levels.samplePeakDbfs)},
             {"truePeakDbtp", levelDb(levels.truePeakDbtp)},
-            {"activeRmsDb", levelDb(tone.activeRmsDb)},
-            {"bands", toneBandsJson(tone)},
-            {"centroidHz", std::round(tone.centroidHz)},
-            {"message", loudnessMessage(levels, std::format("{:.1f} dB active RMS", tone.activeRmsDb))}};
+            {"activeRmsDb", levelDb(levels.tone.activeRmsDb)},
+            {"bands", toneBandsJson(levels.tone)},
+            {"centroidHz", std::round(levels.tone.centroidHz)},
+            {"message", loudnessMessage(levels.integratedLufs, levels.truePeakDbtp,
+                                        std::format("{:.1f} dB active RMS", levels.tone.activeRmsDb))}};
+}
+
+// The meter of each track a render carries on output channels 2i and 2i + 1, fed from the frame the range starts at.
+struct TrackMeters {
+    std::ptrdiff_t skip = 0;
+    std::ptrdiff_t seen = 0;
+    std::vector<engine::TrackMeter> meters;
+
+    void add(const std::vector<std::vector<float>>& chunk) {
+        const std::ptrdiff_t length = std::ssize(chunk.front());
+        const std::ptrdiff_t first = std::clamp(skip - seen, std::ptrdiff_t{0}, length);
+        seen += length;
+        if (first == length) {
+            return;
+        }
+        // Each track's meter runs on its own thread, since measuring takes about as long as rendering.
+        std::vector<std::future<void>> measured;
+        measured.reserve(meters.size());
+        for (std::size_t index = 0; index < meters.size(); ++index) {
+            measured.push_back(std::async(std::launch::async, [this, &chunk, first, index] {
+                const auto channels = std::span{chunk}.subspan(2 * index, 2);
+                if (first == 0) {
+                    meters[index].add(channels);
+                    return;
+                }
+                meters[index].add(channels | std::views::transform([first](const std::vector<float>& channel) {
+                                      return std::vector<float>(channel.begin() + first, channel.end());
+                                  }) |
+                                  std::ranges::to<std::vector>());
+            }));
+        }
+        for (std::future<void>& meter : measured) {
+            meter.get();
+        }
+    }
+};
+
+// UI thread: checks from and to and sets up one render of the tracks, each as its stem plays, and their measurements
+// keyed by track id.
+RenderJob prepareAnalysis(ProjectController& controller, const Registry& registry, const Json& params,
+                          const std::vector<model::TrackId>& ids) {
+    const model::Document document = liveDocument(controller);
+    const engine::Session session = toSession(document, registry, controller.folder());
+    const core::TempoMap& tempo = document.tempo;
+    const core::Ticks end = exportEnd(session, document);
+    if (end <= 0) {
+        throw AppError("the project has no clips to analyze, add a clip first");
+    }
+    AnalysisRange range;
+    range.tempo = tempo;
+    range.from = optionalPosition(params, "from", tempo).value_or(0);
+    range.to = std::min(optionalPosition(params, "to", tempo).value_or(end), end);
+    range.sampleRate = controller.sampleRate();
+    if (range.from < 0 || range.from >= range.to) {
+        throw AppError(std::format("give from before to, both from {} to the project end {}",
+                                   tempo.toBarBeatTick(0).format(), tempo.toBarBeatTick(end).format()));
+    }
+    std::vector<std::string> trackIds =
+        ids | std::views::transform(&model::TrackId::value) | std::ranges::to<std::vector>();
+    const PlaybackContext context = playbackContext(controller, document);
+    // The render's sink and the measure function share the meters.
+    auto meters = std::make_shared<TrackMeters>();
+    meters->skip = tempo.ticksToFrames(range.from, range.sampleRate);
+    meters->meters =
+        trackIds | std::views::transform([&](const std::string&) { return engine::TrackMeter(2, range.sampleRate); }) |
+        std::ranges::to<std::vector>();
+    std::unique_ptr<OfflineRender> render =
+        trackIds.size() == 1 ? trackRender(session, registry, context, trackIds.front(), range.sampleRate)
+                             : tracksRender(session, registry, context, trackIds, range.sampleRate);
+    render->setSink([meters](const std::vector<std::vector<float>>& chunk) { meters->add(chunk); });
+    return {.render = std::move(render),
+            .frames = tempo.ticksToFrames(range.to, range.sampleRate),
+            .measure = [meters, range, trackIds = std::move(trackIds)](const std::vector<std::vector<float>>&) {
+                Json json = Json::object();
+                for (const auto& [id, meter] : std::views::zip(trackIds, meters->meters)) {
+                    json[id] = levelsJson(range, id, meter.levels());
+                }
+                return RenderResult{.channels = {}, .json = std::move(json)};
+            }};
 }
 
 Json analyzeTrack(ProjectController& controller, const Registry& registry, const Json& params) {
-    return renderNow(prepareTrackRender(controller, registry, params)).json;
+    return renderNow(prepareTrackRender(controller, registry, params)).json.front();
 }
 
 struct AudioSection {
@@ -219,7 +294,8 @@ Json analyzeSection(const AudioData& audio, const Json& params, const core::Temp
         section.audio.channels,
         {.sampleRate = audio.sampleRate, .barSeconds = barSeconds(tempo), .startSeconds = section.from});
     Json result = analysisJson(analysis);
-    result["message"] = loudnessMessage(analysis, std::format("{} clipped samples", analysis.clippedSamples));
+    result["message"] = loudnessMessage(analysis.integratedLufs, analysis.truePeakDbtp,
+                                        std::format("{} clipped samples", analysis.clippedSamples));
     result["from"] = rounded(section.from, 0.01);
     result["to"] = rounded(section.to, 0.01);
     result["channels"] = audio.channels.size();
@@ -324,34 +400,20 @@ void registerExportSettings(Registry& registry) {
 }  // namespace
 
 RenderJob prepareTrackRender(ProjectController& controller, const Registry& registry, const Json& params) {
-    const model::Document document = liveDocument(controller);
     const model::TrackId id = findTrackByIdOrName(controller.project(), param<std::string>(params, "track"));
-    const model::Track& source = *model::findTrack(document, id);
+    const model::Track& source = *controller.project().track(id);
     if (const TrackType* type = registry.trackType(source.kind); type == nullptr || !playsAudio(*type, source)) {
         throw AppError(playsNoAudio(type, source, "pick an audio track or a bus"));
     }
-    const engine::Session session = toSession(document, registry, controller.folder());
-    const core::TempoMap& tempo = document.tempo;
-    const core::Ticks end = exportEnd(session, document);
-    if (end <= 0) {
-        throw AppError("the project has no clips to analyze, add a clip first");
+    return prepareAnalysis(controller, registry, params, {id});
+}
+
+RenderJob prepareTracksRender(ProjectController& controller, const Registry& registry, const Json& params) {
+    const std::vector<model::TrackId> ids = analyzableTracks(registry, controller.project().document());
+    if (ids.empty()) {
+        throw AppError("the project has no audio tracks or buses to analyze, add one first");
     }
-    AnalysisRange range;
-    range.tempo = tempo;
-    range.trackId = id.value;
-    range.from = optionalPosition(params, "from", tempo).value_or(0);
-    range.to = std::min(optionalPosition(params, "to", tempo).value_or(end), end);
-    range.sampleRate = controller.sampleRate();
-    if (range.from < 0 || range.from >= range.to) {
-        throw AppError(std::format("give from before to, both from {} to the project end {}",
-                                   tempo.toBarBeatTick(0).format(), tempo.toBarBeatTick(end).format()));
-    }
-    return {.render =
-                trackRender(session, registry, playbackContext(controller, document), range.trackId, range.sampleRate),
-            .frames = tempo.ticksToFrames(range.to, range.sampleRate),
-            .measure = [range](std::vector<std::vector<float>> channels) {
-                return RenderResult{.channels = {}, .json = measureTrack(range, std::move(channels))};
-            }};
+    return prepareAnalysis(controller, registry, params, ids);
 }
 
 void registerExportActions(Registry& registry, ProjectController& controller) {
@@ -541,24 +603,28 @@ void registerExportActions(Registry& registry, ProjectController& controller) {
     registry.addAction(
         {.id = kTracksAnalyzeAction,
          .title = "Analyze all tracks",
-         .description = "Run track.analyze on every audio track and bus, and list each one's name, id, integrated "
-                        "LUFS, true peak, active RMS and five bands",
+         .description = "Render the project once and measure every audio track and bus as track.analyze does, and "
+                        "list each one's name, id, integrated LUFS, true peak, active RMS and five bands. from and to "
+                        "take ticks or bar.beat.tick and default to the project start and end.",
          .keywords = {"loudness", "lufs", "rms", "mix balance"},
          .category = "Analyze",
+         .schema = {{"properties", {{"from", Json::object()}, {"to", Json::object()}}}},
          .run =
-             [&controller, &registry](const Json&) {
-                 const model::Document document = controller.project().document();
-                 const Json tracks =
-                     analyzableTracks(registry, document) | std::views::transform([&](const model::TrackId& id) {
-                         const Json measured = analyzeTrack(controller, registry, {{"track", id.value}});
-                         return Json{{"id", id.value},
-                                     {"name", model::findTrack(document, id)->name},
-                                     {"activeRmsDb", measured.at("activeRmsDb")},
-                                     {"integratedLufs", measured.at("integratedLufs")},
-                                     {"truePeakDbtp", measured.at("truePeakDbtp")},
-                                     {"bands", measured.at("bands")}};
-                     }) |
-                     std::ranges::to<Json::array_t>();
+             [&controller, &registry](const Json& params) {
+                 const model::Document& document = controller.project().document();
+                 const std::vector<model::TrackId> ids = analyzableTracks(registry, document);
+                 const Json measured =
+                     ids.empty() ? Json::object() : renderNow(prepareTracksRender(controller, registry, params)).json;
+                 const Json tracks = ids | std::views::transform([&](const model::TrackId& id) {
+                                         const Json& levels = measured.at(id.value);
+                                         return Json{{"id", id.value},
+                                                     {"name", model::findTrack(document, id)->name},
+                                                     {"activeRmsDb", levels.at("activeRmsDb")},
+                                                     {"integratedLufs", levels.at("integratedLufs")},
+                                                     {"truePeakDbtp", levels.at("truePeakDbtp")},
+                                                     {"bands", levels.at("bands")}};
+                                     }) |
+                                     std::ranges::to<Json::array_t>();
                  return Json{{"message", std::format("{} tracks analyzed", tracks.size())}, {"tracks", tracks}};
              },
          .notifies = true});

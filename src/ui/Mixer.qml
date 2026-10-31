@@ -48,7 +48,7 @@ DockPanel {
         iconColor: Theme.inkDim
         active: Analysis.busyTrack !== ""
         activeColor: Theme.inkDim
-        hint: active ? "Wait while the tracks render" : "Render each track alone and show its active RMS on its strip"
+        hint: active ? "Wait while the tracks render" : "Render every track as its stem and show its active RMS on its strip"
         run: () => Analysis.analyzeAll()
     }
 

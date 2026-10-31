@@ -95,51 +95,75 @@ std::array<Biquad, 4> bandFilter(const FrequencyBand& band, double sampleRate) {
     return {low, low, high, high};
 }
 
-double integratedLoudness(const Channels& channels, double sampleRate) {
-    const auto stepFrames = static_cast<std::size_t>(std::lround(kStepSeconds * sampleRate));
-    const std::size_t frames = channels.front().size();
-    std::vector<double> stepPower(frames / stepFrames);
-    for (const std::vector<float>& channel : channels) {
-        std::array<Biquad, 2> filter = kWeighting(sampleRate);
-        for (std::size_t frame = 0; frame < stepPower.size() * stepFrames; ++frame) {
-            const double weighted = filter[1].process(filter[0].process(channel[frame]));
-            stepPower[frame / stepFrames] += weighted * weighted;
+std::size_t stepFramesAt(double sampleRate) { return static_cast<std::size_t>(std::lround(kStepSeconds * sampleRate)); }
+
+// The K-weighted power of every channel summed per 100 ms step, which BS.1770 gates in blocks of four steps.
+class LoudnessSteps {
+public:
+    LoudnessSteps(std::size_t channels, double sampleRate)
+        : stepFrames_(stepFramesAt(sampleRate)), filters_(channels, kWeighting(sampleRate)) {}
+
+    void add(std::size_t channel, std::span<const float> samples, std::size_t firstFrame) {
+        power_.resize(std::max(power_.size(), ((firstFrame + samples.size()) / stepFrames_) + 1));
+        std::array<Biquad, 2>& filter = filters_[channel];
+        for (std::size_t index = 0; index < samples.size(); ++index) {
+            const double weighted = filter[1].process(filter[0].process(samples[index]));
+            power_[(firstFrame + index) / stepFrames_] += weighted * weighted;
         }
     }
-    if (stepPower.size() < kStepsPerBlock) {
-        return kSilentDb;
+
+    // The integrated loudness of the full steps of the first frames.
+    [[nodiscard]] double lufs(std::size_t frames) const {
+        const std::size_t steps = frames / stepFrames_;
+        if (steps < kStepsPerBlock) {
+            return kSilentDb;
+        }
+        const auto blockFrames = static_cast<double>(kStepsPerBlock * stepFrames_);
+        const std::vector<double> blocks =
+            std::views::iota(kStepsPerBlock, steps + 1) | std::views::transform([&](std::size_t end) {
+                const auto begin = power_.begin() + static_cast<std::ptrdiff_t>(end - kStepsPerBlock);
+                return std::accumulate(begin, begin + kStepsPerBlock, 0.0) / blockFrames;
+            }) |
+            std::ranges::to<std::vector>();
+        const auto loudness = [](double power) { return kLoudnessOffset + powerDb(power); };
+        const auto gatedMean = [&](double gate) {
+            auto passing = blocks | std::views::filter([&](double power) { return loudness(power) > gate; });
+            const auto count = static_cast<double>(std::ranges::distance(passing));
+            return count == 0 ? 0.0 : std::accumulate(passing.begin(), passing.end(), 0.0) / count;
+        };
+        const double absoluteMean = gatedMean(kAbsoluteGateLufs);
+        if (absoluteMean == 0) {
+            return kSilentDb;
+        }
+        return loudness(gatedMean(std::max(kAbsoluteGateLufs, loudness(absoluteMean) + kRelativeGateLu)));
     }
-    const auto blockFrames = static_cast<double>(kStepsPerBlock * stepFrames);
-    const std::vector<double> blocks =
-        std::views::iota(kStepsPerBlock, stepPower.size() + 1) | std::views::transform([&](std::size_t end) {
-            const auto begin = stepPower.begin() + static_cast<std::ptrdiff_t>(end - kStepsPerBlock);
-            return std::accumulate(begin, begin + kStepsPerBlock, 0.0) / blockFrames;
-        }) |
-        std::ranges::to<std::vector>();
-    const auto loudness = [](double power) { return kLoudnessOffset + powerDb(power); };
-    const auto gatedMean = [&](double gate) {
-        auto passing = blocks | std::views::filter([&](double power) { return loudness(power) > gate; });
-        const auto count = static_cast<double>(std::ranges::distance(passing));
-        return count == 0 ? 0.0 : std::accumulate(passing.begin(), passing.end(), 0.0) / count;
-    };
-    const double absoluteMean = gatedMean(kAbsoluteGateLufs);
-    if (absoluteMean == 0) {
-        return kSilentDb;
+
+private:
+    std::size_t stepFrames_;
+    std::vector<std::array<Biquad, 2>> filters_;
+    std::vector<double> power_;
+};
+
+double integratedLoudness(const Channels& channels, double sampleRate) {
+    LoudnessSteps steps(channels.size(), sampleRate);
+    for (std::size_t channel = 0; channel < channels.size(); ++channel) {
+        steps.add(channel, channels[channel], 0);
     }
-    return loudness(gatedMean(std::max(kAbsoluteGateLufs, loudness(absoluteMean) + kRelativeGateLu)));
+    return steps.lufs(channels.front().size());
 }
 
-double truePeak(const std::vector<float>& channel) {
+// The true peak of the frames from first to last of samples, with silence around them.
+double truePeak(std::span<const float> samples, std::size_t first, std::size_t last) {
     static const auto kTaps = interpolationTaps();
     double peak = 0;
-    for (std::size_t frame = 0; frame < channel.size(); ++frame) {
-        peak = std::max(peak, static_cast<double>(std::abs(channel[frame])));
+    for (std::size_t frame = first; frame < last; ++frame) {
+        peak = std::max(peak, static_cast<double>(std::abs(samples[frame])));
         for (std::size_t phase = 1; phase < kOversampling; ++phase) {
             double sum = 0;
             for (std::size_t tap = 0; tap < kTapsPerPhase; ++tap) {
                 const std::size_t source = frame + kHalfTaps - tap;
-                if (frame + kHalfTaps >= tap && source < channel.size()) {
-                    sum += channel[source] * kTaps[phase][tap];
+                if (frame + kHalfTaps >= tap && source < samples.size()) {
+                    sum += samples[source] * kTaps[phase][tap];
                 }
             }
             peak = std::max(peak, std::abs(sum));
@@ -147,6 +171,8 @@ double truePeak(const std::vector<float>& channel) {
     }
     return peak;
 }
+
+double truePeak(const std::vector<float>& channel) { return truePeak(channel, 0, channel.size()); }
 
 double meanSquare(const Channels& channels, std::size_t begin, std::size_t end) {
     double sum = 0;
@@ -227,24 +253,150 @@ StereoImage stereoImage(const std::vector<float>& left, const std::vector<float>
     return {.correlation = scale == 0 ? 0 : product / scale, .balanceDb = powerDb(leftPower) - powerDb(rightPower)};
 }
 
-double activeRms(const Channels& channels, double sampleRate) {
-    const auto stepFrames = static_cast<std::size_t>(std::lround(kStepSeconds * sampleRate));
-    const std::size_t frames = channels.front().size();
-    std::vector<double> active =
-        std::views::iota(std::size_t{0}, (frames + stepFrames - 1) / stepFrames) |
-        std::views::transform([&](std::size_t step) {
-            return powerDb(meanSquare(channels, step * stepFrames, std::min(frames, (step + 1) * stepFrames)));
-        }) |
-        std::views::filter([](double db) { return db > kActiveGateDb; }) | std::ranges::to<std::vector>();
-    if (active.empty()) {
+double medianActiveDb(std::vector<double> stepDb) {
+    std::erase_if(stepDb, [](double db) { return db <= kActiveGateDb; });
+    if (stepDb.empty()) {
         return kSilentDb;
     }
-    const auto middle = active.begin() + static_cast<std::ptrdiff_t>(active.size() / 2);
-    std::ranges::nth_element(active, middle);
+    const auto middle = stepDb.begin() + static_cast<std::ptrdiff_t>(stepDb.size() / 2);
+    std::ranges::nth_element(stepDb, middle);
     return *middle;
 }
 
+void addPower(std::vector<double>& sum, std::span<const float> frame) {
+    std::ranges::transform(sum, powerSpectrum(frame), sum.begin(), std::plus{});
+}
+
 }  // namespace
+
+struct TrackMeter::State {
+    State(std::size_t channels, double rate)
+        : sampleRate(rate),
+          stepFrames(stepFramesAt(rate)),
+          loudness(channels, rate),
+          tails(channels),
+          toneFrames(channels),
+          spectrum((kToneFrame / 2) + 1) {}
+
+    double sampleRate;
+    std::size_t stepFrames;
+    LoudnessSteps loudness;
+    std::vector<double> stepSquares;
+    std::size_t frames = 0;
+    float samplePeak = 0;
+    double interpolatedPeak = 0;
+    // Each channel from a few samples before nextPeakFrame on, since a true peak reads samples on both sides.
+    std::vector<std::vector<float>> tails;
+    std::size_t tailStart = 0;
+    std::size_t nextPeakFrame = 0;
+    std::vector<std::vector<float>> toneFrames;
+    std::vector<double> spectrum;
+
+    void addChannel(std::size_t channel, const std::vector<float>& samples) {
+        loudness.add(channel, samples, frames);
+        for (std::size_t index = 0; index < samples.size(); ++index) {
+            const float sample = samples[index];
+            stepSquares[(frames + index) / stepFrames] += static_cast<double>(sample) * sample;
+            samplePeak = std::max(samplePeak, std::abs(sample));
+        }
+        tails[channel].insert(tails[channel].end(), samples.begin(), samples.end());
+        std::vector<float>& frame = toneFrames[channel];
+        for (auto next = samples.begin(); next != samples.end();) {
+            const auto count = std::min(static_cast<std::ptrdiff_t>(kToneFrame - frame.size()), samples.end() - next);
+            frame.insert(frame.end(), next, next + count);
+            next += count;
+            if (frame.size() == kToneFrame) {
+                addPower(spectrum, frame);
+                frame.clear();
+            }
+        }
+    }
+
+    [[nodiscard]] double tailPeak(std::size_t channel, std::size_t last) const {
+        return truePeak(tails[channel], nextPeakFrame - tailStart, last - tailStart);
+    }
+
+    // Measures the true peak of every frame whose interpolation window has arrived, and keeps only what later frames
+    // still read.
+    void advanceTruePeak() {
+        if (frames <= kHalfTaps || frames - kHalfTaps <= nextPeakFrame) {
+            return;
+        }
+        const std::size_t last = frames - kHalfTaps;
+        for (std::size_t channel = 0; channel < tails.size(); ++channel) {
+            interpolatedPeak = std::max(interpolatedPeak, tailPeak(channel, last));
+        }
+        nextPeakFrame = last;
+        const std::size_t keepFrom = nextPeakFrame - std::min(nextPeakFrame, kTapsPerPhase - kHalfTaps - 1);
+        for (std::vector<float>& tail : tails) {
+            tail.erase(tail.begin(), tail.begin() + static_cast<std::ptrdiff_t>(keepFrom - tailStart));
+        }
+        tailStart = keepFrom;
+    }
+
+    [[nodiscard]] ToneBalance tone() const {
+        ToneBalance tone{.activeRmsDb = kSilentDb};
+        if (frames == 0) {
+            return tone;
+        }
+        tone.activeRmsDb = medianActiveDb(
+            std::views::iota(std::size_t{0}, stepSquares.size()) | std::views::transform([&](std::size_t step) {
+                const std::size_t length = std::min(stepFrames, frames - (step * stepFrames));
+                return powerDb(stepSquares[step] / static_cast<double>(length * tails.size()));
+            }) |
+            std::ranges::to<std::vector>());
+        std::vector<double> power = spectrum;
+        for (const std::vector<float>& frame : toneFrames) {
+            if (!frame.empty()) {
+                std::vector<float> padded = frame;
+                padded.resize(kToneFrame, 0.0F);
+                addPower(power, padded);
+            }
+        }
+        const double total = std::ranges::fold_left(power, 0.0, std::plus{});
+        if (total == 0) {
+            return tone;
+        }
+        const auto hz = [&](std::size_t bin) { return static_cast<double>(bin) * sampleRate / kToneFrame; };
+        for (std::size_t bin = 0; bin < power.size(); ++bin) {
+            const auto* const band =
+                std::ranges::find_if(kToneBands, [&](const FrequencyBand& entry) { return hz(bin) < entry.high; });
+            tone.bandShare.at(static_cast<std::size_t>(band - kToneBands.begin())) += power[bin] / total;
+            tone.centroidHz += hz(bin) * power[bin] / total;
+        }
+        return tone;
+    }
+};
+
+TrackMeter::TrackMeter(std::size_t channels, double sampleRate)
+    : state_(std::make_unique<State>(channels, sampleRate)) {}
+
+TrackMeter::~TrackMeter() = default;
+TrackMeter::TrackMeter(TrackMeter&&) noexcept = default;
+TrackMeter& TrackMeter::operator=(TrackMeter&&) noexcept = default;
+
+void TrackMeter::add(std::span<const std::vector<float>> chunk) {
+    State& state = *state_;
+    const std::size_t end = state.frames + chunk.front().size();
+    state.stepSquares.resize((end + state.stepFrames - 1) / state.stepFrames);
+    for (std::size_t channel = 0; channel < chunk.size(); ++channel) {
+        state.addChannel(channel, chunk[channel]);
+    }
+    state.frames = end;
+    state.advanceTruePeak();
+}
+
+TrackLevels TrackMeter::levels() const {
+    const State& state = *state_;
+    double peak = state.interpolatedPeak;
+    for (std::size_t channel = 0; channel < state.tails.size(); ++channel) {
+        peak = std::max(peak, state.tailPeak(channel, state.frames));
+    }
+    return {.integratedLufs = state.loudness.lufs(state.frames),
+            .samplePeakDbfs = amplitudeDb(state.samplePeak),
+            .truePeakDbtp = amplitudeDb(peak),
+            .tone = state.tone()};
+}
 
 InterpolationTaps interpolationTaps() {
     InterpolationTaps taps{};
@@ -271,24 +423,12 @@ double truePeakDbtp(const Channels& channels) {
 }
 
 ToneBalance analyzeTone(const Channels& channels, double sampleRate) {
-    ToneBalance tone{.activeRmsDb = kSilentDb};
-    if (channels.empty() || channels.front().empty()) {
-        return tone;
+    if (channels.empty()) {
+        return {.activeRmsDb = kSilentDb};
     }
-    tone.activeRmsDb = activeRms(channels, sampleRate);
-    const std::vector<double> power = averagePower(channels, kToneFrame);
-    const double total = std::ranges::fold_left(power, 0.0, std::plus{});
-    if (total == 0) {
-        return tone;
-    }
-    const auto hz = [&](std::size_t bin) { return static_cast<double>(bin) * sampleRate / kToneFrame; };
-    for (std::size_t bin = 0; bin < power.size(); ++bin) {
-        const auto* const band =
-            std::ranges::find_if(kToneBands, [&](const FrequencyBand& entry) { return hz(bin) < entry.high; });
-        tone.bandShare.at(static_cast<std::size_t>(band - kToneBands.begin())) += power[bin] / total;
-        tone.centroidHz += hz(bin) * power[bin] / total;
-    }
-    return tone;
+    TrackMeter meter(channels.size(), sampleRate);
+    meter.add(channels);
+    return meter.levels().tone;
 }
 
 AudioAnalysis analyzeAudio(const Channels& channels, const AnalysisTiming& timing) {

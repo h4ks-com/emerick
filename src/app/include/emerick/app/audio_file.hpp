@@ -1,7 +1,10 @@
 #pragma once
 
+#include <cstddef>
 #include <filesystem>
+#include <memory>
 #include <optional>
+#include <span>
 #include <vector>
 
 #include "emerick/core/time.hpp"
@@ -24,6 +27,24 @@ struct AudioData {
 
 // Reads every channel of a WAV, AIFF or other file libsndfile opens. Throws AppError when it cannot.
 AudioData readAudio(const std::filesystem::path& path);
+
+// Writes one float WAV chunk by chunk, with a channel per vector of each chunk. Throws AppError on failure.
+class WavWriter {
+public:
+    WavWriter(const std::filesystem::path& path, std::size_t channels, double sampleRate);
+    ~WavWriter();
+    WavWriter(WavWriter&&) noexcept;
+    WavWriter& operator=(WavWriter&&) noexcept;
+    WavWriter(const WavWriter&) = delete;
+    WavWriter& operator=(const WavWriter&) = delete;
+
+    // Appends the chunk; every vector has the same length.
+    void write(std::span<const std::vector<float>> channels);
+
+private:
+    struct File;
+    std::unique_ptr<File> file_;
+};
 
 // Writes one float WAV with a channel per vector; every vector has the same length. Throws AppError on failure.
 void writeWav(const std::filesystem::path& path, const std::vector<std::vector<float>>& channels, double sampleRate);

@@ -400,6 +400,10 @@ void mixTracks(Snapshot& snapshot, const AudioBlock& block, const BlockTime& tim
                     float* destination = block.outputs[static_cast<std::size_t>(track.outputs[channel])];
                     std::transform(mixed, mixed + block.frames, destination, destination, std::plus{});
                 }
+                if (channel < track.captures.size()) {
+                    float* destination = block.outputs[static_cast<std::size_t>(track.captures[channel])];
+                    std::transform(mixed, mixed + block.frames, destination, destination, std::plus{});
+                }
             }
             if (track.outputBus) {
                 feedBus(snapshot.tracks[*track.outputBus], track, 0, block.frames, 1.0F, 1.0F);

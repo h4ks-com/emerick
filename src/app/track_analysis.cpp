@@ -22,37 +22,28 @@ void TrackAnalysis::analyze(const QString& track) {
     if (!begin(kTrackAnalyzeAction, {{"track", track.toStdString()}})) {
         return;
     }
-    pending_ = {track};
-    analyzeNext();
+    run(track, kTrackAnalyzeAction,
+        [this, &track] { return prepareTrackRender(controller_, registry(), {{"track", track.toStdString()}}); });
 }
 
 void TrackAnalysis::analyzeAll() {
     if (!begin(kTracksAnalyzeAction, Json::object())) {
         return;
     }
-    pending_ = analyzableTracks(registry(), controller_.project().document()) |
-               std::views::transform([](const model::TrackId& id) { return qs(id.value); }) |
-               std::ranges::to<QStringList>();
-    analyzeNext();
+    run(qs(kTracksAnalyzeAction), kTracksAnalyzeAction,
+        [this] { return prepareTracksRender(controller_, registry(), Json::object()); });
 }
 
-void TrackAnalysis::analyzeNext() {
-    if (pending_.isEmpty()) {
-        return;
-    }
-    const QString track = pending_.takeFirst();
-    render(
-        track, kTrackAnalyzeAction,
-        [this, &track] { return prepareTrackRender(controller_, registry(), {{"track", track.toStdString()}}); },
-        [this, track](std::optional<RenderResult> result) {
-            if (!result) {
-                pending_.clear();
-                return;
-            }
-            results_.insert(track, toVariant(result->json));
-            emit resultsChanged();
-            analyzeNext();
-        });
+void TrackAnalysis::run(const QString& busy, const char* actionId, const std::function<RenderJob()>& prepare) {
+    render(busy, actionId, prepare, [this](std::optional<RenderResult> result) {
+        if (!result) {
+            return;
+        }
+        for (const auto& [track, levels] : result->json.items()) {
+            results_.insert(qs(track), toVariant(levels));
+        }
+        emit resultsChanged();
+    });
 }
 
 }  // namespace emerick::app

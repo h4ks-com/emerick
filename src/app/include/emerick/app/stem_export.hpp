@@ -7,6 +7,7 @@
 #include <optional>
 #include <stop_token>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "emerick/app/registry.hpp"
@@ -26,8 +27,8 @@ core::Ticks exportEnd(const engine::Session& session, const model::Document& doc
 // Renders each audio track and each MIDI track with an instrument of the session alone and dry, with its clip gains,
 // fades and track gain, and each bus with the tracks of the session that feed it, to <folder>/<track name>.wav, or
 // "<folder>/01 <track name>.wav" numbered by track position. A track whose instrument takes MIDI from another track
-// plays with that track, and a track that only sends MIDI on gets no stem. Each stem runs on its own offline engine
-// with fresh instances of the instruments from the slots of context's document. Throws AppError when nothing can
+// plays with that track, and a track that only sends MIDI on gets no stem. One offline engine renders every stem at
+// once with fresh instances of the instruments from the slots of context's document. Throws AppError when nothing can
 // render.
 std::vector<std::filesystem::path> exportStems(const engine::Session& session, const Registry& registry,
                                                const PlaybackContext& context, const std::filesystem::path& folder,
@@ -69,10 +70,16 @@ public:
     OfflineRender(OfflineRender&&) = delete;
     OfflineRender& operator=(OfflineRender&&) = delete;
 
+    // Takes every output channel of one chunk of a render.
+    using ChunkSink = std::function<void(std::vector<std::vector<float>>)>;
+
     // Renders frames from the start, calling idle between blocks, which must have the main thread run idleInstruments
-    // before it returns. Returns no channels once stop is requested.
+    // before it returns, and returns the stereo output. With a sink, hands it each chunk of every output channel in
+    // order and returns no channels. Returns no channels once stop is requested.
     std::vector<std::vector<float>> process(engine::Frames frames, const std::function<void()>& idle,
                                             const std::stop_token& stop = {});
+    // Has process hand its chunks to sink, on the thread that runs process.
+    void setSink(ChunkSink sink) { sink_ = std::move(sink); }
     // Runs what the instruments asked of the UI thread, such as loading a voice after a program change.
     void idleInstruments();
 
@@ -81,6 +88,7 @@ private:
 
     std::vector<std::shared_ptr<engine::ClapInstrument>> instruments_;
     std::vector<InstrumentMessage> chase_;
+    ChunkSink sink_;
     engine::OfflineBackend* offline_ = nullptr;
     std::unique_ptr<engine::Engine> engine_;
 };
@@ -93,5 +101,11 @@ std::unique_ptr<OfflineRender> instrumentRender(std::shared_ptr<engine::ClapInst
 std::unique_ptr<OfflineRender> trackRender(const engine::Session& session, const Registry& registry,
                                            const PlaybackContext& context, const std::string& trackId,
                                            double sampleRate);
+
+// Sets up one render of the whole session in which output channels 2i + 1 and 2i + 2 carry the i-th listed track or
+// bus as its stem plays it.
+std::unique_ptr<OfflineRender> tracksRender(const engine::Session& session, const Registry& registry,
+                                            const PlaybackContext& context, const std::vector<std::string>& trackIds,
+                                            double sampleRate);
 
 }  // namespace emerick::app

@@ -120,6 +120,8 @@ struct Track {
     double recordDelayMs = 0.0;
     // A track with an output bus plays into that bus in place of audioOut.
     std::string outputBus;
+    // The track's own output, after its fader and pan, also plays here, whether it goes to audioOut or a bus.
+    AudioRoute captureOut;
     std::vector<Send> sends;
     std::vector<Insert> inserts;
     std::vector<AudioClip> audioClips;

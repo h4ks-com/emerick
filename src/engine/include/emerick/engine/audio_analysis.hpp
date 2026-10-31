@@ -1,9 +1,12 @@
 #pragma once
 
 #include <array>
+#include <cstddef>
 #include <cstdint>
 #include <limits>
+#include <memory>
 #include <optional>
+#include <span>
 #include <string_view>
 #include <vector>
 
@@ -74,6 +77,34 @@ struct ToneBalance {
 };
 
 ToneBalance analyzeTone(const std::vector<std::vector<float>>& channels, double sampleRate);
+
+// Every level in dB is minus infinity for digital silence.
+struct TrackLevels {
+    double integratedLufs = 0;
+    double samplePeakDbfs = 0;
+    double truePeakDbtp = 0;
+    ToneBalance tone;
+};
+
+// Measures the levels analyzeAudio and analyzeTone report of a signal handed over in consecutive chunks, so a long
+// render never has to be held whole.
+class TrackMeter {
+public:
+    TrackMeter(std::size_t channels, double sampleRate);
+    ~TrackMeter();
+    TrackMeter(TrackMeter&&) noexcept;
+    TrackMeter& operator=(TrackMeter&&) noexcept;
+    TrackMeter(const TrackMeter&) = delete;
+    TrackMeter& operator=(const TrackMeter&) = delete;
+
+    // Takes one vector per channel, all of one length.
+    void add(std::span<const std::vector<float>> chunk);
+    [[nodiscard]] TrackLevels levels() const;
+
+private:
+    struct State;
+    std::unique_ptr<State> state_;
+};
 
 // Measures loudness after ITU-R BS.1770-4 with every channel weighted 1, so a mono full scale 997 Hz sine reads
 // -3.01 LUFS. Every channel has the same length.

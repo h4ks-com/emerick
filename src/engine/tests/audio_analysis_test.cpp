@@ -111,6 +111,32 @@ TEST_CASE("active RMS skips silence, and silence reads minus infinity with no ba
     CHECK(silence.centroidHz == 0);
 }
 
+TEST_CASE("a track meter fed in uneven chunks reads what the whole signal reads") {
+    std::vector<float> left = sine(kRate / 4, 0.8, 2.3, std::numbers::pi / 4);
+    const std::vector<float> right = sine(150, 0.3, 2.3);
+    std::fill_n(left.begin() + 30000, 20000, 0.0F);
+    const std::vector<std::vector<float>> whole{left, right};
+    const auto analysis = analyzeAudio(whole, {.sampleRate = kRate});
+    const auto tone = analyzeTone(whole, kRate);
+
+    emerick::engine::TrackMeter meter(2, kRate);
+    for (std::size_t begin = 0, size = 3; begin < left.size(); begin += size, size = (size * 7) % 9001 + 1) {
+        const auto end = static_cast<std::ptrdiff_t>(std::min(left.size(), begin + size));
+        const auto first = static_cast<std::ptrdiff_t>(begin);
+        meter.add(std::vector<std::vector<float>>{{left.begin() + first, left.begin() + end},
+                                                  {right.begin() + first, right.begin() + end}});
+    }
+    const auto levels = meter.levels();
+    CHECK(levels.integratedLufs == Approx(analysis.integratedLufs).margin(1e-9));
+    CHECK(levels.samplePeakDbfs == analysis.samplePeakDbfs);
+    CHECK(levels.truePeakDbtp == analysis.truePeakDbtp);
+    CHECK(levels.tone.activeRmsDb == Approx(tone.activeRmsDb).margin(1e-9));
+    CHECK(levels.tone.centroidHz == Approx(tone.centroidHz).margin(1e-6));
+    for (std::size_t band = 0; band < tone.bandShare.size(); ++band) {
+        CHECK(levels.tone.bandShare[band] == Approx(tone.bandShare[band]).margin(1e-9));
+    }
+}
+
 TEST_CASE("matching loudness lifts a quiet mix to the target and keeps its true peak under the ceiling") {
     std::vector<float> quiet = sine(220, 0.02, 4);
     for (std::size_t frame = 0; frame < quiet.size(); frame += 12000) {

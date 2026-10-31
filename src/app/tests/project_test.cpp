@@ -9,9 +9,11 @@
 #include <string>
 #include <vector>
 
+#include "emerick/app/background_render.hpp"
 #include "emerick/app/core_actions.hpp"
 #include "emerick/app/lua_host.hpp"
 #include "emerick/app/session_mapping.hpp"
+#include "emerick/app/stem_export.hpp"
 #include "emerick/app/track_list_model.hpp"
 #include "emerick/model/json.hpp"
 #include "project_rig.hpp"
@@ -411,6 +413,41 @@ TEST_CASE("export mix plays bus returns, and stems export each track dry and eac
     CHECK(rig.run("export.stems", {{"folder", folder.string()}}).at("files").size() == 2);
     CHECK(readChannel(folder / "Vox.wav", 0)[24000] == Approx(1.0F).margin(1e-3));
     CHECK(readChannel(folder / "Verb.wav", 0)[24000] == Approx(0.5F).margin(1e-3));
+}
+
+TEST_CASE("stems from one render match each track and bus rendered on its own to the sample") {
+    ProjectRig rig;
+    const std::string vox = rig.run("track.addAudio", {{"name", "Vox"}}).at("id");
+    const std::string bass = rig.run("track.addAudio", {{"name", "Bass"}}).at("id");
+    const std::string verb = rig.run("track.addBus", {{"name", "Verb"}}).at("id");
+    const std::string group = rig.run("track.addBus", {{"name", "Group"}}).at("id");
+    writeConstant(rig.path("ones.wav"), 48000, 0.5F);
+    writeConstant(rig.path("half.wav"), 24000, 0.25F);
+    rig.run("clip.import", {{"track", vox}, {"path", rig.path("ones.wav").string()}});
+    rig.run("clip.import", {{"track", bass}, {"path", rig.path("half.wav").string()}, {"at", "2.1.0"}});
+    rig.run("insert.add", {{"track", verb}, {"type", "reverb"}});
+    rig.run("send.add", {{"track", vox}, {"bus", verb}, {"db", -6.0}});
+    rig.run("track.setPan", {{"track", vox}, {"value", 0.5}});
+    rig.run("track.setOutputBus", {{"track", bass}, {"bus", group}});
+    rig.run("track.setMute", {{"track", bass}, {"value", true}});
+
+    const auto folder = rig.path("stems");
+    REQUIRE(rig.run("export.stems", {{"folder", folder.string()}}).at("files").size() == 4);
+    const model::Document& document = rig.controller->project().document();
+    const engine::Session session = toSession(document, rig.registry, rig.controller->folder());
+    const PlaybackContext context{.tempo = document.tempo, .folder = rig.controller->folder(), .document = &document};
+    const engine::Frames frames = document.tempo.ticksToFrames(exportEnd(session, document), kRate);
+    for (const auto& [id, name] : std::map<std::string, std::string>{
+             {vox, "Vox.wav"}, {bass, "Bass.wav"}, {verb, "Verb.wav"}, {group, "Group.wav"}}) {
+        INFO(name);
+        const RenderResult alone = renderNow({.render = trackRender(session, rig.registry, context, id, kRate),
+                                              .frames = frames,
+                                              .measure = [](std::vector<std::vector<float>> channels) {
+                                                  return RenderResult{.channels = std::move(channels), .json = {}};
+                                              }});
+        CHECK(readChannel(folder / name, 0) == alone.channels[0]);
+        CHECK(readChannel(folder / name, 1) == alone.channels[1]);
+    }
 }
 
 TEST_CASE("a plugin track kind renders to MIDI and folds takes into its data") {

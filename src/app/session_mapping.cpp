@@ -61,6 +61,7 @@ engine::Track commonFields(const model::Track& track, engine::TrackKind kind) {
             .claimsSysex = false,
             .recordDelayMs = track.recordDelayMs,
             .outputBus = {},
+            .captureOut = {},
             .sends = {},
             .inserts = {},
             .audioClips = {},

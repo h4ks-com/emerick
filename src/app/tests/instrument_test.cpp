@@ -308,3 +308,26 @@ TEST_CASE("picking a General MIDI sound shows its name and undoes to the piano")
     rig.controller->flush();
     CHECK(sound().at("text") == "Acoustic Grand Piano");
 }
+
+TEST_CASE("instrument.setParam picks a stepped param's choice by its exact text and names a text no choice has") {
+    InstrumentRig rig;
+    rig.registry.setSetting(kClapFoldersSetting, Json::array({bundledClapFolder(EMERICK_GM_APP_FOLDER).string()}));
+    const model::TrackId id{
+        rig.run("track.addInstrument", {{"plugin", kGeneralMidiPluginId}}).at("id").get<std::string>()};
+    rig.controller->flush();
+    const Json set = rig.run("instrument.setParam", {{"track", id.value}, {"param", 0}, {"value", "Clavi"}});
+    CHECK(set.at("text") == "Clavi");
+    CHECK(set.at("value") == 7.0);
+    CHECK(rig.run("instrument.setParam", {{"track", id.value}, {"param", 0}, {"value", 40}}).at("text") == "Violin");
+
+    const auto state = rig.controller->project().track(id)->instrument->state;
+    try {
+        rig.run("instrument.setParam", {{"track", id.value}, {"param", 0}, {"value", "clavi"}});
+        FAIL("a text no choice has must throw");
+    } catch (const AppError& error) {
+        const std::string message = error.what();
+        CHECK(message.contains("\"clavi\""));
+        CHECK_FALSE(message.contains("Violin"));
+    }
+    CHECK(rig.controller->project().track(id)->instrument->state == state);
+}

@@ -7,6 +7,7 @@
 #include <nlohmann/json.hpp>
 #include <string>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "emerick/engine/clap_instrument.hpp"
@@ -14,6 +15,15 @@
 #include "emerick/model/document.hpp"
 
 namespace emerick::app {
+
+// A param value as a number, or as the label of one choice of a stepped param.
+using ParamValue = std::variant<double, std::string>;
+
+struct ParamSet {
+    std::vector<std::uint8_t> state;
+    double value = 0.0;
+    std::string text;
+};
 
 // The live CLAP instrument of every track whose slot names one, with its editor window. A track keeps its instrument
 // while its slot names the same plugin, so the plugin keeps the state the user gave it since the project loaded.
@@ -45,9 +55,9 @@ public:
     // The track's instrument as the inspector shows it: whether it has an editor, and each param with its value, its
     // label and, for a stepped param, the label of every step. Null when the track plays no live instrument.
     [[nodiscard]] nlohmann::json describe(const model::TrackId& id) const;
-    // Sets the param on the live instrument and returns the state the instrument saves with it. Throws AppError for a
-    // missing instrument or param and for a value out of its range.
-    std::vector<std::uint8_t> setParam(const model::TrackId& id, std::uint32_t param, double value);
+    // Sets the param on the live instrument and returns the state the instrument saves with it, with the value and its
+    // label. Throws AppError for a missing instrument or param, a value out of its range and a label no choice has.
+    ParamSet setParam(const model::TrackId& id, std::uint32_t param, const ParamValue& given);
 
 private:
     struct Live {

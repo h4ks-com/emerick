@@ -166,23 +166,26 @@ void registerInstrumentActions(Registry& registry, ProjectController& controller
         {.id = "instrument.setParam",
          .title = "Set instrument setting",
          .description = "Sets a param of the track's CLAP instrument, such as the General MIDI sound, as one undo "
-                        "step. The instrument's saved state keeps the value.",
+                        "step. A stepped param also takes the exact text of one of its choices, such as \"Clavi\". "
+                        "The instrument's saved state keeps the value.",
          .aliases = {"pick sound", "change sound", "set plugin param"},
          .category = "Tracks",
          .schema = {{"required", {"param", "value"}},
                     {"properties",
                      {{"track", {{"type", "string"}}},
                       {"param", {{"type", "integer"}, {"description", "a param id from instrument.params"}}},
-                      {"value", {{"type", "number"}}}}}},
+                      {"value", {{"description", "a number, or the exact text of one of the param's choices"}}}}}},
          .run = [&registry, &controller, &nav](const Json& params) {
              const model::TrackId id = instrumentTrack(registry, controller, nav, params);
              const auto paramId = param<std::uint32_t>(params, "param");
-             const auto value = param<double>(params, "value");
+             const ParamValue value = params.contains("value") && params.at("value").is_string()
+                                          ? ParamValue{params.at("value").get<std::string>()}
+                                          : ParamValue{param<double>(params, "value")};
              syncInstruments(controller);
-             std::vector<std::uint8_t> state = controller.instruments().setParam(id, paramId, value);
+             ParamSet set = controller.instruments().setParam(id, paramId, value);
              editTrack(controller, id, "set instrument setting",
-                       [&state](model::Track& track) { track.instrument->state = std::move(state); });
-             return Json{{"track", id.value}, {"param", paramId}, {"value", value}};
+                       [&set](model::Track& track) { track.instrument->state = std::move(set.state); });
+             return Json{{"track", id.value}, {"param", paramId}, {"value", set.value}, {"text", set.text}};
          }});
 }
 

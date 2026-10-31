@@ -8,8 +8,10 @@
 #include <ranges>
 #include <string>
 #include <utility>
+#include <variant>
 
 #include "emerick/app/registry.hpp"
+#include "emerick/core/overloaded.hpp"
 
 namespace emerick::app {
 
@@ -17,6 +19,23 @@ namespace {
 
 bool samePlugin(const model::PluginSlot& left, const model::PluginSlot& right) {
     return left.pluginId == right.pluginId && left.bundle == right.bundle;
+}
+
+double paramNumber(const engine::ClapParam& info, const ParamValue& given) {
+    const auto number = [&](double value) {
+        if (value < info.min || value > info.max) {
+            throw AppError(info.name + std::format(" takes a value from {} to {}", info.min, info.max));
+        }
+        return info.stepped ? std::round(value) : value;
+    };
+    const auto choice = [&](const std::string& text) {
+        const auto found = std::ranges::find(info.choices, text);
+        if (found == info.choices.end()) {
+            throw AppError(info.name + " has no choice \"" + text + "\", run instrument.params for its choices");
+        }
+        return info.min + static_cast<double>(found - info.choices.begin());
+    };
+    return std::visit(core::Overloaded{number, choice}, given);
 }
 
 }  // namespace
@@ -176,7 +195,7 @@ Json Instruments::describe(const model::TrackId& id) const {
                        }) | std::ranges::to<Json::array_t>()}};
 }
 
-std::vector<std::uint8_t> Instruments::setParam(const model::TrackId& id, std::uint32_t param, double value) {
+ParamSet Instruments::setParam(const model::TrackId& id, std::uint32_t param, const ParamValue& given) {
     const auto found = live_.find(id.value);
     if (found == live_.end() || !found->second.instrument) {
         throw AppError(found == live_.end() ? "the track has no instrument, run instrument.load first"
@@ -188,12 +207,10 @@ std::vector<std::uint8_t> Instruments::setParam(const model::TrackId& id, std::u
     if (info == params.end()) {
         throw AppError(live.slot.name + " has no param " + std::to_string(param) + ", run instrument.params for ids");
     }
-    if (value < info->min || value > info->max) {
-        throw AppError(info->name + " takes a value from " + std::format("{} to {}", info->min, info->max));
-    }
-    live.instrument->setParam(param, info->stepped ? std::round(value) : value);
+    const double value = paramNumber(*info, given);
+    live.instrument->setParam(param, value);
     live.slot.state = live.instrument->saveState().value_or(live.slot.state);
-    return live.slot.state;
+    return {.state = live.slot.state, .value = value, .text = live.instrument->paramText(param, value)};
 }
 
 void Instruments::closeEditor(Live& live) {

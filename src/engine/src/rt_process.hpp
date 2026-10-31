@@ -6,7 +6,9 @@
 #include <atomic>
 #include <cstddef>
 #include <cstdint>
+#include <string>
 #include <string_view>
+#include <vector>
 
 #include "emerick/engine/audio_backend.hpp"
 #include "snapshot.hpp"
@@ -16,6 +18,7 @@ namespace emerick::engine {
 
 inline constexpr std::size_t kCommandCapacity = 1024;
 inline constexpr std::size_t kRetiredCapacity = 64;
+inline constexpr std::size_t kRetiredPreviewCapacity = 8;
 inline constexpr std::size_t kMaxTrackIdLength = 64;
 inline constexpr std::size_t kMetronomeVoices = 16;
 inline constexpr std::size_t kOutgoingMidiBytes = std::size_t{1} << 18;
@@ -49,6 +52,13 @@ struct MetronomeVoice {
     bool active = false;
 };
 
+// A rendered sound that plays once into a track's mix, before its inserts and fader.
+struct PreviewSound {
+    std::string trackId;
+    std::vector<std::vector<float>> channels;
+    Frames position = 0;
+};
+
 struct RealtimeState {
     std::atomic<Snapshot*> pending{nullptr};
     moodycamel::BlockingReaderWriterCircularBuffer<Snapshot*> retired{kRetiredCapacity};
@@ -58,6 +68,11 @@ struct RealtimeState {
     std::atomic<std::uint64_t> locatesApplied{0};
     // The UI thread writes messages here before the command that should follow them.
     SpscRing outgoingMidi{kOutgoingMidiBytes};
+    std::atomic<PreviewSound*> pendingPreview{nullptr};
+    moodycamel::BlockingReaderWriterCircularBuffer<PreviewSound*> retiredPreviews{kRetiredPreviewCapacity};
+    // Set before the audio thread takes a pending preview and cleared once it retires it, so the UI thread never
+    // closes the stream under a preview.
+    std::atomic<bool> previewSounding{false};
 
     // The audio thread owns everything below while the stream is open.
     Snapshot* current = nullptr;
@@ -74,6 +89,7 @@ struct RealtimeState {
     Frames stoppedClockFrame = 0;
     std::array<MetronomeVoice, kMetronomeVoices> metronomeVoices{};
     const DrumSounds* voiceSounds = nullptr;
+    PreviewSound* preview = nullptr;
 };
 
 void processBlock(RealtimeState& state, const AudioBlock& block);

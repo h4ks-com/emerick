@@ -13,7 +13,10 @@
 #include <ranges>
 #include <set>
 #include <stdexcept>
+#include <string>
+#include <string_view>
 #include <utility>
+#include <vector>
 
 #include "clock.hpp"
 #include "rt_process.hpp"
@@ -45,6 +48,8 @@ bool sameDevices(const StreamRequest& left, const StreamRequest& right) {
 }
 
 void deleteSnapshot(Snapshot* snapshot) { std::unique_ptr<Snapshot>{snapshot}.reset(); }
+
+void deletePreview(PreviewSound* preview) { std::unique_ptr<PreviewSound>{preview}.reset(); }
 
 std::vector<LevelReading> takeLevels(const SnapshotBuilder::Meters& meters) {
     std::vector<LevelReading> readings;
@@ -105,6 +110,8 @@ struct Engine::Impl {
         writer.pollAll();
         deleteSnapshot(rt.current);
         deleteSnapshot(rt.pending.exchange(nullptr));
+        deletePreview(rt.preview);
+        deletePreview(rt.pendingPreview.exchange(nullptr));
         freeRetired();
     }
     Impl(const Impl&) = delete;
@@ -117,6 +124,28 @@ struct Engine::Impl {
         while (rt.retired.try_dequeue(snapshot)) {
             deleteSnapshot(snapshot);
         }
+        PreviewSound* preview = nullptr;
+        while (rt.retiredPreviews.try_dequeue(preview)) {
+            deletePreview(preview);
+        }
+    }
+
+    [[nodiscard]] bool previewPlaying() const {
+        return rt.previewSounding.load(std::memory_order_acquire) ||
+               rt.pendingPreview.load(std::memory_order_acquire) != nullptr;
+    }
+
+    void playPreview(std::string_view trackId, std::vector<std::vector<float>> channels) {
+        if (channels.empty() || channels.front().empty()) {
+            return;
+        }
+        auto sound = std::make_unique<PreviewSound>(
+            PreviewSound{.trackId = std::string{trackId}, .channels = std::move(channels), .position = 0});
+        deletePreview(rt.pendingPreview.exchange(sound.release(), std::memory_order_acq_rel));
+        if (!streamOpen) {
+            openStream(requestFor(session), session);
+        }
+        freeRetired();
     }
 
     void push(const Command& command) {
@@ -227,7 +256,7 @@ struct Engine::Impl {
 
     void releaseIdleStream() {
         if (streamOpen && !warm && !transportRequested && !rt.publishedPlaying.load(std::memory_order_relaxed) &&
-            !listensLive(session) && builder.midiFlushed()) {
+            !listensLive(session) && builder.midiFlushed() && !previewPlaying()) {
             audio->close();
             streamOpen = false;
             runIdleBlock();
@@ -403,6 +432,12 @@ void Engine::sendMidi(std::string_view portId, std::span<const std::uint8_t> byt
 void Engine::sendInstrumentMidi(std::string_view trackId, std::span<const std::uint8_t> bytes) {
     impl_->sendMidi(trackId, bytes, true);
 }
+
+void Engine::playPreview(std::string_view trackId, std::vector<std::vector<float>> channels) {
+    impl_->playPreview(trackId, std::move(channels));
+}
+
+bool Engine::previewPlaying() const { return impl_->previewPlaying(); }
 
 void Engine::panic() { impl_->push({.type = Command::Type::panic}); }
 

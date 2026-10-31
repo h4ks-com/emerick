@@ -441,6 +441,43 @@ void playInstruments(const RealtimeState& state, Snapshot& snapshot, const Audio
     }
 }
 
+void adoptPreview(RealtimeState& state) {
+    if (state.pendingPreview.load(std::memory_order_acquire) == nullptr ||
+        state.retiredPreviews.size_approx() >= state.retiredPreviews.max_capacity()) {
+        return;
+    }
+    state.previewSounding.store(true, std::memory_order_release);
+    PreviewSound* next = state.pendingPreview.exchange(nullptr, std::memory_order_acq_rel);
+    if (state.preview != nullptr) {
+        state.retiredPreviews.try_enqueue(state.preview);
+    }
+    state.preview = next;
+}
+
+void playPreview(RealtimeState& state, Snapshot& snapshot, Frames frames) {
+    adoptPreview(state);
+    PreviewSound* preview = state.preview;
+    if (preview == nullptr) {
+        return;
+    }
+    const auto length = static_cast<Frames>(preview->channels.front().size());
+    const Frames count = std::min(frames, length - preview->position);
+    if (TrackState* track = findTrack(snapshot, preview->trackId); track != nullptr) {
+        for (std::size_t channel = 0; channel < track->mix.size(); ++channel) {
+            const float* source =
+                preview->channels[std::min(channel, preview->channels.size() - 1)].data() + preview->position;
+            std::transform(source, source + count, track->mix[channel].data(), track->mix[channel].data(), std::plus{});
+        }
+    }
+    preview->position += count;
+    if (preview->position >= length && state.retiredPreviews.try_enqueue(preview)) {
+        state.preview = nullptr;
+        if (state.pendingPreview.load(std::memory_order_acquire) == nullptr) {
+            state.previewSounding.store(false, std::memory_order_release);
+        }
+    }
+}
+
 // A take that began after a count-in inside this block records from recordFrom on.
 void monitorAndRecordAudio(Snapshot& snapshot, const AudioBlock& block, Frames recordFrom) {
     const bool soloActive = anySolo(snapshot);
@@ -621,6 +658,7 @@ void processBlock(RealtimeState& state, const AudioBlock& block) {
     renderMetronome(state, snapshot, block);
     monitorAndRecordAudio(snapshot, block, rollFrom);
     playInstruments(state, snapshot, block, blockStartFrame, time);
+    playPreview(state, snapshot, block.frames);
     mixTracks(snapshot, block, time);
     state.publishedFrame.store(state.frame, std::memory_order_relaxed);
     state.publishedPlaying.store(state.transportPlaying || state.countInLeft > 0, std::memory_order_relaxed);

@@ -60,6 +60,7 @@ qt_add_library(emerick_app STATIC
     include/emerick/app/script_library.hpp
     include/emerick/app/session_mapping.hpp
     include/emerick/app/stem_export.hpp
+    include/emerick/app/track_analysis.hpp
     include/emerick/app/track_list_model.hpp
     include/emerick/app/track_meters.hpp
     include/emerick/app/transport_clock.hpp
@@ -101,6 +102,7 @@ qt_add_library(emerick_app STATIC
     summary_actions.cpp
     take_preview.cpp
     track_actions.cpp
+    track_analysis.cpp
     track_edit_actions.cpp
     track_list_model.cpp
     track_meters.cpp

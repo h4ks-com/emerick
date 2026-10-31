@@ -3,10 +3,14 @@
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
+#include <functional>
 #include <limits>
 #include <numbers>
 #include <numeric>
 #include <ranges>
+#include <span>
+
+#include "emerick/engine/spectrum.hpp"
 
 namespace emerick::engine {
 
@@ -25,6 +29,8 @@ constexpr std::size_t kOversampling = 4;
 constexpr std::size_t kTapsPerPhase = 12;
 constexpr std::size_t kHalfTaps = kTapsPerPhase / 2;
 constexpr double kBandEdgeLimit = 0.45;
+constexpr double kActiveGateDb = -60;
+constexpr std::size_t kToneFrame = 4096;
 
 using Channels = std::vector<std::vector<float>>;
 
@@ -239,7 +245,59 @@ StereoImage stereoImage(const std::vector<float>& left, const std::vector<float>
     return {.correlation = scale == 0 ? 0 : product / scale, .balanceDb = powerDb(leftPower) - powerDb(rightPower)};
 }
 
+double activeRms(const Channels& channels, double sampleRate) {
+    const auto stepFrames = static_cast<std::size_t>(std::lround(kStepSeconds * sampleRate));
+    const std::size_t frames = channels.front().size();
+    std::vector<double> active =
+        std::views::iota(std::size_t{0}, (frames + stepFrames - 1) / stepFrames) |
+        std::views::transform([&](std::size_t step) {
+            return powerDb(meanSquare(channels, step * stepFrames, std::min(frames, (step + 1) * stepFrames)));
+        }) |
+        std::views::filter([](double db) { return db > kActiveGateDb; }) | std::ranges::to<std::vector>();
+    if (active.empty()) {
+        return kSilentDb;
+    }
+    const auto middle = active.begin() + static_cast<std::ptrdiff_t>(active.size() / 2);
+    std::ranges::nth_element(active, middle);
+    return *middle;
+}
+
+std::vector<double> averagePower(const Channels& channels) {
+    std::vector<double> sum(kToneFrame / 2 + 1);
+    std::vector<float> frame(kToneFrame);
+    for (const std::vector<float>& channel : channels) {
+        for (std::size_t begin = 0; begin < channel.size(); begin += kToneFrame) {
+            const std::size_t count = std::min(kToneFrame, channel.size() - begin);
+            std::ranges::fill(std::ranges::copy(std::span{channel}.subspan(begin, count), frame.begin()).out,
+                              frame.end(), 0.0F);
+            std::ranges::transform(sum, powerSpectrum(frame), sum.begin(), std::plus{});
+        }
+    }
+    return sum;
+}
+
 }  // namespace
+
+ToneBalance analyzeTone(const Channels& channels, double sampleRate) {
+    ToneBalance tone{.activeRmsDb = kSilentDb};
+    if (channels.empty() || channels.front().empty()) {
+        return tone;
+    }
+    tone.activeRmsDb = activeRms(channels, sampleRate);
+    const std::vector<double> power = averagePower(channels);
+    const double total = std::ranges::fold_left(power, 0.0, std::plus{});
+    if (total == 0) {
+        return tone;
+    }
+    const auto hz = [&](std::size_t bin) { return static_cast<double>(bin) * sampleRate / kToneFrame; };
+    for (std::size_t bin = 0; bin < power.size(); ++bin) {
+        const auto* const band =
+            std::ranges::find_if(kToneBands, [&](const FrequencyBand& entry) { return hz(bin) < entry.high; });
+        tone.bandShare.at(static_cast<std::size_t>(band - kToneBands.begin())) += power[bin] / total;
+        tone.centroidHz += hz(bin) * power[bin] / total;
+    }
+    return tone;
+}
 
 AudioAnalysis analyzeAudio(const Channels& channels, const AnalysisTiming& timing) {
     AudioAnalysis analysis;

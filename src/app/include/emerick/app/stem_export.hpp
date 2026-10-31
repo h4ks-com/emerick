@@ -1,6 +1,7 @@
 #pragma once
 
 #include <filesystem>
+#include <string>
 #include <vector>
 
 #include "emerick/app/registry.hpp"
@@ -30,5 +31,10 @@ std::vector<std::filesystem::path> exportStems(const engine::Session& session, c
 // WAV.
 void exportMix(const engine::Session& session, const Registry& registry, const PlaybackContext& context,
                const std::filesystem::path& file, double sampleRate);
+
+// Renders frames from the start of one track as its stem plays, or of the mix when trackId is empty.
+std::vector<std::vector<float>> renderTrack(const engine::Session& session, const Registry& registry,
+                                            const PlaybackContext& context, const std::string& trackId,
+                                            engine::Frames frames, double sampleRate);
 
 }  // namespace emerick::app

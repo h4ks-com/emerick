@@ -41,7 +41,7 @@ void fft(std::span<std::complex<double>> data) {
     }
 }
 
-std::vector<double> spectrumDb(std::span<const float> frame) {
+std::vector<double> powerSpectrum(std::span<const float> frame) {
     const std::size_t size = frame.size();
     std::vector<std::complex<double>> bins(size);
     for (std::size_t i = 0; i < size; ++i) {
@@ -50,14 +50,20 @@ std::vector<double> spectrumDb(std::span<const float> frame) {
         bins[i] = hann * frame[i];
     }
     fft(bins);
+    std::vector<double> power(size / 2 + 1);
+    std::ranges::transform(bins.begin(), bins.begin() + static_cast<std::ptrdiff_t>(power.size()), power.begin(),
+                           [](const std::complex<double>& bin) { return std::norm(bin); });
+    return power;
+}
+
+std::vector<double> spectrumDb(std::span<const float> frame) {
     // The Hann window sums to size / 2, and a real sine splits its amplitude between two bins.
-    const double scale = 4.0 / static_cast<double>(size);
-    std::vector<double> db(size / 2 + 1);
-    std::ranges::transform(bins.begin(), bins.begin() + static_cast<std::ptrdiff_t>(db.size()), db.begin(),
-                           [scale](const std::complex<double>& bin) {
-                               const double magnitude = std::abs(bin) * scale;
-                               return magnitude > 0 ? std::max(20 * std::log10(magnitude), kFloorDb) : kFloorDb;
-                           });
+    const double scale = 4.0 / static_cast<double>(frame.size());
+    std::vector<double> db = powerSpectrum(frame);
+    std::ranges::transform(db, db.begin(), [scale](double power) {
+        const double magnitude = std::sqrt(power) * scale;
+        return magnitude > 0 ? std::max(20 * std::log10(magnitude), kFloorDb) : kFloorDb;
+    });
     return db;
 }
 

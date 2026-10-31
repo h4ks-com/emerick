@@ -11,6 +11,7 @@
 #include "emerick/app/action_params.hpp"
 #include "emerick/app/project_state.hpp"
 #include "emerick/app/session_mapping.hpp"
+#include "emerick/app/track_analysis.hpp"
 
 namespace emerick::app {
 
@@ -319,6 +320,7 @@ void registerProjectActions(Registry& registry, ProjectController& controller, N
     registerMarkerActions(registry, controller, nav);
     registerCycleActions(registry, controller, nav);
     registerExportActions(registry, controller);
+    registerTrackAnalysis(registry, controller);
     registerSummaryActions(registry, controller);
     registerMetronome(registry, controller, nav);
     registerProjectFolderActions(registry, controller, nav);

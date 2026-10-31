@@ -10,6 +10,7 @@
 
 using Catch::Approx;
 using emerick::engine::analyzeAudio;
+using emerick::engine::analyzeTone;
 using emerick::engine::kFrequencyBands;
 
 namespace {
@@ -84,4 +85,28 @@ TEST_CASE("band energy is highest in the band that holds the tone") {
         CAPTURE(kFrequencyBands[band].name);
         CHECK(std::ranges::max_element(analysis.bandDb) - analysis.bandDb.begin() == static_cast<std::ptrdiff_t>(band));
     }
+}
+
+TEST_CASE("tone balance puts a 1 kHz sine in the mid band at its level, with its centroid at 1 kHz") {
+    const auto tone = analyzeTone({sine(1000, 0.5, 2), sine(1000, 0.5, 2)}, kRate);
+    CHECK(tone.activeRmsDb == Approx(20 * std::log10(0.5 / std::numbers::sqrt2)).margin(0.05));
+    CHECK(tone.bandShare[2] > 0.99);
+    CHECK(tone.centroidHz == Approx(1000).epsilon(0.02));
+
+    const auto low = analyzeTone({sine(60, 0.5, 2)}, kRate);
+    CHECK(low.bandShare[0] > 0.99);
+    const auto high = analyzeTone({sine(9000, 0.5, 2)}, kRate);
+    CHECK(high.bandShare[4] > 0.99);
+}
+
+TEST_CASE("active RMS skips silence, and silence reads minus infinity with no band shares") {
+    std::vector<float> mostlySilent(static_cast<std::size_t>(8 * kRate));
+    std::ranges::copy(sine(1000, 0.5, 2), mostlySilent.begin());
+    CHECK(analyzeTone({mostlySilent}, kRate).activeRmsDb ==
+          Approx(20 * std::log10(0.5 / std::numbers::sqrt2)).margin(0.05));
+
+    const auto silence = analyzeTone({std::vector<float>(48000)}, kRate);
+    CHECK(std::isinf(silence.activeRmsDb));
+    CHECK(silence.bandShare == std::array<double, 5>{});
+    CHECK(silence.centroidHz == 0);
 }

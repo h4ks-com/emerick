@@ -57,6 +57,19 @@ struct AnalysisTiming {
     double startSeconds = 0;
 };
 
+inline constexpr std::array<FrequencyBand, 5> kToneBands{
+    {{"low", 0, 120}, {"lowMid", 120, 500}, {"mid", 500, 2000}, {"highMid", 2000, 6000}, {"high", 6000, 1e9}}};
+
+struct ToneBalance {
+    // The median RMS of the 100 ms blocks above -60 dBFS, so silent stretches leave it alone.
+    double activeRmsDb = 0;
+    // Each band's share of the energy, summing to 1, or all 0 for silence.
+    std::array<double, kToneBands.size()> bandShare{};
+    double centroidHz = 0;
+};
+
+ToneBalance analyzeTone(const std::vector<std::vector<float>>& channels, double sampleRate);
+
 // Measures loudness after ITU-R BS.1770-4 with every channel weighted 1, so a mono full scale 997 Hz sine reads
 // -3.01 LUFS. Every channel has the same length.
 AudioAnalysis analyzeAudio(const std::vector<std::vector<float>>& channels, const AnalysisTiming& timing);

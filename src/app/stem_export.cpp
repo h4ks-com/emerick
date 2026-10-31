@@ -95,6 +95,29 @@ std::vector<engine::Track> trackStemTracks(const std::vector<engine::Track>& tra
     return stem;
 }
 
+engine::Session stemSession(const engine::Session& session, const engine::Track& track) {
+    return {.tempo = session.tempo,
+            .tracks = track.kind == engine::TrackKind::bus ? busStemTracks(session.tracks, track)
+                                                           : trackStemTracks(session.tracks, track),
+            .clockPorts = {},
+            .takeFolder = {},
+            .metronome = {},
+            .panLaw = session.panLaw};
+}
+
+engine::Session mixSession(const engine::Session& session, const model::Document& document) {
+    std::vector<engine::Track> tracks = session.tracks;
+    for (engine::Track& track : tracks) {
+        track.audioOut = playsAudio(track, document) ? renderRoute() : engine::AudioRoute{};
+    }
+    return {.tempo = session.tempo,
+            .tracks = std::move(tracks),
+            .clockPorts = {},
+            .takeFolder = {},
+            .metronome = {},
+            .panLaw = session.panLaw};
+}
+
 // Each render plays fresh instances with the saved states, so the live instruments stay with the live engine.
 RenderInstruments attachInstruments(engine::Session& session, const model::Document& document) {
     RenderInstruments created;
@@ -277,15 +300,8 @@ std::vector<std::filesystem::path> exportStems(const engine::Session& session, c
         if (!used.insert(stem).second) {
             stem += "-" + track.id;
         }
-        engine::Session single{.tempo = session.tempo,
-                               .tracks = track.kind == engine::TrackKind::bus ? busStemTracks(session.tracks, track)
-                                                                              : trackStemTracks(session.tracks, track),
-                               .clockPorts = {},
-                               .takeFolder = {},
-                               .metronome = {},
-                               .panLaw = session.panLaw};
         files.push_back(folder / (stem + ".wav"));
-        writeWav(files.back(), render(std::move(single), registry, context, frames, sampleRate), sampleRate);
+        writeWav(files.back(), render(stemSession(session, track), registry, context, frames, sampleRate), sampleRate);
     }
     return files;
 }
@@ -293,20 +309,23 @@ std::vector<std::filesystem::path> exportStems(const engine::Session& session, c
 void exportMix(const engine::Session& session, const Registry& registry, const PlaybackContext& context,
                const std::filesystem::path& file, double sampleRate) {
     const engine::Frames frames = renderFrames(session, *context.document, sampleRate);
-    std::vector<engine::Track> tracks = session.tracks;
-    for (engine::Track& track : tracks) {
-        track.audioOut = playsAudio(track, *context.document) ? renderRoute() : engine::AudioRoute{};
-    }
-    engine::Session mix{.tempo = session.tempo,
-                        .tracks = std::move(tracks),
-                        .clockPorts = {},
-                        .takeFolder = {},
-                        .metronome = {},
-                        .panLaw = session.panLaw};
     if (!file.parent_path().empty()) {
         std::filesystem::create_directories(file.parent_path());
     }
-    writeWav(file, render(std::move(mix), registry, context, frames, sampleRate), sampleRate);
+    writeWav(file, render(mixSession(session, *context.document), registry, context, frames, sampleRate), sampleRate);
+}
+
+std::vector<std::vector<float>> renderTrack(const engine::Session& session, const Registry& registry,
+                                            const PlaybackContext& context, const std::string& trackId,
+                                            engine::Frames frames, double sampleRate) {
+    if (trackId.empty()) {
+        return render(mixSession(session, *context.document), registry, context, frames, sampleRate);
+    }
+    const auto track = std::ranges::find(session.tracks, trackId, &engine::Track::id);
+    if (track == session.tracks.end()) {
+        throw AppError("no track " + trackId + " in the session");
+    }
+    return render(stemSession(session, *track), registry, context, frames, sampleRate);
 }
 
 }  // namespace emerick::app

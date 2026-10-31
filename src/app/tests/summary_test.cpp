@@ -1,5 +1,8 @@
+#include <QTimer>
 #include <catch2/catch_test_macros.hpp>
+#include <catch2/matchers/catch_matchers_string.hpp>
 #include <string>
+#include <vector>
 
 #include "project_rig.hpp"
 
@@ -89,4 +92,23 @@ TEST_CASE("the project summary lists tempo, length, position and each track's mi
     CHECK(tracks.at(1).at("inserts") == Json{{{"name", "Channel EQ"}, {"bypass", false}}});
     CHECK(tracks.at(1).at("sends") == Json{{{"bus", verb}, {"db", -6.0}, {"enabled", true}}});
     CHECK_FALSE(tracks.at(1).contains("instrument"));
+    CHECK(summary.at("ready") == true);
+}
+
+TEST_CASE("waiting for instruments returns once none still loads, and fails naming them after its timeout") {
+    ProjectRig rig;
+    const std::string keys = rig.run("track.addMidi", {{"name", "Keys"}}).at("id");
+    bool loading = true;
+    rig.registry.addLoadingTracks([&](const model::Document&) {
+        return loading ? std::vector{model::TrackId{keys}} : std::vector<model::TrackId>{};
+    });
+
+    CHECK(rig.run("project.summary").at("ready") == false);
+    CHECK_THROWS_WITH(rig.run("project.waitReady", {{"timeout", 0.05}}),
+                      Catch::Matchers::ContainsSubstring("Keys still loading"));
+    CHECK_THROWS_AS(rig.run("project.waitReady", {{"timeout", -1}}), AppError);
+
+    QTimer::singleShot(20, [&] { loading = false; });
+    CHECK(rig.run("project.waitReady", {{"timeout", 5}}).at("ready") == true);
+    CHECK(rig.run("project.summary").at("ready") == true);
 }

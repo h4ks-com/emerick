@@ -277,6 +277,8 @@ struct Revealed {
 
 // Warnings for any track, such as one whose instrument reports a problem, keyed as TrackType::warnings keys them.
 using DocumentWarnings = std::function<std::vector<engine::SessionError>(const model::Document&)>;
+// The tracks whose instruments still load their sounds, such as Expansion Voices reading its voice packs.
+using LoadingTracks = std::function<std::vector<model::TrackId>(const model::Document&)>;
 
 class Registry : public QObject {
     Q_OBJECT
@@ -299,6 +301,7 @@ public:
     void addLocation(Location location);
     void addStateProvider(const std::string& name, std::function<Json()> provider);
     void addWarnings(DocumentWarnings warnings);
+    void addLoadingTracks(LoadingTracks loading);
     void setUndoSteps(UndoSteps steps);
 
     [[nodiscard]] const Action* action(const std::string& id) const;
@@ -309,6 +312,7 @@ public:
     [[nodiscard]] const TrackType* trackType(const std::string& kind) const;
     [[nodiscard]] const MidiDeviceProfile* midiDeviceProfile(const std::string& deviceName) const;
     [[nodiscard]] const std::vector<DocumentWarnings>& warnings() const { return warnings_; }
+    [[nodiscard]] const std::vector<LoadingTracks>& loadingTracks() const { return loadingTracks_; }
 
     // Emits actionRan after an action that no other action ran, so the log shows what a person or agent asked for.
     Json run(const std::string& id, const Json& params = Json::object(),
@@ -396,6 +400,7 @@ private:
     std::vector<Location> locations_;
     std::map<std::string, std::function<Json()>> stateProviders_;
     std::vector<DocumentWarnings> warnings_;
+    std::vector<LoadingTracks> loadingTracks_;
     // Runs the action and logs its failure, as every UI call does.
     std::optional<Json> runFromUi(const std::string& id, const Json& params) const;
     void runGesture();

@@ -147,6 +147,19 @@ void warnNoisyVoices(app::Registry& registry, const app::ProjectController& cont
     });
 }
 
+// Expansion Voices names no voice "Loading voices" until it has read its store, so we read that label as loading.
+void reportLoadingVoices(app::Registry& registry, const app::ProjectController& controller) {
+    registry.addLoadingTracks([&controller](const model::Document& document) {
+        return document.tracks | std::views::filter([&](const model::Track& track) {
+                   const auto instrument = track.instrument && track.instrument->pluginId == kVoicesPluginId
+                                               ? controller.instruments().find(track.id)
+                                               : nullptr;
+                   return instrument && instrument->paramText(voices::kVoiceParam, 0.0) == voices::kLoadingLabel;
+               }) |
+               std::views::transform(&model::Track::id) | std::ranges::to<std::vector>();
+    });
+}
+
 // The last section plays its bars, or an Ending without bars plays the loaded style's Ending to its end.
 core::Ticks sectionsEnd(const model::Track& style, const std::vector<SectionEvent>& sections,
                         const core::TempoMap& tempo) {
@@ -290,6 +303,7 @@ void registerSettings(app::Registry& registry, app::ProjectController& controlle
                 .merge = app::readablePath(registry)});
     followVoicesFolder(registry, controller);
     warnNoisyVoices(registry, controller);
+    reportLoadingVoices(registry, controller);
 }
 
 void registerTrackKinds(app::Registry& registry, const app::ProjectController& controller, const StyleSync& sync) {

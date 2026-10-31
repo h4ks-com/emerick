@@ -1,5 +1,6 @@
 #include <algorithm>
 #include <array>
+#include <chrono>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
@@ -15,6 +16,7 @@
 #include <vector>
 
 #include "emerick/app/action_params.hpp"
+#include "emerick/app/event_wait.hpp"
 #include "emerick/app/project_actions.hpp"
 #include "emerick/app/project_state.hpp"
 #include "emerick/app/session_mapping.hpp"
@@ -36,6 +38,8 @@ constexpr std::uint8_t kFirstChannelStatus = 0x80;
 constexpr std::uint8_t kFirstSystemStatus = 0xF0;
 constexpr std::uint8_t kChannelBits = 0x0F;
 constexpr double kMeanPrecision = 10.0;
+constexpr double kDefaultReadySeconds = 60;
+constexpr double kMaxReadySeconds = 3600;
 
 Json pitchState(int pitch) {
     const auto pitchClass = static_cast<std::size_t>(pitch % kPitchClasses);
@@ -199,6 +203,30 @@ Json trackSummary(const model::Track& track, const QVariantMap& warnings) {
     return result;
 }
 
+std::vector<model::TrackId> loadingTracks(const Registry& registry, const model::Document& document) {
+    return registry.loadingTracks() |
+           std::views::transform([&](const LoadingTracks& loading) { return loading(document); }) | std::views::join |
+           std::ranges::to<std::vector>();
+}
+
+Json waitReady(ProjectController& controller, const Registry& registry, const Json& params) {
+    const double seconds = optionalParam<double>(params, "timeout").value_or(kDefaultReadySeconds);
+    if (seconds < 0 || seconds > kMaxReadySeconds) {
+        throw AppError(std::format("give timeout in seconds from 0 to {}", kMaxReadySeconds));
+    }
+    controller.flush();
+    const model::Document& document = controller.project().document();
+    const auto ready = [&] { return loadingTracks(registry, document).empty(); };
+    if (!processEventsUntil(ready, std::chrono::milliseconds{std::llround(seconds * 1000)})) {
+        const auto names =
+            loadingTracks(registry, document) |
+            std::views::transform([&](const model::TrackId& id) { return model::findTrack(document, id)->name; }) |
+            std::views::join_with(std::string{", "}) | std::ranges::to<std::string>();
+        throw AppError(std::format("{} still loading after {} s, wait longer or check the instrument", names, seconds));
+    }
+    return Json{{"ready", true}, {"message", "every instrument has loaded its sounds"}};
+}
+
 Json projectSummary(ProjectController& controller, const Registry& registry) {
     controller.flush();
     const model::Document& document = controller.project().document();
@@ -210,6 +238,7 @@ Json projectSummary(ProjectController& controller, const Registry& registry) {
          (exportEnd(toSession(document, registry, controller.folder()), document) + ticksPerBar - 1) / ticksPerBar},
         {"position", document.tempo.toBarBeatTick(controller.positionTicks()).format()},
         {"playing", controller.playing()},
+        {"ready", loadingTracks(registry, document).empty()},
         {"tracks", document.tracks | std::views::transform([&](const model::Track& track) {
                        return trackSummary(track, warnings);
                    }) | std::ranges::to<Json::array_t>()},
@@ -245,6 +274,16 @@ void registerSummaryActions(Registry& registry, ProjectController& controller) {
                         .run = [&controller, &registry](const Json&) { return projectSummary(controller, registry); },
                         .menus = {kFileMenu},
                         .notifies = true});
+    registry.addAction(
+        {.id = "project.waitReady",
+         .title = "Wait for instruments to load",
+         .description = "Returns once every instrument has loaded its sounds, such as Expansion Voices "
+                        "reading its voice packs, and fails after timeout seconds (default 60)",
+         .aliases = {"wait for voices", "wait until loaded"},
+         .category = "Project",
+         .schema = {{"properties", {{"timeout", {{"type", "number"}, {"minimum", 0}}}}}},
+         .run = [&controller, &registry](const Json& params) { return waitReady(controller, registry, params); },
+         .menus = {kFileMenu}});
 }
 
 }  // namespace emerick::app

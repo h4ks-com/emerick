@@ -521,6 +521,18 @@ TEST_CASE("a part waiting for Expansion Voices to read its store warns until the
     CHECK(waitWarnings() == 0);
 }
 
+TEST_CASE("the project is ready once Expansion Voices has read its store") {
+    ArrangerRig rig;
+    rig.run("arranger.setup");
+    const std::string style = rig.trackOfKind("yamaha.style");
+    rig.YamahaRig::run("arranger.style.load", {{"track", style}, {"path", rig.demo.string()}});
+    CHECK(rig.YamahaRig::run("project.summary").at("ready") == !rig.voicesLoading());
+
+    CHECK(rig.YamahaRig::run("project.waitReady", {{"timeout", 10}}).at("ready") == true);
+    CHECK_FALSE(rig.voicesLoading());
+    CHECK(rig.YamahaRig::run("project.summary").at("ready") == true);
+}
+
 TEST_CASE("a part someone loads Expansion Voices on while the store loads keeps it once the store is read") {
     ArrangerRig rig;
     rig.run("arranger.setup");

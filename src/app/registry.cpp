@@ -338,6 +338,8 @@ void Registry::addStateProvider(const std::string& name, std::function<Json()> p
 
 void Registry::addWarnings(DocumentWarnings warnings) { warnings_.push_back(std::move(warnings)); }
 
+void Registry::addLoadingTracks(LoadingTracks loading) { loadingTracks_.push_back(std::move(loading)); }
+
 const Action* Registry::action(const std::string& id) const {
     const auto found = std::ranges::find(actions_, id, &Action::id);
     return found == actions_.end() ? nullptr : &*found;

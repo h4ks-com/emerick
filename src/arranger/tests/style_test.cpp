@@ -5,6 +5,7 @@
 #include <catch2/catch_test_macros.hpp>
 #include <cstddef>
 #include <cstdint>
+#include <map>
 #include <ranges>
 #include <span>
 #include <vector>
@@ -230,4 +231,14 @@ TEST_CASE("every truncation and corruption of a style parses or throws a style e
             SUCCEED();
         }
     }
+}
+
+TEST_CASE("a section's notes count by the part their channel plays on, before any chord transposes them") {
+    const Style style = parseStyle(demoStyle());
+    const auto mainA = partNotes(*findSection(style, Section::Main, 0));
+    CHECK(mainA.at(0) == std::map<int, int>{{kMainADrum, 8}});
+    CHECK(mainA.at(kBass - kDrums) == std::map<int, int>{{36, 2}});
+    CHECK(mainA.at(kChords - kDrums) == std::map<int, int>{{64, 2}, {67, 2}, {71, 2}});
+    CHECK(mainA.at(kPad - kDrums).empty());
+    CHECK(partNotes(*findSection(style, Section::Main, 1)).at(0) == std::map<int, int>{{kMainBDrum, 4}});
 }

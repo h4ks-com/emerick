@@ -22,6 +22,8 @@
 #include "gm_sounds.hpp"
 #include "registration.hpp"
 #include "style_library.hpp"
+#include "style_notes.hpp"
+#include "voice_list.hpp"
 #include "voices_params.hpp"
 
 namespace emerick::yamaha {
@@ -63,64 +65,6 @@ std::optional<StyleSummary> loadedStyle(const model::Track& style) {
 // The 1-based General MIDI program each part plays when the voice list names no category for its voice.
 constexpr std::array<int, arranger::kParts> kPartDefaults{12, 12, 34, 28, 5, 49, 62, 82};
 
-using VoiceKey = std::tuple<int, int, int>;
-using VoiceFamilies = std::map<VoiceKey, gm::Family>;
-
-std::optional<int> numberIn(std::string_view field, int first, int last) {
-    const std::optional<int> value = wholeNumber(trim(field));
-    return value && *value >= first && *value <= last ? value : std::nullopt;
-}
-
-struct VoiceList {
-    VoiceFamilies families;
-    std::map<VoiceKey, gm::DrumMap> drumMaps;
-};
-
-void readDrumNote(VoiceList& list, std::span<const std::string_view, 5> fields) {
-    const auto msb = numberIn(fields[0], 0, 127);
-    const auto lsb = numberIn(fields[1], 0, 127);
-    const auto program = numberIn(fields[2], 1, 128);
-    const auto note = numberIn(fields[3], 0, 127);
-    const auto played = numberIn(fields[4], -1, 127);
-    if (msb && lsb && program && note && played) {
-        auto [map, added] = list.drumMaps.try_emplace({*msb, *lsb, *program});
-        if (added) {
-            map->second.fill(-1);
-        }
-        map->second.at(static_cast<std::size_t>(*note)) = *played;
-    }
-}
-
-VoiceList readVoiceList(const std::filesystem::path& path) {
-    VoiceList list;
-    std::ifstream file(path);
-    for (std::string line; std::getline(file, line);) {
-        const auto fields = line | std::views::split(',') |
-                            std::views::transform([](auto field) { return std::string_view(field); }) |
-                            std::ranges::to<std::vector>();
-        if (fields.size() == 5) {
-            readDrumNote(list, std::span<const std::string_view, 5>(fields));
-        }
-        if (fields.size() != 4) {
-            continue;
-        }
-        const auto msb = numberIn(fields[0], 0, 127);
-        const auto lsb = numberIn(fields[1], 0, 127);
-        const auto program = numberIn(fields[2], 1, 128);
-        const auto* const category = std::ranges::find(gm::kCategories, trim(fields[3]), &gm::Category::name);
-        if (msb && lsb && program && category != gm::kCategories.end()) {
-            list.families[{*msb, *lsb, *program}] = category->family;
-        }
-    }
-    return list;
-}
-
-struct CachedVoiceList {
-    std::filesystem::path path;
-    std::filesystem::file_time_type modified;
-    VoiceList list;
-};
-
 struct WaitingPart {
     std::size_t part = 0;
     arranger::PartVoice voice;
@@ -133,18 +77,6 @@ struct BuiltinArranger {
     std::map<std::string, WaitingPart> waitingParts;
 };
 
-const VoiceList& voiceList(CachedVoiceList& cached, const app::Registry& registry) {
-    const std::filesystem::path path = registry.settingValue(kVoiceListSetting).get<std::string>();
-    std::error_code error;
-    const auto modified = std::filesystem::last_write_time(path, error);
-    if (error) {
-        cached = {};
-    } else if (path != cached.path || modified != cached.modified) {
-        cached = {.path = path, .modified = modified, .list = readVoiceList(path)};
-    }
-    return cached.list;
-}
-
 // The 0-based General MIDI program that stands in for a voice no pack holds, or nullopt when General MIDI follows
 // the style's own bank and program because the voice is a General MIDI one.
 std::optional<int> standInProgram(const VoiceList& list, std::size_t part, const arranger::PartVoice& voice) {
@@ -152,9 +84,9 @@ std::optional<int> standInProgram(const VoiceList& list, std::size_t part, const
         return std::nullopt;
     }
     const int program = voice.program + 1;
-    const VoiceFamilies& families = list.families;
-    if (const auto found = families.find({voice.bankMsb, voice.bankLsb, program}); found != families.end()) {
-        const gm::Family family = found->second;
+    const auto& categories = list.categories;
+    if (const auto found = categories.find({voice.bankMsb, voice.bankLsb, program}); found != categories.end()) {
+        const gm::Family family = found->second.family;
         return (program >= family.first && program <= family.last ? program : family.typical) - 1;
     }
     return kPartDefaults.at(part) - 1;
@@ -426,6 +358,55 @@ Json loadStyle(BuiltinArranger& builtin, app::Registry& registry, app::ProjectCo
     return result;
 }
 
+model::TrackId styleTrack(const app::ProjectController& controller, const app::Nav& nav, const Json& params) {
+    if (params.contains("track")) {
+        return arrangerTrack(controller, nav, params);
+    }
+    const auto styles = controller.project().document().tracks |
+                        std::views::filter([](const model::Track& track) { return track.kind == kStyleKind; }) |
+                        std::views::transform(&model::Track::id) | std::ranges::to<std::vector>();
+    if (styles.empty()) {
+        throw AppError("add a Style track with arranger.setup first");
+    }
+    if (styles.size() > 1) {
+        throw AppError("pass track, the project has " + std::to_string(styles.size()) + " Style tracks");
+    }
+    return arrangerTrack(controller, nav, {{"track", styles.front().value}});
+}
+
+PackVoiceNames packVoiceNames(const app::ProjectController& controller, const model::TrackId& style,
+                              const arranger::Style& loaded) {
+    PackVoiceNames names;
+    const PartTracks tracks = partTracks(controller.project().document(), style);
+    for (std::size_t part = 0; part < arranger::kParts; ++part) {
+        const std::optional<arranger::PartVoice>& voice = loaded.voices.at(part);
+        const std::optional<model::TrackId>& id = tracks.at(part);
+        if (!voice || !id || !asksForVoice(*controller.project().track(*id), *voice)) {
+            continue;
+        }
+        const Json described = controller.instruments().describe(*id);
+        if (!described.is_null() && playsVoice(described.at("params"))) {
+            names.at(part) = described.at("params").at(0).at("text").get<std::string>();
+        }
+    }
+    return names;
+}
+
+Json notes(BuiltinArranger& builtin, const app::Registry& registry, const app::ProjectController& controller,
+           const app::Nav& nav, const Json& params) {
+    const model::TrackId id = styleTrack(controller, nav, params);
+    const auto summary = loadedStyle(*controller.project().track(id));
+    if (!summary) {
+        throw AppError("load a style with arranger.style.load first");
+    }
+    Json result = styleNotes(
+        summary->style, voiceList(builtin.voiceList, registry), packVoiceNames(controller, id, summary->style),
+        app::optionalParam<std::string>(params, "section"), app::optionalParam<std::string>(params, "part"));
+    result["track"] = id.value;
+    result["style"] = summary->name;
+    return result;
+}
+
 }  // namespace
 
 void registerBuiltinArranger(app::Registry& registry, app::ProjectController& controller, app::Nav& nav) {
@@ -470,6 +451,21 @@ void registerBuiltinArranger(app::Registry& registry, app::ProjectController& co
                         .run = [&registry](const Json&) { return styleList(registry); },
                         .menus = {kYamahaMenu},
                         .notifies = true});
+    registry.addAction(
+        {.id = "arranger.style.notes",
+         .title = "List style notes",
+         .description = "Lists the notes each part of the loaded style plays per section, counted per note before "
+                        "any chord transposes them, with each part's voice and each drum key's General MIDI sound "
+                        "through the voice list.",
+         .aliases = {"style parts", "what a part plays"},
+         .category = "Yamaha",
+         .schema =
+             {{"properties",
+               {{"track", {{"type", "string"}}}, {"section", {{"type", "string"}}}, {"part", {{"type", "string"}}}}}},
+         .run = [builtin, &registry, &controller,
+                 &nav](const Json& params) { return notes(*builtin, registry, controller, nav, params); },
+         .menus = {kYamahaMenu},
+         .notifies = true});
 }
 
 }  // namespace emerick::yamaha

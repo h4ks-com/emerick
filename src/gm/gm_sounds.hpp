@@ -2,8 +2,11 @@
 
 #include <algorithm>
 #include <array>
+#include <cstddef>
 #include <cstdint>
+#include <optional>
 #include <string_view>
+#include <utility>
 
 namespace emerick::gm {
 
@@ -154,6 +157,30 @@ inline constexpr std::array<std::string_view, 128> kSounds{
     "Applause",
     "Gunshot",
 };
+
+// The General MIDI drum map from note 27 to 87: the Level 1 sounds and the GS sounds around them.
+inline constexpr int kFirstDrumNote = 27;
+inline constexpr std::array<std::string_view, 61> kDrumNames{
+    "High Q",          "Slap",           "Scratch Push",       "Scratch Pull",  "Sticks",         "Square Click",
+    "Metronome Click", "Metronome Bell", "Acoustic Bass Drum", "Bass Drum 1",   "Side Stick",     "Acoustic Snare",
+    "Hand Clap",       "Electric Snare", "Low Floor Tom",      "Closed Hi-Hat", "High Floor Tom", "Pedal Hi-Hat",
+    "Low Tom",         "Open Hi-Hat",    "Low-Mid Tom",        "Hi-Mid Tom",    "Crash Cymbal 1", "High Tom",
+    "Ride Cymbal 1",   "Chinese Cymbal", "Ride Bell",          "Tambourine",    "Splash Cymbal",  "Cowbell",
+    "Crash Cymbal 2",  "Vibraslap",      "Ride Cymbal 2",      "Hi Bongo",      "Low Bongo",      "Mute Hi Conga",
+    "Open Hi Conga",   "Low Conga",      "High Timbale",       "Low Timbale",   "High Agogo",     "Low Agogo",
+    "Cabasa",          "Maracas",        "Short Whistle",      "Long Whistle",  "Short Guiro",    "Long Guiro",
+    "Claves",          "Hi Wood Block",  "Low Wood Block",     "Mute Cuica",    "Open Cuica",     "Mute Triangle",
+    "Open Triangle",   "Shaker",         "Jingle Bell",        "Bell Tree",     "Castanets",      "Mute Surdo",
+    "Open Surdo",
+};
+
+// The drum General MIDI plays on a note, or nullopt outside the drum map.
+constexpr std::optional<std::string_view> drumName(int note) {
+    const int index = note - kFirstDrumNote;
+    return index >= 0 && std::cmp_less(index, kDrumNames.size())
+               ? std::optional{kDrumNames.at(static_cast<std::size_t>(index))}
+               : std::nullopt;
+}
 
 struct DrumKit {
     std::string_view name;

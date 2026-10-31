@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <array>
 #include <catch2/catch_test_macros.hpp>
+#include <catch2/matchers/catch_matchers_string.hpp>
 #include <chrono>
 #include <cmath>
 #include <cstdint>
@@ -553,4 +554,76 @@ TEST_CASE("a style whose Mains leave Rhythm 1 empty plays no drums, as an Audio 
         });
     }
     CHECK_FALSE(yamaha::stylePlaysDrums(style));
+}
+
+TEST_CASE("style notes count what each part plays per section and map drum keys to General MIDI through the list") {
+    ArrangerRig rig;
+    CHECK_THROWS_WITH(rig.run("arranger.style.notes"), "add a Style track with arranger.setup first");
+    const std::filesystem::path list = rig.path("list.csv");
+    std::ofstream(list) << "127,0,1,36,38\n127,0,1,38,-1\n8,2,26,A.Guitar\n";
+    rig.registry.setSetting("yamaha.voiceList", list.string());
+    rig.run("arranger.setup");
+    CHECK_THROWS_WITH(rig.run("arranger.style.notes"), "load a style with arranger.style.load first");
+    rig.run("arranger.style.load", {{"track", rig.trackOfKind("yamaha.style")}, {"path", rig.demo.string()}});
+
+    const Json all = rig.run("arranger.style.notes");
+    CHECK(all.at("style") == "Demo");
+    CHECK(all.at("sections").size() == 7);
+    const Json mainA = rig.run("arranger.style.notes", {{"section", "Main A"}}).at("sections").at(0);
+    CHECK(mainA.at("section") == "Main A");
+    CHECK(mainA.at("bars") == 2.0);
+    REQUIRE(mainA.at("parts").size() == 3);
+    const Json& drums = mainA.at("parts").at(0);
+    CHECK(drums.at("part") == "Rhythm 1");
+    CHECK(drums.at("channel") == 9);
+    CHECK(drums.at("voice") == Json{{"msb", 127}, {"lsb", 0}, {"program", 1}});
+    CHECK(drums.at("noteCount") == 8);
+    CHECK(drums.at("notes") ==
+          Json::array({{{"key", 36}, {"count", 8}, {"gmNote", 38}, {"gmName", "Acoustic Snare"}}}));
+    const Json& bass = mainA.at("parts").at(1);
+    CHECK(bass.at("part") == "Bass");
+    CHECK(bass.at("voice").at("name") == "Electric Bass (finger)");
+    CHECK(bass.at("notes") == Json::array({{{"note", 36}, {"count", 2}}}));
+    CHECK(bass.at("low") == 36);
+    CHECK(bass.at("high") == 36);
+    const Json& chords = mainA.at("parts").at(2);
+    CHECK(chords.at("part") == "Chord 1");
+    CHECK(chords.at("voice").at("category") == "A.Guitar");
+    CHECK(chords.at("noteCount") == 6);
+    CHECK(chords.at("low") == 64);
+    CHECK(chords.at("high") == 71);
+
+    const Json mainB = rig.run("arranger.style.notes", {{"section", "Main B"}, {"part", "Rhythm 1"}});
+    const Json& mainBDrums = mainB.at("sections").at(0).at("parts");
+    REQUIRE(mainBDrums.size() == 1);
+    CHECK(mainBDrums.at(0).at("notes") == Json::array({{{"key", 38}, {"count", 4}, {"gmNote", -1}}}));
+    const Json pad = rig.run("arranger.style.notes", {{"section", "Main B"}, {"part", "Pad"}});
+    CHECK(pad.at("sections").at(0).at("parts").at(0).at("noteCount") == 0);
+
+    CHECK_THROWS_WITH(rig.run("arranger.style.notes", {{"section", "Main D"}}),
+                      Catch::Matchers::StartsWith("unknown section Main D, use one of Main A"));
+    CHECK_THROWS_WITH(rig.run("arranger.style.notes", {{"part", "Lead"}}),
+                      "unknown part Lead, use one of Rhythm 1, Rhythm 2, Bass, Chord 1, Chord 2, Pad, Phrase 1, "
+                      "Phrase 2");
+}
+
+TEST_CASE("style notes name a part's voice as the pack instrument playing it names it") {
+    ArrangerRig rig;
+    voices::test::SyntheticStore store;
+    const std::string wave = store.addWave(voices::test::linearBlob(voices::test::sine(440.0, 44100.0, 441), 44100.0));
+    store.addPack("Pack", {voices::test::SyntheticVoice{
+                              .name = "Bass", .msb = 0, .lsb = 0, .program = 33, .zones = {{.wave = wave}}}});
+    const std::filesystem::path packs = rig.path("home") / "Library/Application Support/Yamaha/Expansion Manager/Packs";
+    std::filesystem::create_directories(packs.parent_path());
+    std::filesystem::create_directory_symlink(store.folder(), packs);
+    rig.run("arranger.setup");
+    rig.run("arranger.style.load", {{"track", rig.trackOfKind("yamaha.style")}, {"path", rig.demo.string()}});
+
+    const Json bass = rig.run("arranger.style.notes", {{"section", "Main A"}, {"part", "Bass"}});
+#ifdef __APPLE__
+    const std::string expected = "Pack / Bass";
+#else
+    const std::string expected = "Electric Bass (finger)";
+#endif
+    CHECK(bass.at("sections").at(0).at("parts").at(0).at("voice").at("name") == expected);
 }

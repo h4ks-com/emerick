@@ -27,7 +27,11 @@ qt_add_library(emerick_yamaha_plugin STATIC
     src/registration.hpp
     src/style_library.cpp
     src/style_library.hpp
-    src/template_actions.cpp)
+    src/style_notes.cpp
+    src/style_notes.hpp
+    src/template_actions.cpp
+    src/voice_list.cpp
+    src/voice_list.hpp)
 set(yamaha_qml qml/BlockLane.qml qml/ChordLane.qml qml/StyleHeader.qml qml/StyleInspector.qml qml/StyleLane.qml)
 foreach(file ${yamaha_qml})
     get_filename_component(name ${file} NAME)

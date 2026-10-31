@@ -3,6 +3,7 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <map>
 #include <optional>
 #include <span>
 #include <stdexcept>
@@ -119,6 +120,9 @@ public:
 Style parseStyle(std::span<const std::uint8_t> bytes);
 
 const StyleSection* findSection(const Style& style, yamaha::Section kind, int variation);
+
+// How many times each note starts in a section, by part, as the pattern writes it before any chord transposes it.
+std::array<std::map<int, int>, kParts> partNotes(const StyleSection& section);
 
 // FNV-1a of a style file's bytes in hex, so a project notices a style file that changed.
 std::string styleHash(std::span<const std::uint8_t> bytes);

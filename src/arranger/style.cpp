@@ -5,6 +5,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <format>
+#include <map>
 #include <numeric>
 #include <optional>
 #include <span>
@@ -242,6 +243,18 @@ const StyleSection* findSection(const Style& style, Section kind, int variation)
         return section.kind == kind && section.variation == variation;
     });
     return found == style.sections.end() ? nullptr : &*found;
+}
+
+std::array<std::map<int, int>, kParts> partNotes(const StyleSection& section) {
+    std::array<std::map<int, int>, kParts> notes;
+    for (const StyleEvent& event : section.events) {
+        const std::optional<ChannelRule>& rule = section.rules.at(event.bytes[0] & 0x0FU);
+        const int part = rule ? rule->destination - kFirstPartChannel : -1;
+        if ((event.bytes[0] & 0xF0U) == midi::kNoteOn && event.bytes[2] > 0 && part >= 0 && part < kParts) {
+            ++notes.at(static_cast<std::size_t>(part))[event.bytes[1]];
+        }
+    }
+    return notes;
 }
 
 std::string styleHash(std::span<const std::uint8_t> bytes) {

@@ -317,7 +317,8 @@ Rectangle {
                                 currentId: String(Math.round(setting.modelData.value))
                                 missingText: setting.modelData.text
                                 toolTip: Registry.actionInfo("instrument.setParam").title
-                                previewName: setting.previewsVoice ? "voices.audition:" + panel.trackId : ""
+                                previewActionId: setting.previewsVoice ? "voices.audition" : ""
+                                previewOwner: panel.trackId
                                 previewBusy: VoicePreview.busyTrack === panel.trackId
                                 onPreviewRequested: entry => VoicePreview.play(panel.trackId, setting.modelData.id, entry.name)
                                 onPicked: entry => {

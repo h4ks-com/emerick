@@ -165,7 +165,7 @@ public:
     // Glides from the params it last played to target, and crossfades to dry when bypass turns on; a bypassed effect
     // leaves the samples untouched.
     void process(std::span<float* const> channels, Frames frames, const EffectParams& target, bool bypass, double bpm);
-    // Returns and resets the most gain a compressor took away since the last call. The UI thread reads it while the
+    // Returns and resets the most gain the effect took away since the last call. The UI thread reads it while the
     // audio thread lowers it.
     float takeReductionDb() { return reductionDb_.exchange(0.0F, std::memory_order_relaxed); }
 

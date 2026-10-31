@@ -8,7 +8,6 @@
 #include <numbers>
 #include <numeric>
 #include <ranges>
-#include <span>
 
 #include "emerick/engine/spectrum.hpp"
 #include "true_peak.hpp"

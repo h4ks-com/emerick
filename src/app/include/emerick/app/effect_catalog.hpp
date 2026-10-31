@@ -17,6 +17,8 @@ public:
 
     // Each param as {id, title, unit, minimum, maximum, defaultValue, kind, logarithmic, choices}.
     Q_INVOKABLE static QVariantList params(const QString& type);
+    // True for an effect whose insert editor meters the gain it takes away.
+    Q_INVOKABLE static bool reportsReduction(const QString& type);
     // The response in dB at points frequencies spaced evenly on a log scale from 20 Hz to 20 kHz, as {x, db} with x
     // from 0 to 1. Missing params take their defaults.
     Q_INVOKABLE static QVariantList eqCurve(const QVariantMap& params, int points);

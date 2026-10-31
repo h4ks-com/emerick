@@ -9,8 +9,6 @@
 #include <numbers>
 #include <ranges>
 
-#include "emerick/core/overloaded.hpp"
-
 namespace emerick::engine {
 
 namespace {
@@ -470,9 +468,13 @@ void Effect::process(std::span<float* const> channels, Frames frames, const Effe
             reductionDb_.store(reduction, std::memory_order_relaxed);
         }
     };
-    std::visit(core::Overloaded{[&](const Compressor& compressor) { report(compressor.reductionDb()); },
-                                [&](const Limiter& limiter) { report(limiter.reductionDb()); }, [](const auto&) {}},
-               processor_);
+    std::visit(
+        [&](const auto& processor) {
+            if constexpr (requires { processor.reductionDb(); }) {
+                report(processor.reductionDb());
+            }
+        },
+        processor_);
 }
 
 }  // namespace emerick::engine

@@ -113,7 +113,7 @@ Popup {
                     }
                     Row {
                         readonly property real db: Meters.reductions[editor.insert.id] ?? 0
-                        visible: editor.insert.type === "compressor" || editor.insert.type === "limiter"
+                        visible: Effects.reportsReduction(editor.insert.type)
                         spacing: Theme.space2
                         Text {
                             text: "Gain reduction"

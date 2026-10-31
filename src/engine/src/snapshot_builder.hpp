@@ -39,8 +39,8 @@ public:
     using Meters = std::map<std::string, std::weak_ptr<LevelMeter>>;
     // The input meter of every audio track with an input, by track id.
     [[nodiscard]] const Meters& inputMeters() const { return inputMeters_; }
-    // The effect of every compressor and limiter insert, by insert id.
-    [[nodiscard]] const std::map<std::string, std::weak_ptr<Effect>>& compressors() const { return compressors_; }
+    // The effect of every insert that reports gain reduction, by insert id.
+    [[nodiscard]] const std::map<std::string, std::weak_ptr<Effect>>& meteredInserts() const { return meteredInserts_; }
     // The output meter of every track with an audio output, by track id.
     [[nodiscard]] const Meters& outputMeters() const { return outputMeters_; }
     [[nodiscard]] const std::map<std::string, std::weak_ptr<TakeRecorder>>& recorders() const { return recorders_; }
@@ -80,7 +80,7 @@ private:
     std::map<std::string, CachedSchedule> schedules_;
     std::map<std::string, std::weak_ptr<TakeRecorder>> recorders_;
     std::map<std::string, std::weak_ptr<Effect>> effects_;
-    std::map<std::string, std::weak_ptr<Effect>> compressors_;
+    std::map<std::string, std::weak_ptr<Effect>> meteredInserts_;
     Meters inputMeters_;
     Meters outputMeters_;
     std::map<std::string, std::weak_ptr<MidiInputPort>> inputs_;

@@ -363,8 +363,8 @@ void SnapshotBuilder::addInserts(TrackState& state, const Track& track, const St
         std::shared_ptr<Effect> effect = cached(effects_, key, [&] {
             return std::make_shared<Effect>(insert.type, state.mix.size(), layout.sampleRate, layout.maxFrames);
         });
-        if (insert.type == EffectType::compressor || insert.type == EffectType::limiter) {
-            compressors_[insert.id] = effect;
+        if (effectSpec(insert.type).reportsReduction) {
+            meteredInserts_[insert.id] = effect;
         }
         state.inserts.push_back({.effect = std::move(effect), .params = insert.params, .bypass = insert.bypass});
     }
@@ -555,7 +555,7 @@ void SnapshotBuilder::prune() {
     std::erase_if(preloads_, expired);
     std::erase_if(schedules_, [](const auto& entry) { return entry.second.schedule.expired(); });
     std::erase_if(effects_, expired);
-    std::erase_if(compressors_, expired);
+    std::erase_if(meteredInserts_, expired);
     std::erase_if(recorders_, expired);
     std::erase_if(inputMeters_, expired);
     std::erase_if(outputMeters_, expired);

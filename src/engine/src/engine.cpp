@@ -509,7 +509,7 @@ std::vector<LevelReading> Engine::takeOutputLevels() { return takeLevels(impl_->
 
 std::vector<GainReduction> Engine::takeGainReductions() {
     std::vector<GainReduction> readings;
-    for (const auto& [insertId, effect] : impl_->builder.compressors()) {
+    for (const auto& [insertId, effect] : impl_->builder.meteredInserts()) {
         if (const std::shared_ptr<Effect> alive = effect.lock()) {
             readings.push_back({insertId, alive->takeReductionDb()});
         }

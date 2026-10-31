@@ -27,7 +27,6 @@ using SwitchLabels = std::array<std::string_view, 2>;
 constexpr SwitchLabels kFollowLabels{"Off", "On"};
 constexpr SwitchLabels kNoisySamplesLabels{"Use nearest clean sample", "Play as decoded"};
 
-// A param with labels is a switch between its two labels.
 struct ParamRange {
     clap_id id;
     const char* name;
@@ -35,7 +34,7 @@ struct ParamRange {
     double min;
     double max;
     double defaultValue;
-    const SwitchLabels* labels;
+    const SwitchLabels* switchLabels;
 };
 
 constexpr std::array<ParamRange, kParamCount - 2> kRanges{{
@@ -80,7 +79,7 @@ std::atomic<bool>* switchOf(Plugin& plugin, clap_id id) {
 
 const SwitchLabels* switchLabels(clap_id id) {
     const ParamRange* range = rangeOf(id);
-    return range != nullptr ? range->labels : nullptr;
+    return range != nullptr ? range->switchLabels : nullptr;
 }
 
 int voiceIndex(const Plugin& plugin, double value) {
@@ -208,7 +207,7 @@ bool paramInfo(const clap_plugin* plugin, std::uint32_t index, clap_param_info* 
         return true;
     }
     const ParamRange& range = *rangeOf(index);
-    info->flags |= range.labels != nullptr ? CLAP_PARAM_IS_STEPPED | CLAP_PARAM_IS_ENUM : 0U;
+    info->flags |= range.switchLabels != nullptr ? CLAP_PARAM_IS_STEPPED | CLAP_PARAM_IS_ENUM : 0U;
     std::strncpy(std::data(info->name), range.name, std::size(info->name));
     info->min_value = range.min;
     info->max_value = range.max;

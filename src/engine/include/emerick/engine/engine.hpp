@@ -88,8 +88,8 @@ public:
     // Plays a channel message or a sysex on the track's instrument while the track is audible. A note it starts ends
     // with the track's other notes on stop and panic.
     void sendInstrumentMidi(std::string_view trackId, std::span<const std::uint8_t> bytes);
-    // Plays the channels once into the track's mix before its inserts and fader, from the next block, in place of the
-    // preview playing before. Opens the stream while stopped, and keeps it open until the preview ends.
+    // Plays the channels once into the track's mix before its inserts and fader, from the next block, and replaces any
+    // preview that plays. Opens the stream while stopped, and keeps it open until the preview ends.
     void playPreview(std::string_view trackId, std::vector<std::vector<float>> channels);
     [[nodiscard]] bool previewPlaying() const;
     // Sends Stop to the clock ports, releases the notes the tracks hold, and sends sustain off, all sound off and all

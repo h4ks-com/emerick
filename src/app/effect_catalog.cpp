@@ -49,6 +49,11 @@ QVariantList EffectCatalog::params(const QString& type) {
            std::ranges::to<QVariantList>();
 }
 
+bool EffectCatalog::reportsReduction(const QString& type) {
+    const engine::EffectSpec* spec = engine::findEffect(type.toStdString());
+    return spec != nullptr && spec->reportsReduction;
+}
+
 QVariantList EffectCatalog::eqCurve(const QVariantMap& params, int points) {
     const engine::EffectSpec& spec = engine::effectSpec(engine::EffectType::eq);
     engine::EffectParams values = engine::defaultParams(spec);

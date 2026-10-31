@@ -9,7 +9,7 @@
 
 namespace emerick::engine {
 
-// The built-in insert effects. Every one reports no latency, though the limiter delays its track by its lookahead.
+// The built-in insert effects. The limiter delays its track by its lookahead; the other effects add no delay.
 enum class EffectType : std::uint8_t {
     eq,
     compressor,
@@ -46,6 +46,8 @@ struct EffectSpec {
     std::string_view id;
     std::string_view title;
     std::span<const EffectParam> params;
+    // The effect reports the gain it takes away, which the insert editor meters.
+    bool reportsReduction = false;
 };
 
 inline constexpr std::size_t kMaxEffectParams = 28;
@@ -200,10 +202,10 @@ inline constexpr std::array kUtilityParams{
 // We index the table by EffectType, so its rows follow the enum's order.
 inline constexpr std::array kEffects{
     EffectSpec{EffectType::eq, "eq", "Channel EQ", kEqParams},
-    EffectSpec{EffectType::compressor, "compressor", "Compressor", kCompressorParams},
+    EffectSpec{EffectType::compressor, "compressor", "Compressor", kCompressorParams, true},
     EffectSpec{EffectType::delay, "delay", "Delay", kDelayParams},
     EffectSpec{EffectType::reverb, "reverb", "Reverb", kReverbParams},
-    EffectSpec{EffectType::limiter, "limiter", "Limiter", kLimiterParams},
+    EffectSpec{EffectType::limiter, "limiter", "Limiter", kLimiterParams, true},
     EffectSpec{EffectType::gate, "gate", "Gate", kGateParams},
     EffectSpec{EffectType::filter, "filter", "Filter", kFilterParams},
     EffectSpec{EffectType::saturation, "saturation", "Saturation", kSaturationParams},

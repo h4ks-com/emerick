@@ -3,6 +3,7 @@
 #include <cstddef>
 #include <optional>
 #include <span>
+#include <string>
 #include <string_view>
 #include <vector>
 
@@ -24,6 +25,10 @@ struct FuzzyField {
     std::string_view text;
     double weight = 1.0;
 };
+
+// ASCII lowercase, which leaves every other byte of UTF-8 text as it is.
+char toLower(char c);
+std::string toLower(std::string_view text);
 
 // Every space separated term must match (AND, any order). A term with an uppercase letter matches case sensitively.
 std::optional<FuzzyMatch> fuzzyMatch(std::string_view query, std::string_view text);

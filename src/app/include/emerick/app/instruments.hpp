@@ -28,17 +28,12 @@ struct ParamSet {
     std::string text;
 };
 
-// A param whose choices the instrument plays on one MIDI channel, from 1, as General MIDI plays its drum kits on 10.
-struct ChannelParam {
-    int channel = 1;
-    std::string_view description;
-};
+// The MIDI channel, from 1, of a param whose module is "Channel <n>": the param sets what the instrument plays on that
+// channel, as General MIDI labels its Drum kit "Channel 10".
+[[nodiscard]] std::optional<int> paramChannel(const engine::ClapParam& param);
 
-[[nodiscard]] std::optional<ChannelParam> channelParam(const model::PluginSlot& slot, std::uint32_t param);
-
-// The index of the choice the text names: the exact match, else the only case-insensitive match. Throws AppError naming
-// up to three close choices when there is neither.
-[[nodiscard]] std::size_t choiceIndex(const engine::ClapParam& info, const std::string& text);
+// The choice of the param the text names, as choiceIndex matches it.
+[[nodiscard]] std::size_t paramChoice(const engine::ClapParam& param, std::string_view text);
 
 // The live CLAP instrument of every track whose slot names one, with its editor window. A track keeps its instrument
 // while its slot names the same plugin, so the plugin keeps the state the user gave it since the project loaded.

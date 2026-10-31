@@ -86,6 +86,18 @@ TEST_CASE("voices.audition plays a General MIDI drum kit on channel 10 and takes
           4 * piano.at("notes")[0].at("centroidHz").get<double>());
 }
 
+TEST_CASE("voices.audition plays a Sound melodic and a drum kit as drums with Play drums on every channel on") {
+    GeneralMidiRig rig;
+    const Json piano = rig.run("voices.audition", {{"track", rig.id}, {"notes", {42}}});
+    rig.run("instrument.setParam", {{"track", rig.id}, {"param", 4}, {"value", "On"}});
+    const Json pianoWithDrums = rig.run("voices.audition", {{"track", rig.id}, {"notes", {42}}});
+    const Json hiHat = rig.run("voices.audition", {{"track", rig.id}, {"param", 1}, {"notes", {42}}});
+    CHECK(pianoWithDrums.at("notes")[0].at("centroidHz") == piano.at("notes")[0].at("centroidHz"));
+    CHECK(hiHat.at("notes")[0].at("centroidHz").get<double>() >
+          4 * piano.at("notes")[0].at("centroidHz").get<double>());
+    CHECK(rig.run("instrument.params", {{"track", rig.id}}).at("params")[1].at("channel") == 10);
+}
+
 TEST_CASE("voices.audition takes every MIDI note and caps the render at 320 seconds") {
     GeneralMidiRig rig;
     const Json notes = std::views::iota(0, 128) | std::ranges::to<std::vector>();

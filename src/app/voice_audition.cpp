@@ -141,9 +141,9 @@ Audition prepareAudition(const Registry& registry, ProjectController& controller
     audition.slot = *track.instrument;
     audition.param = info.id;
     audition.slot.state = live->saveState().value_or(track.instrument->state);
-    audition.channel = channelParam(audition.slot, info.id).value_or(ChannelParam{}).channel;
+    audition.channel = paramChannel(info).value_or(1);
     if (const auto voice = optionalParam<std::string>(params, "voice")) {
-        const std::size_t index = choiceIndex(info, *voice);
+        const std::size_t index = paramChoice(info, *voice);
         audition.voice = info.choices[index];
         audition.value = info.min + static_cast<double>(index);
     } else {
@@ -180,6 +180,11 @@ RenderJob auditionJob(const Audition& audition) {
     if (!audition.slot.state.empty() && !instrument->loadState(audition.slot.state)) {
         throw AppError("cannot audition " + audition.slot.name + ": it did not load its settings");
     }
+    for (const engine::ClapParam& param : instrument->params()) {
+        if (const auto channel = paramChannel(param); channel && *channel != audition.channel) {
+            instrument->setParam(param.id, param.defaultValue);
+        }
+    }
     instrument->setParam(audition.param, audition.value);
 
     const core::Ticks ticks = noteTicks(audition);
@@ -214,10 +219,11 @@ void registerAuditionAction(Registry& registry, ProjectController& controller) {
              "Renders notes through a temporary copy of the track's instrument set to a voice, the text of a choice "
              "of its first param with choices or of param, by default its current one. The track and the project "
              "stay as they are. notes default to MIDI notes 36, 48, 60, 72 and 84, each held for 3/4 of seconds "
-             "(default 1), up to 128 notes and 320 seconds in all. A param whose choices play on one channel, such "
-             "as the General MIDI Drum kit on channel 10, renders on that channel. Returns per note the peak, the "
-             "active RMS, the spectral centroid in Hz and the "
-             "harmonic share: the energy near multiples of the note's pitch over all energy, which a voice with "
+             "(default 1), up to 128 notes and 320 seconds in all. A param with a channel in instrument.params, such "
+             "as the General MIDI Drum kit on channel 10, renders on that channel, and any other renders on channel "
+             "1, with the params of other channels at their defaults. Returns per note the peak, the active RMS, the "
+             "spectral centroid in Hz and the harmonic share: the energy near multiples of the note's pitch over all "
+             "energy, which a voice with "
              "decode artifacts or noise reads low. path writes the render to a WAV, and play plays it on the track.",
          .aliases = {"audition voice", "audition sound", "hear voice", "screen voices"},
          .keywords = {"preview", "sound", "harmonic", "artifacts", "noise", "centroid"},

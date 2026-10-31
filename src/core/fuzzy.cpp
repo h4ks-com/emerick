@@ -27,7 +27,6 @@ bool isLower(char c) { return c >= 'a' && c <= 'z'; }
 bool isUpper(char c) { return c >= 'A' && c <= 'Z'; }
 bool isDigit(char c) { return c >= '0' && c <= '9'; }
 bool isAlnum(char c) { return isLower(c) || isUpper(c) || isDigit(c); }
-char toLower(char c) { return isUpper(c) ? static_cast<char>(c - 'A' + 'a') : c; }
 
 int bonusAt(std::string_view text, std::size_t j) {
     if (j == 0) {
@@ -139,6 +138,12 @@ auto terms(std::string_view query) {
 }
 
 }  // namespace
+
+char toLower(char c) { return isUpper(c) ? static_cast<char>(c - 'A' + 'a') : c; }
+
+std::string toLower(std::string_view text) {
+    return text | std::views::transform([](char c) { return toLower(c); }) | std::ranges::to<std::string>();
+}
 
 std::optional<FuzzyMatch> fuzzyMatch(std::string_view query, std::string_view text) {
     const std::array fields{FuzzyField{text, 1.0}};

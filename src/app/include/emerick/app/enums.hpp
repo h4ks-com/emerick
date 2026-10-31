@@ -8,6 +8,8 @@
 #include <optional>
 #include <string>
 
+#include "emerick/core/fuzzy.hpp"
+
 namespace emerick::app {
 
 Q_NAMESPACE
@@ -54,7 +56,7 @@ inline constexpr std::size_t kCodeTokens = 7;
 template <class Enum>
 std::string enumKey(Enum value) {
     std::string key = QMetaEnum::fromType<Enum>().valueToKey(static_cast<quint64>(value));
-    key.front() = static_cast<char>(std::tolower(static_cast<unsigned char>(key.front())));
+    key.front() = core::toLower(key.front());
     return key;
 }
 

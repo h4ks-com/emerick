@@ -3,22 +3,20 @@
 #include <QGuiApplication>
 #include <QObject>
 #include <algorithm>
-#include <cctype>
+#include <charconv>
 #include <cmath>
 #include <cstddef>
 #include <format>
-#include <functional>
 #include <ranges>
 #include <string>
+#include <system_error>
 #include <utility>
 #include <variant>
 #include <vector>
 
-#include "emerick/app/plugin_actions.hpp"
+#include "emerick/app/action_params.hpp"
 #include "emerick/app/registry.hpp"
-#include "emerick/core/fuzzy.hpp"
 #include "emerick/core/overloaded.hpp"
-#include "gm_sounds.hpp"
 
 namespace emerick::app {
 
@@ -36,63 +34,31 @@ double paramNumber(const engine::ClapParam& info, const ParamValue& given) {
         return info.stepped ? std::round(value) : value;
     };
     const auto choice = [&](const std::string& text) {
-        return info.min + static_cast<double>(choiceIndex(info, text));
+        return info.min + static_cast<double>(paramChoice(info, text));
     };
     return std::visit(core::Overloaded{number, choice}, given);
 }
 
-std::string lowered(std::string_view text) {
-    return text | std::views::transform([](char c) {
-               return static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
-           }) |
-           std::ranges::to<std::string>();
-}
-
-std::string closeChoices(const std::vector<std::string>& choices, const std::string& text) {
-    constexpr std::size_t kSuggestions = 3;
-    const std::string query = lowered(text);
-    std::vector<std::pair<double, const std::string*>> scored;
-    for (const std::string& choice : choices) {
-        if (const auto match = core::fuzzyMatch(query, choice)) {
-            scored.emplace_back(match->score, &choice);
-        }
-    }
-    const auto count = std::min(kSuggestions, scored.size());
-    std::ranges::partial_sort(scored, scored.begin() + static_cast<std::ptrdiff_t>(count), std::greater{},
-                              &std::pair<double, const std::string*>::first);
-    std::string named;
-    for (std::size_t index = 0; index < count; ++index) {
-        named += std::format("{}\"{}\"", index == 0 ? "" : ", ", *scored[index].second);
-    }
-    return named;
-}
-
 }  // namespace
 
-std::optional<ChannelParam> channelParam(const model::PluginSlot& slot, std::uint32_t param) {
-    if (slot.pluginId == kGeneralMidiPluginId && param == gm::kDrumKitParam) {
-        return ChannelParam{.channel = gm::kDrumChannel + 1,
-                            .description =
-                                "Plays on MIDI channel 10, or on every channel with Play drums on every "
-                                "channel on"};
+std::optional<int> paramChannel(const engine::ClapParam& param) {
+    constexpr std::string_view kPrefix = "Channel ";
+    constexpr int kChannels = 16;
+    if (!param.module.starts_with(kPrefix)) {
+        return std::nullopt;
     }
-    return std::nullopt;
+    const std::string_view digits = std::string_view{param.module}.substr(kPrefix.size());
+    int channel = 0;
+    const auto [end, error] = std::from_chars(digits.data(), digits.data() + digits.size(), channel);
+    if (error != std::errc{} || end != digits.data() + digits.size() || channel < 1 || channel > kChannels) {
+        return std::nullopt;
+    }
+    return channel;
 }
 
-std::size_t choiceIndex(const engine::ClapParam& info, const std::string& text) {
-    if (const auto exact = std::ranges::find(info.choices, text); exact != info.choices.end()) {
-        return static_cast<std::size_t>(exact - info.choices.begin());
-    }
-    const std::string wanted = lowered(text);
-    const auto same = [&](const std::string& choice) { return lowered(choice) == wanted; };
-    const auto first = std::ranges::find_if(info.choices, same);
-    if (first != info.choices.end() && std::ranges::count_if(info.choices, same) == 1) {
-        return static_cast<std::size_t>(first - info.choices.begin());
-    }
-    const std::string close = closeChoices(info.choices, text);
-    throw AppError(info.name + " has no choice \"" + text + "\"" +
-                   (close.empty() ? ", run" : ", did you mean " + close + "? Run") +
-                   " instrument.params for its choices");
+std::size_t paramChoice(const engine::ClapParam& param, std::string_view text) {
+    const std::vector<std::string_view> choices(param.choices.begin(), param.choices.end());
+    return choiceIndex(param.name, choices, text, "run instrument.params for its choices");
 }
 
 Instruments::~Instruments() {
@@ -238,7 +204,6 @@ Json Instruments::describe(const model::TrackId& id) const {
     if (!instrument) {
         return nullptr;
     }
-    const model::PluginSlot& slot = live_.at(id.value).slot;
     return {{"editor", instrument->hasEditor()},
             {"params", instrument->params() | std::views::transform([&](const engine::ClapParam& param) {
                            const double value = instrument->paramValue(param.id).value_or(param.defaultValue);
@@ -248,9 +213,9 @@ Json Instruments::describe(const model::TrackId& id) const {
                                           {"stepped", param.stepped}, {"enum", param.enumerated},
                                           {"value", value},           {"text", instrument->paramText(param.id, value)},
                                           {"choices", param.choices}};
-                           if (const auto channel = channelParam(slot, param.id)) {
-                               described["channel"] = channel->channel;
-                               described["description"] = channel->description;
+                           if (const auto channel = paramChannel(param)) {
+                               described["channel"] = *channel;
+                               described["description"] = std::format("Sets what MIDI channel {} plays", *channel);
                            }
                            return described;
                        }) | std::ranges::to<Json::array_t>()}};

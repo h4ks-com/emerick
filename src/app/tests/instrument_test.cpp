@@ -340,8 +340,8 @@ TEST_CASE("a choice text picks the exact match first, else the only case-insensi
         .name = "Voice",
         .choices = {"Colors Of Iberia Genos / Italian TenorSax", "Colors of Iberia Genos / Italian TenorSax",
                     "Colors of Iberia 2 Genos / Italian TenorSax", "Pop Genos / Clean Guitar"}};
-    CHECK(choiceIndex(voice, "Colors of Iberia Genos / Italian TenorSax") == 1);
-    CHECK(choiceIndex(voice, "pop genos / clean guitar") == 3);
+    CHECK(paramChoice(voice, "Colors of Iberia Genos / Italian TenorSax") == 1);
+    CHECK(paramChoice(voice, "pop genos / clean guitar") == 3);
 }
 
 TEST_CASE("an ambiguous or unknown choice text names up to three close choices") {
@@ -353,7 +353,7 @@ TEST_CASE("an ambiguous or unknown choice text names up to three close choices")
                     "Iberia Genos / Tenor Sax"}};
     const auto message = [&](const std::string& text) {
         try {
-            (void)choiceIndex(voice, text);
+            (void)paramChoice(voice, text);
         } catch (const AppError& error) {
             return std::string{error.what()};
         }

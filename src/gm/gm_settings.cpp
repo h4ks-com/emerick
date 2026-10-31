@@ -113,6 +113,8 @@ bool loadState(const clap_plugin* plugin, const clap_istream* stream) {
 constexpr std::array<std::string_view, 2> kSwitchLabels{"Off", "On"};
 constexpr std::array<const char*, 5> kParamNames{"Sound", "Drum kit", "Follow program changes", "Highest note",
                                                  "Play drums on every channel"};
+static_assert(kDrumChannel == 9, "the drum module names the drum channel");
+constexpr const char* kDrumModule = "Channel 10";
 
 std::size_t choiceCount(clap_id id) {
     switch (id) {
@@ -140,6 +142,11 @@ bool paramInfo(const clap_plugin* /*unused*/, std::uint32_t index, clap_param_in
         info->flags |= CLAP_PARAM_IS_ENUM;
     }
     std::strncpy(std::data(info->name), kParamNames.at(index), std::size(info->name));
+    // We name the drum channel as the module of the params that set it, so a host auditions a drum kit on channel 10
+    // and turns Play drums on every channel off to audition a Sound.
+    if (index == kDrumKitParam || index == kDrumsEverywhereParam) {
+        std::strncpy(std::data(info->module), kDrumModule, std::size(info->module));
+    }
     info->max_value = static_cast<double>(choiceCount(index) - 1);
     if (index == kFollowParam) {
         info->default_value = 1.0;

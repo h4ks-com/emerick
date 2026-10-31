@@ -196,7 +196,7 @@ Bytes linearBlob(const std::vector<std::int16_t>& samples, double sampleRate,
 }
 
 Bytes wxc1Blob(double sampleRate, const WxcParams& first, const std::vector<WxcFrame>& frames,
-               std::pair<std::uint32_t, std::uint32_t> loop) {
+               std::pair<std::uint32_t, std::uint32_t> loop, std::array<std::int16_t, 3> history) {
     Bytes apcp;
     putText(apcp, "WXCC");
     put32(apcp, 0);
@@ -207,7 +207,10 @@ Bytes wxc1Blob(double sampleRate, const WxcParams& first, const std::vector<WxcF
     Bytes wxc1(6, 0);
     put32(wxc1, loop.first);
     put32(wxc1, loop.second);
-    wxc1.resize(22, 0);
+    wxc1.resize(16, 0);
+    for (const std::int16_t sample : history) {
+        put16(wxc1, static_cast<std::uint16_t>(sample));
+    }
     for (const std::uint16_t field : packed(first)) {
         put16(wxc1, field);
     }

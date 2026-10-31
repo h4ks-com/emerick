@@ -90,6 +90,15 @@ TEST_CASE("WXC1 frames in the pair modes 4 and 7 decode bit-exactly") {
     CHECK(sampleValue(*wave, 223) == -924);
 }
 
+TEST_CASE("a WXC1 wave continues from the samples its header stores") {
+    const WxcParams holdLast{.coefficients = {1024, 0, 0}, .scale = 0, .mode = 0};
+    const auto wave = decodeWave(wxc1Blob(8000.0, holdLast, {WxcFrame{}}, {0xFFFFFFFFU, 0}, {1200, 900, 600}));
+    REQUIRE(wave.has_value());
+    REQUIRE(wave->samples.size() == 96);
+    CHECK(sampleValue(*wave, 0) == 1200);
+    CHECK(sampleValue(*wave, 95) == 1200);
+}
+
 TEST_CASE("a WXC1 frame in mode 5 decodes 64 samples, and a loop past the last frame plays as a one-shot") {
     std::vector<WxcFrame> frames = crackedFrames();
     frames.push_back(WxcFrame{});

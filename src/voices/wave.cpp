@@ -103,6 +103,7 @@ void readLoop(const Chunks& chunks, Wave& wave) {
 // WXC1 is Yamaha's adaptive predictive wave compression: each 32-byte frame holds 16 scrambled words of residual codes,
 // and carries the predictor coefficients, scale and mode of the frame after it.
 constexpr std::size_t kWxcHeader = 68;
+constexpr std::size_t kWxcHistory = 16;
 constexpr std::size_t kWxcParams = 22;
 constexpr std::size_t kFrameBytes = 32;
 constexpr std::size_t kFrameWords = 16;
@@ -229,7 +230,11 @@ std::optional<Wave> decodeWxc1(Bytes wxc1, Bytes apcp) {
         return std::nullopt;
     }
     Params params{be16(wxc1, kWxcParams), be16(wxc1, kWxcParams + 2), be16(wxc1, kWxcParams + 4)};
-    std::array<int, 3> history{};
+    // The predictor starts from the three samples the header stores, newest first, since it barely forgets them.
+    const auto stored = [&](std::size_t index) {
+        return int{static_cast<std::int16_t>(be16(wxc1, kWxcHistory + (2 * index)))};
+    };
+    std::array<int, 3> history{stored(0), stored(1), stored(2)};
     Wave wave;
     std::vector<std::uint32_t> frameStarts;
     for (std::size_t at = kWxcHeader; at + kFrameBytes <= wxc1.size(); at += kFrameBytes) {

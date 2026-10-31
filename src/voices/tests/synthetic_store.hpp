@@ -75,9 +75,11 @@ struct WxcFrame {
     WxcParams next;
 };
 
-// A FORM YTWV blob of WXC1 compressed audio whose first frame decodes with `first`.
+// A FORM YTWV blob of WXC1 compressed audio whose first frame decodes with `first` after the `history` samples, newest
+// first.
 std::vector<std::uint8_t> wxc1Blob(double sampleRate, const WxcParams& first, const std::vector<WxcFrame>& frames,
-                                   std::pair<std::uint32_t, std::uint32_t> loop = {0xFFFFFFFFU, 0});
+                                   std::pair<std::uint32_t, std::uint32_t> loop = {0xFFFFFFFFU, 0},
+                                   std::array<std::int16_t, 3> history = {});
 
 // An Expansion Manager store in a fresh temporary folder, deleted with the object.
 class SyntheticStore {

@@ -195,12 +195,15 @@ RenderJob auditionJob(const Audition& audition) {
         clip.events.push_back({start + (ticks * kHeldParts / kNoteParts),
                                {static_cast<std::uint8_t>(core::midi::kNoteOff | channel), pitch, 0}});
     }
+    auto rendered = std::make_shared<std::vector<std::vector<float>>>(2);
     return {.render = instrumentRender(instrument, std::move(clip), kAuditionTempo, audition.sampleRate),
             .frames = noteFrame(audition, count),
-            .measure = [audition = Audition{audition}](std::vector<std::vector<float>> channels) {
-                Json json = measureAudition(audition, channels);
-                return RenderResult{.channels = std::move(channels), .json = std::move(json)};
-            }};
+            .sink = [rendered](const std::vector<std::vector<float>>& chunk) { appendStereo(*rendered, chunk); },
+            .finish =
+                [rendered, audition = Audition{audition}] {
+                    Json json = measureAudition(audition, *rendered);
+                    return RenderResult{.channels = std::move(*rendered), .json = std::move(json)};
+                }};
 }
 
 void registerAuditionAction(Registry& registry, ProjectController& controller) {

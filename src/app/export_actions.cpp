@@ -234,25 +234,23 @@ RenderJob prepareAnalysis(ProjectController& controller, const Registry& registr
     std::vector<std::string> trackIds =
         ids | std::views::transform(&model::TrackId::value) | std::ranges::to<std::vector>();
     const PlaybackContext context = playbackContext(controller, document);
-    // The render's sink and the measure function share the meters.
     auto meters = std::make_shared<TrackMeters>();
     meters->skip = tempo.ticksToFrames(range.from, range.sampleRate);
     meters->meters =
         trackIds | std::views::transform([&](const std::string&) { return engine::TrackMeter(2, range.sampleRate); }) |
         std::ranges::to<std::vector>();
-    std::unique_ptr<OfflineRender> render =
-        trackIds.size() == 1 ? trackRender(session, registry, context, trackIds.front(), range.sampleRate)
-                             : tracksRender(session, registry, context, trackIds, range.sampleRate);
-    render->setSink([meters](const std::vector<std::vector<float>>& chunk) { meters->add(chunk); });
-    return {.render = std::move(render),
+    return {.render = trackIds.size() == 1 ? trackRender(session, registry, context, trackIds.front(), range.sampleRate)
+                                           : tracksRender(session, registry, context, trackIds, range.sampleRate),
             .frames = tempo.ticksToFrames(range.to, range.sampleRate),
-            .measure = [meters, range, trackIds = std::move(trackIds)](const std::vector<std::vector<float>>&) {
-                Json json = Json::object();
-                for (const auto& [id, meter] : std::views::zip(trackIds, meters->meters)) {
-                    json[id] = levelsJson(range, id, meter.levels());
-                }
-                return RenderResult{.channels = {}, .json = std::move(json)};
-            }};
+            .sink = [meters](const std::vector<std::vector<float>>& chunk) { meters->add(chunk); },
+            .finish =
+                [meters, range, trackIds = std::move(trackIds)] {
+                    Json json = Json::object();
+                    for (const auto& [id, meter] : std::views::zip(trackIds, meters->meters)) {
+                        json[id] = levelsJson(range, id, meter.levels());
+                    }
+                    return RenderResult{.channels = {}, .json = std::move(json)};
+                }};
 }
 
 Json analyzeTrack(ProjectController& controller, const Registry& registry, const Json& params) {

@@ -57,11 +57,25 @@ std::vector<engine::Track> stemTracks(const engine::Session& session, const mode
 
 engine::AudioRoute renderRoute() { return {kRenderDevice, {1, 2}}; }
 
+engine::Track audible(engine::Track track) {
+    track.mute = false;
+    track.solo = false;
+    return track;
+}
+
+engine::Session renderSession(const engine::Session& session, std::vector<engine::Track> tracks) {
+    return {.tempo = session.tempo,
+            .tracks = std::move(tracks),
+            .clockPorts = {},
+            .takeFolder = {},
+            .metronome = {},
+            .panLaw = session.panLaw};
+}
+
 // A bus stem plays the bus alone with every track and bus feeding it, so only the bus reaches the render output.
 std::vector<engine::Track> busStemTracks(const std::vector<engine::Track>& tracks, const engine::Track& bus) {
-    return tracks | std::views::transform([&](engine::Track track) {
-               track.mute = false;
-               track.solo = false;
+    return tracks | std::views::transform([&](const engine::Track& source) {
+               engine::Track track = audible(source);
                track.audioOut = track.id == bus.id ? renderRoute() : engine::AudioRoute{};
                if (track.id == bus.id) {
                    track.outputBus.clear();
@@ -71,9 +85,8 @@ std::vector<engine::Track> busStemTracks(const std::vector<engine::Track>& track
            std::ranges::to<std::vector>();
 }
 
-engine::Track dry(engine::Track track, engine::AudioRoute out) {
-    track.mute = false;
-    track.solo = false;
+engine::Track dry(const engine::Track& source, engine::AudioRoute out) {
+    engine::Track track = audible(source);
     track.audioOut = std::move(out);
     track.outputBus.clear();
     track.sends.clear();
@@ -97,13 +110,8 @@ std::vector<engine::Track> trackStemTracks(const std::vector<engine::Track>& tra
 }
 
 engine::Session stemSession(const engine::Session& session, const engine::Track& track) {
-    return {.tempo = session.tempo,
-            .tracks = track.kind == engine::TrackKind::bus ? busStemTracks(session.tracks, track)
-                                                           : trackStemTracks(session.tracks, track),
-            .clockPorts = {},
-            .takeFolder = {},
-            .metronome = {},
-            .panLaw = session.panLaw};
+    return renderSession(session, track.kind == engine::TrackKind::bus ? busStemTracks(session.tracks, track)
+                                                                       : trackStemTracks(session.tracks, track));
 }
 
 engine::Session mixSession(const engine::Session& session, const model::Document& document) {
@@ -111,33 +119,22 @@ engine::Session mixSession(const engine::Session& session, const model::Document
     for (engine::Track& track : tracks) {
         track.audioOut = playsAudio(track, document) ? renderRoute() : engine::AudioRoute{};
     }
-    return {.tempo = session.tempo,
-            .tracks = std::move(tracks),
-            .clockPorts = {},
-            .takeFolder = {},
-            .metronome = {},
-            .panLaw = session.panLaw};
+    return renderSession(session, std::move(tracks));
 }
 
 // Every track plays unmuted into its buses and sends as in a bus stem, so each listed track's own output sounds as its
 // stem.
 engine::Session captureSession(const engine::Session& session, const std::vector<std::string>& trackIds) {
-    std::vector<engine::Track> tracks = session.tracks;
+    std::vector<engine::Track> tracks =
+        session.tracks | std::views::transform(audible) | std::ranges::to<std::vector>();
     for (engine::Track& track : tracks) {
-        track.mute = false;
-        track.solo = false;
         track.audioOut = {};
         if (const auto found = std::ranges::find(trackIds, track.id); found != trackIds.end()) {
             const auto first = static_cast<int>(2 * (found - trackIds.begin())) + 1;
             track.captureOut = {kRenderDevice, {first, first + 1}};
         }
     }
-    return {.tempo = session.tempo,
-            .tracks = std::move(tracks),
-            .clockPorts = {},
-            .takeFolder = {},
-            .metronome = {},
-            .panLaw = session.panLaw};
+    return renderSession(session, std::move(tracks));
 }
 
 // Each render plays fresh instances with the saved states, so the live instruments stay with the live engine.
@@ -194,12 +191,6 @@ void waitForReadAhead(const engine::Engine& engine) {
         }
         std::this_thread::yield();
     }
-}
-
-std::vector<std::vector<float>> render(engine::Session session, const Registry& registry,
-                                       const PlaybackContext& context, engine::Frames frames, double sampleRate) {
-    OfflineRender render(std::move(session), registry, context, sampleRate);
-    return render.process(frames, [&render] { render.idleInstruments(); });
 }
 
 engine::Frames renderFrames(const engine::Session& session, const model::Document& document, double sampleRate) {
@@ -272,12 +263,14 @@ std::vector<std::filesystem::path> exportStems(const engine::Session& session, c
     OfflineRender render(
         captureSession(session, tracks | std::views::transform(&engine::Track::id) | std::ranges::to<std::vector>()),
         registry, context, sampleRate);
-    render.setSink([&writers](std::vector<std::vector<float>> chunk) {
-        for (std::size_t index = 0; index < writers.size(); ++index) {
-            writers[index].write(std::span{chunk}.subspan(2 * index, 2));
-        }
-    });
-    render.process(frames, [&render] { render.idleInstruments(); });
+    render.process(
+        frames,
+        [&writers](const std::vector<std::vector<float>>& chunk) {
+            for (std::size_t index = 0; index < writers.size(); ++index) {
+                writers[index].write(std::span{chunk}.subspan(2 * index, 2));
+            }
+        },
+        [&render] { render.idleInstruments(); });
     return files;
 }
 
@@ -288,8 +281,11 @@ std::optional<MixLevels> exportMix(const engine::Session& session, const Registr
     if (!file.parent_path().empty()) {
         std::filesystem::create_directories(file.parent_path());
     }
-    std::vector<std::vector<float>> mix =
-        render(mixSession(session, *context.document), registry, context, frames, sampleRate);
+    std::vector<std::vector<float>> mix(2);
+    OfflineRender render(mixSession(session, *context.document), registry, context, sampleRate);
+    render.process(
+        frames, [&mix](const std::vector<std::vector<float>>& chunk) { appendStereo(mix, chunk); },
+        [&render] { render.idleInstruments(); });
     std::optional<MixLevels> levels;
     if (target) {
         const double lufs = engine::matchLoudness(mix, sampleRate, target->lufs, target->ceilingDbtp);
@@ -355,8 +351,8 @@ void OfflineRender::start(engine::Session session, double sampleRate) {
 
 OfflineRender::~OfflineRender() = default;
 
-std::vector<std::vector<float>> OfflineRender::process(engine::Frames frames, const std::function<void()>& idle,
-                                                       const std::stop_token& stop) {
+void OfflineRender::process(engine::Frames frames, const ChunkSink& sink, const std::function<void()>& idle,
+                            const std::stop_token& stop) {
     // CLAP offers no way to ask a plugin whether it is ready, so we let the instruments settle for a few blocks.
     for (int block = 0; block < kSettleBlocks; ++block) {
         offline_->process(kBlock);
@@ -368,27 +364,24 @@ std::vector<std::vector<float>> OfflineRender::process(engine::Frames frames, co
     }
     engine_->play();
     offline_->takeOutputs();
-    std::vector<std::vector<float>> stereo(2);
     for (engine::Frames done = 0; done < frames; done += kChunk) {
         const engine::Frames chunk = std::min(kChunk, frames - done);
         for (engine::Frames block = 0; block < chunk; block += kBlock) {
             if (stop.stop_requested()) {
-                return {};
+                return;
             }
             offline_->process(std::min(kBlock, chunk - block));
             idle();
         }
         waitForReadAhead(*engine_);
-        std::vector<std::vector<float>> outputs = offline_->takeOutputs();
-        if (sink_) {
-            sink_(std::move(outputs));
-        } else {
-            for (const std::size_t channel : {0U, 1U}) {
-                stereo[channel].insert(stereo[channel].end(), outputs[channel].begin(), outputs[channel].end());
-            }
-        }
+        sink(offline_->takeOutputs());
     }
-    return sink_ ? std::vector<std::vector<float>>{} : stereo;
+}
+
+void appendStereo(std::vector<std::vector<float>>& stereo, const std::vector<std::vector<float>>& chunk) {
+    for (const std::size_t channel : {0U, 1U}) {
+        stereo[channel].insert(stereo[channel].end(), chunk[channel].begin(), chunk[channel].end());
+    }
 }
 
 void OfflineRender::idleInstruments() {

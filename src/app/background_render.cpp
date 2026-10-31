@@ -8,7 +8,8 @@ namespace emerick::app {
 
 RenderResult renderNow(RenderJob job) {
     OfflineRender& render = *job.render;
-    return job.measure(render.process(job.frames, [&render] { render.idleInstruments(); }));
+    render.process(job.frames, job.sink, [&render] { render.idleInstruments(); });
+    return job.finish();
 }
 
 BackgroundRender::BackgroundRender(const Registry& registry, QObject* parent) : QObject(parent), registry_(registry) {}
@@ -40,16 +41,16 @@ void BackgroundRender::render(const QString& track, const char* actionId, const 
     done_ = std::move(done);
     render_ = std::move(job.render);
     emit busyTrackChanged();
-    worker_ = std::jthread([this, frames = job.frames, measure = std::move(job.measure)](const std::stop_token& stop) {
+    worker_ = std::jthread([this, frames = job.frames, sink = std::move(job.sink),
+                            measure = std::move(job.finish)](const std::stop_token& stop) {
         RenderResult result;
         QString error;
         try {
-            std::vector<std::vector<float>> channels =
-                render_->process(frames, [this, &stop] { idleOnUiThread(stop); }, stop);
+            render_->process(frames, sink, [this, &stop] { idleOnUiThread(stop); }, stop);
             if (stop.stop_requested()) {
                 return;
             }
-            result = measure(std::move(channels));
+            result = measure();
         } catch (const AppError& failure) {
             error = qs(failure.what());
         }

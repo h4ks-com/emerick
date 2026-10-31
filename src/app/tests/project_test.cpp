@@ -5,11 +5,11 @@
 #include <cmath>
 #include <filesystem>
 #include <map>
+#include <memory>
 #include <numbers>
 #include <string>
 #include <vector>
 
-#include "emerick/app/background_render.hpp"
 #include "emerick/app/core_actions.hpp"
 #include "emerick/app/lua_host.hpp"
 #include "emerick/app/session_mapping.hpp"
@@ -440,13 +440,13 @@ TEST_CASE("stems from one render match each track and bus rendered on its own to
     for (const auto& [id, name] : std::map<std::string, std::string>{
              {vox, "Vox.wav"}, {bass, "Bass.wav"}, {verb, "Verb.wav"}, {group, "Group.wav"}}) {
         INFO(name);
-        const RenderResult alone = renderNow({.render = trackRender(session, rig.registry, context, id, kRate),
-                                              .frames = frames,
-                                              .measure = [](std::vector<std::vector<float>> channels) {
-                                                  return RenderResult{.channels = std::move(channels), .json = {}};
-                                              }});
-        CHECK(readChannel(folder / name, 0) == alone.channels[0]);
-        CHECK(readChannel(folder / name, 1) == alone.channels[1]);
+        std::vector<std::vector<float>> alone(2);
+        const std::unique_ptr<OfflineRender> render = trackRender(session, rig.registry, context, id, kRate);
+        render->process(
+            frames, [&alone](const std::vector<std::vector<float>>& chunk) { appendStereo(alone, chunk); },
+            [&render] { render->idleInstruments(); });
+        CHECK(readChannel(folder / name, 0) == alone[0]);
+        CHECK(readChannel(folder / name, 1) == alone[1]);
     }
 }
 

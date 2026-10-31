@@ -19,11 +19,13 @@ struct RenderResult {
     Json json;
 };
 
-// One offline render, which the UI thread sets up, and what to measure of its output on the thread that processes it.
+// One offline render, which the UI thread sets up, the sink that takes its output and the step that turns what the
+// sink took into the result, both on the thread that processes it.
 struct RenderJob {
     std::unique_ptr<OfflineRender> render;
     engine::Frames frames = 0;
-    std::function<RenderResult(std::vector<std::vector<float>>)> measure;
+    OfflineRender::ChunkSink sink;
+    std::function<RenderResult()> finish;
 };
 
 // UI thread: processes and measures the job.

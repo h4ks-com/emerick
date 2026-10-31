@@ -73,13 +73,10 @@ public:
     // Takes every output channel of one chunk of a render.
     using ChunkSink = std::function<void(std::vector<std::vector<float>>)>;
 
-    // Renders frames from the start, calling idle between blocks, which must have the main thread run idleInstruments
-    // before it returns, and returns the stereo output. With a sink, hands it each chunk of every output channel in
-    // order and returns no channels. Returns no channels once stop is requested.
-    std::vector<std::vector<float>> process(engine::Frames frames, const std::function<void()>& idle,
-                                            const std::stop_token& stop = {});
-    // Has process hand its chunks to sink, on the thread that runs process.
-    void setSink(ChunkSink sink) { sink_ = std::move(sink); }
+    // Renders frames from the start and hands sink each chunk of every output channel in order, calling idle between
+    // blocks, which must have the main thread run idleInstruments before it returns. Stops once stop is requested.
+    void process(engine::Frames frames, const ChunkSink& sink, const std::function<void()>& idle,
+                 const std::stop_token& stop = {});
     // Runs what the instruments asked of the UI thread, such as loading a voice after a program change.
     void idleInstruments();
 
@@ -88,10 +85,12 @@ private:
 
     std::vector<std::shared_ptr<engine::ClapInstrument>> instruments_;
     std::vector<InstrumentMessage> chase_;
-    ChunkSink sink_;
     engine::OfflineBackend* offline_ = nullptr;
     std::unique_ptr<engine::Engine> engine_;
 };
+
+// Appends the first two channels of a render chunk to stereo, which holds two channels.
+void appendStereo(std::vector<std::vector<float>>& stereo, const std::vector<std::vector<float>>& chunk);
 
 // Sets up the render of the clip played through the instrument.
 std::unique_ptr<OfflineRender> instrumentRender(std::shared_ptr<engine::ClapInstrument> instrument,

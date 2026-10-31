@@ -19,7 +19,7 @@ DragNumber {
     dragsVertically: true
     resetValue: 0
     textFromValue: number => (number > 0 ? "+" : "") + number.toFixed(1) + " dB"
-    toolTip: "Trim the track's input level   " + textFromValue(shown)
+    toolTip: Registry.actionInfo(actionId).title + "   " + textFromValue(shown)
     actionsFor: number => [{id: "track.setTrim", params: {track: trackId, db: number, selection: true}}]
     implicitWidth: Theme.panKnob
     implicitHeight: Theme.panKnob
@@ -32,7 +32,7 @@ DragNumber {
         onActiveChanged: requestPaint()
         onPaint: {
             const context = getContext("2d")
-            const ring = Theme.hairline * 2
+            const ring = Theme.knobRing
             const radius = Math.min(width, height) / 2 - ring / 2
             const top = -Math.PI / 2
             const sweep = Theme.panKnobSweep * Math.PI / 180

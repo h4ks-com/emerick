@@ -363,6 +363,10 @@ Rectangle {
                     route: panel.audioOut
                     mixed: inspector.mixed("audioOut")
                 }
+                TrackAnalysisRow {
+                    visible: panel.playsAudio
+                    trackId: panel.trackId
+                }
 
                 RouteLabel { text: "Inserts"; visible: panel.playsAudio }
                 InsertList {
@@ -397,11 +401,6 @@ Rectangle {
                     ports: Project.routeDevices.midiOut
                     route: panel.midiOut
                     mixed: inspector.mixed("midiOut")
-                }
-                TrackAnalysisRow {
-                    visible: panel.playsAudio
-                    trackId: panel.trackId
-                    Layout.topMargin: Theme.space2
                 }
                 WarningBadge {
                     objectName: "inspector.trackErrors"

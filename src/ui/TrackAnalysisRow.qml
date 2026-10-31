@@ -27,17 +27,24 @@ RowLayout {
              : frequency(band.lowHz) + " to " + frequency(band.highHz)
     }
 
-    component Reading: Label {
+    component Reading: Row {
         id: reading
         required property var value
         required property string unit
         required property string tip
-        objectName: "track.analyze:" + row.trackId + ":" + unit
-        text: row.level(value) + " <font color='" + Theme.inkDim + "'>" + unit + "</font>"
-        textFormat: Text.StyledText
-        color: Theme.ink
-        font.pixelSize: Theme.textSmall
-        font.features: {"tnum": 1}
+        spacing: Theme.space1
+        Label {
+            objectName: "track.analyze:" + row.trackId + ":" + reading.unit
+            text: row.level(reading.value)
+            color: Theme.ink
+            font.pixelSize: Theme.textSmall
+            font.features: {"tnum": 1}
+        }
+        Label {
+            text: reading.unit
+            color: Theme.inkDim
+            font.pixelSize: Theme.textSmall
+        }
         HoverHandler { id: readingHover }
         ToolTip.text: tip
         ToolTip.visible: readingHover.hovered

@@ -16,7 +16,7 @@ Button {
     property int textSize: Theme.textLabel
     // A button with a menu opens it below itself, and the menu's items run the action.
     property Menu menu
-    // A button with run calls it in place of running its action, such as an action the UI runs off its thread.
+    // We call run on click, for an action the UI runs off its thread.
     property var run
     // A delegate binds its objectName after this first evaluates, while actionId is still empty.
     readonly property var info: actionId ? Registry.actionInfo(actionId) : ({})

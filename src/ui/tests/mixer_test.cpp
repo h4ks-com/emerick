@@ -77,7 +77,7 @@ TEST_CASE("a mixer strip trim knob trims the track in one undo step, and a doubl
     QQuickItem* knob = inMixer(main, "track.setTrim:" + qid(vox) + ":knob");
     main.drag(knob, {0, -40});
     CHECK(trackOf(main, vox).trimDb == Catch::Approx(5.0));
-    CHECK(knob->property("toolTip").toString() == "Trim the track's input level   +5.0 dB");
+    CHECK(knob->property("toolTip").toString() == "Set track trim   +5.0 dB");
     CHECK(main.rig.controller->project().undoName() == "set track trim");
     main.rig.run("project.undo");
     CHECK(trackOf(main, vox).trimDb == 0.0);

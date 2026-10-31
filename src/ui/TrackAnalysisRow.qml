@@ -11,7 +11,7 @@ RowLayout {
     readonly property var result: Analysis.results[trackId]
     readonly property bool busy: Analysis.busyTrack === trackId
     readonly property var bands: result?.bands ?? []
-    readonly property real loudestShare: Math.max(...bands.map(band => band.share), Number.EPSILON)
+    readonly property real loudestShare: bands.reduce((loudest, band) => Math.max(loudest, band.share), 0.001)
     spacing: Theme.space2
 
     function level(value) {
@@ -87,7 +87,7 @@ RowLayout {
             }
         }
         Row {
-            id: bands
+            id: bandBars
             spacing: Theme.meterGap
             Repeater {
                 model: row.bands

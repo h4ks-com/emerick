@@ -193,3 +193,25 @@ TEST_CASE("track analyze measures one track as its stem with its five bands in o
     CHECK_THROWS_AS(rig.run("track.analyze", {{"track", vox}, {"from", "2.1.0"}, {"to", "1.3.0"}}), AppError);
     CHECK_THROWS_AS(rig.run("track.analyze", {{"track", vox}, {"from", -5}}), AppError);
 }
+
+TEST_CASE("analyzing all tracks lists each audio track and bus with its levels and bands") {
+    ProjectRig rig;
+    CHECK(rig.run("tracks.analyze").at("tracks").empty());
+    const std::string vox = rig.run("track.addAudio", {{"name", "Vox"}}).at("id");
+    rig.run("track.addMidi", {{"name", "Keys"}});
+    const std::string verb = rig.run("track.addBus", {{"name", "Verb"}}).at("id");
+    CHECK_THROWS_AS(rig.run("tracks.analyze"), AppError);
+    writeWav(rig.path("tone.wav"), {sine(1000, 0.5, 2)}, kRate);
+    rig.run("clip.import", {{"track", vox}, {"path", rig.path("tone.wav").string()}});
+
+    const Json tracks = rig.run("tracks.analyze").at("tracks");
+    REQUIRE(tracks.size() == 2);
+    CHECK(tracks[0].at("id") == vox);
+    CHECK(tracks[0].at("name") == "Vox");
+    CHECK(tracks[0].at("activeRmsDb").get<double>() == Approx(-9.0).margin(0.2));
+    CHECK(tracks[0].at("integratedLufs").is_number());
+    CHECK(tracks[0].at("truePeakDbtp").is_number());
+    CHECK(tracks[0].at("bands").size() == 5);
+    CHECK(tracks[1].at("id") == verb);
+    CHECK(tracks[1].at("activeRmsDb").is_null());
+}

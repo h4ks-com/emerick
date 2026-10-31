@@ -8,6 +8,7 @@ qt_add_qml_module(emerick_ui
     QML_FILES
         ActionMenu.qml
         ActionMenuItem.qml
+        AnalysisReading.qml
         AudioRoutePicker.qml
         AutomationLane.qml
         AutomationPicker.qml

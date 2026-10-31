@@ -150,6 +150,19 @@ Rectangle {
             Layout.fillWidth: true
         }
 
+        AnalysisReading {
+            readonly property var result: Analysis.results[strip.trackId]
+            objectName: "tracks.analyze:" + strip.trackId
+            visible: result !== undefined
+            opacity: Analysis.busyTrack === strip.trackId ? Theme.mutedOpacity : 1
+            value: result?.activeRmsDb ?? null
+            unit: "RMS"
+            tip: "Active RMS in dB: the median level of the parts that play. Integrated "
+                 + level(result?.integratedLufs ?? null) + " LUFS, true peak " + level(result?.truePeakDbtp ?? null)
+                 + " dBTP"
+            Layout.alignment: Qt.AlignHCenter
+        }
+
         RowLayout {
             spacing: Theme.space1
             Layout.alignment: Qt.AlignHCenter

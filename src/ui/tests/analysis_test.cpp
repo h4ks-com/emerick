@@ -25,3 +25,22 @@ TEST_CASE("the inspector's analyze button renders the track off the UI thread an
     CHECK(main.item(name + ":RMS")->property("text").toString().startsWith("-12.0"));
     MainWindow::settle();
 }
+
+TEST_CASE("the mixer's analyze button shows each strip's active RMS only after it ran") {
+    MainWindow& main = MainWindow::instance();
+    const std::string id = main.rig.run("track.addAudio", {{"name", "Bass"}}).at("id");
+    writeConstant(main.rig.path("bass.wav"), 48000, 0.5F);
+    main.rig.run("clip.import", {{"track", id}, {"path", main.rig.path("bass.wav").string()}});
+    main.rig.nav.setMixerOpen(true);
+    const QString reading = QString::fromStdString("tracks.analyze:" + id);
+
+    QQuickItem* button = main.item("tracks.analyze");
+    CHECK(button->property("text").toString() == "Analyze all tracks");
+    CHECK(MainWindow::find(main.item("mixer"), reading) == nullptr);
+
+    main.click(button);
+    CHECK(processUntil([&] { return MainWindow::find(main.item("mixer"), reading) != nullptr; }));
+    CHECK(main.item(reading)->property("text").toString().startsWith("-6.0"));
+    main.rig.nav.setMixerOpen(false);
+    MainWindow::settle();
+}

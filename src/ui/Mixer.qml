@@ -22,6 +22,7 @@ DockPanel {
         objectName: "mixer.strips"
         anchors.fill: parent
         anchors.topMargin: Theme.hairline
+        anchors.rightMargin: analyzeAll.width + 2 * Theme.space1
         contentWidth: row.width
         contentHeight: row.height
         interactive: false
@@ -35,6 +36,20 @@ DockPanel {
             Strips { buses: false }
             Strips { buses: true }
         }
+    }
+
+    ChromeButton {
+        id: analyzeAll
+        objectName: "tracks.analyze"
+        anchors.top: parent.top
+        anchors.right: parent.right
+        anchors.margins: Theme.space1
+        iconName: "chart-bar"
+        iconColor: Theme.inkDim
+        active: Analysis.busyTrack !== ""
+        activeColor: Theme.inkDim
+        hint: active ? "Wait while the tracks render" : "Render each track alone and show its active RMS on its strip"
+        run: () => Analysis.analyzeAll()
     }
 
     ToggleSweep {

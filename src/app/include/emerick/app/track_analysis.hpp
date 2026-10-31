@@ -2,6 +2,7 @@
 
 #include <QObject>
 #include <QString>
+#include <QStringList>
 #include <QVariantMap>
 #include <memory>
 #include <stop_token>
@@ -16,6 +17,7 @@
 namespace emerick::app {
 
 inline constexpr const char* kTrackAnalyzeAction = "track.analyze";
+inline constexpr const char* kTracksAnalyzeAction = "tracks.analyze";
 
 // What track.analyze measures of a render, which any thread can read.
 struct AnalysisRange {
@@ -37,6 +39,8 @@ struct TrackRender {
 TrackRender prepareTrackRender(ProjectController& controller, const Registry& registry, const Json& params);
 // Any thread: track.analyze's result for the channels the render returned.
 Json measureTrack(const AnalysisRange& range, std::vector<std::vector<float>> channels);
+// The audio tracks and buses in track order, which tracks.analyze measures.
+std::vector<model::TrackId> analyzableTracks(const Registry& registry, const model::Document& document);
 
 // Runs track.analyze for the inspector and keeps each track's last result. The UI thread sets up and tears down the
 // render and idles its instruments, and a worker thread processes it and measures, so the window keeps drawing.
@@ -52,12 +56,15 @@ public:
     [[nodiscard]] QVariantMap results() const { return results_; }
     // Does nothing while another analysis runs; a failure raises a notice.
     Q_INVOKABLE void analyze(const QString& track);
+    // Analyzes each of analyzableTracks in turn, as tracks.analyze does, and stops at the first failure.
+    Q_INVOKABLE void analyzeAll();
 
 signals:
     void busyTrackChanged();
     void resultsChanged();
 
 private:
+    void analyzeNext();
     // Worker thread: returns once the UI thread idled the render's instruments, or stop is requested.
     void idleOnUiThread(const std::stop_token& stop);
     void finish(const QString& track, const Json& result, const QString& error);
@@ -65,6 +72,7 @@ private:
     const Registry& registry_;
     ProjectController& controller_;
     QString busyTrack_;
+    QStringList pending_;
     QVariantMap results_;
     std::unique_ptr<OfflineRender> render_;
     // Declared last, so it joins before the members its thread reads go away.

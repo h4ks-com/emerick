@@ -14,10 +14,6 @@ RowLayout {
     readonly property real loudestShare: bands.reduce((loudest, band) => Math.max(loudest, band.share), 0.001)
     spacing: Theme.space2
 
-    function level(value) {
-        return value === null || value === undefined ? "-inf" : value.toFixed(1)
-    }
-
     function frequency(hz) {
         return hz >= 1000 ? hz / 1000 + " kHz" : hz + " Hz"
     }
@@ -28,28 +24,8 @@ RowLayout {
              : frequency(band.lowHz) + " to " + frequency(band.highHz)
     }
 
-    component Reading: Row {
-        id: reading
-        required property var value
-        required property string unit
-        required property string tip
-        spacing: Theme.space1
-        Label {
-            objectName: "track.analyze:" + row.trackId + ":" + reading.unit
-            text: row.level(reading.value)
-            color: Theme.ink
-            font.pixelSize: Theme.textSmall
-            font.features: {"tnum": 1}
-        }
-        Label {
-            text: reading.unit
-            color: Theme.inkDim
-            font.pixelSize: Theme.textSmall
-        }
-        HoverHandler { id: readingHover }
-        ToolTip.text: tip
-        ToolTip.visible: readingHover.hovered
-        ToolTip.delay: Theme.tooltipDelay
+    component Reading: AnalysisReading {
+        objectName: "track.analyze:" + row.trackId + ":" + unit
     }
 
     ChromeButton {

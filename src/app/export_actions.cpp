@@ -535,6 +535,31 @@ void registerExportActions(Registry& registry, ProjectController& controller) {
                  return analyzeTrackRender(prepareTrackRender(controller, registry, params));
              },
          .notifies = true});
+    registry.addAction(
+        {.id = kTracksAnalyzeAction,
+         .title = "Analyze all tracks",
+         .description = "Run track.analyze on every audio track and bus, and list each one's name, id, integrated "
+                        "LUFS, true peak, active RMS and five bands",
+         .keywords = {"loudness", "lufs", "rms", "mix balance"},
+         .category = "Analyze",
+         .run =
+             [&controller, &registry](const Json&) {
+                 const model::Document document = controller.project().document();
+                 const Json tracks =
+                     analyzableTracks(registry, document) | std::views::transform([&](const model::TrackId& id) {
+                         const Json measured =
+                             analyzeTrackRender(prepareTrackRender(controller, registry, {{"track", id.value}}));
+                         return Json{{"id", id.value},
+                                     {"name", model::findTrack(document, id)->name},
+                                     {"activeRmsDb", measured.at("activeRmsDb")},
+                                     {"integratedLufs", measured.at("integratedLufs")},
+                                     {"truePeakDbtp", measured.at("truePeakDbtp")},
+                                     {"bands", measured.at("bands")}};
+                     }) |
+                     std::ranges::to<Json::array_t>();
+                 return Json{{"message", std::format("{} tracks analyzed", tracks.size())}, {"tracks", tracks}};
+             },
+         .notifies = true});
 }
 
 }  // namespace emerick::app

@@ -9,8 +9,11 @@
 #include <string>
 #include <vector>
 
+#include "emerick/model/automation.hpp"
+#include "project_rig.hpp"
 #include "qt_app.hpp"
 
+using namespace emerick;
 using namespace emerick::app;
 
 namespace {
@@ -195,4 +198,84 @@ TEST_CASE("only a command line script can wait, and it lets queued work run") {
                                   "false\tbuild.lua:3: x\n"));
     CHECK(recovered.out.ends_with("\nfalse\n"));
     CHECK(fixture.lua.eval("emerick.wait(0)").at("ok") == false);
+}
+
+namespace {
+
+struct ProjectLua {
+    test::ProjectRig rig;
+    UiApi ui{rig.registry};
+    LuaHost lua{rig.registry, ui};
+
+    Json eval(const std::string& code) {
+        const Json result = lua.eval(code);
+        INFO(result.dump());
+        REQUIRE(result.at("ok") == true);
+        return result.at("result");
+    }
+
+    [[nodiscard]] const model::Track& track(const std::string& id) const {
+        return *rig.controller->project().track(model::TrackId{id});
+    }
+};
+
+}  // namespace
+
+TEST_CASE("emerick.track finds a track id by name") {
+    ProjectLua project;
+    const std::string vox = project.rig.run("track.addAudio", {{"name", "Vox"}}).at("id");
+    CHECK(project.eval("return emerick.track('Vox')") == vox);
+    CHECK(project.lua.eval("return emerick.track('Nobody')").at("ok") == false);
+}
+
+TEST_CASE("emerick.bus adds a bus with its inserts in order and their params set") {
+    ProjectLua project;
+    const Json ids = project.eval(
+        "local bus, inserts = emerick.bus('Verb', {{compressor = {ratio = 2}}, {reverb = {mix = 100, size = 80}}})\n"
+        "return {bus, inserts}");
+    const model::Track& bus = project.track(ids.at(0));
+    CHECK(bus.name == "Verb");
+    CHECK(bus.kind == "bus");
+    REQUIRE(bus.inserts.size() == 2);
+    CHECK(ids.at(1) == Json{bus.inserts[0].id.value, bus.inserts[1].id.value});
+    CHECK(bus.inserts[0].type == "compressor");
+    CHECK(bus.inserts[0].params.at("ratio") == 2.0);
+    CHECK(bus.inserts[1].type == "reverb");
+    CHECK(bus.inserts[1].params.at("mix") == 100.0);
+    CHECK(bus.inserts[1].params.at("size") == 80.0);
+
+    CHECK(project.track(project.eval("return emerick.bus('Plain')")).inserts.empty());
+    CHECK(project.track(project.eval("return emerick.bus('Echo', {delay = {}})")).inserts.size() == 1);
+    CHECK(project.lua.eval("emerick.bus('Bad', {reverb = {}, delay = {}})").at("ok") == false);
+}
+
+TEST_CASE("emerick.automate places points by bar and beat on the project's meter") {
+    ProjectLua project;
+    const std::string vox = project.rig.run("track.addAudio", {{"name", "Vox"}}).at("id");
+    project.rig.run("project.setTempo", {{"bpm", 90}, {"numerator", 3}, {"denominator", 4}});
+    const Json points = project.eval("return emerick.automate('Vox', 'gain', {{1, 1, -6}, {2, 2.5, 0, 'smooth'}})");
+    CHECK(points.size() == 2);
+    const model::AutomationLane* lane = model::findLane(project.track(vox), "gain");
+    REQUIRE(lane != nullptr);
+    REQUIRE(lane->points.size() == 2);
+    CHECK(lane->points[0].tick == 0);
+    CHECK(lane->points[0].value == -6.0);
+    CHECK(lane->points[1].tick == (3 * 960) + 960 + 480);
+    CHECK(lane->points[1].curve == core::AutomationCurve::smooth);
+    CHECK(project.lua.eval("emerick.automate('Vox', 'gain', {{0, 1, 0}})").at("ok") == false);
+    CHECK(project.lua.eval("emerick.automate('Vox', 'gain', {{1, 1}})").at("ok") == false);
+}
+
+TEST_CASE("emerick.waitReady waits for loading instruments and raises after its timeout") {
+    ProjectLua project;
+    bool loading = true;
+    project.rig.registry.addLoadingTracks([&](const model::Document& document) {
+        return loading ? std::vector{document.tracks.front().id} : std::vector<model::TrackId>{};
+    });
+    project.rig.run("track.addMidi", {{"name", "Keys"}});
+    const Json failed = project.lua.eval("emerick.waitReady(0.05)");
+    CHECK(failed.at("ok") == false);
+    CHECK(failed.at("error").get<std::string>().find("Keys still loading") != std::string::npos);
+    QTimer::singleShot(20, [&loading] { loading = false; });
+    CHECK(project.lua.eval("emerick.waitReady(5)").at("ok") == true);
 }

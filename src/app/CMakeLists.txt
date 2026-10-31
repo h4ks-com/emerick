@@ -37,6 +37,7 @@ qt_add_library(emerick_app STATIC
     include/emerick/app/instruments.hpp
     include/emerick/app/introspector.hpp
     include/emerick/app/key_focus.hpp
+    include/emerick/app/lua_helpers.hpp
     include/emerick/app/lua_host.hpp
     include/emerick/app/lua_text.hpp
     include/emerick/app/mcp_server.hpp
@@ -71,6 +72,7 @@ qt_add_library(emerick_app STATIC
     instruments.cpp
     introspector.cpp
     key_focus.cpp
+    lua_helpers.cpp
     lua_host.cpp
     lua_text.cpp
     cycle_actions.cpp

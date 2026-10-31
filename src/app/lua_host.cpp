@@ -19,8 +19,10 @@
 #include <sol/sol.hpp>
 #include <string_view>
 #include <system_error>
+#include <tuple>
 #include <utility>
 
+#include "emerick/app/lua_helpers.hpp"
 #include "emerick/app/lua_text.hpp"
 
 namespace emerick::app {
@@ -213,6 +215,16 @@ constexpr std::array kLuaMembers{
     LuaMember{"wait", "wait(seconds, done?)",
               "Let background work run for up to seconds, or until done() returns true, and return whether it did; "
               "call it from a script started with --script."},
+    LuaMember{"waitReady", "waitReady(seconds?)",
+              "Wait until every instrument has loaded its sounds, for up to seconds (default 60), and raise an error "
+              "after that."},
+    LuaMember{"track", "track(name)", "Return the id of the track with that name."},
+    LuaMember{"bus", "bus(name, inserts?)",
+              "Add a bus with an insert per {type = params} table of the inserts list, in order, such as "
+              "emerick.bus('Verb', {{reverb = {mix = 1}}}), and return its id and the insert ids."},
+    LuaMember{"automate", "automate(track, param, points)",
+              "Add a point to the track's lane of param for each {bar, beat, value, curve?} in points, where beat "
+              "may be fractional and curve is linear, hold or smooth, and return the point ids."},
 };
 
 constexpr double kMaxWaitSeconds = 86'400;
@@ -340,6 +352,19 @@ LuaHost::LuaHost(Registry& registry, const UiApi& ui) : registry_(&registry), st
         return toLua(current, registry.state(name));
     };
     emerick["project"] = [&registry](sol::this_state current) { return toLua(current, registry.state("project")); };
+    emerick["waitReady"] = [&registry](const sol::optional<double>& seconds) {
+        registry.run("project.waitReady", seconds ? Json{{"timeout", *seconds}} : Json::object(), ActionSource::Lua);
+    };
+    emerick["track"] = [&registry](const std::string& name) { return trackIdByName(registry, name); };
+    emerick["bus"] = [&registry](const std::string& name, const sol::optional<sol::object>& inserts,
+                                 sol::this_state current) {
+        const Json result = addBus(registry, name, fromLuaArgument(inserts));
+        return std::make_tuple(toLua(current, result.at("bus")), toLua(current, result.at("inserts")));
+    };
+    emerick["automate"] = [&registry](const std::string& track, const std::string& param, const sol::table& points,
+                                      sol::this_state current) {
+        return toLua(current, automate(registry, track, param, fromLua(points)).at("points"));
+    };
 
     // An MCP request or a console line that ran the event loop could start another request inside its own, so we
     // let only a command line script wait, and never inside its own wait.

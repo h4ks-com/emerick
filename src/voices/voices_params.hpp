@@ -14,7 +14,8 @@ inline constexpr std::uint32_t kFollowParam = 5;
 // A hidden read-only param whose label names the notes of the voice whose waves decode with noise, which hosts show as
 // a warning; it is empty for a clean voice.
 inline constexpr std::uint32_t kNoiseParam = 6;
-inline constexpr std::uint32_t kParamCount = 7;
+inline constexpr std::uint32_t kNoisySamplesParam = 7;
+inline constexpr std::uint32_t kParamCount = 8;
 
 // The Voice param's label for no voice while the store loads, which hosts read to wait for the store.
 inline constexpr std::string_view kLoadingLabel = "Loading voices";

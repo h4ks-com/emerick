@@ -299,7 +299,9 @@ std::optional<Voice> voiceOf(const fs::path& file, const std::string& pack) {
                             .lsb = number(information, "voiceLsb", 0),
                             .program = number(information, "voicePcNum", 0)},
                 .zones = {}};
+    int elementIndex = -1;
     for (const pugi::xml_node node : common.children("voiceElement")) {
+        ++elementIndex;
         const Element element = elementOf(node);
         const auto waveform = waveforms.find(element.waveform);
         if (isOn(node, "mute") || waveform == waveforms.end()) {
@@ -307,6 +309,7 @@ std::optional<Voice> voiceOf(const fs::path& file, const std::string& pack) {
         }
         for (const pugi::xml_node keybank : waveform->second.children("keybank")) {
             if (auto zone = zoneOf(element, keybank, decimal(common, "volume"))) {
+                zone->element = elementIndex;
                 voice.zones.push_back(std::move(*zone));
             }
         }

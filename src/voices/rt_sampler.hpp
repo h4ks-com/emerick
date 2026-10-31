@@ -14,6 +14,9 @@ struct BankZone {
     const Zone* zone = nullptr;
     const Wave* left = nullptr;
     const Wave* right = nullptr;
+    // The zone whose root key, tune and sample rate pitch the waves: this zone, or the clean zone playing for a noisy
+    // one.
+    const Zone* pitch = nullptr;
 };
 
 // A voice with its waves decoded, which the main thread builds and the audio thread plays.

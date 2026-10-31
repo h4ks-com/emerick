@@ -98,6 +98,8 @@ struct Zone {
     std::optional<Envelope> envelope;
     std::optional<LowPass> lowPass;
     Lfo lfo;
+    // The place of the zone's element among its voice's elements.
+    int element = 0;
 };
 
 struct Voice {

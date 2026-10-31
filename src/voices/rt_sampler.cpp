@@ -66,9 +66,9 @@ bool moves(const Lfo& lfo) {
     return lfo.hertz > 0.0 && (lfo.pitchCents != 0.0 || lfo.cutoffCents != 0.0 || lfo.amplitudeDb != 0.0);
 }
 
-double semitonesOf(const Zone& zone, int key, const PlaySettings& settings) {
-    const double keyed = zone.fixedPitch ? 0.0 : key + zone.keyShift - zone.rootKey;
-    return keyed + zone.tuneCents / 100.0 + settings.tuneSemitones;
+double semitonesOf(const Zone& zone, const Zone& pitch, int key, const PlaySettings& settings) {
+    const double keyed = zone.fixedPitch ? 0.0 : key + zone.keyShift - pitch.rootKey;
+    return keyed + pitch.tuneCents / 100.0 + settings.tuneSemitones;
 }
 
 float velocityGain(const Zone& zone, int velocity) {
@@ -141,7 +141,7 @@ void Sampler::startZone(const BankZone& zone, int key, int velocity, int channel
     note.channel = channel;
     note.started = ++clock_;
     note.outputRate = rate;
-    note.step = info.sampleRate / rate * std::exp2(semitonesOf(info, key, settings) / 12.0);
+    note.step = zone.pitch->sampleRate / rate * std::exp2(semitonesOf(info, *zone.pitch, key, settings) / 12.0);
     note.gain = gain;
     aim(note);
     note.mixLeft = note.targetLeft;

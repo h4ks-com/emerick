@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cstdlib>
 #include <format>
 #include <functional>
 #include <map>
@@ -114,6 +115,52 @@ std::string noteRange(int first, int last) {
     return first == last ? yamahaNoteName(first) : std::format("{} to {}", yamahaNoteName(first), yamahaNoteName(last));
 }
 
+bool isNoisy(const BankZone& zone) { return zone.left->noisy || (zone.right != nullptr && zone.right->noisy); }
+
+// The clean zone of the noisy zone's element and velocity layer whose root key lies nearest, or null.
+const BankZone* nearestCleanZone(const std::vector<BankZone>& zones, const BankZone& noisy) {
+    const Zone& wanted = *noisy.zone;
+    auto candidates = zones | std::views::filter([&](const BankZone& zone) {
+                          return !isNoisy(zone) && zone.zone->element == wanted.element &&
+                                 zone.zone->velocityLo == wanted.velocityLo &&
+                                 zone.zone->velocityHi == wanted.velocityHi;
+                      });
+    const auto found = std::ranges::min_element(
+        candidates, {}, [&](const BankZone& zone) { return std::abs(zone.zone->rootKey - wanted.rootKey); });
+    return found != candidates.end() ? &*found : nullptr;
+}
+
+std::vector<BankZone> withCleanSamples(const std::vector<BankZone>& zones) {
+    return zones | std::views::transform([&](const BankZone& zone) {
+               const BankZone* clean = isNoisy(zone) ? nearestCleanZone(zones, zone) : nullptr;
+               return clean != nullptr ? BankZone{.zone = zone.zone,
+                                                  .left = clean->left,
+                                                  .right = clean->right,
+                                                  .pitch = clean->zone}
+                                       : zone;
+           }) |
+           std::ranges::to<std::vector>();
+}
+
+// The notes of the bank's noisy zones, as "C-2 to C1, F1 to E3", or empty when it has none.
+std::string noisyNotes(const Bank& bank) {
+    std::vector<std::pair<int, int>> keys =
+        bank.zones | std::views::filter(isNoisy) |
+        std::views::transform([](const BankZone& zone) { return std::pair{zone.zone->keyLo, zone.zone->keyHi}; }) |
+        std::ranges::to<std::vector>();
+    std::ranges::sort(keys);
+    std::vector<std::pair<int, int>> merged;
+    for (const auto& [first, last] : keys) {
+        if (!merged.empty() && first <= merged.back().second + 1) {
+            merged.back().second = std::max(merged.back().second, last);
+        } else {
+            merged.emplace_back(first, last);
+        }
+    }
+    return merged | std::views::transform([](const auto& range) { return noteRange(range.first, range.second); }) |
+           std::views::join_with(std::string{", "}) | std::ranges::to<std::string>();
+}
+
 void publishStore(Plugin& plugin, std::shared_ptr<const Store> store, const std::filesystem::path& folder) {
     const int selected = plugin.selected.load(std::memory_order_relaxed);
     if (voiceExists(plugin, selected)) {
@@ -124,7 +171,7 @@ void publishStore(Plugin& plugin, std::shared_ptr<const Store> store, const std:
     plugin.store = std::move(store);
     plugin.loadedFolder = folder;
     plugin.storeLoaded = true;
-    plugin.banks = std::vector<std::atomic<const Bank*>>(plugin.store->voices.size());
+    plugin.banks = std::vector<VoiceBanks>(plugin.store->voices.size());
     plugin.labels = labelsOf(*plugin.store);
     plugin.addresses = std::views::iota(std::size_t{0}, plugin.store->voices.size()) |
                        std::views::transform([&](std::size_t voice) {
@@ -229,7 +276,7 @@ void pickStateVoice(Plugin& plugin) {
 }
 
 void buildBank(Plugin& plugin, int voice) {
-    if (!voiceExists(plugin, voice) || plugin.banks[static_cast<std::size_t>(voice)].load() != nullptr) {
+    if (!voiceExists(plugin, voice) || plugin.banks[static_cast<std::size_t>(voice)].decoded.load() != nullptr) {
         return;
     }
     auto bank = std::make_unique<Bank>();
@@ -237,51 +284,53 @@ void buildBank(Plugin& plugin, int voice) {
         const Wave* left = waveFor(plugin, zone.leftWave);
         const Wave* right = zone.rightWave.empty() ? nullptr : waveFor(plugin, zone.rightWave);
         if (left != nullptr && (right != nullptr || zone.rightWave.empty())) {
-            bank->zones.push_back(BankZone{.zone = &zone, .left = left, .right = right});
+            bank->zones.push_back(BankZone{.zone = &zone, .left = left, .right = right, .pitch = &zone});
         }
     }
-    plugin.banks[static_cast<std::size_t>(voice)].store(bank.get(), std::memory_order_release);
+    auto clean = std::make_unique<Bank>(Bank{.zones = withCleanSamples(bank->zones)});
+    VoiceBanks& banks = plugin.banks[static_cast<std::size_t>(voice)];
+    banks.clean.store(clean.get(), std::memory_order_release);
+    banks.decoded.store(bank.get(), std::memory_order_release);
+    plugin.ownedBanks.push_back(std::move(clean));
     plugin.ownedBanks.push_back(std::move(bank));
     rescanParams(plugin, CLAP_PARAM_RESCAN_TEXT);
 }
 
+const Bank* playableBank(const Plugin& plugin, int voice) {
+    if (!voiceExists(plugin, voice)) {
+        return nullptr;
+    }
+    const VoiceBanks& banks = plugin.banks[static_cast<std::size_t>(voice)];
+    return (plugin.playNoisyAsDecoded.load(std::memory_order_relaxed) ? banks.decoded : banks.clean)
+        .load(std::memory_order_acquire);
+}
+
 std::string noiseWarning(const Plugin& plugin) {
     const int voice = plugin.selected.load(std::memory_order_relaxed);
-    const Bank* bank = voiceExists(plugin, voice)
-                           ? plugin.banks[static_cast<std::size_t>(voice)].load(std::memory_order_acquire)
-                           : nullptr;
-    if (bank == nullptr) {
+    if (!voiceExists(plugin, voice)) {
         return {};
     }
-    std::vector<std::pair<int, int>> keys =
-        bank->zones | std::views::filter([](const BankZone& zone) {
-            return zone.left->noisy || (zone.right != nullptr && zone.right->noisy);
-        }) |
-        std::views::transform([](const BankZone& zone) { return std::pair{zone.zone->keyLo, zone.zone->keyHi}; }) |
-        std::ranges::to<std::vector>();
-    if (keys.empty()) {
+    const VoiceBanks& banks = plugin.banks[static_cast<std::size_t>(voice)];
+    const Bank* decoded = banks.decoded.load(std::memory_order_acquire);
+    if (decoded == nullptr) {
         return {};
     }
-    std::ranges::sort(keys);
-    std::vector<std::pair<int, int>> merged;
-    for (const auto& [first, last] : keys) {
-        if (!merged.empty() && first <= merged.back().second + 1) {
-            merged.back().second = std::max(merged.back().second, last);
-        } else {
-            merged.emplace_back(first, last);
-        }
+    const std::string unfixable = noisyNotes(*banks.clean.load(std::memory_order_acquire));
+    const std::string notes =
+        plugin.playNoisyAsDecoded.load(std::memory_order_relaxed) ? noisyNotes(*decoded) : unfixable;
+    if (notes.empty()) {
+        return {};
     }
-    return std::format(
-        "Choose another voice for {}, where this voice's samples decode with noise",
-        merged | std::views::transform([](const auto& range) { return noteRange(range.first, range.second); }) |
-            std::views::join_with(std::string{", "}) | std::ranges::to<std::string>());
+    return std::format("Choose another voice for {}, where this voice's samples decode with noise{}", notes,
+                       notes == unfixable ? "" : ". Set Noisy samples to Use nearest clean sample.");
 }
 
 void selectVoice(Plugin& plugin, int voice, bool audioThread) {
     const int picked = voiceExists(plugin, voice) ? voice : -1;
     plugin.selected.store(picked, std::memory_order_relaxed);
     if (audioThread) {
-        if (picked >= 0 && plugin.banks[static_cast<std::size_t>(picked)].load(std::memory_order_acquire) == nullptr) {
+        if (picked >= 0 &&
+            plugin.banks[static_cast<std::size_t>(picked)].decoded.load(std::memory_order_acquire) == nullptr) {
             plugin.bankWanted.store(picked, std::memory_order_relaxed);
             plugin.host->request_callback(plugin.host);
         }

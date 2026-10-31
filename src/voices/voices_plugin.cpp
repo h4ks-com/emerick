@@ -131,7 +131,7 @@ const emerick::voices::Bank* updatePlayingBank(Plugin& plugin) {
     const int selected = plugin.selected.load(std::memory_order_relaxed);
     if (selected < 0) {
         plugin.playingBank = nullptr;
-    } else if (const auto* bank = plugin.banks[static_cast<std::size_t>(selected)].load(std::memory_order_acquire)) {
+    } else if (const auto* bank = emerick::voices::playableBank(plugin, selected)) {
         plugin.playingBank = bank;
     }
     return plugin.playingBank;

@@ -22,6 +22,12 @@ namespace {
 
 using Json = nlohmann::json;
 
+using SwitchLabels = std::array<std::string_view, 2>;
+
+constexpr SwitchLabels kFollowLabels{"Off", "On"};
+constexpr SwitchLabels kNoisySamplesLabels{"Use nearest clean sample", "Play as decoded"};
+
+// A param with labels is a switch between its two labels.
 struct ParamRange {
     clap_id id;
     const char* name;
@@ -29,18 +35,17 @@ struct ParamRange {
     double min;
     double max;
     double defaultValue;
-    bool stepped;
+    const SwitchLabels* labels;
 };
 
 constexpr std::array<ParamRange, kParamCount - 2> kRanges{{
-    {kVolumeParam, "Volume", "volume", -60.0, 12.0, 0.0, false},
-    {kTuneParam, "Tune", "tune", -24.0, 24.0, 0.0, false},
-    {kAttackParam, "Attack", "attack", 0.0, 5.0, kDefaultAttack, false},
-    {kReleaseParam, "Release", "release", 0.0, 10.0, kDefaultRelease, false},
-    {kFollowParam, "Follow program changes", "followProgramChanges", 0.0, 1.0, 0.0, true},
+    {kVolumeParam, "Volume", "volume", -60.0, 12.0, 0.0, nullptr},
+    {kTuneParam, "Tune", "tune", -24.0, 24.0, 0.0, nullptr},
+    {kAttackParam, "Attack", "attack", 0.0, 5.0, kDefaultAttack, nullptr},
+    {kReleaseParam, "Release", "release", 0.0, 10.0, kDefaultRelease, nullptr},
+    {kFollowParam, "Follow program changes", "followProgramChanges", 0.0, 1.0, 0.0, &kFollowLabels},
+    {kNoisySamplesParam, "Noisy samples", "playNoisyAsDecoded", 0.0, 1.0, 0.0, &kNoisySamplesLabels},
 }};
-
-constexpr std::array<std::string_view, 2> kSwitchLabels{"Off", "On"};
 
 const ParamRange* rangeOf(clap_id id) {
     const auto* const found = std::ranges::find(kRanges, id, &ParamRange::id);
@@ -60,6 +65,22 @@ std::atomic<float>* numberOf(Plugin& plugin, clap_id id) {
         default:
             return nullptr;
     }
+}
+
+std::atomic<bool>* switchOf(Plugin& plugin, clap_id id) {
+    switch (id) {
+        case kFollowParam:
+            return &plugin.followProgramChanges;
+        case kNoisySamplesParam:
+            return &plugin.playNoisyAsDecoded;
+        default:
+            return nullptr;
+    }
+}
+
+const SwitchLabels* switchLabels(clap_id id) {
+    const ParamRange* range = rangeOf(id);
+    return range != nullptr ? range->labels : nullptr;
 }
 
 int voiceIndex(const Plugin& plugin, double value) {
@@ -94,12 +115,12 @@ Json voiceJson(const Plugin& plugin) {
 
 bool saveState(const clap_plugin* plugin, const clap_ostream* stream) {
     Plugin& voices = pluginOf(plugin);
-    Json state{{"folder", voices.folder},
-               {"voice", voiceJson(voices)},
-               {"followProgramChanges", voices.followProgramChanges.load(std::memory_order_relaxed)}};
+    Json state{{"folder", voices.folder}, {"voice", voiceJson(voices)}};
     for (const ParamRange& range : kRanges) {
         if (const std::atomic<float>* value = numberOf(voices, range.id)) {
             state[range.stateKey] = value->load(std::memory_order_relaxed);
+        } else if (const std::atomic<bool>* on = switchOf(voices, range.id)) {
+            state[range.stateKey] = on->load(std::memory_order_relaxed);
         }
     }
     return writeAll(stream, state.dump());
@@ -142,9 +163,11 @@ bool loadState(const clap_plugin* plugin, const clap_istream* stream) {
             value->store(std::clamp(number(range.stateKey, static_cast<float>(range.defaultValue)),
                                     static_cast<float>(range.min), static_cast<float>(range.max)),
                          std::memory_order_relaxed);
+        } else if (std::atomic<bool>* on = switchOf(voices, range.id)) {
+            const auto found = state.find(range.stateKey);
+            on->store(found != state.end() && found->is_boolean() && found->get<bool>(), std::memory_order_relaxed);
         }
     }
-    voices.followProgramChanges.store(state.value("followProgramChanges", false), std::memory_order_relaxed);
     voices.folder = state.value("folder", std::string{});
     const std::filesystem::path folder =
         voices.folder.empty() ? defaultStoreFolder() : std::filesystem::path{voices.folder};
@@ -185,7 +208,7 @@ bool paramInfo(const clap_plugin* plugin, std::uint32_t index, clap_param_info* 
         return true;
     }
     const ParamRange& range = *rangeOf(index);
-    info->flags |= range.stepped ? CLAP_PARAM_IS_STEPPED | CLAP_PARAM_IS_ENUM : 0U;
+    info->flags |= range.labels != nullptr ? CLAP_PARAM_IS_STEPPED | CLAP_PARAM_IS_ENUM : 0U;
     std::strncpy(std::data(info->name), range.name, std::size(info->name));
     info->min_value = range.min;
     info->max_value = range.max;
@@ -199,8 +222,8 @@ bool paramValue(const clap_plugin* plugin, clap_id id, double* value) {
         *value = voices.selected.load(std::memory_order_relaxed) + 1;
     } else if (id == kNoiseParam) {
         *value = noiseWarning(voices).empty() ? 0.0 : 1.0;
-    } else if (id == kFollowParam) {
-        *value = voices.followProgramChanges.load(std::memory_order_relaxed) ? 1.0 : 0.0;
+    } else if (const std::atomic<bool>* on = switchOf(voices, id)) {
+        *value = on->load(std::memory_order_relaxed) ? 1.0 : 0.0;
     } else if (std::atomic<float>* number = numberOf(voices, id)) {
         *value = number->load(std::memory_order_relaxed);
     } else {
@@ -210,6 +233,9 @@ bool paramValue(const clap_plugin* plugin, clap_id id, double* value) {
 }
 
 std::string paramLabel(const Plugin& plugin, clap_id id, double value) {
+    if (const SwitchLabels* labels = switchLabels(id)) {
+        return std::string{(*labels)[value >= 0.5 ? 1 : 0]};
+    }
     switch (id) {
         case kVoiceParam: {
             const int voice = voiceIndex(plugin, value);
@@ -218,8 +244,6 @@ std::string paramLabel(const Plugin& plugin, clap_id id, double value) {
             }
             return std::string{plugin.storeLoaded ? "None" : kLoadingLabel};
         }
-        case kFollowParam:
-            return std::string{kSwitchLabels[value >= 0.5 ? 1 : 0]};
         case kNoiseParam:
             return noiseWarning(plugin);
         case kVolumeParam:
@@ -244,8 +268,8 @@ bool paramText(const clap_plugin* plugin, clap_id id, double value, char* text, 
 
 bool paramFromText(const clap_plugin* plugin, clap_id id, const char* text, double* value) {
     const Plugin& voices = pluginOf(plugin);
-    if (id == kVoiceParam || id == kFollowParam) {
-        const std::size_t count = id == kVoiceParam ? voices.labels.size() + 1 : kSwitchLabels.size();
+    if (id == kVoiceParam || switchLabels(id) != nullptr) {
+        const std::size_t count = id == kVoiceParam ? voices.labels.size() + 1 : std::tuple_size_v<SwitchLabels>;
         const auto steps = std::views::iota(std::size_t{0}, count);
         const auto found = std::ranges::find_if(
             steps, [&](std::size_t step) { return paramLabel(voices, id, static_cast<double>(step)) == text; });
@@ -280,8 +304,8 @@ void paramFlush(const clap_plugin* plugin, const clap_input_events* in, const cl
 void setParam(Plugin& plugin, const clap_event_param_value& change, bool audioThread) {
     if (change.param_id == kVoiceParam) {
         selectVoice(plugin, voiceIndex(plugin, change.value), audioThread);
-    } else if (change.param_id == kFollowParam) {
-        plugin.followProgramChanges.store(change.value >= 0.5, std::memory_order_relaxed);
+    } else if (std::atomic<bool>* on = switchOf(plugin, change.param_id)) {
+        on->store(change.value >= 0.5, std::memory_order_relaxed);
     } else if (const ParamRange* range = rangeOf(change.param_id)) {
         numberOf(plugin, change.param_id)
             ->store(static_cast<float>(std::clamp(change.value, range->min, range->max)), std::memory_order_relaxed);

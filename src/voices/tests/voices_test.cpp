@@ -30,6 +30,7 @@ constexpr std::uint32_t kVoice = 0;
 constexpr std::uint32_t kVolume = 1;
 constexpr std::uint32_t kFollow = 5;
 constexpr std::uint32_t kNoise = 6;
+constexpr std::uint32_t kNoisySamples = 7;
 using Message = std::array<std::uint8_t, 3>;
 
 // Runs the main thread until the plugin publishes the store its thread read, which rescans the params.
@@ -132,6 +133,41 @@ double frequency(std::span<const float> samples) {
 
 double cents(double played, double wanted) { return 1200.0 * std::log2(played / wanted); }
 
+// The longest run of samples within 0.1% of the loudest, which a predictor stuck at full scale leaves in a render.
+std::size_t longestClampedRun(std::span<const float> samples) {
+    const float peak = loudest(samples) * 0.999F;
+    std::size_t longest = 0;
+    std::size_t run = 0;
+    for (const float sample : samples) {
+        run = std::abs(sample) >= peak ? run + 1 : 0;
+        longest = std::max(longest, run);
+    }
+    return longest;
+}
+
+// A pack whose Bass voice decodes with noise below F3 and plays a clean 440 Hz sine from A3 up, and whose Layered Bass
+// has a noisy soft layer with no clean zone of its own.
+struct NoisyRig : Rig {
+    NoisyRig() {
+        const WxcParams runaway{.coefficients = {3000, -2946, 969}, .scale = 63, .mode = 0};
+        const std::string noisy =
+            store.addWave(wxc1Blob(44100.0, runaway, std::vector<WxcFrame>(64, WxcFrame{.next = runaway})));
+        const std::string clean =
+            store.addWave(linearBlob(sine(440.0, 44100.0, 44100), 44100.0, std::pair{0U, 44100U}));
+        store.addPack(
+            "Noisy Pack",
+            {SyntheticVoice{.name = "Bass",
+                            .zones = {SyntheticZone{.keyHi = "C1", .rootKey = "C0", .wave = noisy},
+                                      SyntheticZone{.keyLo = "F1", .keyHi = "E3", .rootKey = "A1", .wave = noisy},
+                                      SyntheticZone{.keyLo = "F3", .wave = clean}}},
+             SyntheticVoice{.name = "Layered Bass",
+                            .zones = {SyntheticZone{.keyHi = "E3", .velocityHi = 64, .wave = noisy},
+                                      SyntheticZone{.velocityLo = 65, .wave = clean}}}});
+    }
+};
+
+Json noisyVoice(const std::string& name) { return Json{{"voice", {{"pack", "Noisy Pack"}, {"name", name}}}}; }
+
 }  // namespace
 
 TEST_CASE("the expansion voices instrument loads through the CLAP host and lists its voices") {
@@ -144,7 +180,7 @@ TEST_CASE("the expansion voices instrument loads through the CLAP host and lists
 
     const Rig rig;
     const std::vector<ClapParam> params = rig.instrument({})->params();
-    REQUIRE(params.size() == 6);
+    REQUIRE(params.size() == 7);
     CHECK(params[0].name == "Voice");
     CHECK(params[0].enumerated);
     CHECK(params[0].choices == std::vector<std::string>{"None", "Test Pack / Fine", "Test Pack / Half Rate",
@@ -152,25 +188,53 @@ TEST_CASE("the expansion voices instrument loads through the CLAP host and lists
     CHECK(params[1].name == "Volume");
     CHECK(params[5].name == "Follow program changes");
     CHECK(params[5].choices == std::vector<std::string>{"Off", "On"});
+    CHECK(params[6].name == "Noisy samples");
+    CHECK(params[6].choices == std::vector<std::string>{"Use nearest clean sample", "Play as decoded"});
 }
 
-TEST_CASE("the noise warning names the notes of the picked voice whose waves decode with noise") {
-    Rig rig;
-    const WxcParams runaway{.coefficients = {3000, -2946, 969}, .scale = 63, .mode = 0};
-    const std::string noisy = rig.store.addWave(wxc1Blob(44100.0, runaway, {WxcFrame{}}));
-    const std::string clean = rig.store.addWave(linearBlob(sine(440.0, 44100.0, 4410), 44100.0));
-    rig.store.addPack("Noisy Pack",
-                      {SyntheticVoice{.name = "Bass",
-                                      .zones = {SyntheticZone{.keyLo = "F1", .keyHi = "E3", .wave = noisy},
-                                                SyntheticZone{.keyLo = "F3", .wave = clean},
-                                                SyntheticZone{.keyHi = "C1", .wave = noisy}}}});
-    const auto instrument = rig.instrument({{"voice", {{"pack", "Noisy Pack"}, {"name", "Bass"}}}});
-    CHECK(instrument->paramText(kNoise, 0.0) ==
-          "Choose another voice for C-2 to C1, F1 to E3, where this voice's samples decode with noise");
-    CHECK(*instrument->paramValue(kNoise) == 1.0);
-    CHECK(instrument->params().size() == 6);
+TEST_CASE("a noisy zone plays the nearest clean zone of its element, repitched to the note") {
+    const NoisyRig rig;
+    const auto instrument = rig.instrument(noisyVoice("Bass"));
+    CHECK(instrument->paramText(kNoisySamples, *instrument->paramValue(kNoisySamples)) == "Use nearest clean sample");
+    const std::vector<float> low = render(*instrument, {{0x90, 45, 100}}, 20);
+    CHECK(std::abs(cents(frequency(low), 110.0)) < 2.0);
+    CHECK(longestClampedRun(low) < 12);
+
+    instrument->setParam(kNoisySamples, 1.0);
+    render(*instrument, {{0x80, 45, 0}}, 100);
+    CHECK(longestClampedRun(render(*instrument, {{0x90, 45, 100}}, 5)) > 48);
+}
+
+TEST_CASE("the noise warning names the notes that still decode with noise and how to fix them") {
+    const NoisyRig rig;
+    const auto bass = rig.instrument(noisyVoice("Bass"));
+    CHECK(bass->paramText(kNoise, 0.0).empty());
+    CHECK(*bass->paramValue(kNoise) == 0.0);
+    bass->setParam(kNoisySamples, 1.0);
+    CHECK(
+        bass->paramText(kNoise, 0.0) ==
+        "Choose another voice for C-2 to C1, F1 to E3, where this voice's samples decode with noise. Set Noisy samples "
+        "to Use nearest clean sample.");
+    CHECK(*bass->paramValue(kNoise) == 1.0);
+
+    const auto layered = rig.instrument(noisyVoice("Layered Bass"));
+    const std::string unfixable = "Choose another voice for C-2 to E3, where this voice's samples decode with noise";
+    CHECK(layered->paramText(kNoise, 0.0) == unfixable);
+    layered->setParam(kNoisySamples, 1.0);
+    CHECK(layered->paramText(kNoise, 0.0) == unfixable);
+    CHECK(layered->params().size() == 7);
 
     CHECK(rig.instrument(voiceNamed("Sine", 3))->paramText(kNoise, 0.0).empty());
+}
+
+TEST_CASE("the state keeps the Noisy samples choice, and an older state uses the nearest clean sample") {
+    const NoisyRig rig;
+    const auto instrument = rig.instrument(noisyVoice("Bass"));
+    instrument->setParam(kNoisySamples, 1.0);
+    const auto saved = instrument->saveState();
+    REQUIRE(saved.has_value());
+    CHECK(*rig.instrument(Json::parse(saved->begin(), saved->end()))->paramValue(kNoisySamples) == 1.0);
+    CHECK(*rig.instrument(noisyVoice("Bass"))->paramValue(kNoisySamples) == 0.0);
 }
 
 TEST_CASE("a state that names a voice only by its bank and program picks the voice at that address") {

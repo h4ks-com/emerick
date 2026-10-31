@@ -41,6 +41,12 @@ struct ChannelControls {
     int rpnLsb = 127;
 };
 
+// A voice's banks: one where each noisy zone plays the nearest clean zone of its element, and one as decoded.
+struct VoiceBanks {
+    std::atomic<const Bank*> clean{nullptr};
+    std::atomic<const Bank*> decoded{nullptr};
+};
+
 // A store read on its own thread, shared by the instances that wait for the same folder.
 struct StoreLoad;
 
@@ -61,7 +67,7 @@ struct Plugin {
     std::unordered_map<std::string, std::unique_ptr<Wave>> waves;
     std::vector<std::unique_ptr<Bank>> ownedBanks;
     // The main thread builds a voice's bank once and publishes it here, and the banks live until the store reloads.
-    std::vector<std::atomic<const Bank*>> banks;
+    std::vector<VoiceBanks> banks;
     // A state voice the store does not hold, which we save again unless another voice is picked.
     std::optional<VoiceKey> missingVoice;
     std::atomic<int> selected{-1};
@@ -72,6 +78,7 @@ struct Plugin {
     std::atomic<float> attack{kDefaultAttack};
     std::atomic<float> release{kDefaultRelease};
     std::atomic<bool> followProgramChanges{false};
+    std::atomic<bool> playNoisyAsDecoded{false};
     bool active = false;
     double sampleRate = 48000.0;
     // Audio thread only.
@@ -110,6 +117,8 @@ void dropStoreLoad(Plugin& plugin);
 void pickStateVoice(Plugin& plugin);
 // Main thread: decodes the voice's waves once and publishes its bank to the audio thread.
 void buildBank(Plugin& plugin, int voice);
+// The voice's bank that the Noisy samples param picks, or null before the main thread builds it.
+const Bank* playableBank(const Plugin& plugin, int voice);
 // Main thread: the warning that names the notes of the picked voice whose waves decode with noise, or empty.
 std::string noiseWarning(const Plugin& plugin);
 // Picks a voice, or none for -1. On the audio thread it asks the main thread to build the bank.

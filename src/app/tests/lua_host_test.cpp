@@ -221,13 +221,6 @@ struct ProjectLua {
 
 }  // namespace
 
-TEST_CASE("emerick.track finds a track id by name") {
-    ProjectLua project;
-    const std::string vox = project.rig.run("track.addAudio", {{"name", "Vox"}}).at("id");
-    CHECK(project.eval("return emerick.track('Vox')") == vox);
-    CHECK(project.lua.eval("return emerick.track('Nobody')").at("ok") == false);
-}
-
 TEST_CASE("emerick.bus adds a bus with its inserts in order and their params set") {
     ProjectLua project;
     const Json ids = project.eval(
@@ -249,6 +242,15 @@ TEST_CASE("emerick.bus adds a bus with its inserts in order and their params set
     CHECK(project.lua.eval("emerick.bus('Bad', {reverb = {}, delay = {}})").at("ok") == false);
 }
 
+TEST_CASE("emerick.bus with a bad effect, param or value leaves the project unchanged") {
+    ProjectLua project;
+    const model::Document before = project.rig.controller->project().document();
+    CHECK(project.lua.eval("emerick.bus('Bad', {{reverb = {mix = 50}}, {phaser = {}}})").at("ok") == false);
+    CHECK(project.lua.eval("emerick.bus('Bad', {{reverb = {mix = 50}}, {delay = {wobble = 1}}})").at("ok") == false);
+    CHECK(project.lua.eval("emerick.bus('Bad', {{reverb = {mix = 50}}, {delay = {note = '1/5'}}})").at("ok") == false);
+    CHECK(project.rig.controller->project().document() == before);
+}
+
 TEST_CASE("emerick.automate places points by bar and beat on the project's meter") {
     ProjectLua project;
     const std::string vox = project.rig.run("track.addAudio", {{"name", "Vox"}}).at("id");
@@ -264,6 +266,18 @@ TEST_CASE("emerick.automate places points by bar and beat on the project's meter
     CHECK(lane->points[1].curve == core::AutomationCurve::smooth);
     CHECK(project.lua.eval("emerick.automate('Vox', 'gain', {{0, 1, 0}})").at("ok") == false);
     CHECK(project.lua.eval("emerick.automate('Vox', 'gain', {{1, 1}})").at("ok") == false);
+}
+
+TEST_CASE("emerick.automate with a bad bar, beat, value or curve leaves the project unchanged") {
+    ProjectLua project;
+    project.rig.run("track.addAudio", {{"name", "Vox"}});
+    const model::Document before = project.rig.controller->project().document();
+    for (const char* bad : {"{0, 1, 0}", "{1.5, 1, 0}", "{1, 0.5, 0}", "{1, 1, 100}", "{1, 1, 0, 'wavy'}"}) {
+        INFO(bad);
+        CHECK(project.lua.eval(std::string{"emerick.automate('Vox', 'gain', {{1, 1, -6}, "} + bad + "})").at("ok") ==
+              false);
+    }
+    CHECK(project.rig.controller->project().document() == before);
 }
 
 TEST_CASE("emerick.waitReady waits for loading instruments and raises after its timeout") {

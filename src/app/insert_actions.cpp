@@ -16,19 +16,6 @@ namespace {
 
 constexpr const char* kCategory = "Tracks / Inserts";
 
-const engine::EffectSpec& effectParam(const Json& params) {
-    const auto type = param<std::string>(params, "type");
-    const engine::EffectSpec* spec = engine::findEffect(type);
-    if (spec == nullptr) {
-        std::string known;
-        for (const engine::EffectSpec& effect : engine::kEffects) {
-            known += (known.empty() ? "" : ", ") + std::string{effect.id};
-        }
-        throw AppError("unknown effect type " + type + ", use one of " + known);
-    }
-    return *spec;
-}
-
 struct InsertRef {
     model::TrackId track;
     model::InsertId insert;
@@ -71,46 +58,12 @@ Json insertResult(const ProjectController& controller, const InsertRef& ref) {
     return result;
 }
 
-// Toggles store 0 or 1 and choices a whole index; a choice also accepts its name, such as "1/8".
-double paramValue(const engine::EffectParam& described, const Json& params) {
-    const Json& given = params.at("value");
-    double value = 0.0;
-    if (given.is_string() && described.kind == engine::ParamKind::choice) {
-        const auto found = std::ranges::find(described.choices, given.get<std::string>());
-        if (found == described.choices.end()) {
-            throw AppError("param " + std::string{described.id} + " has no choice " + given.get<std::string>());
-        }
-        value = static_cast<double>(found - described.choices.begin());
-    } else {
-        value = param<double>(params, "value");
-    }
-    switch (described.kind) {
-        case engine::ParamKind::toggle:
-            value = value != 0.0 ? 1.0 : 0.0;
-            break;
-        case engine::ParamKind::choice:
-            value = std::round(value);
-            break;
-        case engine::ParamKind::number:
-            break;
-    }
-    return std::clamp(value, static_cast<double>(described.minimum), static_cast<double>(described.maximum));
-}
-
 const engine::EffectParam& describedParam(const model::Insert& insert, const std::string& name) {
     const engine::EffectSpec* spec = engine::findEffect(insert.type);
     if (spec == nullptr) {
         throw AppError("insert " + insert.id.value + " is a " + insert.type + " effect, which this build cannot play");
     }
-    const auto index = engine::paramIndex(*spec, name);
-    if (!index) {
-        std::string known;
-        for (const engine::EffectParam& described : spec->params) {
-            known += (known.empty() ? "" : ", ") + std::string{described.id};
-        }
-        throw AppError(std::string{spec->title} + " has no param " + name + ", use one of " + known);
-    }
-    return spec->params[*index];
+    return effectParamNamed(*spec, name);
 }
 
 model::TrackId audioTrack(const Registry& registry, const ProjectController& controller, const Nav& nav,
@@ -182,7 +135,7 @@ void registerInsertEdits(Registry& registry, ProjectController& controller) {
              const InsertRef ref = insertParam(controller, params);
              const std::string name = paramName(params);
              const engine::EffectParam& described = describedParam(insertOf(controller, ref), name);
-             const double value = paramValue(described, params);
+             const double value = effectParamValue(described, params.at("value"));
              editTrack(controller, ref.track, "set " + std::string{described.title},
                        [&](model::Track& edited) { insertIn(edited, ref.insert).params[name] = value; });
              return insertResult(controller, ref);
@@ -230,7 +183,7 @@ void registerInsertActions(Registry& registry, ProjectController& controller, Na
          .run =
              [&registry, &controller, &nav](const Json& params) {
                  const model::TrackId track = audioTrack(registry, controller, nav, params);
-                 const engine::EffectSpec& spec = effectParam(params);
+                 const engine::EffectSpec& spec = effectType(param<std::string>(params, "type"));
                  model::Insert insert{
                      .id = model::InsertId::make(), .type = std::string{spec.id}, .bypass = false, .params = {}};
                  for (const engine::EffectParam& described : spec.params) {

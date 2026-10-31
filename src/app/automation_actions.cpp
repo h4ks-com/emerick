@@ -342,6 +342,8 @@ void registerLaneActions(Registry& registry, ProjectController& controller, Nav&
                             const LaneRef lane = targetLane(registry, controller, nav, params);
                             Json result = laneResult(controller, lane.track, lane.param.id);
                             result["pointCount"] = result.at("points").size();
+                            result["minimum"] = lane.param.minimum;
+                            result["maximum"] = lane.param.maximum;
                             if (!optionalParam<bool>(params, "includePoints").value_or(true)) {
                                 result.erase("points");
                             }

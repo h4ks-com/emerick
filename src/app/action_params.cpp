@@ -1,7 +1,9 @@
 #include "emerick/app/action_params.hpp"
 
 #include <algorithm>
+#include <ranges>
 #include <stdexcept>
+#include <string_view>
 
 namespace emerick::app {
 
@@ -52,6 +54,52 @@ core::Ticks positionParam(const Json& params, const std::string& key, const core
         return *ticks;
     }
     throw AppError("missing param " + key);
+}
+
+const engine::EffectSpec& effectType(const std::string& type) {
+    const engine::EffectSpec* spec = engine::findEffect(type);
+    if (spec == nullptr) {
+        const std::string known = engine::kEffects | std::views::transform(&engine::EffectSpec::id) |
+                                  std::views::join_with(std::string_view{", "}) | std::ranges::to<std::string>();
+        throw AppError("unknown effect type " + type + ", use one of " + known);
+    }
+    return *spec;
+}
+
+const engine::EffectParam& effectParamNamed(const engine::EffectSpec& spec, const std::string& name) {
+    const auto index = engine::paramIndex(spec, name);
+    if (!index) {
+        const std::string known = spec.params | std::views::transform(&engine::EffectParam::id) |
+                                  std::views::join_with(std::string_view{", "}) | std::ranges::to<std::string>();
+        throw AppError(std::string{spec.title} + " has no param " + name + ", use one of " + known);
+    }
+    return spec.params[*index];
+}
+
+double effectParamValue(const engine::EffectParam& described, const Json& value) {
+    double number = 0.0;
+    if (value.is_string() && described.kind == engine::ParamKind::choice) {
+        const auto found = std::ranges::find(described.choices, value.get<std::string>());
+        if (found == described.choices.end()) {
+            throw AppError("param " + std::string{described.id} + " has no choice " + value.get<std::string>());
+        }
+        number = static_cast<double>(found - described.choices.begin());
+    } else if (value.is_number()) {
+        number = value.get<double>();
+    } else {
+        throw AppError("param " + std::string{described.id} + " takes a number, got " + value.dump());
+    }
+    switch (described.kind) {
+        case engine::ParamKind::toggle:
+            number = number != 0.0 ? 1.0 : 0.0;
+            break;
+        case engine::ParamKind::choice:
+            number = std::round(number);
+            break;
+        case engine::ParamKind::number:
+            break;
+    }
+    return std::clamp(number, static_cast<double>(described.minimum), static_cast<double>(described.maximum));
 }
 
 }  // namespace emerick::app

@@ -218,13 +218,12 @@ constexpr std::array kLuaMembers{
     LuaMember{"waitReady", "waitReady(seconds?)",
               "Wait until every instrument has loaded its sounds, for up to seconds (default 60), and raise an error "
               "after that."},
-    LuaMember{"track", "track(name)", "Return the id of the track with that name."},
     LuaMember{"bus", "bus(name, inserts?)",
               "Add a bus with an insert per {type = params} table of the inserts list, in order, such as "
               "emerick.bus('Verb', {{reverb = {mix = 1}}}), and return its id and the insert ids."},
     LuaMember{"automate", "automate(track, param, points)",
-              "Add a point to the track's lane of param for each {bar, beat, value, curve?} in points, where beat "
-              "may be fractional and curve is linear, hold or smooth, and return the point ids."},
+              "Add a point to the lane of param on the track, by id or name, for each {bar, beat, value, curve?} in "
+              "points, where beat may be fractional and curve is linear, hold or smooth, and return the point ids."},
 };
 
 constexpr double kMaxWaitSeconds = 86'400;
@@ -355,7 +354,6 @@ LuaHost::LuaHost(Registry& registry, const UiApi& ui) : registry_(&registry), st
     emerick["waitReady"] = [&registry](const sol::optional<double>& seconds) {
         registry.run("project.waitReady", seconds ? Json{{"timeout", *seconds}} : Json::object(), ActionSource::Lua);
     };
-    emerick["track"] = [&registry](const std::string& name) { return trackIdByName(registry, name); };
     emerick["bus"] = [&registry](const std::string& name, const sol::optional<sol::object>& inserts,
                                  sol::this_state current) {
         const Json result = addBus(registry, name, fromLuaArgument(inserts));

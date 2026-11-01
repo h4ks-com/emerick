@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import httpx
-from pydantic import BaseModel, ValidationError
+from pydantic import BaseModel, JsonValue, TypeAdapter, ValidationError
 
 from emerick_service.config import Settings
 
@@ -43,6 +43,9 @@ class RpcError(BaseModel):
 class RpcReply(BaseModel):
     result: ToolResult | None = None
     error: RpcError | None = None
+
+
+JSON_REPLY = TypeAdapter(dict[str, JsonValue])
 
 
 def child_env(home: Path) -> dict[str, str]:
@@ -142,6 +145,22 @@ class Child:
         error = reply.error.message if reply.error else reply.result.structuredContent.error if reply.result else None
         if error is not None:
             raise ChildError(f"{action}: {error}")
+
+    async def rpc(
+        self, client: httpx.AsyncClient, method: str, params: dict[str, JsonValue], timeout: float
+    ) -> JsonValue:
+        """Send one MCP request to the child and return its result, or its error when it has one.
+
+        :raises ChildError: when the child answers with no JSON-RPC reply.
+        :raises httpx.HTTPError: when the child does not answer.
+        """
+        body = {"jsonrpc": "2.0", "id": 1, "method": method, "params": params}
+        response = await client.post(self.mcp_url, json=body, timeout=timeout)
+        try:
+            reply = JSON_REPLY.validate_json(response.content)
+        except ValidationError as error:
+            raise ChildError(f"{method}: HTTP {response.status_code} with no JSON-RPC reply") from error
+        return reply.get("error") or reply.get("result")
 
     async def wait_ready(self, client: httpx.AsyncClient, timeout: float) -> None:
         """Wait until the child answers MCP.

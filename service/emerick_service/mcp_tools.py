@@ -2,7 +2,7 @@ from typing import Annotated
 
 from mcp.server import MCPServer
 from mcp.server.mcpserver import Context
-from pydantic import Field
+from pydantic import Field, JsonValue
 from starlette.requests import Request
 
 from emerick_service.db import Database
@@ -10,7 +10,8 @@ from emerick_service.models import Project, SessionView
 from emerick_service.sessions import SessionManager
 
 INSTRUCTIONS = (
-    "Create a project, start a session on it and drive Emerick through the session's mcp_url. "
+    "Create a project, start a session on it and drive Emerick with session.call, or connect to the session's "
+    "mcp_url directly. Keep every file path inside the session's project_dir. "
     "Close the session with session.close as soon as you are done, so the project is saved and the slot is freed."
 )
 
@@ -62,6 +63,29 @@ def build_mcp(manager: SessionManager, db: Database) -> MCPServer:
     @mcp.tool(name="session.list", description="List the sessions, live and closed.")
     def session_list(ctx: Context[None, Request]) -> list[SessionView]:
         return [session_view(manager, session.id, base(ctx)) for session in db.list_sessions()]
+
+    def call_timeout() -> float:
+        return float((manager.settings.max_render_seconds or 3600) + 60)
+
+    @mcp.tool(
+        name="session.tools",
+        description="List the tools of a live session's Emerick, such as actions.run, state.get and lua.eval.",
+    )
+    async def session_tools(session_id: str) -> JsonValue:
+        db.touch(session_id)
+        return await manager.running_child(session_id).rpc(manager.client, "tools/list", {}, call_timeout())
+
+    @mcp.tool(
+        name="session.call",
+        description=(
+            "Call one tool of a live session's Emerick with its arguments, such as lua.eval with {code} to run a "
+            "whole song script, actions.run with {id, params}, or state.get with {name}, and return its result."
+        ),
+    )
+    async def session_call(session_id: str, tool: str, arguments: dict[str, JsonValue]) -> JsonValue:
+        db.touch(session_id)
+        child = manager.running_child(session_id)
+        return await child.rpc(manager.client, "tools/call", {"name": tool, "arguments": arguments}, call_timeout())
 
     @mcp.tool(
         name="session.close",

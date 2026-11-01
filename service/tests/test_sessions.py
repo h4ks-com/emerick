@@ -113,4 +113,32 @@ def test_top_level_mcp_lists_tools(make_client: MakeClient) -> None:
     assert client.post("/mcp", json=init, headers=headers).status_code == 200
     listed = client.post("/mcp", json={"jsonrpc": "2.0", "id": 2, "method": "tools/list"}, headers=headers)
     names = {tool["name"] for tool in listed.json()["result"]["tools"]}
-    assert names == {"project.create", "project.list", "session.create", "session.list", "session.close"}
+    assert names == {
+        "project.create",
+        "project.list",
+        "session.create",
+        "session.list",
+        "session.tools",
+        "session.call",
+        "session.close",
+    }
+
+
+def test_top_level_mcp_drives_a_session_without_its_own_url(make_client: MakeClient) -> None:
+    client = make_client()
+    headers = {"Accept": "application/json, text/event-stream"}
+
+    def call(tool: str, arguments: dict[str, object]) -> dict[str, object]:
+        body = {"jsonrpc": "2.0", "id": 3, "method": "tools/call", "params": {"name": tool, "arguments": arguments}}
+        reply = client.post("/mcp", json=body, headers=headers).json()
+        return reply["result"]["structuredContent"]
+
+    project = call("project.create", {"name": "song"})
+    session = call("session.create", {"project_id": project["id"]})
+    tools = call("session.tools", {"session_id": session["id"]})
+    assert tools == {"result": {"tools": [{"name": "actions.run"}, {"name": "lua.eval"}]}}
+    ran = call("session.call", {"session_id": session["id"], "tool": "actions.run", "arguments": {"id": "x"}})
+    assert ran == {"result": {"structuredContent": {"result": {}}}}
+    assert "x" in (Path(str(session["project_dir"])) / "actions.log").read_text().split()
+    closed = call("session.close", {"session_id": session["id"]})
+    assert closed["status"] == "closed"

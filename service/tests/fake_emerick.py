@@ -19,6 +19,8 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self) -> None:
         message = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
         result: dict[str, object] = {}
+        if message["method"] == "tools/list":
+            result = {"tools": [{"name": "actions.run"}, {"name": "lua.eval"}]}
         if message["method"] == "tools/call":
             action = message["params"]["arguments"]["id"]
             root = Path(option("agent-write-root"))

@@ -7,7 +7,7 @@ The service has no authentication. Run it behind a reverse proxy that authentica
 ## Run
 
 ```
-docker run --rm -p 127.0.0.1:8080:8080 -v emerick-data:/data emerick-dev
+docker run --rm -p 127.0.0.1:8080:8080 -v emerick-data:/data emerick
 ```
 
 Without Docker, from the repo root: `make service-run`.

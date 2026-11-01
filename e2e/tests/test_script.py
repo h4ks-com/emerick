@@ -4,7 +4,7 @@ import unittest
 
 from test_export import HOST_OUT, float_wav_samples
 
-IMAGE = "emerick-dev"
+IMAGE = "emerick"
 BUILD = """
 emerick.run("project.new", {path = "/e2e-out/script-song"})
 local track = emerick.run("track.addInstrument", {plugin = "org.emerick.gm", name = "Piano"}).id

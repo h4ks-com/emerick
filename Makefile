@@ -75,7 +75,7 @@ check-fast: build
 	$(if $(FAST_TEST_DIRS),$(foreach dir,$(FAST_TEST_DIRS),ctest --test-dir build/dev/$(dir) -j $(JOBS) --output-on-failure --stop-on-failure &&) true,ctest --preset dev -j $(JOBS) --stop-on-failure)
 
 docker-build:
-	docker build --build-arg JOBS=$(JOBS) $(DOCKER_BUILD_ARGS) -t emerick-dev -f docker/Dockerfile .
+	docker build --build-arg JOBS=$(JOBS) $(DOCKER_BUILD_ARGS) -t emerick -f docker/Dockerfile .
 
 e2e: docker-build
 	./e2e/run.sh

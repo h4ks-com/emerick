@@ -172,6 +172,13 @@ std::vector<AudioObjectID> allDevices() {
     return arrayProperty<AudioObjectID>(kAudioObjectSystemObject, address(kAudioHardwarePropertyDevices));
 }
 
+std::vector<std::string> deviceUids() {
+    return allDevices() | std::views::transform([](AudioObjectID device) {
+               return stringProperty(device, kAudioDevicePropertyDeviceUID);
+           }) |
+           std::ranges::to<std::vector>();
+}
+
 int sum(const std::vector<int>& values) { return std::ranges::fold_left(values, 0, std::plus{}); }
 
 // We switch off the inputs of devices we only play to, so a Bluetooth headset keeps its music profile for every app
@@ -202,6 +209,7 @@ void readOnlyRequestedInputs(AudioObjectID device, AudioDeviceIOProcID proc, con
 }  // namespace
 
 struct CoreAudioBackend::Impl {
+    ListedDevices listed;
     std::optional<DeviceListListener> listener;
     std::optional<PrivateAggregate> aggregate;
     AudioObjectID device = kAudioObjectUnknown;
@@ -239,7 +247,12 @@ struct CoreAudioBackend::Impl {
 };
 
 CoreAudioBackend::CoreAudioBackend() : impl_(std::make_unique<Impl>()) {
-    impl_->listener.emplace([this] { deviceListChanged(); });
+    impl_->listed.changed(deviceUids());
+    impl_->listener.emplace([this] {
+        if (impl_->listed.changed(deviceUids())) {
+            deviceListChanged();
+        }
+    });
 }
 
 CoreAudioBackend::~CoreAudioBackend() {

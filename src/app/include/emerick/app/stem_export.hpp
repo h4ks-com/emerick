@@ -10,6 +10,7 @@
 #include <utility>
 #include <vector>
 
+#include "emerick/app/audio_file.hpp"
 #include "emerick/app/registry.hpp"
 #include "emerick/engine/engine.hpp"
 #include "emerick/engine/session.hpp"
@@ -32,13 +33,13 @@ core::Ticks exportEnd(const engine::Session& session, const model::Document& doc
 
 // Renders each audio track and each MIDI track with an instrument of the session alone and dry, with its clip gains,
 // fades and track gain, and each bus with the tracks of the session that feed it, to <folder>/<track name>.wav, or
-// "<folder>/01 <track name>.wav" numbered by track position. A track whose instrument takes MIDI from another track
-// plays with that track, and a track that only sends MIDI on gets no stem. One offline engine renders every stem at
-// once with fresh instances of the instruments from the slots of context's document. Throws AppError when nothing can
-// render.
+// "<folder>/01 <track name>.wav" numbered by track position, with the suffix of the encoding's format. A track whose
+// instrument takes MIDI from another track plays with that track, and a track that only sends MIDI on gets no stem. One
+// offline engine renders every stem at once with fresh instances of the instruments from the slots of context's
+// document. Throws AppError when nothing can render.
 std::vector<std::filesystem::path> exportStems(const engine::Session& session, const Registry& registry,
                                                const PlaybackContext& context, const std::filesystem::path& folder,
-                                               double sampleRate, bool numbered = false);
+                                               double sampleRate, bool numbered = false, AudioEncoding encoding = {});
 
 struct LoudnessTarget {
     double lufs = -14;
@@ -51,11 +52,11 @@ struct MixLevels {
 };
 
 // Renders every audio track, instrument track and bus of the session with sends, mute and solo applied to one stereo
-// WAV. With a target, it turns the mix to the target loudness under the true peak ceiling and returns the levels the
-// file ends at.
+// file in the encoding. With a target, it turns the mix to the target loudness under the true peak ceiling and returns
+// the levels the file ends at.
 std::optional<MixLevels> exportMix(const engine::Session& session, const Registry& registry,
                                    const PlaybackContext& context, const std::filesystem::path& file, double sampleRate,
-                                   const std::optional<LoudnessTarget>& target = {});
+                                   const std::optional<LoudnessTarget>& target = {}, AudioEncoding encoding = {});
 
 // One render's fresh instruments and offline engine. The UI thread constructs it, runs idleInstruments and destroys it,
 // and any one thread runs process.

@@ -217,11 +217,13 @@ void waitForReadAhead(const engine::Engine& engine) {
     }
 }
 
-engine::Frames renderFrames(const engine::Session& session, const model::Document& document, double sampleRate) {
+engine::Frames renderFrames(const engine::Session& session, const model::Document& document, const Registry& registry,
+                            double sampleRate) {
     const core::Ticks end = exportEnd(session, document);
     if (end <= 0) {
         throw AppError("the project has no clips to export");
     }
+    registry.checkRenderSeconds(document.tempo.ticksToSeconds(end));
     return document.tempo.ticksToFrames(end, sampleRate);
 }
 
@@ -264,9 +266,9 @@ core::Ticks exportEnd(const engine::Session& session, const model::Document& doc
 
 std::vector<std::filesystem::path> exportStems(const engine::Session& session, const Registry& registry,
                                                const PlaybackContext& context, const std::filesystem::path& folder,
-                                               double sampleRate, bool numbered) {
+                                               double sampleRate, bool numbered, AudioEncoding encoding) {
     const model::Document& document = *context.document;
-    const engine::Frames frames = renderFrames(session, document, sampleRate);
+    const engine::Frames frames = renderFrames(session, document, registry, sampleRate);
     const std::vector<engine::Track> tracks = stemTracks(session, document);
     if (tracks.empty()) {
         throw AppError("there are no audio tracks to export");
@@ -286,12 +288,12 @@ std::vector<std::filesystem::path> exportStems(const engine::Session& session, c
         if (!used.insert(stem).second) {
             stem += "-" + track.id;
         }
-        files.push_back(folder / (stem + ".wav"));
+        files.push_back(folder / std::format("{}.{}", stem, audioFormatName(encoding.format)));
     }
-    std::vector<WavWriter> writers =
-        files |
-        std::views::transform([&](const std::filesystem::path& file) { return WavWriter(file, 2, sampleRate); }) |
-        std::ranges::to<std::vector>();
+    std::vector<AudioWriter> writers = files | std::views::transform([&](const std::filesystem::path& file) {
+                                           return AudioWriter(file, 2, sampleRate, encoding);
+                                       }) |
+                                       std::ranges::to<std::vector>();
     OfflineRender render(
         captureSession(session, tracks | std::views::transform(&engine::Track::id) | std::ranges::to<std::vector>()),
         registry, context, sampleRate);
@@ -308,11 +310,12 @@ std::vector<std::filesystem::path> exportStems(const engine::Session& session, c
 
 std::optional<MixLevels> exportMix(const engine::Session& session, const Registry& registry,
                                    const PlaybackContext& context, const std::filesystem::path& file, double sampleRate,
-                                   const std::optional<LoudnessTarget>& target) {
-    const engine::Frames frames = renderFrames(session, *context.document, sampleRate);
+                                   const std::optional<LoudnessTarget>& target, AudioEncoding encoding) {
+    const engine::Frames frames = renderFrames(session, *context.document, registry, sampleRate);
     if (!file.parent_path().empty()) {
         std::filesystem::create_directories(file.parent_path());
     }
+    AudioWriter writer(file, 2, sampleRate, encoding);
     std::vector<std::vector<float>> mix(2);
     OfflineRender render(mixSession(session, *context.document), registry, context, sampleRate);
     render.process(
@@ -323,7 +326,7 @@ std::optional<MixLevels> exportMix(const engine::Session& session, const Registr
         const double lufs = engine::matchLoudness(mix, sampleRate, target->lufs, target->ceilingDbtp);
         levels = MixLevels{.integratedLufs = lufs, .truePeakDbtp = engine::truePeakDbtp(mix)};
     }
-    writeWav(file, mix, sampleRate);
+    writer.write(mix);
     return levels;
 }
 

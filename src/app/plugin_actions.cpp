@@ -18,6 +18,10 @@ std::vector<std::filesystem::path> userFolders(const Registry& registry) {
     return folders | std::ranges::to<std::vector<std::filesystem::path>>();
 }
 
+std::vector<std::filesystem::path> scanFolders(const Registry& registry) {
+    return registry.limits().bundledPluginsOnly ? std::vector<std::filesystem::path>{} : userFolders(registry);
+}
+
 std::string countOf(const std::vector<CatalogPlugin>& plugins, core::PluginFormat format) {
     const auto count =
         std::ranges::count(plugins, format, [](const CatalogPlugin& plugin) { return plugin.descriptor.format; });
@@ -51,7 +55,7 @@ Json catalogJson(const PluginCatalog& catalog) {
 
 const PluginCatalog& scannedCatalog(const Registry& registry, PluginCatalog& catalog) {
     if (!catalog.scanned()) {
-        catalog.scan(userFolders(registry), false);
+        catalog.scan(scanFolders(registry), false);
     }
     return catalog;
 }
@@ -94,7 +98,12 @@ void registerPluginActions(Registry& registry, Nav& nav, PluginCatalog& catalog)
          .category = "Plugins",
          .run =
              [&registry, &catalog](const Json&) {
-                 catalog.scan(userFolders(registry), true);
+                 if (registry.limits().bundledPluginsOnly && !userFolders(registry).empty()) {
+                     throw AppError(
+                         "this run scans only the plugins the app ships, so clear the CLAP and VST3 "
+                         "folders settings");
+                 }
+                 catalog.scan(scanFolders(registry), true);
                  return catalogJson(catalog);
              },
          .menus = {kPluginsMenu},

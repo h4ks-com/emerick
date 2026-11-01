@@ -11,6 +11,7 @@
 #include <algorithm>
 #include <array>
 #include <chrono>
+#include <format>
 #include <limits>
 #include <optional>
 #include <ranges>
@@ -456,6 +457,28 @@ void Registry::setAgentRoots(AgentRoots roots) {
         }
     }
     agentRoots_ = std::move(roots);
+}
+
+Json Registry::limitsState() const {
+    const auto optionalJson = [](const auto& value, const auto& convert) {
+        return value ? Json(convert(*value)) : Json(nullptr);
+    };
+    const auto pathText = [](const std::filesystem::path& path) { return path.string(); };
+    return {{"luaTimeoutMs", optionalJson(limits_.luaTimeout, [](auto timeout) { return timeout.count(); })},
+            {"luaMemoryMb", limits_.luaMemoryBytes >> 20},
+            {"maxRenderSeconds", optionalJson(limits_.renderSeconds, [](double seconds) { return seconds; })},
+            {"bundledPluginsOnly", limits_.bundledPluginsOnly},
+            {"agentReadRoot", optionalJson(agentRoots_.read, pathText)},
+            {"agentWriteRoot", optionalJson(agentRoots_.write, pathText)}};
+}
+
+void Registry::checkRenderSeconds(double seconds) const {
+    if (limits_.renderSeconds && seconds > *limits_.renderSeconds) {
+        throw AppError(
+            std::format("the render would run {:.1f} s of audio, over the limit of {:g} s; render a "
+                        "shorter range or project",
+                        seconds, *limits_.renderSeconds));
+    }
 }
 
 std::filesystem::path Registry::checkedPath(const std::string& path, PathAccess access) const {

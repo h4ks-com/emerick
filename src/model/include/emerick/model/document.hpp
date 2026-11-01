@@ -11,6 +11,7 @@
 #include "emerick/core/automation.hpp"
 #include "emerick/core/fade.hpp"
 #include "emerick/core/id.hpp"
+#include "emerick/core/plugin_format.hpp"
 #include "emerick/core/time.hpp"
 
 namespace emerick::model {
@@ -117,16 +118,32 @@ struct Send {
     bool operator==(const Send&) const = default;
 };
 
+// A CLAP or VST3 plugin, as a track's instrument or an insert. The model keeps the plugin's saved state as bytes it
+// never reads, so a project keeps the state while the plugin is missing.
+struct PluginSlot {
+    std::string pluginId;
+    std::string bundle;  // where the plugin was found when it was picked
+    std::string name;
+    std::vector<std::uint8_t> state;
+    core::PluginFormat format = core::PluginFormat::clap;
+
+    bool operator==(const PluginSlot&) const = default;
+};
+
 // An effect on a track's signal before its fader. The app reads type and params against its effect table, so a file
-// from another build keeps what this one cannot play.
+// from another build keeps what this one cannot play. A plugin insert's type is kPluginInsertType and its plugin slot
+// keeps the plugin with its state, which holds its param values.
 struct Insert {
     InsertId id = InsertId::make();
     std::string type;
     bool bypass = false;
     std::map<std::string, double> params;
+    std::optional<PluginSlot> plugin = std::nullopt;
 
     bool operator==(const Insert&) const = default;
 };
+
+inline constexpr const char* kPluginInsertType = "plugin";
 
 // The curve shapes the segment from this point to the next.
 struct AutomationPoint {
@@ -150,17 +167,6 @@ struct AutomationLane {
 // As in Logic: Off ignores the lanes, Read plays them, Touch writes while a control is held and Latch keeps writing
 // its last value until the transport stops.
 enum class AutomationMode : std::uint8_t { off, read, touch, latch };
-
-// A CLAP plugin a track plays its MIDI through. The model keeps the plugin's saved state as bytes it never reads, so
-// a project keeps the state while the plugin is missing.
-struct PluginSlot {
-    std::string pluginId;
-    std::string bundle;  // where the plugin was found when it was picked
-    std::string name;
-    std::vector<std::uint8_t> state;
-
-    bool operator==(const PluginSlot&) const = default;
-};
 
 struct Track {
     TrackId id = TrackId::make();

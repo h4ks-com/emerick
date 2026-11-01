@@ -145,24 +145,40 @@ engine::Session captureSession(const engine::Session& session, const std::vector
     return renderSession(session, std::move(tracks));
 }
 
-// Each render plays fresh instances with the saved states, so the live instruments stay with the live engine.
+std::shared_ptr<engine::Plugin> renderPlugin(const model::Track& track, const model::PluginSlot& slot) {
+    auto plugin = engine::createPlugin(slot.format, slot.bundle, slot.pluginId);
+    if (!plugin) {
+        throw AppError("cannot render track " + track.name + ": " + plugin.error());
+    }
+    if (!slot.state.empty() && !(*plugin)->loadState(slot.state)) {
+        throw AppError("cannot render track " + track.name + ": " + slot.name + " did not load its settings");
+    }
+    return *std::move(plugin);
+}
+
+// Each render plays fresh instances with the saved states, so the live plugins stay with the live engine.
 RenderInstruments attachInstruments(engine::Session& session, const model::Document& document) {
     RenderInstruments created;
     for (engine::Track& track : session.tracks) {
         const model::Track* source = model::findTrack(document, model::TrackId{track.id});
-        if (source == nullptr || !source->instrument) {
+        if (source == nullptr) {
             continue;
         }
-        const model::PluginSlot& slot = *source->instrument;
-        auto instrument = engine::createClapPlugin(slot.bundle, slot.pluginId);
-        if (!instrument) {
-            throw AppError("cannot render track " + source->name + ": " + instrument.error());
+        if (source->instrument) {
+            track.instrument = renderPlugin(*source, *source->instrument);
+            created.push_back(track.instrument);
         }
-        if (!slot.state.empty() && !(*instrument)->loadState(slot.state)) {
-            throw AppError("cannot render track " + source->name + ": " + slot.name + " did not load its settings");
+        std::map<std::string, std::shared_ptr<engine::Plugin>> inserts;
+        for (const model::Insert& insert : source->inserts) {
+            if (insert.plugin) {
+                inserts[insert.id.value] = renderPlugin(*source, *insert.plugin);
+                created.push_back(inserts[insert.id.value]);
+            }
         }
-        track.instrument = *instrument;
-        created.push_back(std::move(*instrument));
+        attachPluginInserts(track, *source, [&inserts](const model::InsertId& id) {
+            const auto found = inserts.find(id.value);
+            return found == inserts.end() ? nullptr : found->second;
+        });
     }
     for (engine::Track& track : session.tracks) {
         if (!hasInstrument(document, track.midiInTrack)) {

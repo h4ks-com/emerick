@@ -101,9 +101,7 @@ if(EMERICK_BUILD_TESTS)
     target_compile_definitions(emerick_test_vst3_hang PRIVATE EMERICK_TEST_HANG)
     target_compile_definitions(emerick_test_vst3_described PRIVATE EMERICK_TEST_CRASH)
     set(resources "${test_vst3_folder}/Emerick Test described.vst3/Contents/Resources")
-    add_custom_command(TARGET emerick_test_vst3_described POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E make_directory "${resources}"
-        COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_CURRENT_SOURCE_DIR}/tests/vst3/moduleinfo.json "${resources}")
+    configure_file(tests/vst3/moduleinfo.json "${resources}/moduleinfo.json" COPYONLY)
     add_library(emerick_test_vst3 INTERFACE)
     add_dependencies(emerick_test_vst3 emerick_test_vst3_gain emerick_test_vst3_crash emerick_test_vst3_hang
         emerick_test_vst3_described emerick-plugin-scanner)

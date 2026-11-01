@@ -17,7 +17,7 @@ namespace emerick::app {
 
 namespace {
 
-constexpr const char* kCacheFile = "clap-plugins.json";
+constexpr const char* kCacheFile = "plugins.json";
 
 long long modifiedTime(const std::filesystem::path& path) {
     std::error_code error;
@@ -25,7 +25,7 @@ long long modifiedTime(const std::filesystem::path& path) {
     return error ? 0 : static_cast<long long>(time.time_since_epoch().count());
 }
 
-// A bundle is a .clap file or folder; we never look inside a bundle for more.
+// A bundle is a .clap or .vst3 file or folder; we never look inside a bundle for more.
 std::vector<std::filesystem::path> findBundles(const std::vector<std::filesystem::path>& folders) {
     std::vector<std::filesystem::path> bundles;
     for (const std::filesystem::path& folder : folders) {
@@ -33,7 +33,7 @@ std::vector<std::filesystem::path> findBundles(const std::vector<std::filesystem
         std::filesystem::recursive_directory_iterator entries(
             folder, std::filesystem::directory_options::skip_permission_denied, error);
         for (; !error && entries != std::filesystem::recursive_directory_iterator(); entries.increment(error)) {
-            if (entries->path().extension() == ".clap") {
+            if (core::pluginFormatOfExtension(entries->path().extension().string())) {
                 bundles.push_back(entries->path());
                 entries.disable_recursion_pending();
             }
@@ -46,7 +46,8 @@ std::vector<std::filesystem::path> findBundles(const std::vector<std::filesystem
 }
 
 Json descriptorJson(const engine::PluginDescriptor& plugin) {
-    return {{"id", plugin.id},
+    return {{"format", core::pluginFormatName(plugin.format).id},
+            {"id", plugin.id},
             {"name", plugin.name},
             {"vendor", plugin.vendor},
             {"version", plugin.version},
@@ -55,7 +56,12 @@ Json descriptorJson(const engine::PluginDescriptor& plugin) {
 }
 
 engine::PluginDescriptor descriptorFromJson(const Json& json) {
-    return {.id = json.at("id"),
+    const auto format = core::pluginFormatFromId(json.value("format", "clap"));
+    if (!format) {
+        throw Json::other_error::create(0, "unknown plugin format " + json.at("format").dump(), &json);
+    }
+    return {.format = *format,
+            .id = json.at("id"),
             .name = json.at("name"),
             .vendor = json.value("vendor", ""),
             .version = json.value("version", ""),
@@ -102,9 +108,12 @@ std::vector<CatalogPlugin> PluginCatalog::plugins() const {
     return listed;
 }
 
-std::optional<CatalogPlugin> PluginCatalog::find(const std::string& id) const {
+std::optional<CatalogPlugin> PluginCatalog::find(const std::string& id,
+                                                 std::optional<core::PluginFormat> format) const {
     const std::vector<CatalogPlugin> listed = plugins();
-    const auto found = std::ranges::find(listed, id, [](const CatalogPlugin& plugin) { return plugin.descriptor.id; });
+    const auto found = std::ranges::find_if(listed, [&](const CatalogPlugin& plugin) {
+        return plugin.descriptor.id == id && (!format || plugin.descriptor.format == *format);
+    });
     return found == listed.end() ? std::nullopt : std::optional{*found};
 }
 
@@ -205,6 +214,24 @@ std::vector<std::filesystem::path> clapSearchFolders(const std::filesystem::path
     for (const QString& folder : qEnvironmentVariable("CLAP_PATH").split(QDir::listSeparator(), Qt::SkipEmptyParts)) {
         folders.emplace_back(folder.toStdString());
     }
+    return folders;
+}
+
+std::vector<std::filesystem::path> vst3SearchFolders() {
+    const std::filesystem::path home = QDir::homePath().toStdString();
+#ifdef Q_OS_MACOS
+    return {home / "Library/Audio/Plug-Ins/VST3", "/Library/Audio/Plug-Ins/VST3"};
+#elifdef Q_OS_WIN
+    return {std::filesystem::path{qEnvironmentVariable("LOCALAPPDATA").toStdWString()} / "Programs/Common/VST3",
+            std::filesystem::path{qEnvironmentVariable("COMMONPROGRAMFILES").toStdWString()} / "VST3"};
+#else
+    return {home / ".vst3", "/usr/lib/vst3", "/usr/local/lib/vst3"};
+#endif
+}
+
+std::vector<std::filesystem::path> pluginSearchFolders(const std::filesystem::path& appFolder) {
+    std::vector<std::filesystem::path> folders = clapSearchFolders(appFolder);
+    std::ranges::copy(vst3SearchFolders(), std::back_inserter(folders));
     return folders;
 }
 

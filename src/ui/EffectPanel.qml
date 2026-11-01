@@ -2,10 +2,11 @@ import QtQuick
 import Emerick.App
 
 // The controls of an effect without a view of its own: a knob per number, a button per switch and a menu per choice.
+// A plugin insert lists its plugin's params.
 Flow {
     id: panel
     required property var insert
-    readonly property var params: Effects.params(insert.type)
+    readonly property var params: insert.pluginParams ?? Effects.params(insert.type)
     spacing: Theme.space3
     width: Math.ceil(params.length / 2) * (Theme.effectKnobWidth + spacing) - spacing
 

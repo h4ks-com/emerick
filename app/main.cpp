@@ -157,7 +157,7 @@ int run(int argc, char** argv) {
              (profileFolder.isEmpty() ? QStandardPaths::writableLocation(QStandardPaths::CacheLocation) : profileFolder)
                  .toStdString(),
          .scanner = (QCoreApplication::applicationDirPath() + "/emerick-plugin-scanner").toStdString(),
-         .folders = clapSearchFolders(QCoreApplication::applicationDirPath().toStdString())});
+         .folders = pluginSearchFolders(QCoreApplication::applicationDirPath().toStdString())});
     registerPluginActions(registry, nav, plugins);
     registerInstrumentActions(registry, controller, nav, plugins);
     const auto yamaha = emerick::yamaha::registerWith(registry, controller, nav);

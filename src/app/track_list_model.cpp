@@ -261,7 +261,7 @@ QVariantList TrackListModel::sendList(const model::Track& track) const {
 }
 
 QVariantList TrackListModel::paramList(const model::Track& track) const {
-    return automationParams(registry_, project_.document(), track) |
+    return automationParams(registry_, project_.document(), track, controller_.instruments().insertPlugins()) |
            std::views::transform([](const AutomationParam& param) {
                return QVariant{QVariantMap{{"id", qs(param.id)},
                                            {"title", qs(param.title)},
@@ -274,6 +274,21 @@ QVariantList TrackListModel::paramList(const model::Track& track) const {
            std::ranges::to<QVariantList>();
 }
 
+namespace {
+
+// A plugin's params in the shape the effect panel reads for a built-in effect, each going by its name.
+Json pluginParamList(const engine::Plugin& plugin) {
+    return plugin.params() | std::views::transform([](const engine::PluginParam& param) {
+               const char* kind = param.stepped ? "choice" : "number";
+               return Json{{"id", param.name},     {"title", param.name},  {"unit", ""},
+                           {"minimum", param.min}, {"maximum", param.max}, {"defaultValue", param.defaultValue},
+                           {"kind", kind},         {"logarithmic", false}, {"choices", param.choices}};
+           }) |
+           std::ranges::to<Json::array_t>();
+}
+
+}  // namespace
+
 QVariantMap TrackListModel::insert(const QString& id) const {
     const model::InsertId insertId{id.toStdString()};
     const model::Track* track = model::trackWithInsert(project_.document(), insertId);
@@ -283,6 +298,12 @@ QVariantMap TrackListModel::insert(const QString& id) const {
     Json state = insertState(*std::ranges::find(track->inserts, insertId, &model::Insert::id));
     state["track"] = track->id.value;
     state["trackName"] = track->name;
+    if (const auto plugin = controller_.instruments().find(insertId)) {
+        state["pluginParams"] = pluginParamList(*plugin);
+        for (const engine::PluginParam& param : plugin->params()) {
+            state["params"][param.name] = plugin->paramValue(param.id).value_or(param.defaultValue);
+        }
+    }
     return toVariant(state).toMap();
 }
 

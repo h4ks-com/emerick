@@ -83,12 +83,45 @@ AutomationMode automationModeFromJson(const nlohmann::json& json) {
     return *mode;
 }
 
+nlohmann::json slotToJson(const std::optional<PluginSlot>& slot) {
+    if (!slot) {
+        return nullptr;
+    }
+    return {{"pluginId", slot->pluginId},
+            {"bundle", slot->bundle},
+            {"name", slot->name},
+            {"format", core::pluginFormatName(slot->format).id},
+            {"state", core::toBase64(slot->state)}};
+}
+
+std::optional<PluginSlot> slotFromJson(const nlohmann::json& json) {
+    if (json.is_null()) {
+        return std::nullopt;
+    }
+    const auto& encoded = json.at("state").get_ref<const std::string&>();
+    auto state = core::fromBase64(encoded);
+    if (!state) {
+        throw std::runtime_error("plugin state is not base64");
+    }
+    const std::string formatId = json.value("format", std::string{core::pluginFormatName(core::PluginFormat::clap).id});
+    const auto format = core::pluginFormatFromId(formatId);
+    if (!format) {
+        throw std::runtime_error("unknown plugin format: " + formatId);
+    }
+    return PluginSlot{json.at("pluginId"), json.at("bundle"), json.at("name"), *std::move(state), *format};
+}
+
 nlohmann::json insertToJson(const Insert& insert) {
-    return {{"id", insert.id.value}, {"type", insert.type}, {"bypass", insert.bypass}, {"params", insert.params}};
+    return {{"id", insert.id.value},
+            {"type", insert.type},
+            {"bypass", insert.bypass},
+            {"params", insert.params},
+            {"plugin", slotToJson(insert.plugin)}};
 }
 
 Insert insertFromJson(const nlohmann::json& json) {
-    return {InsertId{json.at("id")}, json.at("type"), json.at("bypass"), json.at("params")};
+    return {InsertId{json.at("id")}, json.at("type"), json.at("bypass"), json.at("params"),
+            slotFromJson(json.value("plugin", nlohmann::json{}))};
 }
 
 core::FadeShape fadeShapeFromJson(const nlohmann::json& json, const char* key) {
@@ -194,28 +227,6 @@ Clip clipFromJson(const nlohmann::json& json) {
         throw std::runtime_error("unknown clip type: " + type);
     }
     return found->fromJson(json);
-}
-
-nlohmann::json slotToJson(const std::optional<PluginSlot>& slot) {
-    if (!slot) {
-        return nullptr;
-    }
-    return {{"pluginId", slot->pluginId},
-            {"bundle", slot->bundle},
-            {"name", slot->name},
-            {"state", core::toBase64(slot->state)}};
-}
-
-std::optional<PluginSlot> slotFromJson(const nlohmann::json& json) {
-    if (json.is_null()) {
-        return std::nullopt;
-    }
-    const auto& encoded = json.at("state").get_ref<const std::string&>();
-    auto state = core::fromBase64(encoded);
-    if (!state) {
-        throw std::runtime_error("instrument state is not base64");
-    }
-    return PluginSlot{json.at("pluginId"), json.at("bundle"), json.at("name"), *std::move(state)};
 }
 
 nlohmann::json trackToJson(const Track& track) {

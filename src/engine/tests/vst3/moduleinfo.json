@@ -10,9 +10,9 @@
 	"Compatibility": [],
 	"Classes": [
 		{
-			"CID": "454D525447414E310000000000000001",
+			"CID": "454D525447414E310000000000000002",
 			"Category": "Audio Module Class",
-			"Name": "Test Gain",
+			"Name": "Test Described",
 			"Vendor": "Emerick Tests",
 			"Version": "1.0.0",
 			"SDKVersion": "VST 3.8.1",

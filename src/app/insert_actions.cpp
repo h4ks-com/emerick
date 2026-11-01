@@ -6,6 +6,9 @@
 #include <vector>
 
 #include "emerick/app/action_params.hpp"
+#include "emerick/app/instruments.hpp"
+#include "emerick/app/plugin_actions.hpp"
+#include "emerick/app/plugin_catalog.hpp"
 #include "emerick/app/project_actions.hpp"
 #include "emerick/app/project_state.hpp"
 #include "emerick/engine/effects.hpp"
@@ -38,9 +41,11 @@ InsertRef insertParam(const ProjectController& controller, const Json& params) {
     return {track->id, model::InsertId{id}};
 }
 
-std::string paramName(const Json& params) {
+// A plugin's param name may hold a dot, so we strip only the insert id the target starts with.
+std::string paramName(const Json& params, const InsertRef& ref) {
     const auto name = param<std::string>(params, "param");
-    return name.contains('.') ? name.substr(name.find('.') + 1) : name;
+    const std::string prefix = ref.insert.value + ".";
+    return name.starts_with(prefix) ? name.substr(prefix.size()) : name;
 }
 
 model::Insert& insertIn(model::Track& track, const model::InsertId& id) {
@@ -52,9 +57,49 @@ const model::Insert& insertOf(const ProjectController& controller, const InsertR
     return *std::ranges::find(track.inserts, ref.insert, &model::Insert::id);
 }
 
+// A plugin insert's param values live in its plugin, so we read them from the live plugin by name.
 Json insertResult(const ProjectController& controller, const InsertRef& ref) {
     Json result = insertState(insertOf(controller, ref));
     result["track"] = ref.track.value;
+    if (const auto plugin = controller.instruments().find(ref.insert)) {
+        for (const engine::PluginParam& param : plugin->params()) {
+            result["params"][param.name] = plugin->paramValue(param.id).value_or(param.defaultValue);
+        }
+    }
+    return result;
+}
+
+// A script runs its actions without turning the event loop, so we load the plugins its earlier actions added.
+std::shared_ptr<engine::Plugin> livePlugin(ProjectController& controller, const model::Insert& insert) {
+    controller.instruments().sync(controller.project().document());
+    const auto plugin = controller.instruments().find(insert.id);
+    if (!plugin) {
+        throw AppError((insert.plugin ? insert.plugin->name : insert.type) + " of insert " + insert.id.value +
+                       " is not loaded, see the track's warning");
+    }
+    return plugin;
+}
+
+ParamValue givenValue(const Json& params) {
+    return params.contains("value") && params.at("value").is_string()
+               ? ParamValue{params.at("value").get<std::string>()}
+               : ParamValue{param<double>(params, "value")};
+}
+
+Json setPluginParam(ProjectController& controller, const InsertRef& ref, const std::string& name, const Json& params) {
+    const model::Insert& insert = insertOf(controller, ref);
+    const auto plugin = livePlugin(controller, insert);
+    const auto found = paramNamed(plugin->params(), name);
+    if (!found) {
+        throw AppError(plugin->name() + " has no single param " + name + ", run insert.params for their names");
+    }
+    ParamSet set = controller.instruments().setParam(ref.insert, found->id, givenValue(params));
+    editTrack(controller, ref.track, "set " + found->name,
+              [&](model::Track& edited) { insertIn(edited, ref.insert).plugin->state = std::move(set.state); });
+    Json result = insertResult(controller, ref);
+    result["param"] = found->name;
+    result["value"] = set.value;
+    result["text"] = set.text;
     return result;
 }
 
@@ -133,13 +178,39 @@ void registerInsertEdits(Registry& registry, ProjectController& controller) {
          .schema = insertSchema({{"param", {{"type", "string"}}}, {"value", Json::object()}}, {"param", "value"}),
          .run = [&controller](const Json& params) {
              const InsertRef ref = insertParam(controller, params);
-             const std::string name = paramName(params);
+             const std::string name = paramName(params, ref);
+             if (insertOf(controller, ref).plugin) {
+                 return setPluginParam(controller, ref, name, params);
+             }
              const engine::EffectParam& described = describedParam(insertOf(controller, ref), name);
              const double value = effectParamValue(described, params.at("value"));
              editTrack(controller, ref.track, "set " + std::string{described.title},
                        [&](model::Track& edited) { insertIn(edited, ref.insert).params[name] = value; });
              return insertResult(controller, ref);
          }});
+    registry.addAction(
+        {.id = "insert.params",
+         .title = "List insert settings",
+         .description = "Lists the params of a plugin insert with their values, the text of each value and the label "
+                        "of every choice of a stepped param. insert.setParam takes a param by its name.",
+         .aliases = {"effect params", "plugin insert parameters"},
+         .category = kCategory,
+         .schema = insertSchema(Json::object(), {"insert"}),
+         .run =
+             [&controller](const Json& params) {
+                 const InsertRef ref = insertParam(controller, params);
+                 const model::Insert& insert = insertOf(controller, ref);
+                 if (!insert.plugin) {
+                     return insertResult(controller, ref);
+                 }
+                 livePlugin(controller, insert);
+                 Json described = controller.instruments().describe(ref.insert);
+                 described["insert"] = ref.insert.value;
+                 described["track"] = ref.track.value;
+                 described["message"] = std::to_string(described.at("params").size()) + " settings";
+                 return described;
+             },
+         .notifies = true});
 }
 
 void registerInsertEditor(Registry& registry, ProjectController& controller, Nav& nav) {
@@ -176,12 +247,17 @@ void registerInsertActions(Registry& registry, ProjectController& controller, Na
          .aliases = {"add effect", "insert plugin", "add eq", "add compressor", "add delay", "add reverb",
                      "add limiter", "add gate", "add filter", "add saturation", "add chorus", "add utility"},
          .category = kCategory,
-         .schema =
-             {{"required", {"type"}},
-              {"properties",
-               {{"track", {{"type", "string"}}}, {"type", {{"type", "string"}}}, {"index", {{"type", "integer"}}}}}},
+         .schema = {{"properties",
+                     {{"track", {{"type", "string"}}},
+                      {"type", {{"type", "string"}, {"description", "a built-in effect"}}},
+                      {"plugin", {{"type", "string"}, {"description", "a plugin effect id from plugins.list"}}},
+                      {"format", {{"type", "string"}, {"enum", {"clap", "vst3"}}}},
+                      {"index", {{"type", "integer"}}}}}},
          .run =
              [&registry, &controller, &nav](const Json& params) {
+                 if (params.contains("plugin")) {
+                     return registry.run("insert.addPlugin", params);
+                 }
                  const model::TrackId track = audioTrack(registry, controller, nav, params);
                  const engine::EffectSpec& spec = effectType(param<std::string>(params, "type"));
                  model::Insert insert{
@@ -209,6 +285,66 @@ void registerInsertActions(Registry& registry, ProjectController& controller, Na
              }});
     registerInsertEdits(registry, controller);
     registerInsertEditor(registry, controller, nav);
+}
+
+void registerPluginInsertActions(Registry& registry, ProjectController& controller, Nav& nav, PluginCatalog& catalog) {
+    const auto effects = [&registry, &catalog] {
+        return scannedCatalog(registry, catalog).plugins() |
+               std::views::filter([](const CatalogPlugin& plugin) { return engine::isEffect(plugin.descriptor); }) |
+               std::views::transform([](const CatalogPlugin& plugin) {
+                   const std::string format{core::pluginFormatName(plugin.descriptor.format).id};
+                   return MenuChoice{.id = format + ":" + plugin.descriptor.id,
+                                     .title = plugin.descriptor.name,
+                                     .params = {{"plugin", plugin.descriptor.id}, {"format", format}}};
+               }) |
+               std::ranges::to<std::vector>();
+    };
+    registry.addAction(
+        {.id = "insert.addPlugin",
+         .title = "Add plugin insert",
+         .description = "Adds a CLAP or VST3 effect from plugins.list as an insert on the audio track or bus. Its "
+                        "params then go by name in insert.setParam and in automation.",
+         .aliases = {"add vst3 effect", "add plugin effect", "insert vst"},
+         .category = kCategory,
+         .schema = {{"required", {"plugin"}},
+                    {"properties",
+                     {{"track", {{"type", "string"}}},
+                      {"plugin", {{"type", "string"}, {"description", "a plugin effect id from plugins.list"}}},
+                      {"format", {{"type", "string"}, {"enum", {"clap", "vst3"}}}},
+                      {"index", {{"type", "integer"}}}}}},
+         .run =
+             [&registry, &controller, &nav, &catalog](const Json& params) {
+                 const model::TrackId track = audioTrack(registry, controller, nav, params);
+                 const auto id = param<std::string>(params, "plugin");
+                 const auto formatId = optionalParam<std::string>(params, "format");
+                 const auto format = formatId ? core::pluginFormatFromId(*formatId) : std::nullopt;
+                 if (formatId && !format) {
+                     throw AppError("format takes clap or vst3, not " + *formatId);
+                 }
+                 const auto found = scannedCatalog(registry, catalog).find(id, format);
+                 if (!found || !engine::isEffect(found->descriptor)) {
+                     throw AppError("no plugin effect " + id + ", run plugins.list for the ids of effects");
+                 }
+                 const model::Insert insert{.id = model::InsertId::make(),
+                                            .type = model::kPluginInsertType,
+                                            .bypass = false,
+                                            .params = {},
+                                            .plugin = model::PluginSlot{.pluginId = id,
+                                                                        .bundle = found->bundle.string(),
+                                                                        .name = found->descriptor.name,
+                                                                        .state = {},
+                                                                        .format = found->descriptor.format}};
+                 const auto index = optionalParam<std::int64_t>(params, "index");
+                 editTrack(controller, track, "add " + found->descriptor.name, [&](model::Track& edited) {
+                     const auto at = std::clamp<std::int64_t>(index.value_or(std::ssize(edited.inserts)), 0,
+                                                              std::ssize(edited.inserts));
+                     edited.inserts.insert(edited.inserts.begin() + at, insert);
+                 });
+                 controller.instruments().sync(controller.project().document());
+                 nav.setEditingInsert(qs(insert.id.value));
+                 return insertResult(controller, {track, insert.id});
+             },
+         .submenu = effects});
 }
 
 }  // namespace emerick::app

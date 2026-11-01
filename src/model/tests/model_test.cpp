@@ -131,6 +131,28 @@ TEST_CASE("an instrument and its state round trip, and a format 9 project loads 
     }
 }
 
+TEST_CASE("a plugin insert and its format round trip, and a slot saved before formats loads as CLAP") {
+    Document document = sampleDocument();
+    const PluginSlot amp{.pluginId = "454D525447414E310000000000000001",
+                         .bundle = "/plugins/Amp.vst3",
+                         .name = "Amp",
+                         .state = {1, 2, 3},
+                         .format = emerick::core::PluginFormat::vst3};
+    document.tracks[0].inserts = {
+        Insert{.id = InsertId{"amp"}, .type = kPluginInsertType, .bypass = true, .params = {}, .plugin = amp}};
+    document.tracks[1].instrument =
+        PluginSlot{.pluginId = "org.example.synth", .bundle = "/plugins/Synth.clap", .name = "Synth", .state = {}};
+    auto json = toJson(document);
+    CHECK(json["tracks"][0]["inserts"][0]["plugin"]["format"] == "vst3");
+    CHECK(documentFromJson(json).tracks[0].inserts == document.tracks[0].inserts);
+
+    json["format"] = 11;
+    json["tracks"][1]["instrument"].erase("format");
+    CHECK(documentFromJson(json).tracks[1].instrument->format == emerick::core::PluginFormat::clap);
+    json["tracks"][0]["inserts"][0]["plugin"]["format"] = "au";
+    CHECK_THROWS_AS(documentFromJson(json), std::runtime_error);
+}
+
 TEST_CASE("track trim round trips, and a project saved before trim loads at 0 dB") {
     Document document = sampleDocument();
     document.tracks[0].trimDb = 9.5;

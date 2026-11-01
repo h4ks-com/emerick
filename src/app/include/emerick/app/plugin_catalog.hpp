@@ -7,6 +7,7 @@
 #include <string>
 #include <vector>
 
+#include "emerick/core/plugin_format.hpp"
 #include "emerick/engine/plugin_scan.hpp"
 
 namespace emerick::app {
@@ -16,9 +17,9 @@ struct CatalogPlugin {
     std::filesystem::path bundle;
 };
 
-// The CLAP plugins installed on this machine. Each bundle loads in a scanner child process, so a plugin that crashes
-// or hangs only lands on the blocklist. We keep what each bundle held, keyed by its path and modification time, in
-// clap-plugins.json in the cache folder, so a later scan only runs the scanner for new or changed bundles.
+// The CLAP and VST3 plugins installed on this machine. Each bundle loads in a scanner child process, so a plugin that
+// crashes or hangs only lands on the blocklist. We keep what each bundle held, keyed by its path and modification time,
+// in plugins.json in the cache folder, so a later scan only runs the scanner for new or changed bundles.
 class PluginCatalog {
 public:
     struct Options {
@@ -37,7 +38,9 @@ public:
     void scan(const std::vector<std::filesystem::path>& userFolders, bool full);
     [[nodiscard]] bool scanned() const { return scanned_; }
     [[nodiscard]] std::vector<CatalogPlugin> plugins() const;
-    [[nodiscard]] std::optional<CatalogPlugin> find(const std::string& id) const;
+    // The plugin with the id, in the format when one is given.
+    [[nodiscard]] std::optional<CatalogPlugin> find(const std::string& id,
+                                                    std::optional<core::PluginFormat> format = std::nullopt) const;
     // Each blocked bundle with the reason, such as that it crashed while loading.
     [[nodiscard]] std::map<std::filesystem::path, std::string> blocked() const;
 
@@ -63,5 +66,11 @@ std::filesystem::path bundledClapFolder(const std::filesystem::path& appFolder);
 
 // The app's bundled CLAP folder, the standard CLAP folders of this platform, then each folder in CLAP_PATH.
 std::vector<std::filesystem::path> clapSearchFolders(const std::filesystem::path& appFolder);
+
+// The standard VST3 folders of this platform.
+std::vector<std::filesystem::path> vst3SearchFolders();
+
+// The CLAP search folders, then the VST3 ones.
+std::vector<std::filesystem::path> pluginSearchFolders(const std::filesystem::path& appFolder);
 
 }  // namespace emerick::app

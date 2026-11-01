@@ -56,7 +56,7 @@ bool ProjectController::writeAutomation(const model::TrackId& id, const std::str
     if (track == nullptr || !engine_.playing() || !writes(track->automationMode)) {
         return false;
     }
-    const auto resolved = automationParam(registry_, project_.document(), *track, param);
+    const auto resolved = automationParam(registry_, project_.document(), *track, instruments_.insertPlugins(), param);
     if (!resolved) {
         return false;
     }
@@ -137,8 +137,9 @@ void ProjectController::applyPasses(engine::Session& session) const {
     for (const AutomationPass& pass : passes_) {
         const model::Track* track = project_.track(pass.track);
         const auto engineTrack = std::ranges::find(session.tracks, pass.track.value, &engine::Track::id);
-        const auto param =
-            track == nullptr ? std::nullopt : automationParam(registry_, project_.document(), *track, pass.param);
+        const auto param = track == nullptr ? std::nullopt
+                                            : automationParam(registry_, project_.document(), *track,
+                                                              instruments_.insertPlugins(), pass.param);
         if (!param || engineTrack == session.tracks.end()) {
             continue;
         }
@@ -165,7 +166,7 @@ void ProjectController::applyPasses(engine::Session& session) const {
                 break;
             case engine::AutomationTarget::insert:
                 for (engine::Insert& insert : engineTrack->inserts) {
-                    if (insert.id == param->insert) {
+                    if (insert.id == param->insert && !insert.plugin) {
                         insert.params.at(param->insertParam) = static_cast<float>(pass.lastValue);
                     }
                 }

@@ -607,7 +607,7 @@ void ProjectController::setMetronome(const engine::Metronome& metronome) {
 void ProjectController::publish() {
     instruments_.sync(project_.document());
     engine::Session session = toSession(project_.document(), registry_, folder_, engineTracks_);
-    instruments_.attach(session);
+    instruments_.attach(session, project_.document());
     session.metronome = metronome_;
     session.chaseMidi = chaseMidi_;
     session.clockWhileStopped = clockWhileStopped_;

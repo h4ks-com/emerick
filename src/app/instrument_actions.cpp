@@ -18,9 +18,9 @@ Json pluginSchema() { return {{"type", "string"}, {"description", "a CLAP plugin
 
 model::PluginSlot slotFor(const Registry& registry, PluginCatalog& catalog, const Json& params) {
     const auto id = param<std::string>(params, "plugin");
-    const auto found = scannedCatalog(registry, catalog).find(id);
+    const auto found = scannedCatalog(registry, catalog).find(id, core::PluginFormat::clap);
     if (!found) {
-        throw AppError("no CLAP plugin " + id + ", run plugins.list for plugin ids");
+        throw AppError("no CLAP plugin " + id + ", run plugins.list for the ids of CLAP instruments");
     }
     model::PluginSlot slot{
         .pluginId = id, .bundle = found->bundle.string(), .name = found->descriptor.name, .state = {}};
@@ -33,7 +33,7 @@ model::PluginSlot slotFor(const Registry& registry, PluginCatalog& catalog, cons
 
 std::vector<MenuChoice> instrumentChoices(const Registry& registry, PluginCatalog& catalog) {
     return scannedCatalog(registry, catalog).plugins() | std::views::filter([](const CatalogPlugin& plugin) {
-               return std::ranges::contains(plugin.descriptor.features, "instrument");
+               return plugin.descriptor.format == core::PluginFormat::clap && engine::isInstrument(plugin.descriptor);
            }) |
            std::views::transform([](const CatalogPlugin& plugin) {
                return MenuChoice{.id = plugin.descriptor.id,
@@ -190,6 +190,7 @@ void registerInstrumentActions(Registry& registry, ProjectController& controller
              return Json{{"track", id.value}, {"param", paramId}, {"value", set.value}, {"text", set.text}};
          }});
     registerAuditionAction(registry, controller);
+    registerPluginInsertActions(registry, controller, nav, catalog);
 }
 
 }  // namespace emerick::app

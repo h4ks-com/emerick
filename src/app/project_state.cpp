@@ -194,11 +194,19 @@ Json clipState(const model::Clip& clip, const core::TempoMap& tempo, bool includ
 
 Json insertState(const model::Insert& insert) {
     const engine::EffectSpec* spec = engine::findEffect(insert.type);
-    return {{"id", insert.id.value},
-            {"type", insert.type},
-            {"title", spec != nullptr ? std::string{spec->title} : insert.type},
-            {"bypass", insert.bypass},
-            {"params", insert.params}};
+    Json state{{"id", insert.id.value},
+               {"type", insert.type},
+               {"title", spec != nullptr ? std::string{spec->title} : insert.type},
+               {"bypass", insert.bypass},
+               {"params", insert.params}};
+    if (insert.plugin) {
+        state["title"] = insert.plugin->name;
+        state["plugin"] = {{"id", insert.plugin->pluginId},
+                           {"format", core::pluginFormatName(insert.plugin->format).id},
+                           {"name", insert.plugin->name},
+                           {"bundle", insert.plugin->bundle}};
+    }
+    return state;
 }
 
 Json trackState(const model::Track& track, const core::TempoMap& tempo,

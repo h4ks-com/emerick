@@ -147,6 +147,7 @@ if(EMERICK_BUILD_TESTS)
         tests/health_test.cpp
         tests/hostile_params_test.cpp
         tests/insert_test.cpp
+        tests/plugin_insert_test.cpp
         tests/instrument_test.cpp
         tests/introspector_test.cpp
         tests/lua_host_test.cpp
@@ -172,5 +173,5 @@ if(EMERICK_BUILD_TESTS)
         tests/transport_test.cpp
         tests/voice_audition_test.cpp)
     target_link_libraries(emerick_app_tests
-        PRIVATE emerick_app emerick_test_clap emerick_gm_clap emerick_voices_clap Qt6::Network Qt6::Qml Qt6::QuickControls2 PkgConfig::SNDFILE libremidi)
+        PRIVATE emerick_app emerick_test_clap emerick_test_vst3 emerick_gm_clap emerick_voices_clap Qt6::Network Qt6::Qml Qt6::QuickControls2 PkgConfig::SNDFILE libremidi)
 endif()

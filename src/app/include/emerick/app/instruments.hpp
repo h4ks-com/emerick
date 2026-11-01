@@ -13,6 +13,7 @@
 #include <variant>
 #include <vector>
 
+#include "emerick/app/automation_params.hpp"
 #include "emerick/engine/plugin.hpp"
 #include "emerick/engine/session.hpp"
 #include "emerick/model/document.hpp"
@@ -35,8 +36,15 @@ struct ParamSet {
 // The choice of the param the text names, as choiceIndex matches it.
 [[nodiscard]] std::size_t paramChoice(const engine::PluginParam& param, std::string_view text);
 
-// The live CLAP instrument of every track whose slot names one, with its editor window. A track keeps its instrument
-// while its slot names the same plugin, so the plugin keeps the state the user gave it since the project loaded.
+// The param whose name is the text, or else the only one whose name matches it ignoring case, or the one whose id it
+// spells. Nullopt when none or several match.
+[[nodiscard]] std::optional<engine::PluginParam> paramNamed(const std::vector<engine::PluginParam>& params,
+                                                            std::string_view text);
+
+// The live plugin of every track whose instrument slot names one and of every plugin insert, with its editor window.
+// A track or an insert keeps its plugin while its slot names the same plugin, so the plugin keeps the state the user
+// gave it since the project loaded. The instrument of a track goes by the track's id and an insert's plugin by the
+// insert's id.
 class Instruments {
 public:
     Instruments() = default;
@@ -46,12 +54,19 @@ public:
     Instruments(Instruments&&) = delete;
     Instruments& operator=(Instruments&&) = delete;
 
-    // Creates the instruments new slots name, loading their saved state, and drops the ones no slot names any more. A
-    // kept instrument loads its slot's state when the state changed since it last loaded or set it, as after an undo.
+    // Creates the plugins new slots name, loading their saved state, and drops the ones no slot names any more. A kept
+    // plugin loads its slot's state when the state changed since it last loaded or set it, as after an undo.
     void sync(const model::Document& document);
-    void attach(engine::Session& session) const;
+    // Hands each track its instrument and each plugin insert its plugin, leaves out the plugin inserts whose plugin did
+    // not load, and adds the lanes of the plugin insert params.
+    void attach(engine::Session& session, const model::Document& document) const;
     [[nodiscard]] std::shared_ptr<engine::Plugin> find(const model::TrackId& id) const;
-    // Why a track with a slot plays no instrument, such as a plugin that is not installed.
+    [[nodiscard]] std::shared_ptr<engine::Plugin> find(const model::InsertId& id) const;
+    [[nodiscard]] PluginLookup insertPlugins() const {
+        return [this](const model::InsertId& id) { return find(id); };
+    }
+    // Why a track with a slot or a plugin insert plays no plugin, such as a plugin that is not installed, and which
+    // plugin inserts delay their track.
     [[nodiscard]] const std::vector<engine::SessionError>& errors() const { return errors_; }
     // Runs each plugin's main-thread requests and follows its editor; true when a plugin marked its state changed.
     bool idle();
@@ -65,20 +80,30 @@ public:
     // The track's instrument as the inspector shows it: whether it has an editor, and each param with its value, its
     // label and, for a stepped param, the label of every step. Null when the track plays no live instrument.
     [[nodiscard]] nlohmann::json describe(const model::TrackId& id) const;
+    [[nodiscard]] nlohmann::json describe(const model::InsertId& id) const;
     // Sets the param on the live instrument and returns the state the instrument saves with it, with the value and its
     // label. Throws AppError for a missing instrument or param, a value out of its range and a label no choice has.
     ParamSet setParam(const model::TrackId& id, std::uint32_t param, const ParamValue& given);
+    ParamSet setParam(const model::InsertId& id, std::uint32_t param, const ParamValue& given);
 
 private:
     struct Live {
         model::PluginSlot slot;
         std::shared_ptr<engine::Plugin> instrument;
-        // Set while the instrument is missing or its state did not load.
+        // The track the slot sits on, which shows the error.
+        std::string trackId;
+        // Set while the plugin is missing or its state did not load.
         std::string error;
         std::unique_ptr<QWindow> window;
     };
 
     static void closeEditor(Live& live);
+    void keep(std::map<std::string, Live>& kept, const std::string& key, const model::TrackId& track,
+              const model::PluginSlot& slot, bool insert);
+    void updateErrors();
+    [[nodiscard]] std::shared_ptr<engine::Plugin> plugin(const std::string& key) const;
+    [[nodiscard]] nlohmann::json describePlugin(const std::string& key) const;
+    ParamSet setPluginParam(const std::string& key, std::uint32_t param, const ParamValue& given);
 
     std::map<std::string, Live> live_;
     std::vector<engine::SessionError> errors_;

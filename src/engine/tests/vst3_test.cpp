@@ -63,7 +63,7 @@ TEST_CASE("a VST3 bundle with a module info is described from it without loading
     const auto described = describeBundle(EMERICK_TEST_DESCRIBED_VST3);
     REQUIRE(described.has_value());
     REQUIRE(described->size() == 1);
-    CHECK(described->front().id == kGainId);
+    CHECK(described->front().id == "454D525447414E310000000000000002");
     CHECK(described->front().features == std::vector<std::string>{"Fx", "Dynamics"});
 }
 

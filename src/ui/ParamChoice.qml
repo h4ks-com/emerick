@@ -10,7 +10,7 @@ ChromeButton {
     required property real paramValue
     objectName: "insert.setParam:" + insertId + ":" + param.id
     actionId: "insert.setParam"
-    text: param.choices[Math.round(paramValue)] ?? ""
+    text: param.choices[Math.round(paramValue - param.minimum)] ?? ""
     hint: param.title
     menu: choices
     implicitHeight: Theme.headerButton
@@ -26,7 +26,7 @@ ChromeButton {
                 objectName: choice.objectName + ":" + index
                 actionId: "insert.setParam"
                 title: modelData
-                params: ({insert: choice.insertId, param: choice.param.id, value: index})
+                params: ({insert: choice.insertId, param: choice.param.id, value: modelData})
             }
             onObjectAdded: (index, object) => choices.insertItem(index, object)
             onObjectRemoved: (index, object) => choices.removeItem(object)

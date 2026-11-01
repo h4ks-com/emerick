@@ -59,6 +59,13 @@ ColumnLayout {
                     params: ({insert: slot.modelData.id, index: slot.index + 1})
                 }
                 ActionMenuItem {
+                    objectName: "insert.params:" + slot.modelData.id
+                    actionId: "insert.params"
+                    title: "List insert settings"
+                    available: slot.modelData.plugin !== undefined
+                    params: ({insert: slot.modelData.id})
+                }
+                ActionMenuItem {
                     objectName: "insert.remove:" + slot.modelData.id
                     actionId: "insert.remove"
                     title: "Remove insert"
@@ -91,6 +98,25 @@ ColumnLayout {
                 }
                 onObjectAdded: (index, object) => picker.insertItem(index, object)
                 onObjectRemoved: (index, object) => picker.removeItem(object)
+            }
+            GlassMenu {
+                id: plugins
+                objectName: "insert.addPlugin:" + list.trackId
+                title: "Plugins"
+                enabled: pluginChoices.count > 0
+                Instantiator {
+                    id: pluginChoices
+                    model: Registry.actionInfo("insert.addPlugin").choices ?? []
+                    delegate: ActionMenuItem {
+                        required property var modelData
+                        objectName: "insert.addPlugin:" + list.trackId + ":" + modelData.id
+                        actionId: "insert.addPlugin"
+                        title: modelData.title
+                        params: Object.assign({track: list.trackId}, modelData.params)
+                    }
+                    onObjectAdded: (index, object) => plugins.insertItem(index, object)
+                    onObjectRemoved: (index, object) => plugins.removeItem(object)
+                }
             }
         }
     }

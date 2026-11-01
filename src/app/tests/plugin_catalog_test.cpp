@@ -61,7 +61,7 @@ TEST_CASE("listing plugins from the menu shows what it found as a notice") {
     QObject::connect(&rig.registry, &Registry::noticeRaised,
                      [&](const QString& title, const QString& text) { notice = title + ": " + text; });
     rig.registry.activate("plugins.list");
-    CHECK(notice == "List plugins: Found 1 CLAP plugins, 2 bundles blocked");
+    CHECK(notice == "List plugins: Found 1 CLAP and 0 VST3 plugins, 2 bundles blocked");
 }
 
 TEST_CASE("a later scan reads unchanged bundles from the cache and keeps blocked bundles blocked") {

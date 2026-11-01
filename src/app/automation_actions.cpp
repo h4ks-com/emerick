@@ -30,9 +30,11 @@ LaneRef targetLane(const Registry& registry, const ProjectController& controller
     const model::Track& found = *controller.project().track(track);
     const std::string id =
         optionalParam<std::string>(params, "param").value_or(nav.automationLane(qs(track.value)).toStdString());
-    auto param = automationParam(registry, controller.project().document(), found, id);
+    auto param =
+        automationParam(registry, controller.project().document(), found, controller.instruments().insertPlugins(), id);
     if (!param) {
-        const auto ids = automationParams(registry, controller.project().document(), found) |
+        const auto ids = automationParams(registry, controller.project().document(), found,
+                                          controller.instruments().insertPlugins()) |
                          std::views::transform(&AutomationParam::id) | std::views::join_with(std::string{", "}) |
                          std::ranges::to<std::string>();
         throw AppError("track " + found.name + " cannot automate " + id +
@@ -137,7 +139,8 @@ Json editPoints(const Registry& registry, ProjectController& controller, const s
                     if (!holds(lane)) {
                         continue;
                     }
-                    edit(lane, automationParam(registry, project.document(), track, lane.param)
+                    edit(lane, automationParam(registry, project.document(), track,
+                                               controller.instruments().insertPlugins(), lane.param)
                                    .value_or(AutomationParam{.id = lane.param,
                                                              .title = lane.param,
                                                              .minimum = std::numeric_limits<double>::lowest(),

@@ -190,6 +190,26 @@ engine::Session toSession(const model::Document& document, const Registry& regis
     return session;
 }
 
+void attachPluginInserts(engine::Track& track, const model::Track& source, const PluginLookup& plugins) {
+    if (std::ranges::none_of(source.inserts, [](const model::Insert& insert) { return insert.plugin.has_value(); })) {
+        return;
+    }
+    std::vector<engine::Insert> chain;
+    for (const model::Insert& insert : source.inserts) {
+        if (!insert.plugin) {
+            const auto builtIn = std::ranges::find(track.inserts, insert.id.value, &engine::Insert::id);
+            if (builtIn != track.inserts.end()) {
+                chain.push_back(*builtIn);
+            }
+        } else if (auto plugin = plugins(insert.id)) {
+            chain.push_back(
+                {.id = insert.id.value, .bypass = insert.bypass, .params = {}, .plugin = std::move(plugin)});
+        }
+    }
+    track.inserts = std::move(chain);
+    std::ranges::move(pluginLanes(source, plugins), std::back_inserter(track.automation));
+}
+
 engine::Session toSession(const model::Document& document, const Registry& registry,
                           const std::filesystem::path& folder) {
     EngineTrackCache cache;

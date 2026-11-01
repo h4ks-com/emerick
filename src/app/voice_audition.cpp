@@ -172,7 +172,7 @@ Audition prepareAudition(const Registry& registry, ProjectController& controller
 }
 
 RenderJob auditionJob(const Audition& audition) {
-    auto created = engine::createClapPlugin(audition.slot.bundle, audition.slot.pluginId);
+    auto created = engine::createPlugin(audition.slot.format, audition.slot.bundle, audition.slot.pluginId);
     if (!created) {
         throw AppError("cannot audition " + audition.slot.name + ": " + created.error());
     }

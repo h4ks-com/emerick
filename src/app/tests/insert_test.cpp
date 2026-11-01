@@ -117,7 +117,8 @@ TEST_CASE("an insert's number and switch params are automation params, and their
     const std::string vox = rig.run("track.addAudio").at("id");
     const std::string eq = rig.run("insert.add", {{"track", vox}, {"type", "eq"}}).at("id");
     const model::Document& document = rig.controller->project().document();
-    const auto params = automationParams(rig.registry, document, trackOf(rig, vox));
+    const auto params =
+        automationParams(rig.registry, document, trackOf(rig, vox), rig.controller->instruments().insertPlugins());
     const auto gain = std::ranges::find(params, eq + ".peak2Gain", &AutomationParam::id);
     REQUIRE(gain != params.end());
     CHECK(gain->title == "Channel EQ Mid gain");

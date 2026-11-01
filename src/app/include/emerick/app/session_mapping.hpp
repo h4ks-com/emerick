@@ -7,6 +7,7 @@
 #include <string>
 #include <vector>
 
+#include "emerick/app/automation_params.hpp"
 #include "emerick/app/registry.hpp"
 #include "emerick/engine/audio_backend.hpp"
 #include "emerick/engine/session.hpp"
@@ -55,6 +56,11 @@ engine::Session toSession(const model::Document& document, const Registry& regis
                           const std::filesystem::path& folder, EngineTrackCache& cache);
 engine::Session toSession(const model::Document& document, const Registry& registry,
                           const std::filesystem::path& folder);
+
+// A plugin insert needs a live plugin, so toSession leaves it out and this puts it in the track's chain in its place,
+// with the plugin the lookup finds, and adds the lanes of its params. An insert the lookup finds no plugin for stays
+// out.
+void attachPluginInserts(engine::Track& track, const model::Track& source, const PluginLookup& plugins);
 
 // One track routed to a device that is gone or cannot run at sampleRate must not stop the others, so we clear its
 // route for the engine and report it.

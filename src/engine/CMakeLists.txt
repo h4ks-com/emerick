@@ -69,14 +69,29 @@ if(EMERICK_BUILD_TESTS)
     endforeach()
     target_compile_definitions(emerick_test_crash PRIVATE EMERICK_TEST_CRASH)
     target_compile_definitions(emerick_test_hang PRIVATE EMERICK_TEST_HANG)
+    # Test effects as CLAP bundles in their own folder: a gain, and a copy that delays its output and reports it.
+    set(test_clap_effect_folder ${CMAKE_BINARY_DIR}/test-clap-effect)
+    foreach(variant gain late)
+        set(name emerick_test_clap_${variant})
+        add_library(${name} MODULE tests/clap/gain_plugin_test.cpp)
+        target_link_libraries(${name} PRIVATE clap)
+        set_target_properties(${name} PROPERTIES PREFIX "" SUFFIX ".clap" OUTPUT_NAME "Emerick Test ${variant}"
+            LIBRARY_OUTPUT_DIRECTORY ${test_clap_effect_folder})
+        if(APPLE)
+            set_target_properties(${name} PROPERTIES BUNDLE TRUE BUNDLE_EXTENSION clap)
+        endif()
+    endforeach()
+    target_compile_definitions(emerick_test_clap_late PRIVATE EMERICK_TEST_LATENCY)
     if(APPLE)
         set(test_sine_clap "$<TARGET_BUNDLE_DIR:emerick_test_sine>")
     else()
         set(test_sine_clap "$<TARGET_FILE:emerick_test_sine>")
     endif()
     add_library(emerick_test_clap INTERFACE)
-    add_dependencies(emerick_test_clap emerick_test_sine emerick_test_crash emerick_test_hang emerick-plugin-scanner)
+    add_dependencies(emerick_test_clap emerick_test_sine emerick_test_crash emerick_test_hang emerick_test_clap_gain
+        emerick_test_clap_late emerick-plugin-scanner)
     target_compile_definitions(emerick_test_clap INTERFACE EMERICK_TEST_CLAP_FOLDER="${test_clap_folder}"
+        EMERICK_TEST_CLAP_EFFECT_FOLDER="${test_clap_effect_folder}"
         EMERICK_TEST_SINE_CLAP="${test_sine_clap}" EMERICK_PLUGIN_SCANNER="$<TARGET_FILE:emerick-plugin-scanner>")
 
     # Test VST3 bundles: a gain effect, copies whose module entry crashes or hangs, a crashing copy whose

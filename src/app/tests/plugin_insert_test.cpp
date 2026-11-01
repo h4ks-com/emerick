@@ -240,3 +240,36 @@ TEST_CASE("a VST3 instrument plays a MIDI clip, and a gesture in its editor land
     rig.controller->flush();
     CHECK(levelOf(rig, track) == 0.5);
 }
+
+TEST_CASE("a CLAP effect plays as an insert, takes params by name and automation, bypasses and keeps its state") {
+    PluginInsertRig rig;
+    rig.registry.setSetting(kClapFoldersSetting, Json::array({EMERICK_TEST_CLAP_EFFECT_FOLDER}));
+    const Json listed = rig.run("plugins.rescan");
+    const auto gain = std::ranges::find(listed.at("plugins"), Json("org.emerick.test.gain"),
+                                        [](const Json& plugin) { return plugin.at("id"); });
+    REQUIRE(gain != listed.at("plugins").end());
+    CHECK(gain->at("format") == "clap");
+    CHECK(gain->at("effect") == true);
+
+    const std::string guitar = rig.run("track.addAudio", {{"name", "Guitar"}}).at("id");
+    writeConstant(rig.path("dc.wav"), 48000, 0.5F);
+    rig.run("clip.import", {{"track", guitar}, {"path", rig.path("dc.wav").string()}, {"at", "1.1.0"}});
+    const std::string amp = rig.run("insert.add", {{"track", guitar}, {"plugin", "org.emerick.test.gain"}}).at("id");
+    CHECK(rig.run("insert.params", {{"insert", amp}}).at("params")[0].at("name") == "Gain");
+    CHECK(rig.mixAt(24000) == Approx(0.5F).margin(1e-4));
+    CHECK(rig.run("insert.setParam", {{"insert", amp}, {"param", "gain"}, {"value", 0.5}}).at("text") == "0.50x");
+    CHECK(rig.mixAt(24000) == Approx(0.25F).margin(1e-4));
+    rig.run("insert.setBypass", {{"insert", amp}, {"value", true}});
+    CHECK(rig.mixAt(24000) == Approx(0.5F).margin(1e-4));
+    rig.run("insert.setBypass", {{"insert", amp}, {"value", false}});
+    rig.run("automation.addPoint", {{"track", guitar}, {"param", amp + ".Gain"}, {"tick", 0}, {"value", 1.5}});
+    CHECK(rig.mixAt(24000) == Approx(0.75F).margin(1e-4));
+    rig.controller->save();
+
+    PluginInsertRig other;
+    other.controller->open(rig.controller->folder());
+    other.controller->flush();
+    const auto plugin = other.controller->instruments().find(model::InsertId{amp});
+    REQUIRE(plugin != nullptr);
+    CHECK(plugin->paramValue(0) == 0.5);
+}

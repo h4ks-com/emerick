@@ -59,19 +59,16 @@ npx skills add h4ks-com/emerick
 The Docker image runs a session service: each agent session gets its own Emerick process and project folder, behind one MCP endpoint.
 
 ```
-make docker-build
-docker run --rm -p 127.0.0.1:8080:8080 -v emerick-data:/data emerick
+docker run --rm -p 127.0.0.1:8080:8080 -v emerick-data:/data ghcr.io/h4ks-com/emerick
 ```
 
 Agents connect to `http://127.0.0.1:8080/mcp`. See [service/README.md](service/README.md) for sessions, settings and storage.
-
-> [!WARNING]
-> The service has no authentication. Put it behind a reverse proxy that authenticates every request, and read [docs/service-security.md](docs/service-security.md) for the limits it applies.
 
 ## Documentation
 
 - [docs/architecture.md](docs/architecture.md): layers, the action registry, plugins
 - [docs/design.md](docs/design.md): visual design
+- [docs/service-security.md](docs/service-security.md): the limits the service applies to agents
 - [CONTRIBUTING.md](CONTRIBUTING.md): build targets, checks and commit style
 - [AGENTS.md](AGENTS.md): instructions for coding agents working on Emerick
 

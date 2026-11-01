@@ -210,6 +210,15 @@ TEST_CASE("export mix writes each format by its param or the path's suffix and r
     CHECK(readAudio(stems.at("files")[0].get<std::string>()).channels.size() == 2);
 }
 
+TEST_CASE("a song length file encodes to ogg without overflowing the encoder's stack") {
+    ProjectRig rig;
+    const std::vector<float> song = sine(440, 0.5, 240);
+    writeAudio(rig.path("song.ogg"), {song, song}, kRate, {.format = AudioFormat::Ogg});
+    const AudioData audio = readAudio(rig.path("song.ogg"));
+    REQUIRE(audio.channels.size() == 2);
+    CHECK(static_cast<double>(audio.channels[0].size()) == Approx(song.size()).margin(0.01 * kRate));
+}
+
 TEST_CASE("opus refuses a rate it cannot encode before it renders") {
     ProjectRig rig({}, 44100);
     const std::string vox = rig.run("track.addAudio", {{"name", "Vox"}}).at("id");

@@ -170,9 +170,14 @@ void AudioWriter::write(std::span<const std::vector<float>> channels) {
             interleaved[frame * channels.size() + channel] = channels[channel][frame];
         }
     }
-    if (sf_writef_float(file_->file.get(), interleaved.data(), static_cast<sf_count_t>(frames)) !=
-        static_cast<sf_count_t>(frames)) {
-        throw AppError("cannot write " + file_->path.string());
+    // The Vorbis encoder reserves stack in proportion to the frames of one call, so we hand it a block at a time.
+    constexpr std::size_t kBlockFrames = 4096;
+    for (std::size_t first = 0; first < frames; first += kBlockFrames) {
+        const std::size_t count = std::min(kBlockFrames, frames - first);
+        if (sf_writef_float(file_->file.get(), interleaved.data() + (first * channels.size()),
+                            static_cast<sf_count_t>(count)) != static_cast<sf_count_t>(count)) {
+            throw AppError("cannot write " + file_->path.string());
+        }
     }
 }
 

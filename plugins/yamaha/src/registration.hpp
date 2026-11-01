@@ -31,6 +31,8 @@ inline constexpr const char* kSendVoicesSetting = "yamaha.sendVoicesOnPlay";
 inline constexpr const char* kControllerPortSetting = "yamaha.controllerPort";
 inline constexpr const char* kControllerChannelSetting = "yamaha.controllerChannel";
 inline constexpr int kControllerChannel = 16;
+// The last block of a lane lasts until the next event, so the lane draws it and selects it as one bar.
+inline constexpr core::Ticks kLastBlockTicks = 4 * core::kTicksPerQuarter;
 
 // A Chords or Style track keeps its events in data as a JSON array; a new track has no data and no events.
 template <class Event>

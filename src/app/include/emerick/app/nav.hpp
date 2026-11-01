@@ -51,6 +51,7 @@ class Nav : public QObject {
     Q_PROPERTY(QVariantMap automationLanes READ automationLanes WRITE setAutomationLanes NOTIFY changed)
     Q_PROPERTY(QStringList selectedPoints READ selectedPoints WRITE setSelectedPoints NOTIFY selectionChanged)
     Q_PROPERTY(QStringList selectedClips READ selectedClips WRITE setSelectedClips NOTIFY selectionChanged)
+    Q_PROPERTY(QVariantMap selectedBlocks READ selectedBlocks WRITE setSelectedBlocks NOTIFY selectionChanged)
     Q_PROPERTY(double pixelsPerTick READ pixelsPerTick WRITE setPixelsPerTick NOTIFY viewChanged)
     Q_PROPERTY(int trackHeight READ trackHeight WRITE setTrackHeight NOTIFY viewChanged)
     Q_PROPERTY(double scrollTicks READ scrollTicks WRITE setScrollTicks NOTIFY scrollChanged)
@@ -102,6 +103,8 @@ public:
     // Selected automation points, in any lane; selecting them deselects the clips and the marker.
     [[nodiscard]] QStringList selectedPoints() const { return selectedPoints_; }
     [[nodiscard]] QStringList selectedClips() const { return selectedClips_; }
+    // The selected lane blocks as their track and the tick range from to to they cover, or empty.
+    [[nodiscard]] QVariantMap selectedBlocks() const { return selectedBlocks_; }
     [[nodiscard]] double pixelsPerTick() const { return pixelsPerTick_; }
     [[nodiscard]] int trackHeight() const { return trackHeight_; }
     // The tick at the timeline's left edge, and the lanes' width in pixels, which the timeline view reports.
@@ -125,6 +128,7 @@ public:
         if (!value.isEmpty()) {
             assign(selectedClips_, {}, &Nav::selectionChanged);
             assign(selectedPoints_, {}, &Nav::selectionChanged);
+            assign(selectedBlocks_, {}, &Nav::selectionChanged);
         }
         assign(selectedMarker_, value, &Nav::selectionChanged);
     }
@@ -158,6 +162,7 @@ public:
         if (!value.isEmpty()) {
             assign(selectedClips_, {}, &Nav::selectionChanged);
             assign(selectedMarker_, {}, &Nav::selectionChanged);
+            assign(selectedBlocks_, {}, &Nav::selectionChanged);
         }
         assign(selectedPoints_, value, &Nav::selectionChanged);
     }
@@ -165,8 +170,17 @@ public:
         if (!value.isEmpty()) {
             assign(selectedMarker_, {}, &Nav::selectionChanged);
             assign(selectedPoints_, {}, &Nav::selectionChanged);
+            assign(selectedBlocks_, {}, &Nav::selectionChanged);
         }
         assign(selectedClips_, value, &Nav::selectionChanged);
+    }
+    void setSelectedBlocks(const QVariantMap& value) {
+        if (!value.isEmpty()) {
+            assign(selectedClips_, {}, &Nav::selectionChanged);
+            assign(selectedMarker_, {}, &Nav::selectionChanged);
+            assign(selectedPoints_, {}, &Nav::selectionChanged);
+        }
+        assign(selectedBlocks_, value, &Nav::selectionChanged);
     }
     void setPixelsPerTick(double value) {
         assign(pixelsPerTick_, std::clamp(value, kMinPixelsPerTick, kMaxPixelsPerTick), &Nav::viewChanged);
@@ -185,36 +199,42 @@ public:
             }
             return list;
         };
-        return {{"page", enumKey(page_)},
-                {"settingsTab", settingsTab_.toStdString()},
-                {"selectedTrack", selectedTrack_.toStdString()},
-                {"selectedTracks", strings(selectedTracks_)},
-                {"selectedClips", strings(selectedClips_)},
-                {"selectedMarker", selectedMarker_.toStdString()},
-                {"pixelsPerTick", pixelsPerTick_},
-                {"trackHeight", trackHeight_},
-                {"scrollTicks", scrollTicks_},
-                {"paletteOpen", paletteOpen_},
-                {"aboutOpen", aboutOpen_},
-                {"healthOpen", healthOpen_},
-                {"inspectorOpen", inspectorOpen_},
-                {"markerListOpen", markerListOpen_},
-                {"projectMenuOpen", projectMenuOpen_},
-                {"consoleOpen", consoleOpen_},
-                {"mixerOpen", mixerOpen_},
-                {"metronomeMenuOpen", metronomeMenuOpen_},
-                {"pianoRollOpen", pianoRollOpen_},
-                {"pianoRollClip", pianoRollClip_.toStdString()},
-                {"selectedNotes", strings(selectedNotes_)},
-                {"editingInsert", editingInsert_.toStdString()},
-                {"editingBlock", editingBlock_.isEmpty()
-                                     ? nlohmann::json::object()
-                                     : nlohmann::json{{"track", editingBlock_.value("track").toString().toStdString()},
-                                                      {"at", editingBlock_.value("at").toLongLong()}}},
-                {"keyHeight", keyHeight_},
-                {"automationOpen", automationOpen_},
-                {"automationLanes", lanes()},
-                {"selectedPoints", strings(selectedPoints_)}};
+        return {
+            {"page", enumKey(page_)},
+            {"settingsTab", settingsTab_.toStdString()},
+            {"selectedTrack", selectedTrack_.toStdString()},
+            {"selectedTracks", strings(selectedTracks_)},
+            {"selectedClips", strings(selectedClips_)},
+            {"selectedMarker", selectedMarker_.toStdString()},
+            {"pixelsPerTick", pixelsPerTick_},
+            {"trackHeight", trackHeight_},
+            {"scrollTicks", scrollTicks_},
+            {"paletteOpen", paletteOpen_},
+            {"aboutOpen", aboutOpen_},
+            {"healthOpen", healthOpen_},
+            {"inspectorOpen", inspectorOpen_},
+            {"markerListOpen", markerListOpen_},
+            {"projectMenuOpen", projectMenuOpen_},
+            {"consoleOpen", consoleOpen_},
+            {"mixerOpen", mixerOpen_},
+            {"metronomeMenuOpen", metronomeMenuOpen_},
+            {"pianoRollOpen", pianoRollOpen_},
+            {"pianoRollClip", pianoRollClip_.toStdString()},
+            {"selectedNotes", strings(selectedNotes_)},
+            {"editingInsert", editingInsert_.toStdString()},
+            {"editingBlock", editingBlock_.isEmpty()
+                                 ? nlohmann::json::object()
+                                 : nlohmann::json{{"track", editingBlock_.value("track").toString().toStdString()},
+                                                  {"at", editingBlock_.value("at").toLongLong()}}},
+            {"selectedBlocks", selectedBlocks_.isEmpty()
+                                   ? nlohmann::json::object()
+                                   : nlohmann::json{{"track", selectedBlocks_.value("track").toString().toStdString()},
+                                                    {"from", selectedBlocks_.value("from").toLongLong()},
+                                                    {"to", selectedBlocks_.value("to").toLongLong()}}},
+            {"keyHeight", keyHeight_},
+            {"automationOpen", automationOpen_},
+            {"automationLanes", lanes()},
+            {"selectedPoints", strings(selectedPoints_)}};
     }
 
 signals:
@@ -267,6 +287,7 @@ private:
     QVariantMap automationLanes_;
     QStringList selectedPoints_;
     QStringList selectedClips_;
+    QVariantMap selectedBlocks_;
     double pixelsPerTick_ = kDefaultPixelsPerTick;
     int trackHeight_ = kDefaultTrackHeight;
     double scrollTicks_ = 0;

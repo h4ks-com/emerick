@@ -1,5 +1,6 @@
 #include "emerick/app/track_analysis.hpp"
 
+#include <algorithm>
 #include <optional>
 #include <ranges>
 
@@ -14,7 +15,9 @@ TrackAnalysis::TrackAnalysis(const Registry& registry, ProjectController& contro
 std::vector<model::TrackId> analyzableTracks(const Registry& registry, const model::Document& document) {
     return document.tracks | std::views::filter([&](const model::Track& track) {
                const TrackType* type = registry.trackType(track.kind);
-               return type != nullptr && playsAudio(*type, track);
+               const bool feedsMidi = std::ranges::contains(
+                   document.tracks, track.id, [](const model::Track& other) { return other.midiIn.sourceTrack; });
+               return type != nullptr && playsAudio(*type, track) && !feedsMidi;
            }) |
            std::views::transform(&model::Track::id) | std::ranges::to<std::vector>();
 }

@@ -231,7 +231,7 @@ struct Measurement {
     std::vector<std::string> trackIds;
     // With the mix, output 0 carries it and output i + 1 the i-th track.
     bool withMix = false;
-    // Measures windows at this resolution when the params give none, or only when they give one if it is null.
+    // We measure no windows when this and the params' resolution are both null.
     Json defaultResolution;
     std::function<Json(const AnalysisRange&, const engine::Session&, std::vector<Measured>)> report;
 };
@@ -256,7 +256,9 @@ RenderJob prepareMeasurement(ProjectController& controller, const Registry& regi
         throw AppError(std::format("give from before to, both from {} to the project end {}",
                                    tempo.toBarBeatTick(0).format(), tempo.toBarBeatTick(end).format()));
     }
-    const Json resolution = params.contains("resolution") ? params.at("resolution") : measurement.defaultResolution;
+    const Json resolution = params.contains("resolution") && !params.at("resolution").is_null()
+                                ? params.at("resolution")
+                                : measurement.defaultResolution;
     if (!resolution.is_null()) {
         range.windows = windowStarts(range, resolution);
     }
@@ -317,10 +319,13 @@ RenderJob prepareAnalysis(ProjectController& controller, const Registry& registr
          }});
 }
 
-engine::OutputRole roleOf(const engine::Session& session, const std::string& id) {
-    const auto track = std::ranges::find(session.tracks, id, &engine::Track::id);
-    return track != session.tracks.end() && track->kind == engine::TrackKind::bus ? engine::OutputRole::bus
-                                                                                  : engine::OutputRole::track;
+engine::InspectedOutput trackOutput(const engine::Session& session, const std::string& id, Measured measured) {
+    engine::InspectedOutput output{.levels = measured.levels, .windows = std::move(measured.windows)};
+    if (const auto track = std::ranges::find(session.tracks, id, &engine::Track::id); track != session.tracks.end()) {
+        output.role = track->kind == engine::TrackKind::bus ? engine::OutputRole::bus : engine::OutputRole::track;
+        output.hasClips = !track->audioClips.empty() || !track->midiClips.empty();
+    }
+    return output;
 }
 
 Json issueJson(const AnalysisRange& range, const std::vector<std::string>& outputIds, const engine::MixIssue& issue) {
@@ -328,13 +333,14 @@ Json issueJson(const AnalysisRange& range, const std::vector<std::string>& outpu
     for (const engine::IssueEvidence& entry : issue.evidence) {
         evidence[std::string{entry.name}] = rounded(entry.value, 0.01);
     }
-    return {{"severity", engine::kIssueSeverityNames.at(static_cast<std::size_t>(issue.severity))},
-            {"kind", engine::kIssueKindNames.at(static_cast<std::size_t>(issue.kind))},
-            {"track", outputIds.at(issue.output)},
-            {"from", windowPosition(range, range.windows.at(issue.firstWindow).tick)},
-            {"to", windowPosition(range, range.windowEndTick(issue.lastWindow))},
-            {"detail", issue.detail},
-            {"evidence", evidence}};
+    return {
+        {"severity", engine::kIssueSeverityNames.at(static_cast<std::size_t>(issue.severity))},
+        {"kind", engine::kIssueKindNames.at(static_cast<std::size_t>(issue.kind))},
+        {"track", outputIds.at(issue.output)},
+        {"from", windowPosition(range, range.windows.empty() ? range.from : range.windows.at(issue.firstWindow).tick)},
+        {"to", windowPosition(range, range.windowEndTick(issue.lastWindow))},
+        {"detail", issue.detail},
+        {"evidence", evidence}};
 }
 
 Json inspectionJson(const AnalysisRange& range, const engine::Session& session,
@@ -343,10 +349,12 @@ Json inspectionJson(const AnalysisRange& range, const engine::Session& session,
     outputIds.insert(outputIds.end(), trackIds.begin(), trackIds.end());
     const std::vector<engine::InspectedOutput> outputs =
         std::views::iota(std::size_t{0}, measured.size()) | std::views::transform([&](std::size_t index) {
-            return engine::InspectedOutput{
-                .role = index == 0 ? engine::OutputRole::mix : roleOf(session, outputIds[index]),
-                .levels = measured[index].levels,
-                .windows = std::move(measured[index].windows)};
+            if (index == 0) {
+                return engine::InspectedOutput{.role = engine::OutputRole::mix,
+                                               .levels = measured[index].levels,
+                                               .windows = std::move(measured[index].windows)};
+            }
+            return trackOutput(session, outputIds[index], std::move(measured[index]));
         }) |
         std::ranges::to<std::vector>();
     const std::vector<double> beats =

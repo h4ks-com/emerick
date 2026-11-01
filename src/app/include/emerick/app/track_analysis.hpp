@@ -15,7 +15,7 @@ namespace emerick::app {
 inline constexpr const char* kTrackAnalyzeAction = "track.analyze";
 inline constexpr const char* kTracksAnalyzeAction = "tracks.analyze";
 
-// The audio tracks and buses in track order.
+// The audio tracks and buses in track order, leaving out tracks that send MIDI on to another track as stems do.
 std::vector<model::TrackId> analyzableTracks(const Registry& registry, const model::Document& document);
 
 // Runs track.analyze for the inspector in the background and keeps each track's last result.

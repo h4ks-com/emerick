@@ -353,7 +353,7 @@ TEST_CASE("inspecting a mix finds a high pitched blip every eighth note as a bee
     CHECK(issuesOf(inspection, "whine").empty());
 }
 
-TEST_CASE("inspecting a clean mix finds no issues, and a too loud track is an imbalance") {
+TEST_CASE("inspecting a clean mix finds no issues, a too loud track is an imbalance, and a null resolution is a bar") {
     ProjectRig rig;
     addTrack(rig, "Room", noise(0.1, 16));
     addTrack(rig, "Bass", sine(80, 0.3, 16));
@@ -371,4 +371,5 @@ TEST_CASE("inspecting a clean mix finds no issues, and a too loud track is an im
     CHECK(imbalances[0].at("from").at("bbt") == "2.1.0");
     CHECK(imbalances[0].at("to").at("bbt") == "6.1.0");
     CHECK(imbalances[0].at("evidence").at("offsetDb").get<double>() > 8);
+    CHECK(rig.run("mix.inspect", {{"from", "2.1.0"}, {"to", "6.1.0"}, {"resolution", nullptr}}) == inspection);
 }

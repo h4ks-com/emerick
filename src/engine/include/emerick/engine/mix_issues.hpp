@@ -20,6 +20,7 @@ struct InspectedOutput {
     OutputRole role = OutputRole::track;
     TrackLevels levels;
     std::vector<WindowLevels> windows;
+    bool hasClips = true;
 };
 
 enum class IssueKind : std::uint8_t { whine, beep, clipping, dc, imbalance, silent, harsh };

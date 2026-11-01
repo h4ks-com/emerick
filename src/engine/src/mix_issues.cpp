@@ -219,7 +219,9 @@ private:
 
     void silent(std::size_t output) {
         constexpr std::array kSeverity{IssueSeverity::medium, IssueSeverity::low, IssueSeverity::high};
-        add(kSeverity.at(static_cast<std::size_t>(outputs_[output].role)), IssueKind::silent, output, whole(output),
+        const InspectedOutput& silent = outputs_[output];
+        add(silent.hasClips ? kSeverity.at(static_cast<std::size_t>(silent.role)) : IssueSeverity::low,
+            IssueKind::silent, output, whole(output),
             std::format("nothing above {:.0f} dBFS over the range", kActiveGateDb), {});
     }
 

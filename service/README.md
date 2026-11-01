@@ -61,7 +61,25 @@ At startup the service reads `emerick --help` and exits naming any flag the bina
 | `POST /sessions/{id}/save` | saves the project and stores it |
 | `DELETE /sessions/{id}` | saves the project, stops the session and stores the project |
 | `POST /sessions/{id}/mcp` | the session's Emerick MCP |
-| `POST /mcp` | MCP with `project.create`, `project.list`, `session.create`, `session.list`, `session.close` |
+| `POST /mcp` | the service's MCP, below |
+
+## Agents
+
+Register one MCP server, `<service url>/mcp`. Its tools are `project.create`, `project.list`, `session.create`, `session.list`, `session.tools`, `session.call` and `session.close`.
+
+```
+project.create {name}                       -> {id: P}
+session.create {project_id: P}              -> {id: S, project_dir, mcp_url}
+session.call {session_id: S, tool: "lua.eval", arguments: {code}}
+session.call {session_id: S, tool: "actions.run", arguments: {id, params}}
+session.close {session_id: S}
+```
+
+- The MCP endpoint is stateless and every call names its session. The session itself is stateful: one Emerick keeps the project open between calls until `session.close`, or until it idles for `EMERICK_SESSION_IDLE_SECONDS`. Both save the project first.
+- An agent that loses its session id finds it with `session.list`, from any connection.
+- One agent can run several sessions, one per project, up to `EMERICK_MAX_SESSIONS` for the whole service.
+- Agents that pass a session id between them share that session. Its Emerick handles one call at a time, so hand the project over between agents rather than editing it from two at once.
+- An agent that can add MCP servers while it runs can use the session's `mcp_url` directly, with the same tools `session.tools` lists.
 
 A live session's `project_dir` is the folder its Emerick works in, with the bundle at `project.erk`. Emerick reads and writes only inside that folder, so an agent exports there, such as `export.mix` with `{"path": "<project_dir>/mix.wav"}`.
 

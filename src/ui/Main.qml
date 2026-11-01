@@ -63,14 +63,17 @@ ApplicationWindow {
         property string actionId
         onAccepted: Registry.runWithFile(actionId, selectedFolder)
     }
+    // macOS draws an application modal alert as its own window, whose corners stay clean where a sheet's are cut.
     MessageDialog {
         id: confirmDialog
         property string actionId
+        modality: Qt.ApplicationModal
         buttons: MessageDialog.Ok | MessageDialog.Cancel
         onAccepted: Registry.runAction(actionId, {confirm: true})
     }
     MessageDialog {
         id: noticeDialog
+        modality: Qt.ApplicationModal
         buttons: MessageDialog.Ok
         objectName: "dialog.notice"
     }

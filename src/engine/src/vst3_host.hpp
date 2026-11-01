@@ -209,6 +209,9 @@ struct Vst3Plugin::Impl {
     // The main thread writes param changes and the holder of the audio guard reads them; each count grows by one per
     // change, so the main thread knows when the processor has every change it sent.
     SpscRing paramQueue{kMaxVst3Params * sizeof(Vst3ParamChange)};
+    // The audio thread writes the values the processor changed itself, and the main thread hands them to the
+    // controller; a full ring drops the newest until the main thread catches up.
+    SpscRing processorChanges{kMaxVst3Params * kMaxVst3ParamPoints * sizeof(Vst3ParamChange)};
     std::uint64_t paramsSent = 0;
     std::atomic<std::uint64_t> paramsApplied{0};
 

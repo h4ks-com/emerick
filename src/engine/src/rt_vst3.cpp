@@ -172,6 +172,18 @@ void addMidi(Vst3Plugin::Impl& impl, core::Frames frames, std::int64_t hostTimeN
     impl.noteCount = 0;
 }
 
+// The processor reports values it changed itself, which the main thread hands to the controller.
+void forwardOutputChanges(Vst3Plugin::Impl& impl) {
+    for (Steinberg::int32 index = 0; index < impl.outputChanges.getParameterCount(); ++index) {
+        vst::IParamValueQueue* queue = impl.outputChanges.getParameterData(index);
+        Steinberg::int32 offset = 0;
+        vst::ParamValue value = 0.0;
+        if (queue != nullptr && queue->getPoint(queue->getPointCount() - 1, offset, value) == Steinberg::kResultOk) {
+            writeRecord(impl.processorChanges, Vst3ParamChange{.id = queue->getParameterId(), .value = value});
+        }
+    }
+}
+
 std::uint8_t velocityByte(float velocity, bool on) {
     const auto scaled = static_cast<std::uint8_t>(std::clamp(std::lround(velocity * kSevenBits), 0L, 127L));
     return on ? std::max<std::uint8_t>(scaled, 1) : scaled;
@@ -270,9 +282,7 @@ bool Vst3Plugin::Impl::process(core::Frames frames, std::int64_t hostTimeNs, con
     data.processContext = &context;
     const bool played = processor->process(data) == Steinberg::kResultOk;
     collectProduced(*this);
-    if (!outputChanges.empty()) {
-        paramsChanged.store(true, std::memory_order_relaxed);
-    }
+    forwardOutputChanges(*this);
     events.clear();
     paramsApplied.fetch_add(sent, std::memory_order_release);
     return played;

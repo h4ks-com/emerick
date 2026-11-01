@@ -272,3 +272,18 @@ TEST_CASE("a VST3 instrument takes controllers, pitch bend and program change th
     CHECK(restored->paramValue(2) == 1.0);
     CHECK(restored->paramValue(3) == 2.0);
 }
+
+TEST_CASE("a value the VST3 processor changes itself reaches its controller on the next idle") {
+    const std::shared_ptr<Plugin> effect = gain();
+    REQUIRE(effect->activate(48000.0, kFrames));
+    CHECK(effect->params().size() == 2);
+    Stereo signal;
+    effect->processEffect(signal.channels, kFrames, 0, {});
+    CHECK(effect->paramValue(3) == 0.0);
+    effect->idle();
+    CHECK(effect->paramValue(3) == 0.5);
+    CHECK(effect->takeParamsChanged());
+    effect->processEffect(signal.channels, kFrames, 0, {});
+    effect->idle();
+    CHECK_FALSE(effect->takeParamsChanged());
+}

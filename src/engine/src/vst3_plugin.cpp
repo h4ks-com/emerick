@@ -395,6 +395,17 @@ core::Frames Vst3Plugin::latency() const { return impl_->active ? impl_->latency
 
 bool Vst3Plugin::idle() {
     Impl& impl = *impl_;
+    Vst3ParamChange change;
+    bool forwarded = false;
+    while (readValue(impl.processorChanges, change)) {
+        if (impl.controller->getParamNormalized(change.id) != change.value) {
+            impl.controller->setParamNormalized(change.id, change.value);
+            forwarded = true;
+        }
+    }
+    if (forwarded) {
+        impl.paramsChanged.store(true, std::memory_order_relaxed);
+    }
     if (impl.restartRequested.exchange(false, std::memory_order_relaxed) && impl.active) {
         const AudioGuard guard(impl.audioGuard);
         impl.activateAt(impl.sampleRate, impl.maxFrames);

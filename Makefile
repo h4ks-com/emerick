@@ -1,4 +1,5 @@
-.PHONY: configure build test run run-release format format-check lint quality fix tidy-fix check-fast docker-build e2e clean
+.PHONY: configure build test run run-release format format-check lint quality fix tidy-fix check-fast docker-build e2e \
+	service-check service-run clean
 
 SOURCES := $(shell git ls-files --cached --others --exclude-standard '*.cpp' '*.hpp')
 # The C++ files a branch changed since it left main, plus uncommitted and new ones.
@@ -74,10 +75,18 @@ check-fast: build
 	$(if $(FAST_TEST_DIRS),$(foreach dir,$(FAST_TEST_DIRS),ctest --test-dir build/dev/$(dir) -j $(JOBS) --output-on-failure --stop-on-failure &&) true,ctest --preset dev -j $(JOBS) --stop-on-failure)
 
 docker-build:
-	docker build -t emerick-dev -f docker/Dockerfile .
+	docker build --build-arg JOBS=$(JOBS) $(DOCKER_BUILD_ARGS) -t emerick-dev -f docker/Dockerfile .
 
 e2e: docker-build
 	./e2e/run.sh
+
+service-check:
+	cd service && uv sync --frozen && uv run ruff format --check . && uv run ruff check . && uv run pyright && uv run pytest
+
+service-run: build
+	@bin=$(CURDIR)/build/dev/app/emerick; [ -x $$bin ] || bin=$$bin.app/Contents/MacOS/emerick; \
+	cd service && EMERICK_BIN=$${EMERICK_BIN:-$$bin} EMERICK_DATA_DIR=$${EMERICK_DATA_DIR:-$(CURDIR)/build/service} \
+	EMERICK_WORK_DIR=$${EMERICK_WORK_DIR:-$(CURDIR)/build/service/sessions} exec uv run emerick-service
 
 clean:
 	rm -rf build/dev build/release

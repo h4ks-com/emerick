@@ -4,10 +4,16 @@ on:
   pull_request:
   push:
     branches: [main]
+    tags: ["v*.*.*"]
+  release:
+    types: [published]
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
 
 env:
   LLVM_VERSION: "22"
@@ -76,6 +82,16 @@ jobs:
       - name: Check format, lint and test
         run: make quality
 
+  service:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: astral-sh/setup-uv@v6
+
+      - name: Check format, lint, types and tests of the service
+        run: make service-check
+
   e2e:
     runs-on: ubuntu-24.04
     steps:
@@ -83,27 +99,133 @@ jobs:
 
       - uses: docker/setup-buildx-action@v3
 
+      - name: Expose the cache token to docker build
+        uses: crazy-max/ghaction-github-runtime@v3
+
       - name: Restore ccache
         uses: actions/cache@v4
         with:
           path: docker-ccache
-          key: docker-ccache-${{ github.sha }}
-          restore-keys: docker-ccache-
+          key: docker-ccache-amd64-${{ github.sha }}
+          restore-keys: docker-ccache-amd64-
 
       - name: Move ccache into the build
         uses: reproducible-containers/buildkit-cache-dance@v3
         with:
           cache-map: '{"docker-ccache": "/ccache"}'
 
-      - name: Build the headless image
+      - name: Build the image and drive it over MCP
+        run: make e2e
+        env:
+          DOCKER_BUILD_ARGS: --load --cache-from type=gha,scope=amd64 --cache-to type=gha,mode=max,scope=amd64
+
+  image:
+    if: github.event_name != 'pull_request'
+    needs: [quality, service, e2e]
+    strategy:
+      matrix:
+        include:
+          - platform: linux/amd64
+            arch: amd64
+            runner: ubuntu-24.04
+          - platform: linux/arm64
+            arch: arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Name the image in lowercase
+        run: echo "IMAGE=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/emerick" >> "$GITHUB_ENV"
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Restore ccache
+        uses: actions/cache@v4
+        with:
+          path: docker-ccache
+          key: docker-ccache-${{ matrix.arch }}-${{ github.sha }}
+          restore-keys: docker-ccache-${{ matrix.arch }}-
+
+      - name: Move ccache into the build
+        uses: reproducible-containers/buildkit-cache-dance@v3
+        with:
+          cache-map: '{"docker-ccache": "/ccache"}'
+
+      - name: Build and push by digest
+        id: build
         uses: docker/build-push-action@v6
         with:
           context: .
           file: docker/Dockerfile
-          tags: emerick-dev
-          load: true
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          platforms: ${{ matrix.platform }}
+          build-args: JOBS=4
+          outputs: type=image,name=${{ env.IMAGE }},push-by-digest=true,name-canonical=true,push=true
+          cache-from: type=gha,scope=${{ matrix.arch }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.arch }}
 
-      - name: Drive the headless app over MCP
-        run: ./e2e/run.sh
+      - name: Keep the digest
+        run: |
+          mkdir -p /tmp/digests
+          touch "/tmp/digests/${DIGEST#sha256:}"
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: digest-${{ matrix.arch }}
+          path: /tmp/digests/*
+          retention-days: 1
+
+  publish:
+    needs: image
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Name the image in lowercase
+        run: echo "IMAGE=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/emerick" >> "$GITHUB_ENV"
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: /tmp/digests
+          pattern: digest-*
+          merge-multiple: true
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE }}
+          flavor: latest=false
+          tags: |
+            type=raw,value=main,enable=${{ github.ref == 'refs/heads/main' }}
+            type=sha,prefix=sha-,format=short,enable=${{ github.ref == 'refs/heads/main' }}
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/v') }}
+
+      - name: Tag the multi-arch image
+        working-directory: /tmp/digests
+        run: |
+          mapfile -t tags < <(jq -r '.tags[] | "-t", .' <<< "$DOCKER_METADATA_OUTPUT_JSON")
+          refs=()
+          for digest in *; do refs+=("$IMAGE@sha256:$digest"); done
+          docker buildx imagetools create "${tags[@]}" "${refs[@]}"

@@ -26,9 +26,11 @@ Emerick is a small native DAW in C++23 and Qt 6.11 QML. It records and plays aud
 - `make quality` the full gate: format-check, lint, test; run it once before a commit
 - `--headless` runs the app with no window, driven over MCP only, so it needs `--mcp-port` or the `mcp.port` setting; MCP then leaves out the `ui.*` tools and `screenshot`, and window only actions return an error
 - `--script <file> [-- args...]` runs one Lua script with no window and exits, 1 on a script error; the script reads `arg` and can call `emerick.wait`, and MCP runs only with `--mcp-port`; `docker run --rm emerick-dev --script <file>` runs it in the image
-- `make docker-build` build the headless image (Qt 6.11, builds the repo, runs ctest)
-- `make e2e` build the Docker image and drive the headless app over MCP
-- `docker run --rm -p 127.0.0.1:8888:8888 emerick-dev` run the headless app; `.mcp.json` registers it as the `emerick` MCP server
+- `make docker-build` build the image (Qt 6.11, builds the `release` preset with its tests, runs ctest, then a slim runtime with the service)
+- `make e2e` build the Docker image and drive the headless app and the service over MCP
+- `make service-check` ruff, pyright strict and pytest for the session service in `service/`
+- `docker run --rm -p 127.0.0.1:8080:8080 emerick-dev` run the Emerick service, which starts one headless app per session (`service/README.md`)
+- `docker run --rm -p 127.0.0.1:8888:8888 emerick-dev app` run one headless app; `.mcp.json` registers it as the `emerick` MCP server
 
 ## Before considering work complete
 1. Run `make quality` and fix every failure.

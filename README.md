@@ -8,3 +8,9 @@ make build
 make run
 make quality
 ```
+
+Skills that teach agents to produce songs with Emerick:
+
+```
+npx skills add matheusfillipe/emerick
+```

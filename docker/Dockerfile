@@ -55,9 +55,12 @@ RUN uv sync --frozen --no-dev --no-editable
 
 FROM ubuntu:24.04 AS runtime
 ENV DEBIAN_FRONTEND=noninteractive
+# Qt links the GL dispatch libraries, but headless sessions never create a GL context, so we drop the Mesa drivers.
 RUN apt-get update && apt-get install -y --no-install-recommends \
         python3 libsndfile1 libfluidsynth3 libasound2t64 libgl1 libegl1 libopengl0 libxkbcommon0 libfontconfig1 \
         libdbus-1-3 libglib2.0-0t64 fontconfig fonts-dejavu-core \
+    && dpkg --purge --force-depends libglx-mesa0 libegl-mesa0 libgl1-mesa-dri mesa-libgallium \
+        $(dpkg-query -W -f '${Package}\n' 'libllvm*') \
     && rm -rf /var/lib/apt/lists/* \
     && useradd --uid 10001 --create-home --home-dir /data emerick
 COPY --from=bundle /out/ /

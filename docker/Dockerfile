@@ -23,12 +23,60 @@ ENV CMAKE_PREFIX_PATH=/opt/qt/current \
     CCACHE_DIR=/ccache
 
 FROM qt AS build
+ARG JOBS=4
 WORKDIR /src
-COPY . .
+COPY --exclude=service --exclude=e2e --exclude=docs --exclude=deploy --exclude=.github . .
 RUN --mount=type=cache,target=/ccache \
-    cmake --preset dev && cmake --build --preset dev && ctest --preset dev
+    cmake --preset release -DEMERICK_BUILD_TESTS=ON \
+    && cmake --build --preset release -j "$JOBS" \
+    && ctest --test-dir build/release -j "$JOBS" --output-on-failure
 
-FROM build AS runtime
+# We copy the app with only the Qt libraries and plugins it links, and keep Qt's folder layout so Qt finds its plugins.
+FROM build AS bundle
+RUN set -e; app=build/release/app; qt=$(readlink -f /opt/qt/current); \
+    mkdir -p /out/opt/emerick "/out$qt/lib" "/out$qt/plugins/platforms"; \
+    cp -a "$app/emerick" "$app/emerick-plugin-scanner" "$app/clap" /out/opt/emerick/; \
+    cp "$qt/plugins/platforms/libqoffscreen.so" "/out$qt/plugins/platforms/"; \
+    find /out/opt -type f \( -name 'emerick*' -o -name '*.clap' -o -name '*.so' \) -exec strip --strip-unneeded {} +; \
+    find /out/opt -type f \( -name 'emerick*' -o -name '*.clap' -o -name '*.so' \) -exec ldd {} + \
+        | awk '$3 ~ /^\/opt\/qt\// {print $3}' | sort -u \
+        | xargs -I{} cp -L {} "/out$qt/lib/"
+
+FROM ubuntu:24.04 AS service
+COPY --from=ghcr.io/astral-sh/uv:0.13.5 /uv /usr/local/bin/uv
+RUN apt-get update && apt-get install -y --no-install-recommends python3 && rm -rf /var/lib/apt/lists/*
+ENV UV_PYTHON_DOWNLOADS=never UV_PYTHON=/usr/bin/python3 UV_PROJECT_ENVIRONMENT=/opt/service UV_COMPILE_BYTECODE=1
+WORKDIR /src/service
+COPY service/pyproject.toml service/uv.lock ./
+RUN uv sync --frozen --no-dev --no-install-project
+COPY service/ ./
+RUN uv sync --frozen --no-dev --no-editable
+
+FROM ubuntu:24.04 AS runtime
+ENV DEBIAN_FRONTEND=noninteractive
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        python3 libsndfile1 libfluidsynth3 libasound2t64 libgl1 libegl1 libopengl0 libxkbcommon0 libfontconfig1 \
+        libdbus-1-3 libglib2.0-0t64 fontconfig fonts-dejavu-core \
+    && rm -rf /var/lib/apt/lists/* \
+    && useradd --uid 10001 --create-home --home-dir /data emerick
+COPY --from=bundle /out/ /
+COPY --from=service /opt/service /opt/service
 COPY docker/entrypoint.sh /usr/local/bin/entrypoint.sh
-EXPOSE 8888
+RUN ! find /opt/emerick /opt/qt -type f \( -name 'emerick*' -o -name '*.clap' -o -name '*.so*' \) -exec ldd {} + \
+        | grep 'not found'
+ENV PATH=/opt/emerick:/opt/service/bin:$PATH \
+    QT_QPA_PLATFORM=offscreen \
+    QT_QUICK_BACKEND=software \
+    LC_ALL=C.UTF-8 \
+    EMERICK_BIN=/opt/emerick/emerick \
+    EMERICK_DATA_DIR=/data \
+    EMERICK_WORK_DIR=/tmp/emerick-sessions \
+    EMERICK_HOST=0.0.0.0 \
+    EMERICK_PORT=8080
+USER emerick
+WORKDIR /data
+VOLUME /data
+EXPOSE 8080 8888
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s \
+    CMD ["python3", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/health', timeout=4)"]
 ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]

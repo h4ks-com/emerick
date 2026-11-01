@@ -56,6 +56,8 @@ At startup the service reads `emerick --help` and exits naming any flag the bina
 | `DELETE /projects/{id}` | deletes a project and its files, 409 while it has a live session |
 | `GET /projects/{id}/files` | lists the project's files |
 | `GET /projects/{id}/files/{path}` | downloads one file |
+| `PUT /projects/{id}/files/{path}` | uploads one file (the body), 413 past `EMERICK_PROJECT_MAX_MB`; a live session sees it at once |
+| `GET /projects/{id}/bundle?path=song.erk` | downloads a zip of the bundle folder, to open in Emerick |
 | `POST /sessions` `{"project_id"}` | starts a session, 429 when the pool is full, 409 when the project has one |
 | `GET /sessions`, `GET /sessions/{id}` | lists or reads sessions, `?live=true` for live ones only |
 | `POST /sessions/{id}/save` | saves the project and stores it |
@@ -65,7 +67,7 @@ At startup the service reads `emerick --help` and exits naming any flag the bina
 
 ## Agents
 
-Register one MCP server, `<service url>/mcp`. Its tools are `project.create`, `project.list`, `session.create`, `session.list`, `session.tools`, `session.call` and `session.close`.
+Register one MCP server, `<service url>/mcp`. Its tools are `project.create`, `project.list`, `project.upload`, `project.bundle`, `session.create`, `session.list`, `session.tools`, `session.call` and `session.close`.
 
 ```
 project.create {name}                       -> {id: P}

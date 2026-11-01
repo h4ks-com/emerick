@@ -1,5 +1,6 @@
 import base64
 from typing import Annotated
+from urllib.parse import quote
 
 from mcp.server import MCPServer
 from mcp.server.mcpserver import Context
@@ -58,6 +59,16 @@ def build_mcp(manager: SessionManager, db: Database) -> MCPServer:
     )
     async def project_upload(project_id: str, path: str, content_base64: str) -> ProjectFile:
         return await manager.upload(project_id, path, base64.b64decode(content_base64, validate=True))
+
+    @mcp.tool(
+        name="project.bundle",
+        description=(
+            "Return the URL that downloads a zip of a project bundle, such as song.erk, with every file inside it, "
+            "so a person can open the project in Emerick."
+        ),
+    )
+    def project_bundle(project_id: str, path: str, ctx: Context[None, Request]) -> str:
+        return f"{base(ctx)}/projects/{project_id}/bundle?path={quote(path)}"
 
     @mcp.tool(
         name="session.create",

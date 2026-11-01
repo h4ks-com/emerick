@@ -3,7 +3,7 @@ import shutil
 from collections.abc import Iterator
 from datetime import UTC, datetime
 from pathlib import Path, PurePosixPath
-from typing import Protocol
+from typing import IO, Protocol
 
 from mypy_boto3_s3 import S3Client
 
@@ -60,10 +60,14 @@ def write_contained(root: Path, path: str, data: bytes) -> None:
     target.write_bytes(data)
 
 
+def file_chunks(file: IO[bytes]) -> Iterator[bytes]:
+    while chunk := file.read(CHUNK_BYTES):
+        yield chunk
+
+
 def read_chunks(path: Path) -> Iterator[bytes]:
     with path.open("rb") as file:
-        while chunk := file.read(CHUNK_BYTES):
-            yield chunk
+        yield from file_chunks(file)
 
 
 class Storage(Protocol):

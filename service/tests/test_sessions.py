@@ -1,3 +1,5 @@
+import io
+import zipfile
 from pathlib import Path
 
 import pytest
@@ -117,6 +119,7 @@ def test_top_level_mcp_lists_tools(make_client: MakeClient) -> None:
         "project.create",
         "project.list",
         "project.upload",
+        "project.bundle",
         "session.create",
         "session.list",
         "session.tools",
@@ -177,3 +180,24 @@ def test_upload_reaches_a_live_session_and_the_mcp_tool(make_client: MakeClient)
     reply = client.post("/mcp", json=body, headers=headers).json()
     assert reply["result"]["structuredContent"]["size"] == 5
     assert (Path(session["project_dir"]) / "a.sty").read_bytes() == b"style"
+
+
+def test_bundle_zips_the_bundle_folder_with_and_without_a_session(make_client: MakeClient) -> None:
+    client = make_client()
+    project_id = new_project(client)
+    client.put(f"/projects/{project_id}/files/song.erk/project.json", content=b"{}")
+    client.put(f"/projects/{project_id}/files/song.erk/style.sty", content=b"style")
+    client.put(f"/projects/{project_id}/files/other.wav", content=b"x")
+
+    def bundle() -> dict[str, bytes]:
+        reply = client.get(f"/projects/{project_id}/bundle", params={"path": "song.erk"})
+        assert reply.status_code == 200, reply.text
+        with zipfile.ZipFile(io.BytesIO(reply.content)) as zipped:
+            return {name: zipped.read(name) for name in zipped.namelist()}
+
+    assert bundle() == {"song.erk/project.json": b"{}", "song.erk/style.sty": b"style"}
+    start_session(client, project_id)
+    client.put(f"/projects/{project_id}/files/song.erk/voices.csv", content=b"csv")
+    assert bundle()["song.erk/voices.csv"] == b"csv"
+    assert client.get(f"/projects/{project_id}/bundle", params={"path": "../x"}).status_code == 400
+    assert client.get(f"/projects/{project_id}/bundle", params={"path": "missing.erk"}).status_code == 404

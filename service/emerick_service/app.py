@@ -37,7 +37,7 @@ from emerick_service.sessions import (
     UnknownProjectError,
     UnknownSessionError,
 )
-from emerick_service.storage import LocalStorage, PathEscapeError, S3Storage, Storage
+from emerick_service.storage import LocalStorage, PathEscapeError, S3Storage, Storage, file_chunks
 
 FORWARDED_REQUEST_HEADERS = ("content-type", "accept", "mcp-session-id", "mcp-protocol-version", "last-event-id")
 FORWARDED_RESPONSE_HEADERS = ("content-type", "mcp-session-id", "cache-control")
@@ -153,6 +153,17 @@ def create_app(settings: Settings, storage: Storage | None = None) -> FastAPI:
             chunks,
             media_type=mimetypes.guess_type(name)[0] or "application/octet-stream",
             headers={"Content-Disposition": f"attachment; filename*=utf-8''{quote(name)}"},
+        )
+
+    @app.get("/projects/{project_id}/bundle")
+    async def download_bundle(project_id: str, path: str) -> StreamingResponse:
+        archive = await manager.bundle_zip(project_id, path)
+        name = f"{PurePosixPath(path).name}.zip"
+        return StreamingResponse(
+            file_chunks(archive),
+            media_type="application/zip",
+            headers={"Content-Disposition": f"attachment; filename*=utf-8''{quote(name)}"},
+            background=BackgroundTask(archive.close),
         )
 
     @app.put("/projects/{project_id}/files/{path:path}", status_code=201)

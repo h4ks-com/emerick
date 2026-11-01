@@ -3,7 +3,10 @@ import logging
 import shutil
 import socket
 import sqlite3
+import tempfile
+import zipfile
 from pathlib import Path
+from typing import IO
 
 import httpx
 from botocore.exceptions import BotoCoreError, ClientError
@@ -12,11 +15,20 @@ from emerick_service.child import Child, ChildError, start_child
 from emerick_service.config import Settings
 from emerick_service.db import Database, now
 from emerick_service.models import ProjectFile, Session, SessionStatus
-from emerick_service.storage import Storage, relative_path, usage_bytes, write_contained
+from emerick_service.storage import (
+    Storage,
+    contained,
+    read_chunks,
+    relative_path,
+    usage_bytes,
+    walk,
+    write_contained,
+)
 
 log = logging.getLogger(__name__)
 BUNDLE = "project.erk"
 MEGABYTE = 1 << 20
+ZIP_MEMORY_BYTES = 64 * MEGABYTE
 StorageError = (OSError, BotoCoreError, ClientError)
 
 
@@ -178,8 +190,7 @@ class SessionManager:
         """
         if self.db.get_project(project_id) is None:
             raise UnknownProjectError(project_id)
-        live = (session.id for session in self.db.list_sessions(live_only=True) if session.project_id == project_id)
-        child = next((self.children[id_] for id_ in live if id_ in self.children), None)
+        child = self._live_child(project_id)
         if child:
             usage = await asyncio.to_thread(usage_bytes, child.project_dir)
         else:
@@ -191,6 +202,47 @@ class SessionManager:
         else:
             await asyncio.to_thread(self.storage.write, project_id, path, data)
         return ProjectFile(path=relative_path(path).as_posix(), size=len(data), modified_at=now())
+
+    def _live_child(self, project_id: str) -> Child | None:
+        live = (session.id for session in self.db.list_sessions(live_only=True) if session.project_id == project_id)
+        return next((self.children[id_] for id_ in live if id_ in self.children), None)
+
+    async def bundle_zip(self, project_id: str, bundle: str) -> IO[bytes]:
+        """Zip the bundle folder of the project, from its live session's folder when it has one.
+
+        :raises UnknownProjectError: when there is no such project.
+        :raises PathEscapeError: when bundle leaves the project.
+        :raises FileNotFoundError: when the project holds no such bundle.
+        """
+        if self.db.get_project(project_id) is None:
+            raise UnknownProjectError(project_id)
+        root = relative_path(bundle).as_posix().rstrip("/")
+        child = self._live_child(project_id)
+        return await asyncio.to_thread(self._zip_bundle, project_id, root, child)
+
+    def _zip_bundle(self, project_id: str, root: str, child: Child | None) -> IO[bytes]:
+        paths = (
+            [path for path, _ in walk(child.project_dir)]
+            if child
+            else [file.path for file in self.storage.files(project_id)]
+        )
+        inside = [path for path in paths if path.startswith(f"{root}/")]
+        if not inside:
+            raise FileNotFoundError(root)
+        # The response streams the archive and closes it after the download, so we cannot close it here.
+        archive = tempfile.SpooledTemporaryFile(max_size=ZIP_MEMORY_BYTES)  # noqa: SIM115
+        with zipfile.ZipFile(archive, "w", zipfile.ZIP_DEFLATED) as zipped:
+            for path in inside:
+                with zipped.open(path, "w") as entry:
+                    chunks = (
+                        read_chunks(contained(child.project_dir, path))
+                        if child
+                        else self.storage.read(project_id, path)
+                    )
+                    for chunk in chunks:
+                        entry.write(chunk)
+        archive.seek(0)
+        return archive
 
     async def save(self, session_id: str) -> None:
         """Save the project and store it.

@@ -350,6 +350,7 @@ BuiltSnapshot SnapshotBuilder::build(const Session& session, const StreamLayout&
     connectBuses(snapshot, session, built.errors);
     connectMidiSources(snapshot, session, built.errors);
     addLanes(snapshot, session);
+    built.compensation = compensateLatency(snapshot);
     updateSoloPaths(snapshot);
     addMetronome(snapshot, session, layout, built.errors);
     collectOutputs(snapshot);
@@ -357,6 +358,38 @@ BuiltSnapshot SnapshotBuilder::build(const Session& session, const StreamLayout&
     snapshot.chaseMidi = session.chaseMidi;
     snapshot.clockWhileStopped = session.clockWhileStopped;
     return built;
+}
+
+namespace {
+
+// The delay a track's own plugins and inserts give it, which a bypassed insert does not.
+Frames trackLatency(const TrackState& track) {
+    Frames latency = track.instrument ? track.instrument->latency() : 0;
+    for (const InsertState& insert : track.inserts) {
+        if (!insert.bypass) {
+            latency += insert.effect ? insert.effect->latency() : insert.plugin->latency();
+        }
+    }
+    return latency;
+}
+
+}  // namespace
+
+// A bus takes tracks that already line up, so we delay the tracks only, and a bus's own inserts stay uncompensated.
+Frames SnapshotBuilder::compensateLatency(Snapshot& snapshot) {
+    const auto compensated = [](const TrackState& track) { return track.kind != TrackKind::bus && !track.mix.empty(); };
+    const Frames slowest =
+        std::ranges::fold_left(snapshot.tracks | std::views::filter(compensated) | std::views::transform(trackLatency),
+                               Frames{0}, [](Frames a, Frames b) { return std::max(a, b); });
+    for (TrackState& track : snapshot.tracks | std::views::filter(compensated)) {
+        const Frames delay = slowest - trackLatency(track);
+        if (delay > 0) {
+            const std::string key = track.id + "/" + std::to_string(track.mix.size()) + "/" + std::to_string(delay);
+            track.compensation =
+                cached(delayLines_, key, [&] { return std::make_shared<DelayLine>(track.mix.size(), delay); });
+        }
+    }
+    return slowest;
 }
 
 void SnapshotBuilder::addInserts(TrackState& state, const Track& track, const StreamLayout& layout,
@@ -572,6 +605,7 @@ void SnapshotBuilder::prune() {
     std::erase_if(schedules_, [](const auto& entry) { return entry.second.schedule.expired(); });
     std::erase_if(effects_, expired);
     std::erase_if(meteredInserts_, expired);
+    std::erase_if(delayLines_, expired);
     std::erase_if(recorders_, expired);
     std::erase_if(inputMeters_, expired);
     std::erase_if(outputMeters_, expired);

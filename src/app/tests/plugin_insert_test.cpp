@@ -273,3 +273,44 @@ TEST_CASE("a CLAP effect plays as an insert, takes params by name and automation
     REQUIRE(plugin != nullptr);
     CHECK(plugin->paramValue(0) == 0.5);
 }
+
+TEST_CASE("a plugin insert's latency delays the other tracks, and the stream state shows the compensation") {
+    PluginInsertRig rig;
+    rig.registry.setSetting(kClapFoldersSetting, Json::array({EMERICK_TEST_CLAP_EFFECT_FOLDER}));
+    rig.run("plugins.rescan");
+    std::vector<float> click(48000);
+    click[1000] = 1.0F;
+    const std::filesystem::path clip = rig.path("click.wav");
+    SF_INFO info{.frames = 0,
+                 .samplerate = 48000,
+                 .channels = 1,
+                 .format = SF_FORMAT_WAV | SF_FORMAT_FLOAT,
+                 .sections = 0,
+                 .seekable = 0};
+    SNDFILE* file = sf_open(clip.c_str(), SFM_WRITE, &info);
+    REQUIRE(file != nullptr);
+    sf_writef_float(file, click.data(), static_cast<sf_count_t>(click.size()));
+    sf_close(file);
+    for (const char* name : {"Slow", "Fast"}) {
+        const std::string track = rig.run("track.addAudio", {{"name", name}}).at("id");
+        rig.run("clip.import", {{"track", track}, {"path", clip.string()}, {"at", "1.1.0"}});
+        if (std::string_view{name} == "Slow") {
+            rig.run("insert.add", {{"track", track}, {"plugin", "org.emerick.test.late"}});
+        }
+    }
+    rig.controller->flush();
+    CHECK(rig.registry.allState().at("transport").at("stream").at("pluginDelayFrames") == 480);
+    rig.run("export.stems", {{"folder", rig.path("stems").string()}});
+    const auto peakFrame = [&](const std::string& stem) {
+        SF_INFO read{};
+        SNDFILE* stemFile = sf_open((rig.path("stems") / stem).c_str(), SFM_READ, &read);
+        REQUIRE(stemFile != nullptr);
+        std::vector<float> samples(static_cast<std::size_t>(read.frames * read.channels));
+        sf_readf_float(stemFile, samples.data(), read.frames);
+        sf_close(stemFile);
+        return (std::ranges::max_element(samples, {}, [](float sample) { return std::abs(sample); }) -
+                samples.begin()) /
+               read.channels;
+    };
+    CHECK(peakFrame("Slow.wav") == peakFrame("Fast.wav"));
+}

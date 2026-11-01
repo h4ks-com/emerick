@@ -161,19 +161,12 @@ void Instruments::sync(const model::Document& document) {
     updateErrors();
 }
 
-// A plugin reports its latency once it is active, so we read it again on every idle.
 void Instruments::updateErrors() {
-    std::vector<engine::SessionError> errors;
-    for (const Live& live : live_ | std::views::values) {
-        if (!live.error.empty()) {
-            errors.push_back({.trackId = live.trackId, .message = live.error});
-        } else if (const core::Frames latency = live.instrument ? live.instrument->latency() : 0; latency > 0) {
-            errors.push_back({.trackId = live.trackId,
-                              .message = live.slot.name + " delays this track by " + std::to_string(latency) +
-                                         " samples, and the other tracks play without that delay"});
-        }
-    }
-    errors_ = std::move(errors);
+    errors_ = live_ | std::views::values | std::views::filter([](const Live& live) { return !live.error.empty(); }) |
+              std::views::transform([](const Live& live) {
+                  return engine::SessionError{.trackId = live.trackId, .message = live.error};
+              }) |
+              std::ranges::to<std::vector>();
 }
 
 void Instruments::attach(engine::Session& session, const model::Document& document) const {
@@ -211,7 +204,6 @@ bool Instruments::idle() {
             fitWindow(live, *size);
         }
     }
-    updateErrors();
     return dirty;
 }
 

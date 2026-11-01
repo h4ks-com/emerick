@@ -74,8 +74,7 @@ public:
     [[nodiscard]] PluginLookup insertPlugins() const {
         return [this](const model::InsertId& id) { return find(id); };
     }
-    // Why a track with a slot or a plugin insert plays no plugin, such as a plugin that is not installed, and which
-    // plugin inserts delay their track.
+    // Why a track with a slot or a plugin insert plays no plugin, such as a plugin that is not installed.
     [[nodiscard]] const std::vector<engine::SessionError>& errors() const { return errors_; }
     // Runs each plugin's main-thread requests and follows its editor; true when a plugin marked its state changed.
     bool idle();

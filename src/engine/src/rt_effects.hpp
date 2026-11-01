@@ -157,6 +157,18 @@ private:
     float mix_ = 0.0F;
 };
 
+// Delays a track's channels by a fixed number of frames, so a track whose plugins delay it less lines up with the
+// slowest track. The UI thread allocates it; the audio thread only moves samples through it.
+class DelayLine {
+public:
+    DelayLine(std::size_t channels, Frames delay);
+    void process(std::span<float* const> channels, Frames frames);
+
+private:
+    std::vector<std::vector<float>> lines_;
+    std::size_t position_ = 0;
+};
+
 // One insert's processor with its smoothed params. A snapshot builds it off the audio thread, and later snapshots
 // share it while the insert lives, so its tails and smoothing carry across edits.
 class Effect {
@@ -168,6 +180,8 @@ public:
     // Returns and resets the most gain the effect took away since the last call. The UI thread reads it while the
     // audio thread lowers it.
     float takeReductionDb() { return reductionDb_.exchange(0.0F, std::memory_order_relaxed); }
+    // The frames the effect delays its track by.
+    [[nodiscard]] Frames latency() const;
 
 private:
     bool glide(const EffectParams& target);

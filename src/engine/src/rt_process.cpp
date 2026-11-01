@@ -402,6 +402,9 @@ void mixTracks(Snapshot& snapshot, const AudioBlock& block, const BlockTime& tim
                     insert.plugin->processEffect(track.mixPointers, block.frames, block.hostTimeNs, transport);
                 }
             }
+            if (track.compensation) {
+                track.compensation->process(track.mixPointers, block.frames);
+            }
             const Frames step = track.lanes.empty() ? block.frames : kAutomationStep;
             for (Frames offset = 0; offset < block.frames; offset += step) {
                 const Frames frames = std::min(step, block.frames - offset);

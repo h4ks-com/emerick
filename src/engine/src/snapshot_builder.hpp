@@ -16,6 +16,8 @@ namespace emerick::engine {
 struct BuiltSnapshot {
     std::unique_ptr<Snapshot> snapshot;
     std::vector<SessionError> errors;
+    // The frames every track plays later by, so each one lines up with the track its plugins delay the most.
+    Frames compensation = 0;
 };
 
 // The UI thread builds snapshots here, so every allocation and file open happens off the audio thread. We reuse
@@ -58,6 +60,7 @@ private:
                      Frames captureOffset);
     void addInserts(TrackState& state, const Track& track, const StreamLayout& layout,
                     std::vector<SessionError>& errors);
+    Frames compensateLatency(Snapshot& snapshot);
     void addMetronome(Snapshot& snapshot, const Session& session, const StreamLayout& layout,
                       std::vector<SessionError>& errors);
     std::shared_ptr<const DrumSounds> drumSounds(const Metronome& metronome, double sampleRate,
@@ -82,6 +85,7 @@ private:
     std::map<std::string, std::weak_ptr<TakeRecorder>> recorders_;
     std::map<std::string, std::weak_ptr<Effect>> effects_;
     std::map<std::string, std::weak_ptr<Effect>> meteredInserts_;
+    std::map<std::string, std::weak_ptr<DelayLine>> delayLines_;
     Meters inputMeters_;
     Meters outputMeters_;
     std::map<std::string, std::weak_ptr<MidiInputPort>> inputs_;

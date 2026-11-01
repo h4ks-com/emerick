@@ -46,7 +46,7 @@ make run-release ARGS="--script song.lua -- out.wav"
 Install the song production skills, which teach agents to go from an idea to a mixed render:
 
 ```
-npx skills add matheusfillipe/emerick
+npx skills add h4ks-com/emerick
 ```
 
 ### Hosted service
@@ -72,7 +72,7 @@ Agents connect to `http://127.0.0.1:8080/mcp`. See [service/README.md](service/R
 
 ## Status
 
-Emerick is in early development (version 0.1.0). There are no binary releases yet. macOS is the main platform; Linux builds and runs headless in CI.
+Emerick is in early development. Releases publish the Docker image to `ghcr.io/h4ks-com/emerick`; there are no desktop binaries yet. macOS is the main platform; Linux builds and runs headless in CI.
 
 ## License
 

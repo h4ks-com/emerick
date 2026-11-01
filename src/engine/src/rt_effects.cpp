@@ -394,6 +394,32 @@ std::variant<Equalizer, Compressor, Delay, Reverb, Limiter, Gate, Filter, Satura
 
 }  // namespace
 
+DelayLine::DelayLine(std::size_t channels, Frames delay)
+    : lines_(channels, std::vector<float>(static_cast<std::size_t>(delay))) {}
+
+void DelayLine::process(std::span<float* const> channels, Frames frames) {
+    const std::size_t count = std::min(channels.size(), lines_.size());
+    if (count == 0 || lines_.front().empty()) {
+        return;
+    }
+    const std::size_t length = lines_.front().size();
+    std::size_t position = position_;
+    for (std::size_t channel = 0; channel < count; ++channel) {
+        std::vector<float>& line = lines_[channel];
+        position = position_;
+        for (Frames frame = 0; frame < frames; ++frame) {
+            std::swap(channels[channel][frame], line[position]);
+            position = (position + 1) % length;
+        }
+    }
+    position_ = position;
+}
+
+Frames Effect::latency() const {
+    const auto* limiter = std::get_if<Limiter>(&processor_);
+    return limiter != nullptr ? static_cast<Frames>(limiter->latency()) : 0;
+}
+
 Effect::Effect(EffectType type, std::size_t channels, double sampleRate, Frames maxFrames)
     : type_(type),
       context_{.sampleRate = sampleRate, .bpm = 120.0},

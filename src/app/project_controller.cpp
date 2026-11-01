@@ -677,16 +677,20 @@ void ProjectController::keepWarmWhileActive() {
 }
 
 // Each gesture in a plugin's own editor becomes one undo step that holds the plugin's new state.
-void ProjectController::applyInsertEdits() {
-    for (InsertEdit& edit : instruments_.takeInsertEdits()) {
+void ProjectController::applyPluginEdits() {
+    for (PluginEdit& edit : instruments_.takePluginEdits()) {
         const model::Track* track = project_.track(edit.track);
-        if (track == nullptr || !std::ranges::contains(track->inserts, edit.insert, &model::Insert::id)) {
+        if (track == nullptr) {
             continue;
         }
         project_.editTrack(edit.track, "edit " + edit.name, [&edit](model::Track& edited) {
-            const auto insert = std::ranges::find(edited.inserts, edit.insert, &model::Insert::id);
-            if (insert->plugin) {
-                insert->plugin->state = std::move(edit.state);
+            model::PluginSlot* slot = edited.instrument ? &*edited.instrument : nullptr;
+            if (edit.insert) {
+                const auto insert = std::ranges::find(edited.inserts, *edit.insert, &model::Insert::id);
+                slot = insert != edited.inserts.end() && insert->plugin ? &*insert->plugin : nullptr;
+            }
+            if (slot != nullptr) {
+                slot->state = std::move(edit.state);
             }
         });
     }
@@ -723,7 +727,7 @@ void ProjectController::poll() {
     if (instruments_.idle()) {
         setEdited(true);
     }
-    applyInsertEdits();
+    applyPluginEdits();
     if (instruments_.takeParamsChanged()) {
         registeredWarnings_ = registeredWarnings(project_.document(), registry_);
         emit projectChanged();

@@ -6,6 +6,7 @@
 #include <pluginterfaces/vst/ivsteditcontroller.h>
 #include <pluginterfaces/vst/ivstevents.h>
 #include <pluginterfaces/vst/ivstmessage.h>
+#include <pluginterfaces/vst/ivstmidicontrollers.h>
 #include <pluginterfaces/vst/ivstparameterchanges.h>
 #include <public.sdk/source/vst/hosting/hostclasses.h>
 #include <public.sdk/source/vst/hosting/module.h>
@@ -137,10 +138,21 @@ struct Vst3ParamChange {
     vst::ParamValue value = 0.0;
 };
 
-struct QueuedNote {
+struct QueuedMidi3 {
     std::int64_t timestampNs = 0;
     std::array<std::uint8_t, 3> bytes{};
 };
+
+inline constexpr std::size_t kMidiChannels = 16;
+// Every controller number IMidiMapping knows, through program change.
+inline constexpr std::size_t kMappedControllers = vst::kCtrlProgramChange + 1;
+
+// The param a controller of a channel moves, with the steps of a param that program change picks from.
+struct MidiTarget {
+    vst::ParamID id = vst::kNoParamId;
+    Steinberg::int32 steps = 0;
+};
+using MidiTargets = std::array<std::array<MidiTarget, kMappedControllers>, kMidiChannels>;
 
 struct BusBuffers {
     std::vector<std::vector<float>> channels;
@@ -168,6 +180,7 @@ struct Vst3Plugin::Impl {
     // Holding the audio guard as the audio thread: one process call over the bus buffers.
     bool process(core::Frames frames, std::int64_t hostTimeNs, const InstrumentTransport& transport);
     [[nodiscard]] std::optional<vst::ParameterInfo> info(vst::ParamID id) const;
+    void mapControllers();
     [[nodiscard]] vst::ParamValue normalized(vst::ParamID id, double value) const;
 
     VST3::Hosting::Module::Ptr module;
@@ -196,6 +209,9 @@ struct Vst3Plugin::Impl {
     // The main thread writes param changes and the holder of the audio guard reads them; each count grows by one per
     // change, so the main thread knows when the processor has every change it sent.
     SpscRing paramQueue{kMaxVst3Params * sizeof(Vst3ParamChange)};
+    // The audio thread writes the values the processor changed itself, and the main thread hands them to the
+    // controller; a full ring drops the newest until the main thread catches up.
+    SpscRing processorChanges{kMaxVst3Params * kMaxVst3ParamPoints * sizeof(Vst3ParamChange)};
     std::uint64_t paramsSent = 0;
     std::atomic<std::uint64_t> paramsApplied{0};
 
@@ -205,6 +221,8 @@ struct Vst3Plugin::Impl {
     core::Frames maxFrames = 0;
     core::Frames latency = 0;
     bool takesNotes = false;
+    bool sendsNotes = false;
+    MidiTargets midiTargets{};
     std::vector<BusBuffers> inputs;
     std::vector<BusBuffers> outputs;
     std::vector<vst::AudioBusBuffers> inputBuses;
@@ -212,10 +230,14 @@ struct Vst3Plugin::Impl {
     ParamChanges inputChanges;
     ParamChanges outputChanges;
     EventList events;
+    EventList outputEvents;
 
     // Only the audio thread touches these, between its queue calls and the next process call.
-    std::array<QueuedNote, kMaxVst3Notes> notes{};
+    std::array<QueuedMidi3, kMaxVst3Notes> notes{};
     std::size_t noteCount = 0;
+    std::array<std::array<std::uint8_t, 3>, kMaxVst3Notes> producedBytes{};
+    std::array<InstrumentMidi, kMaxVst3Notes> produced{};
+    std::size_t producedCount = 0;
     std::array<Vst3ParamChange, kMaxVst3Params> automated{};
     std::size_t automatedCount = 0;
 };

@@ -14,16 +14,26 @@ namespace emerick::app {
 
 namespace {
 
-Json pluginSchema() { return {{"type", "string"}, {"description", "a CLAP plugin id from plugins.list"}}; }
+Json pluginSchema() { return {{"type", "string"}, {"description", "a CLAP or VST3 instrument id from plugins.list"}}; }
+
+Json formatSchema() { return {{"type", "string"}, {"enum", {"clap", "vst3"}}}; }
 
 model::PluginSlot slotFor(const Registry& registry, PluginCatalog& catalog, const Json& params) {
     const auto id = param<std::string>(params, "plugin");
-    const auto found = scannedCatalog(registry, catalog).find(id, core::PluginFormat::clap);
-    if (!found) {
-        throw AppError("no CLAP plugin " + id + ", run plugins.list for the ids of CLAP instruments");
+    const auto formatId = optionalParam<std::string>(params, "format");
+    const auto format = formatId ? core::pluginFormatFromId(*formatId) : std::nullopt;
+    if (formatId && !format) {
+        throw AppError("format takes clap or vst3, not " + *formatId);
     }
-    model::PluginSlot slot{
-        .pluginId = id, .bundle = found->bundle.string(), .name = found->descriptor.name, .state = {}};
+    const auto found = scannedCatalog(registry, catalog).find(id, format);
+    if (!found) {
+        throw AppError("no plugin " + id + ", run plugins.list for the ids of instruments");
+    }
+    model::PluginSlot slot{.pluginId = id,
+                           .bundle = found->bundle.string(),
+                           .name = found->descriptor.name,
+                           .state = {},
+                           .format = found->descriptor.format};
     if (id == kGeneralMidiPluginId) {
         const auto soundFont = registry.settingValue(kGeneralMidiSoundFontSetting).get<std::string>();
         slot.state.assign(soundFont.begin(), soundFont.end());
@@ -32,13 +42,13 @@ model::PluginSlot slotFor(const Registry& registry, PluginCatalog& catalog, cons
 }
 
 std::vector<MenuChoice> instrumentChoices(const Registry& registry, PluginCatalog& catalog) {
-    return scannedCatalog(registry, catalog).plugins() | std::views::filter([](const CatalogPlugin& plugin) {
-               return plugin.descriptor.format == core::PluginFormat::clap && engine::isInstrument(plugin.descriptor);
-           }) |
+    return scannedCatalog(registry, catalog).plugins() |
+           std::views::filter([](const CatalogPlugin& plugin) { return engine::isInstrument(plugin.descriptor); }) |
            std::views::transform([](const CatalogPlugin& plugin) {
                return MenuChoice{.id = plugin.descriptor.id,
                                  .title = plugin.descriptor.name,
-                                 .params = {{"plugin", plugin.descriptor.id}}};
+                                 .params = {{"plugin", plugin.descriptor.id},
+                                            {"format", core::pluginFormatName(plugin.descriptor.format).id}}};
            }) |
            std::ranges::to<std::vector>();
 }
@@ -74,13 +84,15 @@ void registerInstrumentActions(Registry& registry, ProjectController& controller
     registry.addAction(
         {.id = "track.addInstrument",
          .title = "Add instrument track",
-         .description = "Adds a MIDI track with a CLAP instrument loaded, which plays its MIDI into an audio output.",
+         .description =
+             "Adds a MIDI track with a CLAP or VST3 instrument loaded, which plays its MIDI into an audio output.",
          .aliases = {"new instrument track", "add software instrument", "add synth"},
          .category = "Tracks",
          .schema = {{"type", "object"},
                     {"required", {"plugin"}},
                     {"properties",
                      {{"plugin", pluginSchema()},
+                      {"format", formatSchema()},
                       {"name", {{"type", "string"}}},
                       {"midiIn", {{"type", "object"}}},
                       {"audioOut", {{"type", "object"}}}}}},
@@ -93,12 +105,14 @@ void registerInstrumentActions(Registry& registry, ProjectController& controller
     registry.addAction(
         {.id = "instrument.load",
          .title = "Load instrument",
-         .description = "Plays the MIDI track through a CLAP instrument into an audio output. The instrument starts "
-                        "from its own defaults.",
+         .description =
+             "Plays the MIDI track through a CLAP or VST3 instrument into an audio output. The instrument starts "
+             "from its own defaults.",
          .aliases = {"change instrument", "replace instrument", "pick synth"},
          .category = "Tracks",
          .schema = {{"required", {"plugin"}},
-                    {"properties", {{"plugin", pluginSchema()}, {"track", {{"type", "string"}}}}}},
+                    {"properties",
+                     {{"plugin", pluginSchema()}, {"format", formatSchema()}, {"track", {{"type", "string"}}}}}},
          .run =
              [&registry, &controller, &nav, &catalog](const Json& params) {
                  const model::TrackId id = midiTrack(registry, controller, nav, params);
@@ -127,7 +141,7 @@ void registerInstrumentActions(Registry& registry, ProjectController& controller
          .menus = {kTrackContextMenu}});
     registry.addAction({.id = "instrument.showEditor",
                         .title = "Show instrument editor",
-                        .description = "Opens the window of the track's CLAP instrument.",
+                        .description = "Opens the window of the track's instrument.",
                         .aliases = {"open plugin window", "plugin gui", "edit instrument"},
                         .category = "Tracks",
                         .schema = {{"properties", {{"track", {{"type", "string"}}}}}},

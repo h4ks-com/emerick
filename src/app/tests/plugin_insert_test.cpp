@@ -91,7 +91,7 @@ TEST_CASE("plugins.list lists a VST3 effect and blocks the VST3 bundles that cra
     CHECK(blocked.size() == 2);
     CHECK(
         std::ranges::any_of(blocked, [](const Json& entry) { return entry.at("reason") == "crashed while loading"; }));
-    CHECK(listed.at("message").get<std::string>().starts_with("Found 0 CLAP and 2 VST3 plugins"));
+    CHECK(listed.at("message").get<std::string>().starts_with("Found 0 CLAP and 3 VST3 plugins"));
 }
 
 TEST_CASE("a VST3 insert plays in the mix, takes params by name and choice text, and bypass passes the audio") {
@@ -194,4 +194,123 @@ TEST_CASE("a built-in insert has no plugin window") {
     const std::string vox = rig.run("track.addAudio").at("id");
     const std::string eq = rig.run("insert.add", {{"track", vox}, {"type", "eq"}}).at("id");
     CHECK_THROWS_AS(rig.run("insert.openPluginWindow", {{"insert", eq}}), AppError);
+}
+
+namespace {
+
+const std::string kSynth = "454D525453594E310000000000000001";
+
+float mixPeak(PluginInsertRig& rig) {
+    const std::filesystem::path mix = rig.path("synth.wav");
+    rig.run("export.mix", {{"path", mix.string()}});
+    SF_INFO info{};
+    SNDFILE* file = sf_open(mix.c_str(), SFM_READ, &info);
+    REQUIRE(file != nullptr);
+    std::vector<float> samples(static_cast<std::size_t>(info.frames * info.channels));
+    sf_readf_float(file, samples.data(), info.frames);
+    sf_close(file);
+    return std::ranges::max(samples | std::views::transform([](float sample) { return std::abs(sample); }));
+}
+
+double levelOf(const PluginInsertRig& rig, const model::TrackId& track) {
+    return rig.run("instrument.params", {{"track", track.value}}).at("params")[0].at("value").get<double>();
+}
+
+}  // namespace
+
+TEST_CASE("a VST3 instrument plays a MIDI clip, and a gesture in its editor lands as one undo step") {
+    PluginInsertRig rig;
+    const model::TrackId track{
+        rig.run("track.addInstrument", {{"plugin", kSynth}, {"format", "vst3"}}).at("id").get<std::string>()};
+    REQUIRE(rig.controller->project().track(track)->instrument->format == core::PluginFormat::vst3);
+    rig.controller->project().editTrack(track, "add note", [](model::Track& edited) {
+        model::MidiClip clip;
+        clip.length = 960;
+        clip.notes = {{.pitch = 69, .velocity = 127, .start = 0, .length = 480, .channel = 1}};
+        edited.clips.emplace_back(clip);
+    });
+    rig.controller->flush();
+    CHECK(mixPeak(rig) == Approx(0.5F).margin(0.02));
+
+    rig.run("instrument.showEditor", {{"track", track.value}});
+    REQUIRE(turnEventsUntil([&] { return rig.controller->project().undoName() == "edit Test Synth"; }));
+    CHECK(levelOf(rig, track) == 0.25);
+    CHECK(mixPeak(rig) == Approx(0.25F).margin(0.02));
+    rig.run("project.undo");
+    rig.controller->flush();
+    CHECK(levelOf(rig, track) == 0.5);
+}
+
+TEST_CASE("a CLAP effect plays as an insert, takes params by name and automation, bypasses and keeps its state") {
+    PluginInsertRig rig;
+    rig.registry.setSetting(kClapFoldersSetting, Json::array({EMERICK_TEST_CLAP_EFFECT_FOLDER}));
+    const Json listed = rig.run("plugins.rescan");
+    const auto gain = std::ranges::find(listed.at("plugins"), Json("org.emerick.test.gain"),
+                                        [](const Json& plugin) { return plugin.at("id"); });
+    REQUIRE(gain != listed.at("plugins").end());
+    CHECK(gain->at("format") == "clap");
+    CHECK(gain->at("effect") == true);
+
+    const std::string guitar = rig.run("track.addAudio", {{"name", "Guitar"}}).at("id");
+    writeConstant(rig.path("dc.wav"), 48000, 0.5F);
+    rig.run("clip.import", {{"track", guitar}, {"path", rig.path("dc.wav").string()}, {"at", "1.1.0"}});
+    const std::string amp = rig.run("insert.add", {{"track", guitar}, {"plugin", "org.emerick.test.gain"}}).at("id");
+    CHECK(rig.run("insert.params", {{"insert", amp}}).at("params")[0].at("name") == "Gain");
+    CHECK(rig.mixAt(24000) == Approx(0.5F).margin(1e-4));
+    CHECK(rig.run("insert.setParam", {{"insert", amp}, {"param", "gain"}, {"value", 0.5}}).at("text") == "0.50x");
+    CHECK(rig.mixAt(24000) == Approx(0.25F).margin(1e-4));
+    rig.run("insert.setBypass", {{"insert", amp}, {"value", true}});
+    CHECK(rig.mixAt(24000) == Approx(0.5F).margin(1e-4));
+    rig.run("insert.setBypass", {{"insert", amp}, {"value", false}});
+    rig.run("automation.addPoint", {{"track", guitar}, {"param", amp + ".Gain"}, {"tick", 0}, {"value", 1.5}});
+    CHECK(rig.mixAt(24000) == Approx(0.75F).margin(1e-4));
+    rig.controller->save();
+
+    PluginInsertRig other;
+    other.controller->open(rig.controller->folder());
+    other.controller->flush();
+    const auto plugin = other.controller->instruments().find(model::InsertId{amp});
+    REQUIRE(plugin != nullptr);
+    CHECK(plugin->paramValue(0) == 0.5);
+}
+
+TEST_CASE("a plugin insert's latency delays the other tracks, and the stream state shows the compensation") {
+    PluginInsertRig rig;
+    rig.registry.setSetting(kClapFoldersSetting, Json::array({EMERICK_TEST_CLAP_EFFECT_FOLDER}));
+    rig.run("plugins.rescan");
+    std::vector<float> click(48000);
+    click[1000] = 1.0F;
+    const std::filesystem::path clip = rig.path("click.wav");
+    SF_INFO info{.frames = 0,
+                 .samplerate = 48000,
+                 .channels = 1,
+                 .format = SF_FORMAT_WAV | SF_FORMAT_FLOAT,
+                 .sections = 0,
+                 .seekable = 0};
+    SNDFILE* file = sf_open(clip.c_str(), SFM_WRITE, &info);
+    REQUIRE(file != nullptr);
+    sf_writef_float(file, click.data(), static_cast<sf_count_t>(click.size()));
+    sf_close(file);
+    for (const char* name : {"Slow", "Fast"}) {
+        const std::string track = rig.run("track.addAudio", {{"name", name}}).at("id");
+        rig.run("clip.import", {{"track", track}, {"path", clip.string()}, {"at", "1.1.0"}});
+        if (std::string_view{name} == "Slow") {
+            rig.run("insert.add", {{"track", track}, {"plugin", "org.emerick.test.late"}});
+        }
+    }
+    rig.controller->flush();
+    CHECK(rig.registry.allState().at("transport").at("stream").at("pluginDelayFrames") == 480);
+    rig.run("export.stems", {{"folder", rig.path("stems").string()}});
+    const auto peakFrame = [&](const std::string& stem) {
+        SF_INFO read{};
+        SNDFILE* stemFile = sf_open((rig.path("stems") / stem).c_str(), SFM_READ, &read);
+        REQUIRE(stemFile != nullptr);
+        std::vector<float> samples(static_cast<std::size_t>(read.frames * read.channels));
+        sf_readf_float(stemFile, samples.data(), read.frames);
+        sf_close(stemFile);
+        return (std::ranges::max_element(samples, {}, [](float sample) { return std::abs(sample); }) -
+                samples.begin()) /
+               read.channels;
+    };
+    CHECK(peakFrame("Slow.wav") == peakFrame("Fast.wav"));
 }

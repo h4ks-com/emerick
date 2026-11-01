@@ -91,6 +91,7 @@ struct Engine::Impl {
     bool transportRequested = false;
     bool warm = false;
     std::vector<SessionError> errors;
+    Frames compensation = 0;
     std::uint64_t locatesRequested = 0;
     RealtimeState rt;
     std::atomic<std::uint64_t> callbacks{0};
@@ -316,6 +317,7 @@ struct Engine::Impl {
             builder.build(next, layout, layout.inputLatency + layout.outputLatency + options.recordingDelay);
         deleteSnapshot(rt.pending.exchange(built.snapshot.release(), std::memory_order_acq_rel));
         errors = std::move(built.errors);
+        compensation = built.compensation;
         if (!streamOpen) {
             runIdleBlock();
         }
@@ -491,6 +493,8 @@ bool Engine::watchStream(std::chrono::steady_clock::time_point now) { return imp
 bool Engine::streamStalled() const { return impl_->stalled; }
 
 const std::vector<SessionError>& Engine::sessionErrors() const { return impl_->errors; }
+
+Frames Engine::latencyCompensation() const { return impl_->compensation; }
 
 bool Engine::readAheadReady() const {
     return impl_->rt.locatesApplied.load(std::memory_order_acquire) == impl_->locatesRequested &&

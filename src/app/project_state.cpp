@@ -316,6 +316,8 @@ Json streamState(const engine::Engine& engine) {
             {"blockFrames", layout.maxFrames},
             {"inputLatencyMs", milliseconds(layout.inputLatency)},
             {"outputLatencyMs", milliseconds(layout.outputLatency)},
+            {"pluginDelayFrames", engine.latencyCompensation()},
+            {"pluginDelayMs", milliseconds(engine.latencyCompensation())},
             {"devices", devices}};
 }
 

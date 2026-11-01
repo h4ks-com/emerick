@@ -115,6 +115,8 @@ public:
     // True from a stall until the stream calls back again.
     [[nodiscard]] bool streamStalled() const;
     [[nodiscard]] const std::vector<SessionError>& sessionErrors() const;
+    // The frames every track plays later by, so the tracks line up with the one whose plugins delay it the most.
+    [[nodiscard]] Frames latencyCompensation() const;
     // True once every locate has reached the audio thread and every clip has its read-ahead filled from there and
     // refilled since it last played.
     [[nodiscard]] bool readAheadReady() const;

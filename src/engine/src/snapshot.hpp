@@ -130,6 +130,8 @@ struct TrackState {
     std::vector<std::vector<float>> mix;
     std::vector<float*> mixPointers;
     std::vector<InsertState> inserts;
+    // Set for a track whose plugins delay it less than the slowest track's.
+    std::shared_ptr<DelayLine> compensation;
     std::shared_ptr<Plugin> instrument;
     // The gain per channel that the last block ended on, so we ramp from it and a fader move never clicks.
     std::vector<float> outputGains;

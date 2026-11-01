@@ -50,7 +50,7 @@ target_link_libraries(emerick-plugin-scanner PRIVATE emerick_engine nlohmann_jso
 emerick_target(emerick-plugin-scanner)
 
 if(EMERICK_BUILD_TESTS)
-    emerick_test(emerick_engine_tests tests/audio_analysis_test.cpp tests/automation_test.cpp tests/bus_test.cpp tests/clap_test.cpp tests/effects_test.cpp tests/engine_test.cpp tests/fade_test.cpp tests/gm_test.cpp tests/interleaved_io_test.cpp tests/listed_devices_test.cpp
+    emerick_test(emerick_engine_tests tests/audio_analysis_test.cpp tests/automation_test.cpp tests/bus_test.cpp tests/clap_test.cpp tests/effects_test.cpp tests/engine_test.cpp tests/fade_test.cpp tests/gm_test.cpp tests/interleaved_io_test.cpp tests/latency_test.cpp tests/listed_devices_test.cpp
         tests/metronome_test.cpp tests/cycle_test.cpp tests/midi_chase_test.cpp tests/midi_route_test.cpp tests/note_analysis_test.cpp tests/preview_test.cpp
         tests/recording_test.cpp tests/spectrum_test.cpp tests/standard_effects_test.cpp tests/stream_health_test.cpp tests/take_progress_test.cpp tests/vst3_test.cpp tests/window_meter_test.cpp)
     target_include_directories(emerick_engine_tests PRIVATE src)
@@ -69,23 +69,42 @@ if(EMERICK_BUILD_TESTS)
     endforeach()
     target_compile_definitions(emerick_test_crash PRIVATE EMERICK_TEST_CRASH)
     target_compile_definitions(emerick_test_hang PRIVATE EMERICK_TEST_HANG)
+    # Test effects as CLAP bundles in their own folder: a gain, and a copy that delays its output and reports it.
+    set(test_clap_effect_folder ${CMAKE_BINARY_DIR}/test-clap-effect)
+    foreach(variant gain late)
+        set(name emerick_test_clap_${variant})
+        add_library(${name} MODULE tests/clap/gain_plugin_test.cpp)
+        target_link_libraries(${name} PRIVATE clap)
+        set_target_properties(${name} PROPERTIES PREFIX "" SUFFIX ".clap" OUTPUT_NAME "Emerick Test ${variant}"
+            LIBRARY_OUTPUT_DIRECTORY ${test_clap_effect_folder})
+        if(APPLE)
+            set_target_properties(${name} PROPERTIES BUNDLE TRUE BUNDLE_EXTENSION clap)
+        endif()
+    endforeach()
+    target_compile_definitions(emerick_test_clap_late PRIVATE EMERICK_TEST_LATENCY)
     if(APPLE)
         set(test_sine_clap "$<TARGET_BUNDLE_DIR:emerick_test_sine>")
     else()
         set(test_sine_clap "$<TARGET_FILE:emerick_test_sine>")
     endif()
     add_library(emerick_test_clap INTERFACE)
-    add_dependencies(emerick_test_clap emerick_test_sine emerick_test_crash emerick_test_hang emerick-plugin-scanner)
+    add_dependencies(emerick_test_clap emerick_test_sine emerick_test_crash emerick_test_hang emerick_test_clap_gain
+        emerick_test_clap_late emerick-plugin-scanner)
     target_compile_definitions(emerick_test_clap INTERFACE EMERICK_TEST_CLAP_FOLDER="${test_clap_folder}"
+        EMERICK_TEST_CLAP_EFFECT_FOLDER="${test_clap_effect_folder}"
         EMERICK_TEST_SINE_CLAP="${test_sine_clap}" EMERICK_PLUGIN_SCANNER="$<TARGET_FILE:emerick-plugin-scanner>")
 
-    # Test effects as VST3 bundles: a gain, copies whose module entry crashes or hangs, and a crashing copy whose
-    # moduleinfo.json describes it, so a scan never loads it.
+    # Test VST3 bundles: a gain effect, copies whose module entry crashes or hangs, a crashing copy whose
+    # moduleinfo.json describes it, so a scan never loads it, and a sine instrument.
     set(test_vst3_folder ${CMAKE_BINARY_DIR}/test-vst3)
-    foreach(variant gain crash hang described)
+    foreach(variant gain crash hang described synth)
         set(name emerick_test_vst3_${variant})
         set(bundle "${test_vst3_folder}/Emerick Test ${variant}.vst3")
-        add_library(${name} MODULE tests/vst3/gain_plugin_test.cpp)
+        if(variant STREQUAL synth)
+            add_library(${name} MODULE tests/vst3/synth_plugin_test.cpp)
+        else()
+            add_library(${name} MODULE tests/vst3/gain_plugin_test.cpp)
+        endif()
         target_link_libraries(${name} PRIVATE vst3_sdk)
         set_target_properties(${name} PROPERTIES PREFIX "" OUTPUT_NAME "Emerick Test ${variant}"
             CXX_VISIBILITY_PRESET hidden)
@@ -104,9 +123,10 @@ if(EMERICK_BUILD_TESTS)
     configure_file(tests/vst3/moduleinfo.json "${resources}/moduleinfo.json" COPYONLY)
     add_library(emerick_test_vst3 INTERFACE)
     add_dependencies(emerick_test_vst3 emerick_test_vst3_gain emerick_test_vst3_crash emerick_test_vst3_hang
-        emerick_test_vst3_described emerick-plugin-scanner)
+        emerick_test_vst3_described emerick_test_vst3_synth emerick-plugin-scanner)
     target_compile_definitions(emerick_test_vst3 INTERFACE EMERICK_TEST_VST3_FOLDER="${test_vst3_folder}"
         EMERICK_TEST_GAIN_VST3="${test_vst3_folder}/Emerick Test gain.vst3"
-        EMERICK_TEST_DESCRIBED_VST3="${test_vst3_folder}/Emerick Test described.vst3")
+        EMERICK_TEST_DESCRIBED_VST3="${test_vst3_folder}/Emerick Test described.vst3"
+        EMERICK_TEST_SYNTH_VST3="${test_vst3_folder}/Emerick Test synth.vst3")
     target_link_libraries(emerick_engine_tests PRIVATE emerick_engine emerick_test_clap emerick_test_vst3 emerick_gm_clap emerick_gm_midi PkgConfig::SNDFILE)
 endif()

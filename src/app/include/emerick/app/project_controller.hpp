@@ -270,7 +270,7 @@ private:
     engine::Cycle engineCycle();
     void publish();
     void updateTrackErrors();
-    void applyInsertEdits();
+    void applyPluginEdits();
     void keepWarmWhileActive();
     void logStreamChanges();
     void watchStream();

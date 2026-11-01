@@ -15,6 +15,7 @@
 #include <algorithm>
 #include <array>
 #include <chrono>
+#include <cmath>
 #include <cstdlib>
 #include <cstring>
 #include <format>
@@ -27,7 +28,7 @@ namespace {
 namespace sb = Steinberg;
 namespace vst = Steinberg::Vst;
 
-enum ParamId : vst::ParamID { kGain = 1, kPolarity = 2 };
+enum ParamId : vst::ParamID { kGain = 1, kPolarity = 2, kPeak = 3 };
 
 constexpr std::array<std::u16string_view, 2> kPolarityNames{u"Normal", u"Inverted"};
 
@@ -118,22 +119,24 @@ public:
             const std::span out(data.outputs[0].channelBuffers32[channel], frames);
             std::ranges::transform(in, out.begin(), [scale](float sample) { return sample * scale; });
         }
+        reportPeak(data);
         return sb::kResultOk;
     }
     sb::uint32 PLUGIN_API getTailSamples() override { return 0; }
 
     sb::tresult PLUGIN_API setComponentState(sb::IBStream* state) override { return setState(state); }
-    sb::int32 PLUGIN_API getParameterCount() override { return 2; }
+    sb::int32 PLUGIN_API getParameterCount() override { return 3; }
     sb::tresult PLUGIN_API getParameterInfo(sb::int32 index, vst::ParameterInfo& info) override {
-        if (index < 0 || index > 1) {
+        if (index < 0 || index > 2) {
             return sb::kInvalidArgument;
         }
         info = {};
-        info.id = index == 0 ? kGain : kPolarity;
-        copyText(index == 0 ? u"Gain" : u"Polarity", info.title);
-        info.stepCount = index == 0 ? 0 : 1;
+        info.id = static_cast<vst::ParamID>(index + 1);
+        copyText(std::array{u"Gain", u"Polarity", u"Peak"}.at(static_cast<std::size_t>(index)), info.title);
+        info.stepCount = index == 1 ? 1 : 0;
         info.defaultNormalizedValue = index == 0 ? 0.5 : 0.0;
-        info.flags = vst::ParameterInfo::kCanAutomate | (index == 1 ? vst::ParameterInfo::kIsList : 0);
+        info.flags = index == 2 ? vst::ParameterInfo::kIsReadOnly
+                                : vst::ParameterInfo::kCanAutomate | (index == 1 ? vst::ParameterInfo::kIsList : 0);
         return sb::kResultOk;
     }
     sb::tresult PLUGIN_API getParamStringByValue(vst::ParamID id, vst::ParamValue value, vst::String128 text) override {
@@ -152,9 +155,15 @@ public:
     vst::ParamValue PLUGIN_API plainParamToNormalized(vst::ParamID id, vst::ParamValue value) override {
         return id == kGain ? value / 2.0 : value;
     }
-    vst::ParamValue PLUGIN_API getParamNormalized(vst::ParamID id) override { return id == kGain ? gain_ : polarity_; }
-    sb::tresult PLUGIN_API setParamNormalized(vst::ParamID /*id*/, vst::ParamValue /*value*/) override {
-        // The processor takes the values from its param changes, and it shares them with the controller.
+    vst::ParamValue PLUGIN_API getParamNormalized(vst::ParamID id) override {
+        return id == kGain ? gain_ : id == kPolarity ? polarity_ : shownPeak_;
+    }
+    // The processor takes Gain and Polarity from its param changes and shares them with the controller, which shows
+    // Peak as the host hands it over.
+    sb::tresult PLUGIN_API setParamNormalized(vst::ParamID id, vst::ParamValue value) override {
+        if (id == kPeak) {
+            shownPeak_ = value;
+        }
         return sb::kResultOk;
     }
     sb::tresult PLUGIN_API setComponentHandler(vst::IComponentHandler* handler) override {
@@ -193,6 +202,25 @@ private:
 
     double gain_ = 0.5;
     double polarity_ = 0.0;
+    double shownPeak_ = 0.0;
+
+    // The processor reports the loudest output sample of the block as Peak.
+    static void reportPeak(vst::ProcessData& data) {
+        if (data.outputParameterChanges == nullptr) {
+            return;
+        }
+        float peak = 0.0F;
+        for (sb::int32 channel = 0; channel < data.outputs[0].numChannels; ++channel) {
+            for (const float sample :
+                 std::span(data.outputs[0].channelBuffers32[channel], static_cast<std::size_t>(data.numSamples))) {
+                peak = std::max(peak, std::abs(sample));
+            }
+        }
+        sb::int32 index = 0;
+        if (vst::IParamValueQueue* queue = data.outputParameterChanges->addParameterData(kPeak, index)) {
+            queue->addPoint(0, std::min(peak, 1.0F), index);
+        }
+    }
 };
 
 // The editor draws nothing and keeps its parent untouched, so it attaches to any parent offscreen. As it opens it

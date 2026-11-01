@@ -4,10 +4,10 @@
 #include <cmath>
 #include <cstddef>
 #include <functional>
-#include <limits>
 #include <numbers>
 #include <numeric>
 #include <ranges>
+#include <utility>
 
 #include "emerick/engine/spectrum.hpp"
 #include "meter_detail.hpp"
@@ -24,7 +24,6 @@ constexpr std::size_t kStepsPerBlock = 4;
 constexpr double kSilenceLevel = 0.001;
 constexpr double kMinSilenceSeconds = 0.5;
 constexpr double kBandEdgeLimit = 0.45;
-constexpr double kActiveGateDb = -60;
 
 using Channels = std::vector<std::vector<float>>;
 
@@ -206,14 +205,16 @@ StereoImage stereoImage(const std::vector<float>& left, const std::vector<float>
 
 }  // namespace
 
-double medianActiveDb(std::vector<double> stepDb) {
+double activeRmsDb(std::span<const double> stepSquares, std::size_t frames, std::size_t stepFrames,
+                   std::size_t channels) {
+    std::vector<double> stepDb = std::views::iota(std::size_t{0}, stepSquares.size()) |
+                                 std::views::transform([&](std::size_t step) {
+                                     const std::size_t length = std::min(stepFrames, frames - (step * stepFrames));
+                                     return powerDb(stepSquares[step] / static_cast<double>(length * channels));
+                                 }) |
+                                 std::ranges::to<std::vector>();
     std::erase_if(stepDb, [](double db) { return db <= kActiveGateDb; });
-    if (stepDb.empty()) {
-        return kSilentDb;
-    }
-    const auto middle = stepDb.begin() + static_cast<std::ptrdiff_t>(stepDb.size() / 2);
-    std::ranges::nth_element(stepDb, middle);
-    return *middle;
+    return stepDb.empty() ? kSilentDb : median(std::move(stepDb));
 }
 
 void setSpectrumTone(ToneBalance& tone, std::span<const double> power, double sampleRate) {
@@ -289,12 +290,7 @@ struct TrackMeter::State {
         if (frames == 0) {
             return tone;
         }
-        tone.activeRmsDb = medianActiveDb(
-            std::views::iota(std::size_t{0}, stepSquares.size()) | std::views::transform([&](std::size_t step) {
-                const std::size_t length = std::min(stepFrames, frames - (step * stepFrames));
-                return powerDb(stepSquares[step] / static_cast<double>(length * tails.size()));
-            }) |
-            std::ranges::to<std::vector>());
+        tone.activeRmsDb = activeRmsDb(stepSquares, frames, stepFrames, tails.size());
         std::vector<double> power((kToneFrame / 2) + 1);
         for (const SpectrumSum& spectrum : spectra) {
             std::ranges::transform(power, spectrum.sum(), power.begin(), std::plus{});

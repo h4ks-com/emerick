@@ -17,6 +17,12 @@
 
 namespace emerick::app {
 
+class ProjectController;
+
+// The project with each instrument's state as it plays now, which a render plays with fresh instances.
+model::Document liveDocument(ProjectController& controller);
+PlaybackContext playbackContext(ProjectController& controller, const model::Document& document);
+
 // The end of the last clip on any track.
 core::Ticks projectEnd(const model::Document& document);
 

@@ -22,6 +22,7 @@
 #include "emerick/engine/audio_analysis.hpp"
 #include "emerick/engine/mix_issues.hpp"
 #include "emerick/engine/window_meter.hpp"
+#include "emerick/model/document.hpp"
 
 namespace emerick::app {
 
@@ -140,7 +141,7 @@ Json windowJson(const AnalysisRange& range, std::size_t index, const engine::Win
     result["centroidHz"] = std::round(window.centroidHz);
     result["bands"] = window.bandShare | std::views::transform([](double share) { return rounded(share, 0.01); }) |
                       std::ranges::to<Json::array_t>();
-    result["crestDb"] = levelDb(window.peakDb - window.rmsDb);
+    result["crestDb"] = levelDb(window.crestDb);
     if (window.tonalPeakHz > 0) {
         result["tonalPeakHz"] = std::round(window.tonalPeakHz);
         result["tonality"] = rounded(window.tonality, 0.01);
@@ -363,14 +364,6 @@ Json inspectionJson(const AnalysisRange& range, const engine::Session& session,
 }
 
 }  // namespace
-
-model::Document liveDocument(ProjectController& controller) {
-    return controller.instruments().withStates(controller.project().document());
-}
-
-PlaybackContext playbackContext(ProjectController& controller, const model::Document& document) {
-    return {.tempo = document.tempo, .folder = controller.folder(), .document = &document};
-}
 
 std::string loudnessMessage(double integratedLufs, double truePeakDbtp, const std::string& detail) {
     return std::format("{:.1f} LUFS integrated, {:.1f} dBTP true peak, {}", integratedLufs, truePeakDbtp, detail);

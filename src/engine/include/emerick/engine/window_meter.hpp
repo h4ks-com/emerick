@@ -17,6 +17,7 @@ struct WindowLevels {
     double activeRmsDb = 0;
     double rmsDb = 0;
     double peakDb = 0;
+    double crestDb = 0;
     std::array<double, kToneBands.size()> bandShare{};
     double centroidHz = 0;
     // The strongest narrow spectral peak above 1 kHz, or 0 when the window has none.

@@ -5,15 +5,10 @@
 #include "emerick/app/background_render.hpp"
 #include "emerick/app/project_controller.hpp"
 #include "emerick/app/registry.hpp"
-#include "emerick/model/document.hpp"
 
 namespace emerick::app {
 
 inline constexpr const char* kMixInspectAction = "mix.inspect";
-
-// The project with each instrument's state as it plays now, which a render plays with fresh instances.
-model::Document liveDocument(ProjectController& controller);
-PlaybackContext playbackContext(ProjectController& controller, const model::Document& document);
 
 std::string loudnessMessage(double integratedLufs, double truePeakDbtp, const std::string& detail);
 

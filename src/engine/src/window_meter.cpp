@@ -19,7 +19,7 @@ namespace {
 constexpr double kTonalFloorHz = 1000;
 // A sine under a Hann window keeps nearly all its energy within this many bins of its peak.
 constexpr std::size_t kNarrowBins = 3;
-// A peak below this share of the window's energy is leakage from lower sounds, not a tone of its own.
+// We treat a peak below this share of the window's energy as leakage from lower sounds.
 constexpr double kMinTonalShare = 0.001;
 constexpr double kOnsetHopSeconds = 0.005;
 constexpr double kOnsetLoudShare = 0.25;
@@ -78,7 +78,8 @@ struct Window {
     std::int64_t clipped = 0;
     std::vector<double> stepSquares;
     std::vector<double> envelope;
-    SpectrumSum spectrum{kToneFrame};
+    SpectrumSum monoSpectrum{kToneFrame};
+    std::vector<SpectrumSum> spectra;
 };
 
 }  // namespace
@@ -105,11 +106,16 @@ struct WindowMeter::State {
 
     void addSegment(std::span<const std::vector<float>> chunk, std::size_t begin, std::size_t length) {
         Window& window = current;
+        if (window.spectra.empty()) {
+            window.spectra.assign(channels, SpectrumSum{kToneFrame});
+        }
         const std::size_t end = window.frames + length;
         window.stepSquares.resize((end + stepFrames - 1) / stepFrames);
         window.envelope.resize((end + hopFrames - 1) / hopFrames);
         mono.assign(length, 0.0F);
-        for (const std::vector<float>& channel : chunk) {
+        for (std::size_t channelIndex = 0; channelIndex < chunk.size(); ++channelIndex) {
+            const std::vector<float>& channel = chunk[channelIndex];
+            window.spectra[channelIndex].add(std::span{channel}.subspan(begin, length));
             for (std::size_t index = 0; index < length; ++index) {
                 const float sample = channel[begin + index];
                 const double square = static_cast<double>(sample) * sample;
@@ -125,27 +131,28 @@ struct WindowMeter::State {
             const double high = highPass[1].process(highPass[0].process(mono[index]));
             window.envelope[(window.frames + index) / hopFrames] += high * high;
         }
-        window.spectrum.add(mono);
+        window.monoSpectrum.add(mono);
         window.frames = end;
     }
 
     [[nodiscard]] WindowLevels levelsOf(const Window& window) const {
         const auto samples = static_cast<double>(window.frames * channels);
-        WindowLevels levels{.activeRmsDb = kSilentDb,
-                            .rmsDb = powerDb(window.squares / samples),
-                            .peakDb = amplitudeDb(window.peak),
+        const double rmsDb = powerDb(window.squares / samples);
+        const double peakDb = amplitudeDb(window.peak);
+        WindowLevels levels{.activeRmsDb = activeRmsDb(window.stepSquares, window.frames, stepFrames, channels),
+                            .rmsDb = rmsDb,
+                            .peakDb = peakDb,
+                            .crestDb = peakDb - rmsDb,
                             .clipped = window.clipped,
                             .onsets = onsetsOf(window.envelope),
                             .mean = window.sum / samples};
-        levels.activeRmsDb = medianActiveDb(
-            std::views::iota(std::size_t{0}, window.stepSquares.size()) | std::views::transform([&](std::size_t step) {
-                const std::size_t length = std::min(stepFrames, window.frames - (step * stepFrames));
-                return powerDb(window.stepSquares[step] / static_cast<double>(length * channels));
-            }) |
-            std::ranges::to<std::vector>());
-        const std::vector<double> power = window.spectrum.sum();
+        std::vector<double> channelPower((kToneFrame / 2) + 1);
+        for (const SpectrumSum& spectrum : window.spectra) {
+            std::ranges::transform(channelPower, spectrum.sum(), channelPower.begin(), std::plus{});
+        }
         ToneBalance tone;
-        setSpectrumTone(tone, power, sampleRate);
+        setSpectrumTone(tone, channelPower, sampleRate);
+        const std::vector<double> power = window.monoSpectrum.sum();
         levels.bandShare = tone.bandShare;
         levels.centroidHz = tone.centroidHz;
         const TonalPeak peak = tonalPeak(power, sampleRate);

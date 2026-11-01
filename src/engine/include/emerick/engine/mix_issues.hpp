@@ -38,7 +38,6 @@ struct MixIssue {
     IssueSeverity severity = IssueSeverity::low;
     IssueKind kind = IssueKind::whine;
     std::size_t output = 0;
-    // The first and the last window the issue spans.
     std::size_t firstWindow = 0;
     std::size_t lastWindow = 0;
     std::string detail;

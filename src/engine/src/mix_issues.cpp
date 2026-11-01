@@ -43,8 +43,6 @@ struct Run {
 
 bool active(const WindowLevels& window) { return std::isfinite(window.activeRmsDb); }
 
-double crestDb(const WindowLevels& window) { return window.peakDb - window.rmsDb; }
-
 double highShare(const WindowLevels& window) {
     return std::ranges::fold_left(window.bandShare | std::views::drop(kFirstHighBand), 0.0, std::plus{});
 }
@@ -71,12 +69,6 @@ std::vector<Run> runsOf(const std::vector<WindowLevels>& windows, Passes passes,
         first = last;
     }
     return runs;
-}
-
-double median(std::vector<double> values) {
-    std::ranges::sort(values);
-    const std::size_t middle = values.size() / 2;
-    return values.size() % 2 == 1 ? values[middle] : (values[middle - 1] + values[middle]) / 2;
 }
 
 template <typename Measure>
@@ -135,7 +127,7 @@ private:
     void whines(std::size_t output) {
         const auto& all = windows(output);
         const auto steadyTone = [](const WindowLevels& window) {
-            return active(window) && window.tonality >= kWhineTonality && crestDb(window) < kBeepMinCrestDb;
+            return active(window) && window.tonality >= kWhineTonality && window.crestDb < kBeepMinCrestDb;
         };
         for (const Run& run : runsOf(all, steadyTone, sameTone, kWhineMinWindows)) {
             const double hz =
@@ -152,7 +144,7 @@ private:
         const auto& all = windows(output);
         const auto pitchedHits = [](const WindowLevels& window) {
             return active(window) && window.tonality >= kBeepTonality && window.tonalPeakHz >= kBeepMinHz &&
-                   crestDb(window) >= kBeepMinCrestDb && window.onsets >= kBeepMinOnsets;
+                   window.crestDb >= kBeepMinCrestDb && window.onsets >= kBeepMinOnsets;
         };
         for (const Run& run : runsOf(all, pitchedHits, sameTone, kBeepMinWindows)) {
             const double hz =
@@ -166,7 +158,7 @@ private:
                  {"tonality",
                   runMedian(all, run, [](const WindowLevels& window, std::size_t) { return window.tonality; })},
                  {"crestDb",
-                  runMedian(all, run, [](const WindowLevels& window, std::size_t) { return crestDb(window); })},
+                  runMedian(all, run, [](const WindowLevels& window, std::size_t) { return window.crestDb; })},
                  {"peakDb", runMax(all, run, &WindowLevels::peakDb)}});
         }
     }
@@ -219,7 +211,8 @@ private:
             const double share =
                 runMedian(all, run, [](const WindowLevels& window, std::size_t) { return highShare(window); });
             add(IssueSeverity::low, IssueKind::harsh, output, run,
-                std::format("{:.0f}% of the energy above 2 kHz against {:.0f}% on average", share * 100, average * 100),
+                std::format("{:.0f}% of the energy above {:g} kHz against {:.0f}% on average", share * 100,
+                            kToneBands[kFirstHighBand].low / 1000, average * 100),
                 {{"highShare", share}, {"averageHighShare", average}});
         }
     }
@@ -227,7 +220,7 @@ private:
     void silent(std::size_t output) {
         constexpr std::array kSeverity{IssueSeverity::medium, IssueSeverity::low, IssueSeverity::high};
         add(kSeverity.at(static_cast<std::size_t>(outputs_[output].role)), IssueKind::silent, output, whole(output),
-            "nothing above -60 dBFS over the range", {});
+            std::format("nothing above {:.0f} dBFS over the range", kActiveGateDb), {});
     }
 
     void imbalance() {

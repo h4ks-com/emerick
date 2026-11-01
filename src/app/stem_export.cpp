@@ -11,6 +11,7 @@
 #include <utility>
 
 #include "emerick/app/audio_file.hpp"
+#include "emerick/app/project_controller.hpp"
 #include "emerick/engine/audio_analysis.hpp"
 #include "emerick/engine/engine.hpp"
 #include "emerick/model/clip_edit.hpp"
@@ -56,6 +57,10 @@ std::vector<engine::Track> stemTracks(const engine::Session& session, const mode
 }
 
 engine::AudioRoute renderRoute() { return {kRenderDevice, {1, 2}}; }
+
+engine::AudioRoute mixRoute(const engine::Track& track, const model::Document& document) {
+    return playsAudio(track, document) ? renderRoute() : engine::AudioRoute{};
+}
 
 engine::Track audible(engine::Track track) {
     track.mute = false;
@@ -117,7 +122,7 @@ engine::Session stemSession(const engine::Session& session, const engine::Track&
 engine::Session mixSession(const engine::Session& session, const model::Document& document) {
     std::vector<engine::Track> tracks = session.tracks;
     for (engine::Track& track : tracks) {
-        track.audioOut = playsAudio(track, document) ? renderRoute() : engine::AudioRoute{};
+        track.audioOut = mixRoute(track, document);
     }
     return renderSession(session, std::move(tracks));
 }
@@ -131,7 +136,7 @@ engine::Session captureSession(const engine::Session& session, const std::vector
         session.tracks | std::views::transform(audible) | std::ranges::to<std::vector>();
     const int offset = mixOf != nullptr ? 2 : 0;
     for (engine::Track& track : tracks) {
-        track.audioOut = mixOf != nullptr && playsAudio(track, *mixOf) ? renderRoute() : engine::AudioRoute{};
+        track.audioOut = mixOf != nullptr ? mixRoute(track, *mixOf) : engine::AudioRoute{};
         if (const auto found = std::ranges::find(trackIds, track.id); found != trackIds.end()) {
             const auto first = static_cast<int>(2 * (found - trackIds.begin())) + 1 + offset;
             track.captureOut = {kRenderDevice, {first, first + 1}};
@@ -205,6 +210,14 @@ engine::Frames renderFrames(const engine::Session& session, const model::Documen
 }
 
 }  // namespace
+
+model::Document liveDocument(ProjectController& controller) {
+    return controller.instruments().withStates(controller.project().document());
+}
+
+PlaybackContext playbackContext(ProjectController& controller, const model::Document& document) {
+    return {.tempo = document.tempo, .folder = controller.folder(), .document = &document};
+}
 
 core::Ticks projectEnd(const model::Document& document) {
     core::Ticks end = 0;

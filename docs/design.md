@@ -38,7 +38,7 @@ Glass: the control bar and popovers use `slate` at 96% with a 1 px top highlight
 |  input ▾  | Style    | Main A        |Fill| Main B                    |
 |  output ▾ |----------------------------------------------------------|
 |  midi in ▾| ● M S  01 Right 1  |▓▓▓▓▓▓▓ clip ▓▓▓▓▓|                   |
-|  midi out▾| ● M S  Genos2 L/R  |≈≈≈≈≈ audio clip ≈≈≈≈≈≈|              |
+|  midi out▾| ● M S  Input 1-2   |≈≈≈≈≈ audio clip ≈≈≈≈≈≈|              |
 +-----------+----------------------------------------------------------+
 ```
 

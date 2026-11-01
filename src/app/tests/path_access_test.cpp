@@ -131,9 +131,8 @@ TEST_CASE("agent folder settings name folders only inside the read root") {
                              .type = SettingType::List,
                              .defaultValue = Json::array(),
                              .merge = readableFolders(rig.registry)});
-    const auto asAgent = [&rig](const Json& folders) {
-        return rig.registry.runFrom(ActionSource::Mcp,
-                                    [&] { return rig.registry.setSetting("test.folders", folders); });
+    const auto asAgent = [&rig](const Json& value) {
+        return rig.registry.runFrom(ActionSource::Mcp, [&] { return rig.registry.setSetting("test.folders", value); });
     };
 
     CHECK_THROWS_AS(asAgent(Json::array({folders.root.string(), folders.outside.string()})), AppError);

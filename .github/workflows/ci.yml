@@ -117,7 +117,7 @@ jobs:
       - name: Build the image and drive it over MCP
         run: make e2e
         env:
-          DOCKER_BUILD_ARGS: --load --cache-from type=gha,scope=amd64 --cache-to type=gha,mode=max,scope=amd64
+          DOCKER_BUILD_ARGS: --cache-from type=gha,scope=amd64 --cache-to type=gha,mode=max,scope=amd64
 
   image:
     if: github.event_name != 'pull_request'

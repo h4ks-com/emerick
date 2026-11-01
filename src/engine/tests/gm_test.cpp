@@ -90,8 +90,10 @@ double energy(std::span<const float> samples) {
 }
 
 double differenceEnergy(std::span<const float> left, std::span<const float> right) {
-    return energy(std::views::zip_transform([](float first, float second) { return first - second; }, left, right) |
-                  std::ranges::to<std::vector>());
+    std::vector<float> difference(std::min(left.size(), right.size()));
+    std::transform(left.begin(), left.begin() + static_cast<std::ptrdiff_t>(difference.size()), right.begin(),
+                   difference.begin(), std::minus{});
+    return energy(difference);
 }
 
 std::size_t zeroCrossings(std::span<const float> samples) {

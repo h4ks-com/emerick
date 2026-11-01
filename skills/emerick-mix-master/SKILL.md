@@ -32,7 +32,7 @@ Static mixes sound flat even when balanced. Map the brief's energy curve onto a 
 
 ## Master and export
 
-Render with `export.mix {path, targetLufs = -14, ceilingDbtp = -1}` for streaming loudness (quieter genres can sit at -16). The result reports the integrated loudness and true peak the file ends at; print them. Use flac or wav for archives and mp3 or ogg for sharing when the build supports them.
+Render with `export.mix {path, targetLufs = -14, ceilingDbtp = -1}` for streaming loudness (quieter genres can sit at -16). The result reports the integrated loudness and true peak the file ends at; print them. Use flac or wav for archives and mp3 or ogg for sharing; opus needs a 48000 Hz project.
 
 ## Review
 

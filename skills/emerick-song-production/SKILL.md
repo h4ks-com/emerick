@@ -41,7 +41,7 @@ When several agents share a song, only one of them edits `song.lua` at a time. T
 ## Render and review
 
 - Call `emerick.waitReady()` after loading instruments, styles or voices and before rendering, or the render starts before the sounds have loaded.
-- Export with `export.mix {path, targetLufs = -14, ceilingDbtp = -1}`; it reports the loudness the file ends at. Use a format the listener can play: wav, or flac, ogg, opus or mp3 where the build supports them.
+- Export with `export.mix {path, targetLufs = -14, ceilingDbtp = -1}`; it reports the loudness the file ends at. Pick the format with the path suffix or `format`: wav, flac, ogg, opus (needs a 48000 Hz project) or mp3.
 - Review with numbers and with notes. `mix.inspect` lists whines, beeps, clipping, DC and imbalance by track and bar, and `tracks.analyze` measures every track. Numbers cannot tell a broken instrument from a good one, so also check each instrument on its own (see the mix skill).
 - After changing the script, confirm you are reviewing the new render (its modification time, or a value the run printed) before saying a problem is fixed. It is easy to listen to a stale file.
 

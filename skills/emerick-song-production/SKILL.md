@@ -47,4 +47,4 @@ When several agents share a song, only one of them edits `song.lua` at a time. T
 
 ## Running on the Emerick service
 
-On the hosted service each project gets a session: one Emerick process with its own MCP endpoint and a folder it may read and write. Create the session, work through its MCP URL, write renders inside the project folder, and close the session when the song is done, so it saves and frees its slot for other agents. Sessions that sit idle are closed for you, but closing yours is faster and keeps your work safe.
+On the hosted service each project gets a session: one Emerick process with its own MCP endpoint and a folder (`project_dir`) it may read and write. Create the session, send the script through its MCP URL with `lua.eval` (set `arg` at the top of the code, since there is no command line), and keep every path inside `project_dir`: the project (`project.new {path = project_dir .. "/song.erk"}`) and the renders. Close the session when the song is done, so it saves and frees its slot for other agents. Sessions that sit idle are closed for you, but closing yours is faster and keeps your work safe.

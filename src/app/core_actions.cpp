@@ -149,6 +149,21 @@ std::function<Json(const Json&, const Json&)> readablePath(const Registry& regis
     };
 }
 
+std::function<Json(const Json&, const Json&)> readableFolders(const Registry& registry) {
+    return [&registry](const Json&, const Json& change) {
+        if (!change.is_array()) {
+            return change;
+        }
+        Json checked = Json::array();
+        for (const Json& folder : change) {
+            checked.push_back(folder.is_string()
+                                  ? Json(registry.checkedPath(folder.get<std::string>(), PathAccess::Read).string())
+                                  : folder);
+        }
+        return checked;
+    };
+}
+
 void addPathSetting(Registry& registry, Setting setting, FileDialogMode mode, const std::string& nameFilter) {
     auto id = std::make_shared<const std::string>(setting.id);
     setting.merge = readablePath(registry);

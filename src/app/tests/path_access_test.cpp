@@ -121,3 +121,24 @@ TEST_CASE("agent settings, scripts and Lua name files only inside the read root"
         AppError);
     CHECK(rig.lua.eval("return emerick.setting('metronome.accentSample', '" + secret + "')").at("ok") == false);
 }
+
+TEST_CASE("agent folder settings name folders only inside the read root") {
+    FuzzRig rig;
+    const Folders folders;
+    rig.registry.setAgentRoots({.read = folders.root, .write = std::nullopt});
+    rig.registry.addSetting({.id = "test.folders",
+                             .title = "Folders",
+                             .type = SettingType::List,
+                             .defaultValue = Json::array(),
+                             .merge = readableFolders(rig.registry)});
+    const auto asAgent = [&rig](const Json& folders) {
+        return rig.registry.runFrom(ActionSource::Mcp,
+                                    [&] { return rig.registry.setSetting("test.folders", folders); });
+    };
+
+    CHECK_THROWS_AS(asAgent(Json::array({folders.root.string(), folders.outside.string()})), AppError);
+    CHECK(asAgent(Json::array({(folders.root / "takes").string()})) ==
+          Json::array({(folders.root / "takes").string()}));
+    CHECK(rig.registry.setSetting("test.folders", Json::array({folders.outside.string()})) ==
+          Json::array({folders.outside.string()}));
+}

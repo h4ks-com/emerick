@@ -70,6 +70,7 @@ void registerPluginActions(Registry& registry, Nav& nav, PluginCatalog& catalog)
                          .defaultValue = Json::array(),
                          .hint = "Folders to search for CLAP plugins besides the standard ones",
                          .location = "settings.plugins",
+                         .merge = readableFolders(registry),
                          .action = "plugins.rescan"});
     registry.addSetting({.id = kVst3FoldersSetting,
                          .title = "VST3 folders",
@@ -79,6 +80,7 @@ void registerPluginActions(Registry& registry, Nav& nav, PluginCatalog& catalog)
                          .defaultValue = Json::array(),
                          .hint = "Folders to search for VST3 plugins besides the standard ones",
                          .location = "settings.plugins",
+                         .merge = readableFolders(registry),
                          .action = "plugins.rescan"});
     addPathSetting(registry,
                    {.id = kGeneralMidiSoundFontSetting,

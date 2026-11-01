@@ -268,7 +268,8 @@ void registerSettings(app::Registry& registry, app::ProjectController& controlle
                           .aliases = {"style library", "sty folders"},
                           .type = app::SettingType::List,
                           .defaultValue = app::Json::array(),
-                          .hint = "Folders to list styles from in the built-in arranger's style picker"});
+                          .hint = "Folders to list styles from in the built-in arranger's style picker",
+                          .merge = app::readableFolders(registry)});
     addSetting(registry, {.id = kVoiceListSetting,
                           .title = "Voice list",
                           .aliases = {"voice categories", "general midi stand-in"},

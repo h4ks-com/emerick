@@ -159,6 +159,7 @@ Audition prepareAudition(const Registry& registry, ProjectController& controller
         throw AppError(std::format("give at most {} seconds of notes in all, since the render holds them in memory",
                                    kMaxRenderSeconds));
     }
+    registry.checkRenderSeconds(audition.seconds * static_cast<double>(audition.notes.size()));
     audition.velocity = optionalParam<int>(params, "velocity").value_or(audition.velocity);
     if (audition.velocity < 1 || audition.velocity > kMaxMidi) {
         throw AppError("give a velocity from 1 to 127");

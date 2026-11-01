@@ -172,6 +172,7 @@ void registerCoreActions(Registry& registry, Nav& nav, const Backends& backends)
     auto names = std::make_shared<const Backends>(backends);
     registry.addStateProvider(
         "app", [names] { return Json{{"version", appVersion()}, {"audio", names->audio}, {"midi", names->midi}}; });
+    registry.addStateProvider("limits", [&registry] { return registry.limitsState(); });
 
     registry.addLocation({.id = "palette", .reveal = [&nav] { nav.setPaletteOpen(true); }});
     registry.addLocation({.id = "about", .reveal = [&nav] { nav.setAboutOpen(true); }});

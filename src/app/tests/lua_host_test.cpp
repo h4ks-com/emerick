@@ -3,6 +3,8 @@
 #include <QTemporaryDir>
 #include <QTimer>
 #include <catch2/catch_test_macros.hpp>
+#include <chrono>
+#include <cstddef>
 #include <filesystem>
 #include <fstream>
 #include <sstream>
@@ -122,6 +124,25 @@ TEST_CASE("pcall cannot catch the runaway stop") {
     CHECK(fixture.lua.eval("return pcall(error, 'caught')").at("result") == false);
 }
 
+TEST_CASE("the Lua time limit stops a runaway script and leaves short scripts alone") {
+    Fixture fixture;
+    fixture.registry.setLimits({.luaTimeout = std::chrono::milliseconds{50}});
+    const Json result = fixture.lua.eval("while true do pcall(function() while true do end end) end");
+    CHECK(result.at("ok") == false);
+    CHECK(result.at("error").get<std::string>().find("script ran longer than 50 ms") != std::string::npos);
+    CHECK(fixture.lua.eval("local sum = 0 for i = 1, 1000 do sum = sum + i end return sum").at("result") == 500500);
+}
+
+TEST_CASE("the Lua memory limit fails a huge string and leaves small ones alone") {
+    Fixture fixture;
+    fixture.registry.setLimits({.luaMemoryBytes = std::size_t{16} << 20});
+    CHECK(fixture.lua.eval("return #string.rep('x', 1e10)").at("ok") == false);
+    const Json over = fixture.lua.eval("return #string.rep('x', 32 << 20)");
+    CHECK(over.at("ok") == false);
+    CHECK(over.at("error").get<std::string>().find("not enough memory") != std::string::npos);
+    CHECK(fixture.lua.eval("return #string.rep('x', 1 << 20)").at("result") == 1 << 20);
+}
+
 TEST_CASE("ui.set sets a setting like the MCP tool does") {
     Fixture fixture;
     const Json result = fixture.lua.eval("return emerick.ui.set('audio.bufferSize', 1024).setting.value");
@@ -198,6 +219,18 @@ TEST_CASE("only a command line script can wait, and it lets queued work run") {
                                   "false\tbuild.lua:3: x\n"));
     CHECK(recovered.out.ends_with("\nfalse\n"));
     CHECK(fixture.lua.eval("emerick.wait(0)").at("ok") == false);
+}
+
+TEST_CASE("a command line script's wait counts toward no time limit") {
+    ensureApplication();
+    Fixture fixture;
+    fixture.registry.setLimits({.luaTimeout = std::chrono::milliseconds{100}});
+    const ScriptRun waited = runScript(fixture, "print(emerick.wait(0.3))\nprint(#string.rep('x', 10))");
+    CHECK(waited.code == 0);
+    CHECK(waited.out == "false\n10\n");
+    const ScriptRun runaway = runScript(fixture, "emerick.wait(0.01)\nwhile true do end");
+    CHECK(runaway.code == 1);
+    CHECK(runaway.err.find("script ran longer than 100 ms") != std::string::npos);
 }
 
 namespace {

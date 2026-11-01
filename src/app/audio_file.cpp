@@ -2,7 +2,10 @@
 
 #include <sndfile.h>
 
+#include <algorithm>
+#include <cctype>
 #include <cmath>
+#include <format>
 #include <memory>
 #include <string>
 
@@ -70,29 +73,96 @@ AudioData readAudio(const std::filesystem::path& path) {
     return audio;
 }
 
-struct WavWriter::File {
+std::string_view audioFormatName(AudioFormat format) {
+    return std::ranges::find(kAudioFormats, format, &std::pair<std::string_view, AudioFormat>::second)->first;
+}
+
+AudioEncoding audioEncoding(const std::filesystem::path& path, const std::optional<std::string>& format,
+                            std::optional<double> quality) {
+    std::string name = format.value_or(path.extension().string());
+    if (!format) {
+        name = name.empty() ? std::string{audioFormatName(AudioFormat::Wav)} : name.substr(1);
+    }
+    std::ranges::transform(name, name.begin(), [](unsigned char c) { return std::tolower(c); });
+    const auto* found = std::ranges::find(kAudioFormats, name, &std::pair<std::string_view, AudioFormat>::first);
+    if (found == kAudioFormats.end()) {
+        throw AppError(
+            "give a format of wav, flac, ogg, opus or mp3, by the format param or the path's suffix, not \"" + name +
+            "\"");
+    }
+    AudioEncoding encoding{.format = found->second};
+    if (quality && (std::isnan(*quality) || *quality < 0 || *quality > 1)) {
+        throw AppError("give quality from 0 to 1");
+    }
+    encoding.quality = quality.value_or(encoding.quality);
+    return encoding;
+}
+
+namespace {
+
+int sndFileFormat(AudioFormat format) {
+    switch (format) {
+        case AudioFormat::Wav:
+            return SF_FORMAT_WAV | SF_FORMAT_FLOAT;
+        case AudioFormat::Flac:
+            return SF_FORMAT_FLAC | SF_FORMAT_PCM_24;
+        case AudioFormat::Ogg:
+            return SF_FORMAT_OGG | SF_FORMAT_VORBIS;
+        case AudioFormat::Opus:
+            return SF_FORMAT_OGG | SF_FORMAT_OPUS;
+        case AudioFormat::Mp3:
+            return SF_FORMAT_MPEG | SF_FORMAT_MPEG_LAYER_III;
+    }
+    return 0;
+}
+
+void setEncoderQuality(SNDFILE* file, AudioEncoding encoding) {
+    if (encoding.format == AudioFormat::Flac) {
+        int clip = SF_TRUE;
+        sf_command(file, SFC_SET_CLIPPING, &clip, sizeof(clip));
+    }
+    if (encoding.format == AudioFormat::Wav || encoding.format == AudioFormat::Flac) {
+        return;
+    }
+    if (encoding.format == AudioFormat::Mp3) {
+        int mode = SF_BITRATE_MODE_VARIABLE;
+        sf_command(file, SFC_SET_BITRATE_MODE, &mode, sizeof(mode));
+    }
+    double compression = 1 - encoding.quality;
+    sf_command(file, SFC_SET_COMPRESSION_LEVEL, &compression, sizeof(compression));
+}
+
+}  // namespace
+
+struct AudioWriter::File {
     std::filesystem::path path;
     SndFile file;
 };
 
-WavWriter::WavWriter(const std::filesystem::path& path, std::size_t channels, double sampleRate) {
+AudioWriter::AudioWriter(const std::filesystem::path& path, std::size_t channels, double sampleRate,
+                         AudioEncoding encoding) {
     SF_INFO info{.frames = 0,
                  .samplerate = static_cast<int>(std::lround(sampleRate)),
                  .channels = static_cast<int>(channels),
-                 .format = SF_FORMAT_WAV | SF_FORMAT_FLOAT,
+                 .format = sndFileFormat(encoding.format),
                  .sections = 0,
                  .seekable = 0};
+    if (sf_format_check(&info) == SF_FALSE) {
+        throw AppError(std::format("this build's libsndfile has no {} encoder for {} channels at {} Hz",
+                                   audioFormatName(encoding.format), info.channels, info.samplerate));
+    }
     file_ = std::make_unique<File>(File{.path = path, .file = SndFile{sf_open(path.c_str(), SFM_WRITE, &info)}});
     if (!file_->file) {
         throw AppError("cannot write " + path.string() + ": " + sf_strerror(nullptr));
     }
+    setEncoderQuality(file_->file.get(), encoding);
 }
 
-WavWriter::~WavWriter() = default;
-WavWriter::WavWriter(WavWriter&&) noexcept = default;
-WavWriter& WavWriter::operator=(WavWriter&&) noexcept = default;
+AudioWriter::~AudioWriter() = default;
+AudioWriter::AudioWriter(AudioWriter&&) noexcept = default;
+AudioWriter& AudioWriter::operator=(AudioWriter&&) noexcept = default;
 
-void WavWriter::write(std::span<const std::vector<float>> channels) {
+void AudioWriter::write(std::span<const std::vector<float>> channels) {
     const std::size_t frames = channels.empty() ? 0 : channels.front().size();
     std::vector<float> interleaved(frames * channels.size());
     for (std::size_t frame = 0; frame < frames; ++frame) {
@@ -107,7 +177,12 @@ void WavWriter::write(std::span<const std::vector<float>> channels) {
 }
 
 void writeWav(const std::filesystem::path& path, const std::vector<std::vector<float>>& channels, double sampleRate) {
-    WavWriter(path, channels.size(), sampleRate).write(channels);
+    writeAudio(path, channels, sampleRate, {});
+}
+
+void writeAudio(const std::filesystem::path& path, const std::vector<std::vector<float>>& channels, double sampleRate,
+                AudioEncoding encoding) {
+    AudioWriter(path, channels.size(), sampleRate, encoding).write(channels);
 }
 
 model::AudioClip clipFromFile(const std::filesystem::path& source, const std::filesystem::path& folder,

@@ -256,6 +256,7 @@ RenderJob prepareMeasurement(ProjectController& controller, const Registry& regi
         throw AppError(std::format("give from before to, both from {} to the project end {}",
                                    tempo.toBarBeatTick(0).format(), tempo.toBarBeatTick(end).format()));
     }
+    registry.checkRenderSeconds(tempo.ticksToSeconds(range.to));
     const Json resolution = params.contains("resolution") && !params.at("resolution").is_null()
                                 ? params.at("resolution")
                                 : measurement.defaultResolution;

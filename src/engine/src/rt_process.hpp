@@ -32,7 +32,7 @@ struct OutgoingMidiHeader {
 };
 
 struct Command {
-    enum class Type : std::uint8_t { play, stop, locate, record, mute, solo, arm, gain, pan, panic };
+    enum class Type : std::uint8_t { play, stop, locate, record, mute, solo, arm, gain, pan, panic, previewMetronome };
     Type type = Type::play;
     std::array<char, kMaxTrackIdLength> trackId{};
     std::size_t trackIdLength = 0;
@@ -73,6 +73,8 @@ struct RealtimeState {
     // Set before the audio thread takes a pending preview and cleared once it retires it, so the UI thread never
     // closes the stream under a preview.
     std::atomic<bool> previewSounding{false};
+    // Set by the UI thread when it asks for a metronome preview and cleared once the preview ends.
+    std::atomic<bool> metronomePreviewing{false};
 
     // The audio thread owns everything below while the stream is open.
     Snapshot* current = nullptr;
@@ -85,6 +87,7 @@ struct RealtimeState {
     bool taking = false;
     Frames takeStartFrame = 0;
     Frames countInLeft = 0;
+    Frames metronomePreviewLeft = 0;
     // Counts frames while stopped, so the clock we send then keeps its pulse spacing.
     Frames stoppedClockFrame = 0;
     std::array<MetronomeVoice, kMetronomeVoices> metronomeVoices{};

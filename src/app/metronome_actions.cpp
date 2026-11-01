@@ -213,7 +213,8 @@ void registerSettings(Registry& registry, const ProjectController& controller, N
                           .type = SettingType::Choice,
                           .defaultValue = kModes.front().id,
                           .choices = ids(kModes),
-                          .hint = "A click, your samples, a drum groove, or MIDI notes for an external instrument"});
+                          .hint = "A click, your samples, a drum groove, or MIDI notes for an external instrument",
+                          .action = "metronome.preview"});
     addSetting(registry, {.id = kPattern,
                           .title = "Groove pattern",
                           .aliases = {"drum beat", "drum pattern"},
@@ -289,7 +290,7 @@ void registerSettings(Registry& registry, const ProjectController& controller, N
     }
 }
 
-void registerActions(Registry& registry, const ProjectController& controller, Nav& nav) {
+void registerActions(Registry& registry, ProjectController& controller, Nav& nav) {
     const auto set = [&registry, &controller](const char* id, const Json& value) {
         registry.setSetting(id, value);
         return metronomeState(registry, controller);
@@ -303,6 +304,17 @@ void registerActions(Registry& registry, const ProjectController& controller, Na
          .shortcut = "K",
          .run = [set, &registry](const Json&) { return set(kEnabled, !registry.settingValue(kEnabled).get<bool>()); },
          .menus = {kTransportMenu, kMetronomeMenu}});
+    registry.addAction({.id = "metronome.preview",
+                        .title = "Preview metronome",
+                        .description = "Plays two bars of the metronome sound at the project tempo while stopped.",
+                        .aliases = {"listen to click", "test metronome", "audition click"},
+                        .category = "Metronome",
+                        .run =
+                            [&registry, &controller](const Json&) {
+                                controller.engine().previewMetronome();
+                                return metronomeState(registry, controller);
+                            },
+                        .menus = {kMetronomeMenu}});
     registry.addAction(
         {.id = "metronome.setMode",
          .title = "Set metronome sound",

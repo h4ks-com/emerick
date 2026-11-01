@@ -206,6 +206,29 @@ TEST_CASE("a count-in clicks its bars, then the take starts at the record positi
     CHECK(recorded.back() == ramp.back());
 }
 
+TEST_CASE("a metronome preview clicks two bars while stopped, even with the metronome off") {
+    Rig rig;
+    const TempFolder folder;
+    const core::TempoMap tempo{120.0, {4, 4}};
+    Metronome metronome = impulseMetronome(folder);
+    metronome.enabled = false;
+    rig.engine.setSession({.tempo = tempo, .metronome = metronome});
+    rig.audio.process(rig.engine.layout().maxFrames);
+    const Frames start = rig.audio.processedFrames();
+    rig.engine.previewMetronome();
+    CHECK(rig.engine.previewPlaying());
+    rig.audio.process(tempo.ticksToFrames(tempo.ticksPerBar() * 3, kRate));
+
+    std::map<Frames, float> expected;
+    for (Ticks beat = 0; beat < 8; ++beat) {
+        expected[tempo.ticksToFrames(beat * tempo.ticksPerBeat(), kRate)] = beat % 4 == 0 ? kAccentLevel : kBeatLevel;
+    }
+    CHECK(nonSilent(rig.audio.output("interface", 1), start) == expected);
+    CHECK_FALSE(rig.engine.playing());
+    CHECK_FALSE(rig.engine.previewPlaying());
+    CHECK(rig.engine.position().frames == 0);
+}
+
 TEST_CASE("stopping during a count-in cancels it without a take") {
     Rig rig;
     const TempFolder folder;

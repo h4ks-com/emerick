@@ -132,7 +132,16 @@ struct Engine::Impl {
 
     [[nodiscard]] bool previewPlaying() const {
         return rt.previewSounding.load(std::memory_order_acquire) ||
+               rt.metronomePreviewing.load(std::memory_order_acquire) ||
                rt.pendingPreview.load(std::memory_order_acquire) != nullptr;
+    }
+
+    void previewMetronome() {
+        rt.metronomePreviewing.store(true, std::memory_order_release);
+        if (!streamOpen) {
+            openStream(requestFor(session), session);
+        }
+        push({.type = Command::Type::previewMetronome});
     }
 
     void playPreview(std::string_view trackId, std::vector<std::vector<float>> channels) {
@@ -433,6 +442,8 @@ void Engine::sendMidi(std::string_view portId, std::span<const std::uint8_t> byt
 void Engine::sendInstrumentMidi(std::string_view trackId, std::span<const std::uint8_t> bytes) {
     impl_->sendMidi(trackId, bytes, true);
 }
+
+void Engine::previewMetronome() { impl_->previewMetronome(); }
 
 void Engine::playPreview(std::string_view trackId, std::vector<std::vector<float>> channels) {
     impl_->playPreview(trackId, std::move(channels));

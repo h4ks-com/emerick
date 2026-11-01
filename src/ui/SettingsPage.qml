@@ -182,13 +182,21 @@ Rectangle {
             roleValue: App.Choice
             SettingRow {
                 id: choiceRow
-                SearchCombo {
-                    objectName: choiceRow.modelData.id
-                    enabled: !choiceRow.modelData.readOnly
-                    toolTip: choiceRow.modelData.title
-                    model: choiceRow.modelData.choices.map(choice => ({id: String(choice), name: String(choice), value: choice}))
-                    currentId: String(Registry.settings[objectName])
-                    onPicked: entry => Registry.setSettingValue(objectName, entry.value)
+                RowLayout {
+                    spacing: Theme.space2
+                    SearchCombo {
+                        objectName: choiceRow.modelData.id
+                        enabled: !choiceRow.modelData.readOnly
+                        toolTip: choiceRow.modelData.title
+                        model: choiceRow.modelData.choices.map(choice => ({id: String(choice), name: String(choice), value: choice}))
+                        currentId: String(Registry.settings[objectName])
+                        onPicked: entry => Registry.setSettingValue(objectName, entry.value)
+                    }
+                    ChromeButton {
+                        objectName: choiceRow.modelData.action
+                        visible: objectName !== ""
+                        iconName: "play"
+                    }
                 }
             }
         }

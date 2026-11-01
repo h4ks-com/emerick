@@ -147,8 +147,13 @@ void apply(RealtimeState& state, Snapshot& snapshot, const Command& command, con
                 startTransport(state, snapshot, block.hostTimeNs);
             }
             break;
+        case Command::Type::previewMetronome:
+            state.metronomePreviewLeft =
+                snapshot.tempo.ticksToFrames(kMetronomePreviewBars * snapshot.tempo.ticksPerBar(), snapshot.sampleRate);
+            break;
         case Command::Type::stop:
             state.countInLeft = 0;
+            state.metronomePreviewLeft = 0;
             if (state.transportPlaying) {
                 state.transportPlaying = false;
                 state.startPending = false;
@@ -531,6 +536,23 @@ Frames countIn(RealtimeState& state, Snapshot& snapshot, const AudioBlock& block
     return frames;
 }
 
+// Clicks the metronome preview through the block while the transport rests; playing or counting in ends it.
+void previewMetronome(RealtimeState& state, const Snapshot& snapshot, const AudioBlock& block) {
+    if (state.transportPlaying || state.countInLeft > 0) {
+        state.metronomePreviewLeft = 0;
+    }
+    if (state.metronomePreviewLeft > 0) {
+        const Frames total =
+            snapshot.tempo.ticksToFrames(kMetronomePreviewBars * snapshot.tempo.ticksPerBar(), snapshot.sampleRate);
+        const Frames frames = std::min(state.metronomePreviewLeft, block.frames);
+        playMetronomePreview(state, snapshot, block, total - state.metronomePreviewLeft, frames);
+        state.metronomePreviewLeft -= frames;
+    }
+    if (state.metronomePreviewLeft == 0) {
+        state.metronomePreviewing.store(false, std::memory_order_release);
+    }
+}
+
 // The stretch of a block from offset on for frames frames, for the parts that only send MIDI.
 AudioBlock midiPart(const Snapshot& snapshot, const AudioBlock& block, Frames offset, Frames frames) {
     return {.frames = frames,
@@ -650,6 +672,7 @@ void processBlock(RealtimeState& state, const AudioBlock& block) {
         apply(state, snapshot, command, block);
     }
     const Frames rollFrom = countIn(state, snapshot, block);
+    previewMetronome(state, snapshot, block);
     const Frames blockStartFrame = state.frame - rollFrom;
     receiveMidi(snapshot, state, block, blockStartFrame);
     BlockTime time{.frame = state.frame, .rollFrom = rollFrom, .playing = false};

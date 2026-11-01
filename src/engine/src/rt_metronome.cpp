@@ -99,6 +99,11 @@ void playCountIn(RealtimeState& state, const Snapshot& snapshot, const AudioBloc
     playSteps(state, snapshot, block, 0, done, frames, false);
 }
 
+void playMetronomePreview(RealtimeState& state, const Snapshot& snapshot, const AudioBlock& block, Frames done,
+                          Frames frames) {
+    playSteps(state, snapshot, block, 0, done, frames, playsGroove(snapshot.metronome.settings.mode));
+}
+
 void playMetronome(RealtimeState& state, const Snapshot& snapshot, const AudioBlock& block, Frames offset,
                    Frames frame) {
     const Metronome& settings = snapshot.metronome.settings;

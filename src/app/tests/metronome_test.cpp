@@ -52,14 +52,15 @@ TEST_CASE("metronome actions and settings round trip through the state provider"
           rig.registry.state("metronome").size() - 1);
 }
 
-TEST_CASE("the metronome menu offers the toggle, every sound, every pattern and the count-in") {
+TEST_CASE("the metronome menu offers the toggle, the preview, every sound, every pattern and the count-in") {
     ProjectRig rig;
     const QVariantList items = rig.registry.menus().value(kMetronomeMenu).toList();
-    REQUIRE(items.size() == 4);
+    REQUIRE(items.size() == 5);
     CHECK(items[0].toMap().value("id") == "metronome.toggle");
-    CHECK(items[1].toMap().value("choices").toList().size() == 5);
+    CHECK(items[1].toMap().value("id") == "metronome.preview");
     CHECK(items[2].toMap().value("choices").toList().size() == 5);
-    const QVariantList countIn = items[3].toMap().value("choices").toList();
+    CHECK(items[3].toMap().value("choices").toList().size() == 5);
+    const QVariantList countIn = items[4].toMap().value("choices").toList();
     REQUIRE(countIn.size() == 5);
     CHECK(countIn[0].toMap().value("title") == "Off");
     CHECK(countIn[2].toMap().value("title") == "2 bars");

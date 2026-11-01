@@ -92,6 +92,9 @@ public:
     // preview that plays. Opens the stream while stopped, and keeps it open until the preview ends.
     void playPreview(std::string_view trackId, std::vector<std::vector<float>> channels);
     [[nodiscard]] bool previewPlaying() const;
+    // Plays two bars of the metronome sound from bar 1 at the project tempo while stopped. Play, record and stop end
+    // it.
+    void previewMetronome();
     // Sends Stop to the clock ports, releases the notes the tracks hold, and sends sustain off, all sound off and all
     // notes off on every channel of every output port the session uses. It works while stopped.
     void panic();

@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <format>
@@ -95,7 +96,8 @@ private:
         } else if (type == kMetaTempo && data.size() == 3 && region_ == Region::Setup) {
             const int microseconds = (data[0] << 16) | (data[1] << 8) | data[2];
             if (microseconds > 0) {
-                style_->bpm = kMicrosecondsPerMinute / microseconds;
+                // A tempo event holds whole microseconds per quarter, so we round off the noise that leaves in 104 BPM.
+                style_->bpm = std::round(kMicrosecondsPerMinute / microseconds * 100.0) / 100.0;
             }
         } else if (type == kMetaTimeSignature && data.size() >= 2 && region_ == Region::Setup) {
             if (data[0] == 0 || data[1] > 6) {

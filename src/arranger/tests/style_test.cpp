@@ -8,6 +8,7 @@
 #include <map>
 #include <ranges>
 #include <span>
+#include <string_view>
 #include <vector>
 
 #include "emerick/yamaha/section.hpp"
@@ -77,6 +78,16 @@ TEST_CASE("a synthetic style round trips through the parser") {
     CHECK(style.voices[3]->bankLsb == 2);
     CHECK(style.voices[3]->program == 25);
     CHECK_FALSE(style.voices[1].has_value());
+}
+
+TEST_CASE("a style tempo reads as the beats per minute its microseconds per quarter were rounded from") {
+    StyleBuilder builder;
+    builder.meta(0, 0x51, std::string_view("\x08\xCD\x9B", 3));
+    builder.marker(0, "SFF2");
+    builder.marker(StyleBuilder::kBar, "Main A");
+    builder.note(kDrums, 36, 100, StyleBuilder::kBar, 100);
+    builder.marker(2 * StyleBuilder::kBar, "End");
+    CHECK(parseStyle(builder.smf(3 * StyleBuilder::kBar)).bpm == 104.0);
 }
 
 TEST_CASE("a part whose setup picks a program without a bank selects bank 0 first") {

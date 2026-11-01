@@ -5,6 +5,7 @@
 #include <chrono>
 #include <filesystem>
 #include <string>
+#include <thread>
 #include <vector>
 
 #include "emerick/app/plugin_actions.hpp"
@@ -56,6 +57,20 @@ struct PluginInsertRig : ProjectRig {
         return samples.at(0);
     }
 };
+
+template <class Predicate>
+bool turnEventsUntil(Predicate predicate) {
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+    while (!predicate() && std::chrono::steady_clock::now() < deadline) {
+        QCoreApplication::processEvents();
+        std::this_thread::sleep_for(std::chrono::milliseconds(2));
+    }
+    return predicate();
+}
+
+double gainOf(const PluginInsertRig& rig, const std::string& insert) {
+    return rig.run("insert.params", {{"insert", insert}}).at("params")[0].at("value").get<double>();
+}
 
 }  // namespace
 
@@ -151,4 +166,32 @@ TEST_CASE("a missing VST3 insert stays in the project, warns on its track and st
     CHECK_THROWS_AS(rig.run("insert.params", {{"insert", amp}}), AppError);
     CHECK_THROWS_AS(rig.mixAt(24000), AppError);
     REQUIRE(rig.controller->project().track(model::TrackId{guitar})->inserts.front().plugin.has_value());
+}
+
+TEST_CASE("a VST3 insert's window opens at its editor's size, and a gesture in the editor lands as one undo step") {
+    PluginInsertRig rig;
+    const auto [guitar, amp] = rig.guitarWithGain();
+    CHECK_THROWS_AS(rig.run("insert.openPluginWindow", {{"insert", amp + "x"}}), AppError);
+    const Json opened = rig.run("insert.openPluginWindow", {{"insert", amp}});
+    CHECK(opened.at("windowOpen") == true);
+    REQUIRE(turnEventsUntil([&] { return rig.controller->project().undoName() == "edit Test Gain"; }));
+    CHECK(rig.controller->instruments().editorOpen(model::InsertId{amp}));
+    CHECK(gainOf(rig, amp) == 0.25);
+    CHECK(rig.mixAt(24000) == Approx(0.125F).margin(1e-4));
+    rig.run("project.undo");
+    rig.controller->flush();
+    CHECK(gainOf(rig, amp) == 1.0);
+    CHECK(rig.controller->instruments().editorOpen(model::InsertId{amp}));
+    rig.run("project.redo");
+    rig.controller->flush();
+    CHECK(gainOf(rig, amp) == 0.25);
+    CHECK(rig.run("insert.closePluginWindow", {{"insert", amp}}).at("windowOpen") == false);
+    CHECK_FALSE(rig.controller->instruments().editorOpen(model::InsertId{amp}));
+}
+
+TEST_CASE("a built-in insert has no plugin window") {
+    PluginInsertRig rig;
+    const std::string vox = rig.run("track.addAudio").at("id");
+    const std::string eq = rig.run("insert.add", {{"track", vox}, {"type", "eq"}}).at("id");
+    CHECK_THROWS_AS(rig.run("insert.openPluginWindow", {{"insert", eq}}), AppError);
 }

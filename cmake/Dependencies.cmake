@@ -86,6 +86,7 @@ set(vst3_hosting ${vst3_sdk_folder}/public.sdk/source/vst/hosting)
 add_library(vst3_sdk STATIC
     ${vst3_sdk_folder}/pluginterfaces/base/coreiids.cpp
     ${vst3_sdk_folder}/pluginterfaces/base/funknown.cpp
+    ${vst3_sdk_folder}/public.sdk/source/common/commoniids.cpp
     ${vst3_sdk_folder}/public.sdk/source/common/commonstringconvert.cpp
     ${vst3_sdk_folder}/public.sdk/source/common/memorystream.cpp
     ${vst3_sdk_folder}/public.sdk/source/vst/vstinitiids.cpp

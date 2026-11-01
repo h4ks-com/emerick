@@ -29,6 +29,14 @@ struct ParamSet {
     std::string text;
 };
 
+// A plugin insert's new state after an edit in the plugin's own editor.
+struct InsertEdit {
+    model::TrackId track;
+    model::InsertId insert;
+    std::string name;
+    std::vector<std::uint8_t> state;
+};
+
 // The MIDI channel, from 1, of a param whose module is "Channel <n>": the param sets what the instrument plays on that
 // channel, as General MIDI labels its Drum kit "Channel 10".
 [[nodiscard]] std::optional<int> paramChannel(const engine::PluginParam& param);
@@ -70,13 +78,19 @@ public:
     [[nodiscard]] const std::vector<engine::SessionError>& errors() const { return errors_; }
     // Runs each plugin's main-thread requests and follows its editor; true when a plugin marked its state changed.
     bool idle();
+    // The new states of the plugin inserts whose own editor changed them since the last call, one per gesture.
+    std::vector<InsertEdit> takeInsertEdits() { return std::exchange(insertEdits_, {}); }
     // True once after a plugin changed its params or their values itself.
     bool takeParamsChanged() { return std::exchange(paramsChanged_, false); }
     // The document with each slot's state read from its live instrument, as a project saves it.
     [[nodiscard]] model::Document withStates(model::Document document) const;
-    // Opens the plugin's own editor window, or a window that embeds its editor. Throws AppError when it has none.
+    // Opens the plugin's own editor window, or a window that embeds its editor. Throws AppError when it has none or
+    // its editor does not open.
     void showEditor(const model::TrackId& id, const std::string& title);
+    void showEditor(const model::InsertId& id, const std::string& title);
+    void closeEditor(const model::InsertId& id);
     [[nodiscard]] bool editorOpen(const model::TrackId& id) const;
+    [[nodiscard]] bool editorOpen(const model::InsertId& id) const;
     // The track's instrument as the inspector shows it: whether it has an editor, and each param with its value, its
     // label and, for a stepped param, the label of every step. Null when the track plays no live instrument.
     [[nodiscard]] nlohmann::json describe(const model::TrackId& id) const;
@@ -95,9 +109,19 @@ private:
         // Set while the plugin is missing or its state did not load.
         std::string error;
         std::unique_ptr<QWindow> window;
+        bool insert = false;
+        // An insert's state as its plugin started, which an empty slot state stands for.
+        std::vector<std::uint8_t> defaults;
     };
 
     static void closeEditor(Live& live);
+    // Fixes the window at the editor's size, or leaves it free when the editor resizes.
+    static void fitWindow(Live& live, engine::EditorSize size);
+    void showPluginEditor(const std::string& key, const std::string& title, const std::string& missing);
+    [[nodiscard]] bool pluginEditorOpen(const std::string& key) const;
+    void collectInsertEdit(Live& live, const std::string& key);
+    Live* withWindow(const QWindow* window);
+    void followWindow(QWindow* window);
     void keep(std::map<std::string, Live>& kept, const std::string& key, const model::TrackId& track,
               const model::PluginSlot& slot, bool insert);
     void updateErrors();
@@ -107,6 +131,7 @@ private:
 
     std::map<std::string, Live> live_;
     std::vector<engine::SessionError> errors_;
+    std::vector<InsertEdit> insertEdits_;
     bool paramsChanged_ = false;
 };
 

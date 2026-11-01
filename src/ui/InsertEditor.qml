@@ -78,6 +78,16 @@ Popup {
                 ToolTip.delay: Theme.tooltipDelay
             }
             ChromeButton {
+                objectName: "insert.openPluginWindow:" + (editor.insert.id ?? "")
+                visible: editor.insert.plugin !== undefined
+                actionId: "insert.openPluginWindow"
+                params: ({insert: editor.insert.id})
+                iconName: "sliders"
+                iconColor: Theme.inkDim
+                implicitWidth: Theme.headerButton
+                implicitHeight: Theme.headerButton
+            }
+            ChromeButton {
                 objectName: "insert.setBypass:" + (editor.insert.id ?? "") + ":editor"
                 actionId: "insert.setBypass"
                 params: ({insert: editor.insert.id, value: !editor.insert.bypass})

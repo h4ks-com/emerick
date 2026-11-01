@@ -226,6 +226,42 @@ void registerInsertEditor(Registry& registry, ProjectController& controller, Nav
                                 return insertResult(controller, ref);
                             },
                         .windowOnly = true});
+    registry.addAction({.id = "insert.openPluginWindow",
+                        .title = "Open plugin window",
+                        .description = "Opens the window of a plugin insert's own editor.",
+                        .aliases = {"show plugin editor", "plugin gui", "open vst window"},
+                        .category = kCategory,
+                        .schema = insertSchema(Json::object(), {"insert"}),
+                        .run =
+                            [&controller](const Json& params) {
+                                const InsertRef ref = insertParam(controller, params);
+                                const model::Insert& insert = insertOf(controller, ref);
+                                if (!insert.plugin) {
+                                    throw AppError("insert " + ref.insert.value +
+                                                   " is a built-in effect, run insert.edit for its editor");
+                                }
+                                livePlugin(controller, insert);
+                                controller.instruments().showEditor(
+                                    ref.insert,
+                                    insert.plugin->name + " / " + controller.project().track(ref.track)->name);
+                                Json result = insertResult(controller, ref);
+                                result["windowOpen"] = controller.instruments().editorOpen(ref.insert);
+                                return result;
+                            },
+                        .windowOnly = true});
+    registry.addAction({.id = "insert.closePluginWindow",
+                        .title = "Close plugin window",
+                        .description = "Closes the window of a plugin insert's own editor.",
+                        .aliases = {"hide plugin editor"},
+                        .category = kCategory,
+                        .schema = insertSchema(Json::object(), {"insert"}),
+                        .run = [&controller](const Json& params) {
+                            const InsertRef ref = insertParam(controller, params);
+                            controller.instruments().closeEditor(ref.insert);
+                            Json result = insertResult(controller, ref);
+                            result["windowOpen"] = controller.instruments().editorOpen(ref.insert);
+                            return result;
+                        }});
     registry.addAction({.id = "insert.closeEditor",
                         .title = "Close insert editor",
                         .aliases = {"hide effect"},

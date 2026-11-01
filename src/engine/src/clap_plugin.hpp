@@ -38,6 +38,8 @@ public:
     std::optional<EditorSize> embedEditor(void* parent) override;
     void closeEditor() override;
     std::optional<EditorSize> takeEditorResize() override;
+    [[nodiscard]] bool editorResizable() const override;
+    EditorSize resizeEditor(EditorSize size) override;
 
     void queueMidi(std::span<const std::uint8_t> bytes, std::int64_t timestampNs) override;
     void queueParam(std::uint32_t id, double value) override;

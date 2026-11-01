@@ -328,6 +328,18 @@ void ClapPlugin::closeEditor() {
     }
 }
 
+bool ClapPlugin::editorResizable() const { return impl_->editorOpen && impl_->proxy->guiCanResize(); }
+
+EditorSize ClapPlugin::resizeEditor(EditorSize size) {
+    ClapPluginProxy& proxy = *impl_->proxy;
+    if (!editorResizable() || !proxy.guiAdjustSize(&size.width, &size.height) ||
+        !proxy.guiSetSize(size.width, size.height)) {
+        EditorSize current;
+        return proxy.guiGetSize(&current.width, &current.height) ? current : size;
+    }
+    return size;
+}
+
 std::optional<EditorSize> ClapPlugin::takeEditorResize() {
     if (!impl_->resizeRequested.exchange(false, std::memory_order_acquire)) {
         return std::nullopt;

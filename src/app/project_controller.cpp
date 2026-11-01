@@ -676,6 +676,22 @@ void ProjectController::keepWarmWhileActive() {
     }
 }
 
+// Each gesture in a plugin's own editor becomes one undo step that holds the plugin's new state.
+void ProjectController::applyInsertEdits() {
+    for (InsertEdit& edit : instruments_.takeInsertEdits()) {
+        const model::Track* track = project_.track(edit.track);
+        if (track == nullptr || !std::ranges::contains(track->inserts, edit.insert, &model::Insert::id)) {
+            continue;
+        }
+        project_.editTrack(edit.track, "edit " + edit.name, [&edit](model::Track& edited) {
+            const auto insert = std::ranges::find(edited.inserts, edit.insert, &model::Insert::id);
+            if (insert->plugin) {
+                insert->plugin->state = std::move(edit.state);
+            }
+        });
+    }
+}
+
 void ProjectController::updateTrackErrors() {
     QVariantMap errors;
     for (const auto* list : {&engine_.sessionErrors(), &std::as_const(routeErrors_), &std::as_const(takeErrors_),
@@ -707,6 +723,7 @@ void ProjectController::poll() {
     if (instruments_.idle()) {
         setEdited(true);
     }
+    applyInsertEdits();
     if (instruments_.takeParamsChanged()) {
         registeredWarnings_ = registeredWarnings(project_.document(), registry_);
         emit projectChanged();

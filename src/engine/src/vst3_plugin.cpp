@@ -34,6 +34,14 @@ constexpr std::array<std::uint8_t, 4> kStateTag{'E', 'V', 'S', '1'};
 constexpr Steinberg::TBool kOn = 1;
 constexpr Steinberg::TBool kOff = 0;
 
+#ifdef __APPLE__
+const char* const kViewType = Steinberg::kPlatformTypeNSView;
+#elifdef _WIN32
+const char* const kViewType = Steinberg::kPlatformTypeHWND;
+#else
+const char* const kViewType = Steinberg::kPlatformTypeX11EmbedWindowID;
+#endif
+
 std::map<std::filesystem::path, std::weak_ptr<VST3::Hosting::Module>>& openModules() {
     static std::map<std::filesystem::path, std::weak_ptr<VST3::Hosting::Module>> modules;
     return modules;
@@ -131,12 +139,25 @@ std::span<const std::uint8_t> bytesOf(const Steinberg::MemoryStream& stream) {
 
 }  // namespace
 
+Steinberg::tresult PLUGIN_API ComponentHandler::beginEdit(vst::ParamID /*id*/) {
+    ++openEdits_;
+    return Steinberg::kResultOk;
+}
+
 Steinberg::tresult PLUGIN_API ComponentHandler::performEdit(vst::ParamID id, vst::ParamValue value) {
-    if (writeRecord(impl_->paramQueue, Vst3ParamChange{.id = id, .value = value})) {
-        ++impl_->paramsSent;
-    }
-    impl_->stateDirty.store(true, std::memory_order_relaxed);
+    impl_->sendEdit(id, value);
     impl_->paramsChanged.store(true, std::memory_order_relaxed);
+    if (openEdits_ == 0) {
+        impl_->stateDirty.store(true, std::memory_order_relaxed);
+    }
+    return Steinberg::kResultOk;
+}
+
+Steinberg::tresult PLUGIN_API ComponentHandler::endEdit(vst::ParamID /*id*/) {
+    openEdits_ = std::max(openEdits_ - 1, 0);
+    if (openEdits_ == 0) {
+        impl_->stateDirty.store(true, std::memory_order_relaxed);
+    }
     return Steinberg::kResultOk;
 }
 
@@ -147,7 +168,44 @@ Steinberg::tresult PLUGIN_API ComponentHandler::restartComponent(Steinberg::int3
     if ((flags & (vst::kParamValuesChanged | vst::kParamTitlesChanged)) != 0) {
         impl_->paramsChanged.store(true, std::memory_order_relaxed);
     }
+    if ((flags & vst::kParamValuesChanged) != 0 && !impl_->loading) {
+        impl_->stateDirty.store(true, std::memory_order_relaxed);
+    }
     return Steinberg::kResultOk;
+}
+
+Steinberg::tresult PLUGIN_API PlugFrame::resizeView(Steinberg::IPlugView* view, Steinberg::ViewRect* newSize) {
+    if (view == nullptr || newSize == nullptr || view != impl_->view.get()) {
+        return Steinberg::kInvalidArgument;
+    }
+    impl_->requestedSize = EditorSize{.width = static_cast<std::uint32_t>(std::max(newSize->getWidth(), 0)),
+                                      .height = static_cast<std::uint32_t>(std::max(newSize->getHeight(), 0))};
+    return view->onSize(newSize);
+}
+
+void Vst3Plugin::Impl::sendEdit(vst::ParamID id, vst::ParamValue value) {
+    if (!writeRecord(paramQueue, Vst3ParamChange{.id = id, .value = value})) {
+        {
+            const AudioGuard guard(audioGuard);
+            flushParams();
+        }
+        if (!writeRecord(paramQueue, Vst3ParamChange{.id = id, .value = value})) {
+            return;
+        }
+    }
+    ++paramsSent;
+}
+
+void Vst3Plugin::Impl::waitForParams() {
+    const auto deadline = std::chrono::steady_clock::now() + kParamWait;
+    while (paramsApplied.load(std::memory_order_acquire) < paramsSent) {
+        if (!active || std::chrono::steady_clock::now() > deadline) {
+            const AudioGuard guard(audioGuard);
+            flushParams();
+            return;
+        }
+        std::this_thread::yield();
+    }
 }
 
 void Vst3Plugin::Impl::deactivate() {
@@ -273,6 +331,7 @@ PluginResult createVst3Plugin(const std::filesystem::path& bundle, const std::st
 Vst3Plugin::Vst3Plugin(std::unique_ptr<Impl> impl) : impl_(std::move(impl)) {}
 
 Vst3Plugin::~Vst3Plugin() {
+    closeEditor();
     Impl& impl = *impl_;
     {
         const AudioGuard guard(impl.audioGuard);
@@ -315,7 +374,12 @@ bool Vst3Plugin::idle() {
         const AudioGuard guard(impl.audioGuard);
         impl.activateAt(impl.sampleRate, impl.maxFrames);
     }
-    return impl.stateDirty.exchange(false, std::memory_order_relaxed);
+    if (!impl.stateDirty.exchange(false, std::memory_order_relaxed)) {
+        return false;
+    }
+    // A split plugin's component holds an edit only after its processor took it, so the state saved next waits for it.
+    impl.waitForParams();
+    return true;
 }
 
 std::optional<std::vector<std::uint8_t>> Vst3Plugin::saveState() const {
@@ -346,21 +410,27 @@ bool Vst3Plugin::loadState(std::span<const std::uint8_t> bytes) {
     if (!component || !controller) {
         return false;
     }
-    Steinberg::MemoryStream componentStream = readStream(*component);
-    {
-        const AudioGuard guard(impl.audioGuard);
-        if (impl.component->setState(&componentStream) != Steinberg::kResultOk) {
-            return false;
+    const auto load = [&] {
+        Steinberg::MemoryStream componentStream = readStream(*component);
+        {
+            const AudioGuard guard(impl.audioGuard);
+            if (impl.component->setState(&componentStream) != Steinberg::kResultOk) {
+                return false;
+            }
         }
-    }
-    componentStream.seek(0, Steinberg::IBStream::kIBSeekSet, nullptr);
-    impl.controller->setComponentState(&componentStream);
-    if (!controller->empty()) {
-        Steinberg::MemoryStream controllerStream = readStream(*controller);
-        impl.controller->setState(&controllerStream);
-    }
+        componentStream.seek(0, Steinberg::IBStream::kIBSeekSet, nullptr);
+        impl.controller->setComponentState(&componentStream);
+        if (!controller->empty()) {
+            Steinberg::MemoryStream controllerStream = readStream(*controller);
+            impl.controller->setState(&controllerStream);
+        }
+        return true;
+    };
+    impl.loading = true;
+    const bool loaded = load();
+    impl.loading = false;
     impl.paramsChanged.store(true, std::memory_order_relaxed);
-    return true;
+    return loaded;
 }
 
 std::vector<PluginParam> Vst3Plugin::params() const {
@@ -427,31 +497,70 @@ void Vst3Plugin::setParam(std::uint32_t id, double value) {
         return;
     }
     ++impl.paramsSent;
-    const auto deadline = std::chrono::steady_clock::now() + kParamWait;
-    while (impl.paramsApplied.load(std::memory_order_acquire) < impl.paramsSent) {
-        if (!impl.active || std::chrono::steady_clock::now() > deadline) {
-            const AudioGuard guard(impl.audioGuard);
-            impl.flushParams();
-            return;
-        }
-        std::this_thread::yield();
-    }
+    impl.waitForParams();
 }
 
 bool Vst3Plugin::takeParamsChanged() { return impl_->paramsChanged.exchange(false, std::memory_order_relaxed); }
 
 double Vst3Plugin::processValue(std::uint32_t id, double value) const { return impl_->normalized(id, value); }
 
-bool Vst3Plugin::hasEditor() const { return false; }
+// A VST3 controller creates its view only when asked, so we learn whether it has one when it opens.
+bool Vst3Plugin::hasEditor() const { return true; }
 
-bool Vst3Plugin::editorOpen() const { return false; }
+bool Vst3Plugin::editorOpen() const { return impl_->view != nullptr; }
 
 bool Vst3Plugin::openFloatingEditor(const std::string& /*title*/) { return false; }
 
-std::optional<EditorSize> Vst3Plugin::embedEditor(void* /*parent*/) { return std::nullopt; }
+std::optional<EditorSize> Vst3Plugin::embedEditor(void* parent) {
+    Impl& impl = *impl_;
+    closeEditor();
+    Steinberg::IPtr<Steinberg::IPlugView> view = Steinberg::owned(impl.controller->createView(vst::ViewType::kEditor));
+    if (view == nullptr || view->isPlatformTypeSupported(kViewType) != Steinberg::kResultTrue) {
+        return std::nullopt;
+    }
+    impl.view = view;
+    view->setFrame(&impl.frame);
+    if (view->attached(parent, kViewType) != Steinberg::kResultOk) {
+        view->setFrame(nullptr);
+        impl.view = nullptr;
+        return std::nullopt;
+    }
+    impl.requestedSize.reset();
+    Steinberg::ViewRect rect{};
+    view->getSize(&rect);
+    return EditorSize{.width = static_cast<std::uint32_t>(std::max(rect.getWidth(), 0)),
+                      .height = static_cast<std::uint32_t>(std::max(rect.getHeight(), 0))};
+}
 
-void Vst3Plugin::closeEditor() {}
+void Vst3Plugin::closeEditor() {
+    Impl& impl = *impl_;
+    if (impl.view == nullptr) {
+        return;
+    }
+    impl.view->removed();
+    impl.view->setFrame(nullptr);
+    impl.view = nullptr;
+    impl.requestedSize.reset();
+}
 
-std::optional<EditorSize> Vst3Plugin::takeEditorResize() { return std::nullopt; }
+std::optional<EditorSize> Vst3Plugin::takeEditorResize() { return std::exchange(impl_->requestedSize, std::nullopt); }
+
+bool Vst3Plugin::editorResizable() const {
+    return impl_->view != nullptr && impl_->view->canResize() == Steinberg::kResultTrue;
+}
+
+EditorSize Vst3Plugin::resizeEditor(EditorSize size) {
+    Impl& impl = *impl_;
+    Steinberg::ViewRect rect{0, 0, static_cast<Steinberg::int32>(size.width),
+                             static_cast<Steinberg::int32>(size.height)};
+    if (editorResizable()) {
+        impl.view->checkSizeConstraint(&rect);
+        impl.view->onSize(&rect);
+    } else if (impl.view != nullptr) {
+        impl.view->getSize(&rect);
+    }
+    return {.width = static_cast<std::uint32_t>(std::max(rect.getWidth(), 0)),
+            .height = static_cast<std::uint32_t>(std::max(rect.getHeight(), 0))};
+}
 
 }  // namespace emerick::engine

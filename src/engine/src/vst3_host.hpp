@@ -1,5 +1,6 @@
 #pragma once
 
+#include <pluginterfaces/gui/iplugview.h>
 #include <pluginterfaces/vst/ivstaudioprocessor.h>
 #include <pluginterfaces/vst/ivstcomponent.h>
 #include <pluginterfaces/vst/ivsteditcontroller.h>
@@ -13,6 +14,7 @@
 #include <atomic>
 #include <cstddef>
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -105,14 +107,26 @@ private:
     std::size_t count_ = 0;
 };
 
-// The controller reports edits from its own editor and asks for restarts here, from the main thread.
+// The controller reports edits from its own editor and asks for restarts here, from the main thread. An edit
+// between beginEdit and endEdit is one gesture, and its end marks the state changed.
 class ComponentHandler final : public Unowned<vst::IComponentHandler> {
 public:
     explicit ComponentHandler(Vst3Plugin::Impl& impl) : impl_(&impl) {}
-    Steinberg::tresult PLUGIN_API beginEdit(vst::ParamID /*id*/) override { return Steinberg::kResultOk; }
+    Steinberg::tresult PLUGIN_API beginEdit(vst::ParamID id) override;
     Steinberg::tresult PLUGIN_API performEdit(vst::ParamID id, vst::ParamValue value) override;
-    Steinberg::tresult PLUGIN_API endEdit(vst::ParamID /*id*/) override { return Steinberg::kResultOk; }
+    Steinberg::tresult PLUGIN_API endEdit(vst::ParamID id) override;
     Steinberg::tresult PLUGIN_API restartComponent(Steinberg::int32 flags) override;
+
+private:
+    Vst3Plugin::Impl* impl_;
+    int openEdits_ = 0;
+};
+
+// The editor asks the host to resize its window here, from the main thread.
+class PlugFrame final : public Unowned<Steinberg::IPlugFrame> {
+public:
+    explicit PlugFrame(Vst3Plugin::Impl& impl) : impl_(&impl) {}
+    Steinberg::tresult PLUGIN_API resizeView(Steinberg::IPlugView* view, Steinberg::ViewRect* newSize) override;
 
 private:
     Vst3Plugin::Impl* impl_;
@@ -147,6 +161,10 @@ struct Vst3Plugin::Impl {
     // Main thread, holding the audio guard: runs a process call of no frames, which hands the queued param changes to
     // the processor.
     void flushParams();
+    // Main thread: queues an edit for the processor, and flushes the queue first when it is full.
+    void sendEdit(vst::ParamID id, vst::ParamValue value);
+    // Main thread: returns once the processor has every queued change, flushing them when it is not processing.
+    void waitForParams();
     // Holding the audio guard as the audio thread: one process call over the bus buffers.
     bool process(core::Frames frames, std::int64_t hostTimeNs, const InstrumentTransport& transport);
     [[nodiscard]] std::optional<vst::ParameterInfo> info(vst::ParamID id) const;
@@ -162,7 +180,14 @@ struct Vst3Plugin::Impl {
     Steinberg::IPtr<vst::IConnectionPoint> componentConnection;
     Steinberg::IPtr<vst::IConnectionPoint> controllerConnection;
     ComponentHandler handler{*this};
+    PlugFrame frame{*this};
     std::string name;
+
+    // Main thread only.
+    Steinberg::IPtr<Steinberg::IPlugView> view;
+    std::optional<EditorSize> requestedSize;
+    // Set while we load a state, so the plugin's own reports of new values mark nothing changed.
+    bool loading = false;
 
     std::atomic<bool> audioGuard{false};
     std::atomic<bool> restartRequested{false};

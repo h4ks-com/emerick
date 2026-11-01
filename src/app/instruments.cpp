@@ -23,6 +23,8 @@ namespace emerick::app {
 
 namespace {
 
+constexpr int kQtLargestWindow = (1 << 24) - 1;
+
 bool samePlugin(const model::PluginSlot& left, const model::PluginSlot& right) {
     return left.pluginId == right.pluginId && left.bundle == right.bundle && left.format == right.format;
 }
@@ -103,12 +105,14 @@ Instruments::~Instruments() {
 
 void Instruments::keep(std::map<std::string, Live>& kept, const std::string& key, const model::TrackId& track,
                        const model::PluginSlot& slot, bool insert) {
-    // An empty state means the plugin's defaults, which only a new instance has.
-    if (auto found = live_.find(key); found != live_.end() && samePlugin(found->second.slot, slot) &&
-                                      (found->second.slot.state == slot.state || !slot.state.empty())) {
+    // An empty state means the plugin's defaults, which only a new instance has, unless we kept them as it started, as
+    // we do for an insert, so undoing its first edit keeps its window open.
+    if (auto found = live_.find(key);
+        found != live_.end() && samePlugin(found->second.slot, slot) &&
+        (found->second.slot.state == slot.state || !slot.state.empty() || !found->second.defaults.empty())) {
         Live& live = found->second;
         if (live.instrument && live.slot.state != slot.state) {
-            live.error = live.instrument->loadState(slot.state)
+            live.error = live.instrument->loadState(slot.state.empty() ? live.defaults : slot.state)
                              ? std::string{}
                              : slot.name + " did not load its saved settings, so it plays with its defaults";
         }
@@ -116,12 +120,21 @@ void Instruments::keep(std::map<std::string, Live>& kept, const std::string& key
         kept.insert(live_.extract(found));
         return;
     }
-    Live live{.slot = slot, .instrument = nullptr, .trackId = track.value, .error = {}, .window = nullptr};
+    Live live{.slot = slot,
+              .instrument = nullptr,
+              .trackId = track.value,
+              .error = {},
+              .window = nullptr,
+              .insert = insert,
+              .defaults = {}};
     auto created = engine::createPlugin(slot.format, slot.bundle, slot.pluginId);
     if (!created) {
         live.error = missingMessage(slot, insert, created.error());
     } else {
         live.instrument = *std::move(created);
+        if (insert) {
+            live.defaults = live.instrument->saveState().value_or(std::vector<std::uint8_t>{});
+        }
         if (!slot.state.empty() && !live.instrument->loadState(slot.state)) {
             live.error = slot.name + " did not load its saved settings, so it plays with its defaults";
         }
@@ -188,10 +201,14 @@ bool Instruments::idle() {
         if (!live.instrument) {
             continue;
         }
-        dirty = live.instrument->idle() || dirty;
+        const bool changed = live.instrument->idle();
+        if (changed && live.insert) {
+            collectInsertEdit(live, id);
+        }
+        dirty = changed || dirty;
         paramsChanged_ = live.instrument->takeParamsChanged() || paramsChanged_;
         if (const auto size = live.instrument->takeEditorResize(); size && live.window) {
-            live.window->resize(static_cast<int>(size->width), static_cast<int>(size->height));
+            fitWindow(live, *size);
         }
     }
     updateErrors();
@@ -220,10 +237,48 @@ model::Document Instruments::withStates(model::Document document) const {
     return document;
 }
 
+void Instruments::collectInsertEdit(Live& live, const std::string& key) {
+    auto state = live.instrument->saveState();
+    if (!state || *state == live.slot.state) {
+        return;
+    }
+    live.slot.state = *state;
+    insertEdits_.push_back({.track = model::TrackId{live.trackId},
+                            .insert = model::InsertId{key},
+                            .name = live.slot.name,
+                            .state = *std::move(state)});
+}
+
+void Instruments::fitWindow(Live& live, engine::EditorSize size) {
+    const QSize fitted{static_cast<int>(size.width), static_cast<int>(size.height)};
+    if (live.instrument->editorResizable()) {
+        live.window->setMinimumSize({1, 1});
+        live.window->setMaximumSize({kQtLargestWindow, kQtLargestWindow});
+    } else {
+        live.window->setMinimumSize(fitted);
+        live.window->setMaximumSize(fitted);
+    }
+    live.window->resize(fitted);
+}
+
 void Instruments::showEditor(const model::TrackId& id, const std::string& title) {
-    const auto found = live_.find(id.value);
+    showPluginEditor(id.value, title, "the track has no instrument, run instrument.load first");
+}
+
+void Instruments::showEditor(const model::InsertId& id, const std::string& title) {
+    showPluginEditor(id.value, title, "no plugin insert " + id.value + ", read the track's inserts from state.get");
+}
+
+void Instruments::closeEditor(const model::InsertId& id) {
+    if (const auto found = live_.find(id.value); found != live_.end()) {
+        closeEditor(found->second);
+    }
+}
+
+void Instruments::showPluginEditor(const std::string& key, const std::string& title, const std::string& missing) {
+    const auto found = live_.find(key);
     if (found == live_.end()) {
-        throw AppError("the track has no instrument, run instrument.load first");
+        throw AppError(missing);
     }
     Live& live = found->second;
     if (!live.instrument) {
@@ -251,21 +306,48 @@ void Instruments::showEditor(const model::TrackId& id, const std::string& title)
     const auto size =
         instrument.embedEditor(reinterpret_cast<void*>(window->winId()));  // NOLINT(performance-no-int-to-ptr)
     if (!size) {
-        throw AppError(instrument.name() + " cannot open its editor in a window");
+        throw AppError(instrument.name() + " cannot open its editor in a window; it keeps playing without one");
     }
-    window->resize(static_cast<int>(size->width), static_cast<int>(size->height));
-    QObject::connect(window.get(), &QWindow::visibleChanged, window.get(), [this, key = id.value](bool visible) {
-        if (const auto open = live_.find(key); !visible && open != live_.end() && open->second.window) {
-            open->second.instrument->closeEditor();
-            open->second.window.release()->deleteLater();
+    live.window = std::move(window);
+    fitWindow(live, *size);
+    QWindow* shown = live.window.get();
+    QObject::connect(shown, &QWindow::visibleChanged, shown, [this, shown](bool visible) {
+        if (Live* open = withWindow(shown); !visible && open != nullptr) {
+            open->instrument->closeEditor();
+            open->window.release()->deleteLater();
         }
     });
-    window->show();
-    live.window = std::move(window);
+    QObject::connect(shown, &QWindow::widthChanged, shown, [this, shown] { followWindow(shown); });
+    QObject::connect(shown, &QWindow::heightChanged, shown, [this, shown] { followWindow(shown); });
+    shown->show();
 }
 
-bool Instruments::editorOpen(const model::TrackId& id) const {
-    const auto found = live_.find(id.value);
+Instruments::Live* Instruments::withWindow(const QWindow* window) {
+    const auto found = std::ranges::find_if(live_, [window](const auto& entry) {
+        return entry.second.window != nullptr && entry.second.window.get() == window;
+    });
+    return found == live_.end() ? nullptr : &found->second;
+}
+
+// The user resized the window, so the editor takes the size or the nearest one it can.
+void Instruments::followWindow(QWindow* window) {
+    Live* open = withWindow(window);
+    if (open == nullptr || !open->instrument->editorResizable()) {
+        return;
+    }
+    const engine::EditorSize taken = open->instrument->resizeEditor(
+        {.width = static_cast<std::uint32_t>(window->width()), .height = static_cast<std::uint32_t>(window->height())});
+    if (std::cmp_not_equal(taken.width, window->width()) || std::cmp_not_equal(taken.height, window->height())) {
+        window->resize(static_cast<int>(taken.width), static_cast<int>(taken.height));
+    }
+}
+
+bool Instruments::editorOpen(const model::TrackId& id) const { return pluginEditorOpen(id.value); }
+
+bool Instruments::editorOpen(const model::InsertId& id) const { return pluginEditorOpen(id.value); }
+
+bool Instruments::pluginEditorOpen(const std::string& key) const {
+    const auto found = live_.find(key);
     return found != live_.end() && found->second.instrument && found->second.instrument->editorOpen();
 }
 

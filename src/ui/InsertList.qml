@@ -59,6 +59,20 @@ ColumnLayout {
                     params: ({insert: slot.modelData.id, index: slot.index + 1})
                 }
                 ActionMenuItem {
+                    objectName: "insert.openPluginWindow:" + slot.modelData.id + ":menu"
+                    actionId: "insert.openPluginWindow"
+                    title: "Open plugin window"
+                    available: slot.modelData.plugin !== undefined
+                    params: ({insert: slot.modelData.id})
+                }
+                ActionMenuItem {
+                    objectName: "insert.closePluginWindow:" + slot.modelData.id
+                    actionId: "insert.closePluginWindow"
+                    title: "Close plugin window"
+                    available: slot.modelData.plugin !== undefined
+                    params: ({insert: slot.modelData.id})
+                }
+                ActionMenuItem {
                     objectName: "insert.params:" + slot.modelData.id
                     actionId: "insert.params"
                     title: "List insert settings"

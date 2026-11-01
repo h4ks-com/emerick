@@ -5,6 +5,7 @@
 #include <pluginterfaces/base/funknownimpl.h>
 #include <pluginterfaces/base/ibstream.h>
 #include <pluginterfaces/base/ipluginbase.h>
+#include <pluginterfaces/gui/iplugview.h>
 #include <pluginterfaces/vst/ivstaudioprocessor.h>
 #include <pluginterfaces/vst/ivstcomponent.h>
 #include <pluginterfaces/vst/ivsteditcontroller.h>
@@ -156,10 +157,25 @@ public:
         // The processor takes the values from its param changes, and it shares them with the controller.
         return sb::kResultOk;
     }
-    sb::tresult PLUGIN_API setComponentHandler(vst::IComponentHandler* /*handler*/) override { return sb::kResultOk; }
-    sb::IPlugView* PLUGIN_API createView(sb::FIDString /*name*/) override { return nullptr; }
+    sb::tresult PLUGIN_API setComponentHandler(vst::IComponentHandler* handler) override {
+        handler_ = handler;
+        return sb::kResultOk;
+    }
+    sb::IPlugView* PLUGIN_API createView(sb::FIDString name) override;
+
+    // What a user turning the Gain knob to 0.25 in the editor does.
+    void turnGainInEditor() {
+        if (handler_ == nullptr) {
+            return;
+        }
+        handler_->beginEdit(kGain);
+        gain_ = 0.125;
+        handler_->performEdit(kGain, gain_);
+        handler_->endEdit(kGain);
+    }
 
 private:
+    vst::IComponentHandler* handler_ = nullptr;
     void readChanges(vst::IParameterChanges* changes) {
         if (changes == nullptr) {
             return;
@@ -178,6 +194,62 @@ private:
     double gain_ = 0.5;
     double polarity_ = 0.0;
 };
+
+// The editor draws nothing and keeps its parent untouched, so it attaches to any parent offscreen. As it opens it
+// asks to grow to 400 by 250 and turns the Gain knob, so the tests see a resize request and an edit from the editor.
+class GainView final : public sb::U::Implements<sb::U::Directly<sb::IPlugView>> {
+public:
+    explicit GainView(GainEffect& effect) : effect_(&effect) {}
+
+    sb::tresult PLUGIN_API isPlatformTypeSupported(sb::FIDString /*type*/) override { return sb::kResultTrue; }
+    sb::tresult PLUGIN_API attached(void* parent, sb::FIDString /*type*/) override {
+        if (parent == nullptr) {
+            return sb::kResultFalse;
+        }
+        sb::ViewRect grown{0, 0, 400, 250};
+        if (frame_ != nullptr) {
+            frame_->resizeView(this, &grown);
+        }
+        effect_->turnGainInEditor();
+        return sb::kResultOk;
+    }
+    sb::tresult PLUGIN_API removed() override { return sb::kResultOk; }
+    sb::tresult PLUGIN_API onWheel(float /*distance*/) override { return sb::kResultFalse; }
+    sb::tresult PLUGIN_API onKeyDown(sb::char16 /*key*/, sb::int16 /*code*/, sb::int16 /*modifiers*/) override {
+        return sb::kResultFalse;
+    }
+    sb::tresult PLUGIN_API onKeyUp(sb::char16 /*key*/, sb::int16 /*code*/, sb::int16 /*modifiers*/) override {
+        return sb::kResultFalse;
+    }
+    sb::tresult PLUGIN_API getSize(sb::ViewRect* size) override {
+        *size = rect_;
+        return sb::kResultOk;
+    }
+    sb::tresult PLUGIN_API onSize(sb::ViewRect* size) override {
+        rect_ = *size;
+        return sb::kResultOk;
+    }
+    sb::tresult PLUGIN_API onFocus(sb::TBool /*state*/) override { return sb::kResultOk; }
+    sb::tresult PLUGIN_API setFrame(sb::IPlugFrame* frame) override {
+        frame_ = frame;
+        return sb::kResultOk;
+    }
+    sb::tresult PLUGIN_API canResize() override { return sb::kResultTrue; }
+    sb::tresult PLUGIN_API checkSizeConstraint(sb::ViewRect* rect) override {
+        rect->right = rect->left + std::max(rect->getWidth(), 100);
+        rect->bottom = rect->top + std::max(rect->getHeight(), 100);
+        return sb::kResultOk;
+    }
+
+private:
+    GainEffect* effect_;
+    sb::IPlugFrame* frame_ = nullptr;
+    sb::ViewRect rect_{0, 0, 300, 200};
+};
+
+sb::IPlugView* PLUGIN_API GainEffect::createView(sb::FIDString name) {
+    return std::string_view{name} == vst::ViewType::kEditor ? new GainView(*this) : nullptr;
+}
 
 class Factory final
     : public sb::U::Implements<sb::U::Directly<sb::IPluginFactory2>, sb::U::Indirectly<sb::IPluginFactory>> {

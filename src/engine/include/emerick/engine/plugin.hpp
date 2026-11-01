@@ -20,6 +20,8 @@ using core::PluginFormat;
 struct EditorSize {
     std::uint32_t width = 0;
     std::uint32_t height = 0;
+
+    bool operator==(const EditorSize&) const = default;
 };
 
 struct PluginParam {
@@ -104,6 +106,10 @@ public:
     virtual void closeEditor() = 0;
     // The size the embedded editor asked for since the last call.
     virtual std::optional<EditorSize> takeEditorResize() = 0;
+    // True when the embedded editor takes a new size from its window.
+    [[nodiscard]] virtual bool editorResizable() const = 0;
+    // Hands the embedded editor the size its window has now, and returns the nearest size the editor takes.
+    virtual EditorSize resizeEditor(EditorSize size) = 0;
 
     // Realtime: queues a MIDI message or a sysex for the next processBlock, which plays it at its timestamp in that
     // block. A sysex reaches only a plugin whose note input takes MIDI.

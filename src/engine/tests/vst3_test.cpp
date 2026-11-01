@@ -161,3 +161,40 @@ TEST_CASE("an automation lane moves a plugin insert's param") {
     rig.audio.process(2048);
     CHECK(std::abs(rig.audio.output("interface", 1).at(static_cast<std::size_t>(start + 1024))) == 0.25F);
 }
+
+TEST_CASE("a VST3 editor opens in a parent at the size it asks for, takes the sizes its window gets and closes") {
+    const std::shared_ptr<Plugin> effect = gain();
+    REQUIRE(effect->hasEditor());
+    CHECK_FALSE(effect->embedEditor(nullptr).has_value());
+    CHECK_FALSE(effect->editorOpen());
+    int parent = 0;
+    const auto opened = effect->embedEditor(&parent);
+    REQUIRE(opened.has_value());
+    CHECK(*opened == EditorSize{.width = 400, .height = 250});
+    CHECK(effect->editorOpen());
+    CHECK_FALSE(effect->takeEditorResize().has_value());
+    CHECK(effect->editorResizable());
+    CHECK(effect->resizeEditor({.width = 50, .height = 600}) == EditorSize{.width = 100, .height = 600});
+    effect->closeEditor();
+    CHECK_FALSE(effect->editorOpen());
+    CHECK_FALSE(effect->editorResizable());
+}
+
+TEST_CASE("an edit in the VST3 editor reaches the processor and marks the state changed once per gesture") {
+    const std::shared_ptr<Plugin> effect = gain();
+    REQUIRE(effect->activate(48000.0, kFrames));
+    CHECK_FALSE(effect->idle());
+    int parent = 0;
+    REQUIRE(effect->embedEditor(&parent).has_value());
+    CHECK(effect->takeParamsChanged());
+    CHECK(effect->idle());
+    CHECK_FALSE(effect->idle());
+    CHECK(effect->paramValue(kGainParam) == 0.25);
+    Stereo quieter;
+    effect->processEffect(quieter.channels, kFrames, 0, {});
+    CHECK(quieter.left.back() == 0.125F);
+    const std::shared_ptr<Plugin> restored = gain();
+    REQUIRE(restored->loadState(*effect->saveState()));
+    CHECK(restored->paramValue(kGainParam) == 0.25);
+    CHECK_FALSE(restored->idle());
+}

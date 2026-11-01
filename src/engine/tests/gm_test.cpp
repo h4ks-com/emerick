@@ -316,8 +316,9 @@ TEST_CASE("reverb and chorus sends change the sound") {
     const std::vector<float> dry = render({{0xB0, 91, 0}, {0xB0, 93, 0}, {0x90, 72, 100}});
     const std::vector<float> reverb = render({{0xB0, 91, 127}, {0xB0, 93, 0}, {0x90, 72, 100}});
     const std::vector<float> chorus = render({{0xB0, 91, 0}, {0xB0, 93, 127}, {0x90, 72, 100}});
-    CHECK(differenceEnergy(reverb, dry) > 0.05 * energy(dry));
-    CHECK(differenceEnergy(chorus, dry) > 0.05 * energy(dry));
+    // FluidSynth releases render the reverb at different levels, from 4 to over 5 percent of the dry energy here.
+    CHECK(differenceEnergy(reverb, dry) > 0.02 * energy(dry));
+    CHECK(differenceEnergy(chorus, dry) > 0.02 * energy(dry));
 }
 
 TEST_CASE("a drum bank select with a kit program General MIDI lacks plays a kit from FluidSynth's drum bank") {

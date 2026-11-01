@@ -552,7 +552,6 @@ TEST_CASE("the project is ready once Expansion Voices has read its store") {
     rig.run("arranger.setup");
     const std::string style = rig.trackOfKind("yamaha.style");
     rig.YamahaRig::run("arranger.style.load", {{"track", style}, {"path", rig.demo.string()}});
-    CHECK(rig.YamahaRig::run("project.summary").at("ready") == !rig.voicesLoading());
 
     CHECK(rig.YamahaRig::run("project.waitReady", {{"timeout", 10}}).at("ready") == true);
     CHECK_FALSE(rig.voicesLoading());

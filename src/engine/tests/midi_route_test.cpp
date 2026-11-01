@@ -31,9 +31,10 @@ void* operator new(std::size_t size) {
     throw std::bad_alloc{};
 }
 
-void operator delete(void* memory) noexcept { std::free(memory); }
+// GCC inlines a replaced delete into a new expression and then flags its free, so we keep the deletes out of line.
+[[gnu::noinline]] void operator delete(void* memory) noexcept { std::free(memory); }
 
-void operator delete(void* memory, std::size_t) noexcept { std::free(memory); }
+[[gnu::noinline]] void operator delete(void* memory, std::size_t) noexcept { std::free(memory); }
 
 namespace {
 

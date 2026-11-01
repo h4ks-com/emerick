@@ -30,6 +30,7 @@ namespace emerick::app {
 namespace {
 
 constexpr int kMaxDepth = 64;
+constexpr int kStackPerLevel = 8;
 constexpr int kInstructionLimit = 100'000'000;
 constexpr std::size_t kMemoryLimit = std::size_t{256} << 20;
 constexpr std::array kRemovedGlobals{"dofile", "loadfile", "load", "require"};
@@ -140,6 +141,10 @@ Json fromLua(const sol::object& value, int depth = 0) {
         case sol::type::string:
             return utf8Text(value);
         case sol::type::table: {
+            // Each level holds its table, key and value on the Lua stack, which Lua never grows for us.
+            if (lua_checkstack(value.lua_state(), kStackPerLevel) == 0) {
+                throw AppError("Lua table nests too deep to convert");
+            }
             const auto table = value.as<sol::table>();
             const std::size_t length = rawLength(table);
             std::size_t count = 0;

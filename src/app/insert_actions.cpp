@@ -295,7 +295,8 @@ void registerInsertActions(Registry& registry, ProjectController& controller, Na
                      return registry.run("insert.addPlugin", params);
                  }
                  const model::TrackId track = audioTrack(registry, controller, nav, params);
-                 const engine::EffectSpec& spec = effectType(param<std::string>(params, "type"));
+                 const auto type = param<std::string>(params, "type");
+                 const engine::EffectSpec& spec = effectType(type);
                  model::Insert insert{
                      .id = model::InsertId::make(), .type = std::string{spec.id}, .bypass = false, .params = {}};
                  for (const engine::EffectParam& described : spec.params) {

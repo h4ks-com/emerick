@@ -208,7 +208,7 @@ bool paramInfo(const clap_plugin* plugin, std::uint32_t index, clap_param_info* 
     }
     const ParamRange& range = *rangeOf(index);
     info->flags |= range.switchLabels != nullptr ? CLAP_PARAM_IS_STEPPED | CLAP_PARAM_IS_ENUM : 0U;
-    std::strncpy(std::data(info->name), range.name, std::size(info->name));
+    std::strncpy(std::data(info->name), range.name, std::size(info->name) - 1);
     info->min_value = range.min;
     info->max_value = range.max;
     info->default_value = range.defaultValue;

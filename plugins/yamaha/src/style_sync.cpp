@@ -121,10 +121,8 @@ void StyleSync::report() {
                            .ok = true};
     // A fill or a break leads to a Main the keyboard reports only at the next bar line, and an Ending stops the Style.
     const auto expected = chaseSection(*style, position);
-    const std::optional<int> expectedMain =
-        expected && expected->kind == Section::Main && expected->at == pattern->section.at
-            ? std::optional{expected->variation}
-            : std::nullopt;
+    const bool keyboardPlaysOtherMain = keyboardMain_ && expected && expected->kind == Section::Main &&
+                                        expected->at == pattern->section.at && *keyboardMain_ != expected->variation;
     if (pattern->section.kind != Section::Ending &&
         Clock::now() - playStarted_ >
             kStartGrace + std::chrono::duration<double>(document.tempo.ticksToSeconds(document.tempo.ticksPerBar())) &&
@@ -133,8 +131,7 @@ void StyleSync::report() {
         status.detail +=
             "\nInstall the keyboard template from Plugins > Yamaha Arranger so the keyboard follows Emerick's clock "
             "and Start: it plays no Style";
-    } else if (keyboardMain_ && expectedMain && *keyboardMain_ != *expectedMain &&
-               position - pattern->section.at > document.tempo.ticksPerBar()) {
+    } else if (keyboardPlaysOtherMain && position - pattern->section.at > document.tempo.ticksPerBar()) {
         status.ok = false;
         status.detail +=
             "\nInstall the keyboard template from Plugins > Yamaha Arranger so the keyboard follows Emerick's "

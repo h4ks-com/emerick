@@ -141,7 +141,7 @@ bool paramInfo(const clap_plugin* /*unused*/, std::uint32_t index, clap_param_in
     if (index != kHighestNoteParam) {
         info->flags |= CLAP_PARAM_IS_ENUM;
     }
-    std::strncpy(std::data(info->name), kParamNames.at(index), std::size(info->name));
+    std::strncpy(std::data(info->name), kParamNames.at(index), std::size(info->name) - 1);
     // We name the drum channel as the module of the params that set it, so a host auditions a drum kit on channel 10
     // and turns Play drums on every channel off to audition a Sound.
     if (index == kDrumKitParam || index == kDrumsEverywhereParam) {

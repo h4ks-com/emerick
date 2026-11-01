@@ -34,9 +34,9 @@ Json insertList(const Json& inserts) {
         throw AppError("pass inserts as a list of {type = params} tables, such as {{reverb = {mix = 0.3}}}");
     }
     for (const Json& entry : list) {
-        const auto& [type, params] = *entry.items().begin();
-        const engine::EffectSpec& spec = effectType(type);
-        for (const auto& [param, value] : params.items()) {
+        const auto first = entry.begin();
+        const engine::EffectSpec& spec = effectType(first.key());
+        for (const auto& [param, value] : first.value().items()) {
             effectParamValue(effectParamNamed(spec, param), value);
         }
     }

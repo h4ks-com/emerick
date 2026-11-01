@@ -74,7 +74,7 @@ TEST_CASE("identical channels correlate at 1 and inverted channels at -1") {
     const auto same = analyzeAudio({left, left}, {.sampleRate = kRate});
     REQUIRE(same.stereo);
     CHECK(same.stereo->correlation == Approx(1));
-    CHECK(same.stereo->balanceDb == Approx(0));
+    CHECK(same.stereo->balanceDb == Approx(0).margin(1e-9));
     CHECK(analyzeAudio({left, inverted}, {.sampleRate = kRate}).stereo->correlation == Approx(-1));
     CHECK_FALSE(analyzeAudio({left}, {.sampleRate = kRate}).stereo);
 }

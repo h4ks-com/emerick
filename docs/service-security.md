@@ -17,6 +17,7 @@ What can go wrong when untrusted agents drive Emerick through the service, and t
 | Process escape | non-root user 10001, read-only root filesystem with writable `/data` and `/tmp`, no privilege escalation, all capabilities dropped, the runtime's default seccomp profile | image, orchestrator |
 | Pids, CPU, memory and scratch disk of the whole pod | requests and limits, `ephemeral-storage`, the kubelet's pid limit | orchestrator |
 | Anyone calling the API | a reverse proxy that authenticates every request; the service has no auth of its own | proxy |
+| Huge requests | the service reads each MCP request body into memory before passing it to the session, so cap the body size at the proxy; a few MB fits the largest song scripts sent through `lua.eval` (`client_max_body_size 8m` in nginx, a `Buffering` middleware `maxRequestBodyBytes` in Traefik) | proxy |
 
 The sum of `EMERICK_SESSION_MEMORY_MB` over `EMERICK_MAX_SESSIONS` plus about 200 MB for the service should fit the pod's memory limit, so the kernel stops a session before it stops the pod.
 

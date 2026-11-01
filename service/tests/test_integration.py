@@ -25,6 +25,18 @@ def test_real_session_builds_and_exports_a_mix(make_client: MakeClient, tmp_path
         assert "error" not in content, content
         return content["result"]
 
+    state = {
+        "jsonrpc": "2.0",
+        "id": 3,
+        "method": "tools/call",
+        "params": {"name": "state.get", "arguments": {"name": "limits"}},
+    }
+    limits = client.post(f"/sessions/{session_id}/mcp", json=state).json()["result"]["structuredContent"]["limits"]
+    assert limits["luaTimeoutMs"] == 30_000
+    assert limits["maxRenderSeconds"] == 900
+    assert limits["bundledPluginsOnly"] is True
+    assert Path(limits["agentWriteRoot"]).resolve() == project_dir
+
     track = run("track.addInstrument", {"plugin": "org.emerick.gm", "name": "Piano"})["id"]
     clip = run("midi.addClip", {"track": track, "at": 0})["id"]
     run("midi.addNote", {"clip": clip, "pitch": 60, "start": 0, "length": 960})

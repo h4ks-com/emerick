@@ -8,7 +8,7 @@ import urllib.request
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from mcp import Client
 
-SERVICE = "http://127.0.0.1:8080"
+SERVICE = f"http://127.0.0.1:{os.environ.get('EMERICK_E2E_SERVICE_PORT', '18080')}"
 
 
 def request(method, path, body=None):
@@ -34,7 +34,10 @@ class Service(unittest.TestCase):
 
         client = Client(session["mcp_url"], timeout=120)
         client.initialize()
-        track = client.run("track.addInstrument", {"plugin": "org.emerick.gm", "name": "Piano"})["id"]
+        limits = client.call("state.get", {"name": "limits"})["structuredContent"]["limits"]
+        self.assertTrue(limits["bundledPluginsOnly"], limits)
+        self.assertEqual(limits["agentWriteRoot"].rstrip("/"), session["project_dir"], limits)
+        track =client.run("track.addInstrument", {"plugin": "org.emerick.gm", "name": "Piano"})["id"]
         clip = client.run("midi.addClip", {"track": track, "at": 0})["id"]
         client.run("midi.addNote", {"clip": clip, "pitch": 60, "start": 0, "length": 960})
         client.run("export.mix", {"path": f"{session['project_dir']}/mix.wav"})

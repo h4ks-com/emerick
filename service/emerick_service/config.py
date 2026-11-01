@@ -38,9 +38,9 @@ class Settings(BaseSettings):
     session_max_open_files: int = 1024
     project_max_mb: int = 2048
 
-    lua_timeout_ms: int | None = 10_000
+    lua_timeout_ms: int | None = 30_000
     lua_memory_mb: int | None = 256
-    max_render_seconds: int | None = 1800
+    max_render_seconds: int | None = 900
     bundled_plugins_only: bool = True
 
     @property

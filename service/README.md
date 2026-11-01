@@ -39,9 +39,9 @@ Environment variables. Set a limit to `none` to leave its flag off.
 | `EMERICK_SESSION_MAX_FILE_MB` | `1024` | RLIMIT_FSIZE of a session |
 | `EMERICK_SESSION_MAX_OPEN_FILES` | `1024` | RLIMIT_NOFILE of a session |
 | `EMERICK_PROJECT_MAX_MB` | `2048` | close a session whose project grows past this |
-| `EMERICK_LUA_TIMEOUT_MS` | `10000` | `--lua-timeout-ms` |
+| `EMERICK_LUA_TIMEOUT_MS` | `30000` | `--lua-timeout-ms` |
 | `EMERICK_LUA_MEMORY_MB` | `256` | `--lua-memory-mb` |
-| `EMERICK_MAX_RENDER_SECONDS` | `1800` | `--max-render-seconds` |
+| `EMERICK_MAX_RENDER_SECONDS` | `900` | `--max-render-seconds` |
 | `EMERICK_BUNDLED_PLUGINS_ONLY` | `true` | `--bundled-plugins-only` |
 
 At startup the service reads `emerick --help` and exits naming any flag the binary lacks.
@@ -64,6 +64,8 @@ At startup the service reads `emerick --help` and exits naming any flag the bina
 | `POST /mcp` | MCP with `project.create`, `project.list`, `session.create`, `session.list`, `session.close` |
 
 A live session's `project_dir` is the folder its Emerick works in, with the bundle at `project.erk`. Emerick reads and writes only inside that folder, so an agent exports there, such as `export.mix` with `{"path": "<project_dir>/mix.wav"}`.
+
+The `skills/` folder holds song production skills for the agent that drives a session; the agent loads them, and the image leaves them out.
 
 ## Example
 

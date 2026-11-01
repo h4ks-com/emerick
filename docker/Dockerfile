@@ -25,7 +25,8 @@ ENV CMAKE_PREFIX_PATH=/opt/qt/current \
 FROM qt AS build
 ARG JOBS=4
 WORKDIR /src
-COPY --exclude=service --exclude=e2e --exclude=docs --exclude=deploy --exclude=.github . .
+COPY --exclude=service --exclude=e2e --exclude=docs --exclude=deploy --exclude=.github --exclude=skills \
+    --exclude=.claude-plugin --exclude=*.md . .
 RUN --mount=type=cache,target=/ccache \
     cmake --preset release -DEMERICK_BUILD_TESTS=ON \
     && cmake --build --preset release -j "$JOBS" \
@@ -34,7 +35,7 @@ RUN --mount=type=cache,target=/ccache \
 # We copy the app with only the Qt libraries and plugins it links, and keep Qt's folder layout so Qt finds its plugins.
 FROM build AS bundle
 RUN set -e; app=build/release/app; qt=$(readlink -f /opt/qt/current); \
-    mkdir -p /out/opt/emerick "/out$qt/lib" "/out$qt/plugins/platforms"; \
+    mkdir -p /out/opt/emerick "/out$qt/lib" "/out$qt/plugins/platforms"; ln -s "$qt" /out/opt/qt/current; \
     cp -a "$app/emerick" "$app/emerick-plugin-scanner" "$app/clap" /out/opt/emerick/; \
     cp "$qt/plugins/platforms/libqoffscreen.so" "/out$qt/plugins/platforms/"; \
     find /out/opt -type f \( -name 'emerick*' -o -name '*.clap' -o -name '*.so' \) -exec strip --strip-unneeded {} +; \

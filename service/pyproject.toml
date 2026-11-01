@@ -1,0 +1,57 @@
+[project]
+name = "emerick-service"
+version = "0.1.0"
+description = "Runs headless Emerick sessions for agents over MCP"
+license = "GPL-3.0-or-later"
+requires-python = ">=3.12"
+dependencies = [
+    "boto3>=1.40",
+    "fastapi>=0.120",
+    "httpx>=0.28",
+    "mcp>=2.3",
+    "mypy-boto3-s3>=1.43",
+    "pydantic>=2.12",
+    "pydantic-settings>=2.11",
+    "uvicorn>=0.38",
+]
+
+[project.scripts]
+emerick-service = "emerick_service.__main__:main"
+
+[dependency-groups]
+dev = [
+    "boto3-stubs[s3]>=1.40",
+    "moto[s3]>=5.1",
+    "pyright>=1.1.407",
+    "pytest>=8.4",
+    "ruff>=0.14",
+]
+
+[build-system]
+requires = ["uv_build>=0.9,<1"]
+build-backend = "uv_build"
+
+[tool.uv.build-backend]
+module-root = ""
+
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "BLE", "C4", "SIM", "RUF", "PL", "PT", "N", "ANN", "S", "TID", "PTH", "TRY", "RET"]
+ignore = ["PLR2004", "TRY003", "PLR0913", "PLR0915", "S603"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["S101", "S106", "S108"]
+
+[tool.ruff.lint.flake8-tidy-imports]
+ban-relative-imports = "all"
+
+[tool.pyright]
+typeCheckingMode = "strict"
+pythonVersion = "3.12"
+include = ["emerick_service", "tests"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

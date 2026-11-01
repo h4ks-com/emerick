@@ -1,4 +1,4 @@
-.PHONY: configure build test run format format-check lint quality fix tidy-fix check-fast docker-build e2e clean
+.PHONY: configure build test run run-release format format-check lint quality fix tidy-fix check-fast docker-build e2e clean
 
 SOURCES := $(shell git ls-files --cached --others --exclude-standard '*.cpp' '*.hpp')
 # The C++ files a branch changed since it left main, plus uncommitted and new ones.
@@ -32,6 +32,11 @@ test: build
 
 run: build
 	@bin=build/dev/app/emerick; [ -x $$bin ] || bin=build/dev/app/emerick.app/Contents/MacOS/emerick; exec $$bin $(ARGS)
+
+run-release:
+	cmake --preset release
+	cmake --build --preset release -j $(JOBS)
+	@bin=build/release/app/emerick; [ -x $$bin ] || bin=build/release/app/emerick.app/Contents/MacOS/emerick; exec $$bin $(ARGS)
 
 format:
 	$(CLANG_FORMAT) -i $(SOURCES)

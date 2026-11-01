@@ -84,45 +84,124 @@ Steinberg::tresult PLUGIN_API EventList::addEvent(vst::Event& event) {
 
 namespace {
 
-void addChange(ParamChanges& changes, const Vst3ParamChange& change) {
+void addChange(ParamChanges& changes, vst::ParamID id, vst::ParamValue value, Steinberg::int32 offset = 0) {
     Steinberg::int32 index = 0;
-    if (vst::IParamValueQueue* queue = changes.addParameterData(change.id, index)) {
-        queue->addPoint(0, change.value, index);
+    if (vst::IParamValueQueue* queue = changes.addParameterData(id, index)) {
+        queue->addPoint(offset, value, index);
     }
 }
 
-// We hand the plugin its notes; other channel messages wait for MIDI controller mapping.
-void addNotes(Vst3Plugin::Impl& impl, core::Frames frames, std::int64_t hostTimeNs) {
+constexpr double kSevenBits = 127.0;
+constexpr double kFourteenBits = 16383.0;
+
+void addNote(Vst3Plugin::Impl& impl, const QueuedMidi3& message, Steinberg::int32 offset) {
+    const std::uint8_t type = message.bytes[0] & 0xF0;
+    const auto channel = static_cast<Steinberg::int16>(message.bytes[0] & 0x0F);
+    vst::Event event{};
+    event.busIndex = 0;
+    event.sampleOffset = offset;
+    event.flags = vst::Event::kIsLive;
+    const auto velocity = static_cast<float>(message.bytes[2] / kSevenBits);
+    // vst::Event keeps its payload in a union, and its type says which member is set.
+    // NOLINTBEGIN(cppcoreguidelines-pro-type-union-access)
+    if (type == core::midi::kNoteOn && message.bytes[2] > 0) {
+        event.type = vst::Event::kNoteOnEvent;
+        event.noteOn = {.channel = channel,
+                        .pitch = message.bytes[1],
+                        .tuning = 0.0F,
+                        .velocity = velocity,
+                        .length = 0,
+                        .noteId = -1};
+    } else {
+        event.type = vst::Event::kNoteOffEvent;
+        event.noteOff = {
+            .channel = channel, .pitch = message.bytes[1], .velocity = velocity, .noteId = -1, .tuning = 0.0F};
+    }
+    // NOLINTEND(cppcoreguidelines-pro-type-union-access)
+    impl.events.addEvent(event);
+}
+
+// Controllers, pitch bend, channel pressure and program change reach the params the plugin maps them to.
+void addController(Vst3Plugin::Impl& impl, const QueuedMidi3& message, Steinberg::int32 offset) {
+    const std::uint8_t type = message.bytes[0] & 0xF0;
+    const auto& targets = impl.midiTargets.at(message.bytes[0] & 0x0F);
+    std::size_t number = 0;
+    double value = 0.0;
+    switch (type) {
+        case 0xB0:
+            number = message.bytes[1];
+            value = message.bytes[2] / kSevenBits;
+            break;
+        case 0xE0:
+            number = vst::kPitchBend;
+            value = (message.bytes[1] | (message.bytes[2] << 7)) / kFourteenBits;
+            break;
+        case 0xD0:
+            number = vst::kAfterTouch;
+            value = message.bytes[1] / kSevenBits;
+            break;
+        case 0xC0:
+            number = vst::kCtrlProgramChange;
+            break;
+        default:
+            return;
+    }
+    const MidiTarget& target = targets.at(number);
+    if (target.id == vst::kNoParamId) {
+        return;
+    }
+    if (type == 0xC0) {
+        value = target.steps > 0 ? std::min<double>(message.bytes[1], target.steps) / target.steps
+                                 : message.bytes[1] / kSevenBits;
+    }
+    addChange(impl.inputChanges, target.id, std::clamp(value, 0.0, 1.0), offset);
+}
+
+void addMidi(Vst3Plugin::Impl& impl, core::Frames frames, std::int64_t hostTimeNs) {
     impl.events.clear();
-    for (const QueuedNote& note : std::span(impl.notes).first(impl.noteCount)) {
-        const std::uint8_t type = note.bytes[0] & 0xF0;
-        const auto channel = static_cast<Steinberg::int16>(note.bytes[0] & 0x0F);
-        const auto offset =
-            std::clamp<core::Frames>(nsToFrames(note.timestampNs - hostTimeNs, impl.sampleRate), 0, frames - 1);
-        vst::Event event{};
-        event.busIndex = 0;
-        event.sampleOffset = static_cast<Steinberg::int32>(offset);
-        event.flags = vst::Event::kIsLive;
-        const float velocity = static_cast<float>(note.bytes[2]) / 127.0F;
-        // vst::Event keeps its payload in a union, and its type says which member is set.
-        // NOLINTBEGIN(cppcoreguidelines-pro-type-union-access)
-        if (type == core::midi::kNoteOn && note.bytes[2] > 0) {
-            event.type = vst::Event::kNoteOnEvent;
-            event.noteOn = {.channel = channel,
-                            .pitch = note.bytes[1],
-                            .tuning = 0.0F,
-                            .velocity = velocity,
-                            .length = 0,
-                            .noteId = -1};
+    for (const QueuedMidi3& message : std::span(impl.notes).first(impl.noteCount)) {
+        const auto offset = static_cast<Steinberg::int32>(
+            std::clamp<core::Frames>(nsToFrames(message.timestampNs - hostTimeNs, impl.sampleRate), 0, frames - 1));
+        const std::uint8_t type = message.bytes[0] & 0xF0;
+        if (type == core::midi::kNoteOn || type == core::midi::kNoteOff) {
+            addNote(impl, message, offset);
         } else {
-            event.type = vst::Event::kNoteOffEvent;
-            event.noteOff = {
-                .channel = channel, .pitch = note.bytes[1], .velocity = velocity, .noteId = -1, .tuning = 0.0F};
+            addController(impl, message, offset);
         }
-        // NOLINTEND(cppcoreguidelines-pro-type-union-access)
-        impl.events.addEvent(event);
     }
     impl.noteCount = 0;
+}
+
+std::uint8_t velocityByte(float velocity, bool on) {
+    const auto scaled = static_cast<std::uint8_t>(std::clamp(std::lround(velocity * kSevenBits), 0L, 127L));
+    return on ? std::max<std::uint8_t>(scaled, 1) : scaled;
+}
+
+// The plugin's notes come out as MIDI note messages, so a track that takes them records and plays them as MIDI.
+void collectProduced(Vst3Plugin::Impl& impl) {
+    impl.producedCount = 0;
+    for (Steinberg::int32 index = 0; index < impl.outputEvents.getEventCount(); ++index) {
+        vst::Event event{};
+        if (impl.outputEvents.getEvent(index, event) != Steinberg::kResultOk ||
+            (event.type != vst::Event::kNoteOnEvent && event.type != vst::Event::kNoteOffEvent) ||
+            impl.producedCount == impl.produced.size()) {
+            continue;
+        }
+        const bool on = event.type == vst::Event::kNoteOnEvent;
+        // NOLINTBEGIN(cppcoreguidelines-pro-type-union-access)
+        const Steinberg::int16 channel = on ? event.noteOn.channel : event.noteOff.channel;
+        const Steinberg::int16 pitch = on ? event.noteOn.pitch : event.noteOff.pitch;
+        const float velocity = on ? event.noteOn.velocity : event.noteOff.velocity;
+        // NOLINTEND(cppcoreguidelines-pro-type-union-access)
+        if (pitch < 0 || pitch > 127) {
+            continue;
+        }
+        auto& bytes = impl.producedBytes.at(impl.producedCount);
+        bytes = {static_cast<std::uint8_t>((on ? core::midi::kNoteOn : core::midi::kNoteOff) | (channel & 0x0F)),
+                 static_cast<std::uint8_t>(pitch), velocityByte(velocity, on)};
+        impl.produced.at(impl.producedCount++) = {.offset = event.sampleOffset, .bytes = bytes};
+    }
+    impl.outputEvents.clear();
 }
 
 vst::ProcessContext processContext(const InstrumentTransport& transport, double sampleRate) {
@@ -160,15 +239,15 @@ bool Vst3Plugin::Impl::process(core::Frames frames, std::int64_t hostTimeNs, con
     std::uint64_t sent = 0;
     Vst3ParamChange change;
     while (readValue(paramQueue, change)) {
-        addChange(inputChanges, change);
+        addChange(inputChanges, change.id, change.value);
         ++sent;
     }
     for (const Vst3ParamChange& automatedChange : std::span(automated).first(automatedCount)) {
-        addChange(inputChanges, automatedChange);
+        addChange(inputChanges, automatedChange.id, automatedChange.value);
     }
     automatedCount = 0;
     if (frames > 0) {
-        addNotes(*this, frames, hostTimeNs);
+        addMidi(*this, frames, hostTimeNs);
     }
     for (BusBuffers& bus : outputs) {
         for (std::vector<float>& channel : bus.channels) {
@@ -187,8 +266,10 @@ bool Vst3Plugin::Impl::process(core::Frames frames, std::int64_t hostTimeNs, con
     data.inputParameterChanges = &inputChanges;
     data.outputParameterChanges = &outputChanges;
     data.inputEvents = takesNotes ? &events : nullptr;
+    data.outputEvents = sendsNotes ? &outputEvents : nullptr;
     data.processContext = &context;
     const bool played = processor->process(data) == Steinberg::kResultOk;
+    collectProduced(*this);
     if (!outputChanges.empty()) {
         paramsChanged.store(true, std::memory_order_relaxed);
     }
@@ -199,16 +280,13 @@ bool Vst3Plugin::Impl::process(core::Frames frames, std::int64_t hostTimeNs, con
 
 void Vst3Plugin::queueMidi(std::span<const std::uint8_t> bytes, std::int64_t timestampNs) {
     Impl& impl = *impl_;
-    if (bytes.size() != 3 || impl.noteCount == impl.notes.size()) {
+    if (bytes.empty() || bytes.size() > 3 || !core::midi::isChannelMessage(bytes[0]) ||
+        bytes.size() != core::midi::channelMessageSize(bytes[0]) || impl.noteCount == impl.notes.size()) {
         return;
     }
-    const std::uint8_t type = bytes[0] & 0xF0;
-    if (type != core::midi::kNoteOn && type != core::midi::kNoteOff) {
-        return;
-    }
-    QueuedNote& note = impl.notes.at(impl.noteCount++);
-    note.timestampNs = timestampNs;
-    std::ranges::copy(bytes, note.bytes.begin());
+    QueuedMidi3& message = impl.notes.at(impl.noteCount++);
+    message = {.timestampNs = timestampNs, .bytes = {}};
+    std::ranges::copy(bytes, message.bytes.begin());
 }
 
 void Vst3Plugin::queueParam(std::uint32_t id, double value) {
@@ -221,6 +299,7 @@ void Vst3Plugin::queueParam(std::uint32_t id, double value) {
 void Vst3Plugin::processBlock(std::span<float* const> mix, core::Frames frames, std::int64_t hostTimeNs,
                               const InstrumentTransport& transport) {
     Impl& impl = *impl_;
+    impl.producedCount = 0;
     if (frames <= 0 || impl.audioGuard.exchange(true, std::memory_order_acquire)) {
         return;
     }
@@ -262,6 +341,8 @@ void Vst3Plugin::processEffect(std::span<float* const> channels, core::Frames fr
     impl.audioGuard.store(false, std::memory_order_release);
 }
 
-std::span<const InstrumentMidi> Vst3Plugin::producedMidi() const { return {}; }
+std::span<const InstrumentMidi> Vst3Plugin::producedMidi() const {
+    return std::span(impl_->produced).first(impl_->producedCount);
+}
 
 }  // namespace emerick::engine

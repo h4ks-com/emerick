@@ -29,10 +29,11 @@ struct ParamSet {
     std::string text;
 };
 
-// A plugin insert's new state after an edit in the plugin's own editor.
-struct InsertEdit {
+// A track instrument's or plugin insert's new state after an edit in the plugin's own editor; an instrument's edit
+// names no insert.
+struct PluginEdit {
     model::TrackId track;
-    model::InsertId insert;
+    std::optional<model::InsertId> insert;
     std::string name;
     std::vector<std::uint8_t> state;
 };
@@ -78,8 +79,8 @@ public:
     [[nodiscard]] const std::vector<engine::SessionError>& errors() const { return errors_; }
     // Runs each plugin's main-thread requests and follows its editor; true when a plugin marked its state changed.
     bool idle();
-    // The new states of the plugin inserts whose own editor changed them since the last call, one per gesture.
-    std::vector<InsertEdit> takeInsertEdits() { return std::exchange(insertEdits_, {}); }
+    // The new states of the plugins whose own editor changed them since the last call, one per gesture.
+    std::vector<PluginEdit> takePluginEdits() { return std::exchange(pluginEdits_, {}); }
     // True once after a plugin changed its params or their values itself.
     bool takeParamsChanged() { return std::exchange(paramsChanged_, false); }
     // The document with each slot's state read from its live instrument, as a project saves it.
@@ -119,7 +120,7 @@ private:
     static void fitWindow(Live& live, engine::EditorSize size);
     void showPluginEditor(const std::string& key, const std::string& title, const std::string& missing);
     [[nodiscard]] bool pluginEditorOpen(const std::string& key) const;
-    void collectInsertEdit(Live& live, const std::string& key);
+    void collectPluginEdit(Live& live, const std::string& key);
     Live* withWindow(const QWindow* window);
     void followWindow(QWindow* window);
     void keep(std::map<std::string, Live>& kept, const std::string& key, const model::TrackId& track,
@@ -131,7 +132,7 @@ private:
 
     std::map<std::string, Live> live_;
     std::vector<engine::SessionError> errors_;
-    std::vector<InsertEdit> insertEdits_;
+    std::vector<PluginEdit> pluginEdits_;
     bool paramsChanged_ = false;
 };
 

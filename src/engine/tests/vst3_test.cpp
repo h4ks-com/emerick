@@ -1,5 +1,6 @@
 #include <algorithm>
 #include <array>
+#include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 #include <cmath>
 #include <ranges>
@@ -197,4 +198,77 @@ TEST_CASE("an edit in the VST3 editor reaches the processor and marks the state 
     REQUIRE(restored->loadState(*effect->saveState()));
     CHECK(restored->paramValue(kGainParam) == 0.25);
     CHECK_FALSE(restored->idle());
+}
+
+namespace {
+
+constexpr const char* kSynthId = "454D525453594E310000000000000001";
+
+std::shared_ptr<Plugin> synth() {
+    auto created = createVst3Plugin(EMERICK_TEST_SYNTH_VST3, kSynthId);
+    REQUIRE(created.has_value());
+    return *created;
+}
+
+struct Block {
+    std::vector<float> left = std::vector<float>(kFrames);
+    std::vector<float> right = std::vector<float>(kFrames);
+    std::array<float*, 2> mix{left.data(), right.data()};
+};
+
+float peakOf(const std::vector<float>& samples) {
+    return std::ranges::max(samples | std::views::transform([](float sample) { return std::abs(sample); }));
+}
+
+int risingZeroCrossings(const std::vector<float>& samples) {
+    return static_cast<int>(std::ranges::count_if(std::views::iota(std::size_t{1}, samples.size()), [&](std::size_t i) {
+        return samples[i - 1] < 0.0F && samples[i] >= 0.0F;
+    }));
+}
+
+}  // namespace
+
+TEST_CASE("a VST3 instrument plays notes with their velocity, stops at note off and sends the notes back out") {
+    const auto described = describeBundle(EMERICK_TEST_SYNTH_VST3);
+    REQUIRE(described.has_value());
+    CHECK(isInstrument(described->front()));
+    const std::shared_ptr<Plugin> instrument = synth();
+    CHECK(instrument->producesMidi());
+    REQUIRE(instrument->activate(48000.0, kFrames));
+    instrument->queueMidi(std::array<std::uint8_t, 3>{0x90, 69, 127}, 0);
+    Block loud;
+    instrument->processBlock(loud.mix, kFrames, 0, {});
+    CHECK(peakOf(loud.left) == Catch::Approx(0.5F).margin(0.01));
+    REQUIRE(instrument->producedMidi().size() == 1);
+    CHECK(std::ranges::equal(instrument->producedMidi().front().bytes, std::array<std::uint8_t, 3>{0x90, 69, 127}));
+    instrument->queueMidi(std::array<std::uint8_t, 3>{0x80, 69, 0}, 0);
+    Block silent;
+    instrument->processBlock(silent.mix, kFrames, 0, {});
+    CHECK(peakOf(silent.left) == 0.0F);
+}
+
+TEST_CASE("a VST3 instrument takes controllers, pitch bend and program change through its MIDI mapping") {
+    const std::shared_ptr<Plugin> instrument = synth();
+    REQUIRE(instrument->activate(48000.0, 4800));
+    instrument->queueMidi(std::array<std::uint8_t, 3>{0x90, 69, 127}, 0);
+    instrument->queueMidi(std::array<std::uint8_t, 3>{0xB0, 7, 127}, 0);
+    std::vector<float> left(4800);
+    std::vector<float> right(4800);
+    const std::array<float*, 2> mix{left.data(), right.data()};
+    instrument->processBlock(mix, 4800, 0, {});
+    CHECK(instrument->paramValue(1) == 1.0);
+    CHECK(risingZeroCrossings(left) == Catch::Approx(44).margin(1));
+
+    instrument->queueMidi(std::array<std::uint8_t, 3>{0xE0, 0x7F, 0x7F}, 0);
+    instrument->queueMidi(std::array<std::uint8_t, 2>{0xC0, 2}, 0);
+    std::ranges::fill(left, 0.0F);
+    instrument->processBlock(mix, 4800, 0, {});
+    CHECK(risingZeroCrossings(left) == Catch::Approx(49).margin(1));
+    CHECK(instrument->paramText(3, *instrument->paramValue(3)) == "Bright");
+
+    const std::shared_ptr<Plugin> restored = synth();
+    REQUIRE(restored->loadState(*instrument->saveState()));
+    CHECK(restored->paramValue(1) == 1.0);
+    CHECK(restored->paramValue(2) == 1.0);
+    CHECK(restored->paramValue(3) == 2.0);
 }

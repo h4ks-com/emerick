@@ -79,13 +79,17 @@ if(EMERICK_BUILD_TESTS)
     target_compile_definitions(emerick_test_clap INTERFACE EMERICK_TEST_CLAP_FOLDER="${test_clap_folder}"
         EMERICK_TEST_SINE_CLAP="${test_sine_clap}" EMERICK_PLUGIN_SCANNER="$<TARGET_FILE:emerick-plugin-scanner>")
 
-    # Test effects as VST3 bundles: a gain, copies whose module entry crashes or hangs, and a crashing copy whose
-    # moduleinfo.json describes it, so a scan never loads it.
+    # Test VST3 bundles: a gain effect, copies whose module entry crashes or hangs, a crashing copy whose
+    # moduleinfo.json describes it, so a scan never loads it, and a sine instrument.
     set(test_vst3_folder ${CMAKE_BINARY_DIR}/test-vst3)
-    foreach(variant gain crash hang described)
+    foreach(variant gain crash hang described synth)
         set(name emerick_test_vst3_${variant})
         set(bundle "${test_vst3_folder}/Emerick Test ${variant}.vst3")
-        add_library(${name} MODULE tests/vst3/gain_plugin_test.cpp)
+        if(variant STREQUAL synth)
+            add_library(${name} MODULE tests/vst3/synth_plugin_test.cpp)
+        else()
+            add_library(${name} MODULE tests/vst3/gain_plugin_test.cpp)
+        endif()
         target_link_libraries(${name} PRIVATE vst3_sdk)
         set_target_properties(${name} PROPERTIES PREFIX "" OUTPUT_NAME "Emerick Test ${variant}"
             CXX_VISIBILITY_PRESET hidden)
@@ -104,9 +108,10 @@ if(EMERICK_BUILD_TESTS)
     configure_file(tests/vst3/moduleinfo.json "${resources}/moduleinfo.json" COPYONLY)
     add_library(emerick_test_vst3 INTERFACE)
     add_dependencies(emerick_test_vst3 emerick_test_vst3_gain emerick_test_vst3_crash emerick_test_vst3_hang
-        emerick_test_vst3_described emerick-plugin-scanner)
+        emerick_test_vst3_described emerick_test_vst3_synth emerick-plugin-scanner)
     target_compile_definitions(emerick_test_vst3 INTERFACE EMERICK_TEST_VST3_FOLDER="${test_vst3_folder}"
         EMERICK_TEST_GAIN_VST3="${test_vst3_folder}/Emerick Test gain.vst3"
-        EMERICK_TEST_DESCRIBED_VST3="${test_vst3_folder}/Emerick Test described.vst3")
+        EMERICK_TEST_DESCRIBED_VST3="${test_vst3_folder}/Emerick Test described.vst3"
+        EMERICK_TEST_SYNTH_VST3="${test_vst3_folder}/Emerick Test synth.vst3")
     target_link_libraries(emerick_engine_tests PRIVATE emerick_engine emerick_test_clap emerick_test_vst3 emerick_gm_clap emerick_gm_midi PkgConfig::SNDFILE)
 endif()

@@ -223,6 +223,10 @@ bool Vst3Plugin::Impl::activateAt(double rate, core::Frames frames) {
         component->activateBus(vst::kEvent, vst::kInput, 0, kOn);
         takesNotes = true;
     }
+    if (sendsNotes) {
+        component->activateBus(vst::kEvent, vst::kOutput, 0, kOn);
+    }
+    mapControllers();
     allocateBuses(*component, vst::kInput, frames, inputs, inputBuses);
     allocateBuses(*component, vst::kOutput, frames, outputs, outputBuses);
     sampleRate = rate;
@@ -249,6 +253,26 @@ void Vst3Plugin::Impl::flushParams() {
         return;
     }
     process(0, 0, {});
+}
+
+// The controller answers only on the main thread, so we ask it for every controller of every channel here.
+void Vst3Plugin::Impl::mapControllers() {
+    midiTargets = {};
+    const Steinberg::IPtr<vst::IMidiMapping> mapping = Steinberg::U::cast<vst::IMidiMapping>(controller);
+    if (mapping == nullptr) {
+        return;
+    }
+    for (std::size_t channel = 0; channel < kMidiChannels; ++channel) {
+        for (std::size_t number = 0; number < kMappedControllers; ++number) {
+            vst::ParamID id = vst::kNoParamId;
+            if (mapping->getMidiControllerAssignment(0, static_cast<Steinberg::int16>(channel),
+                                                     static_cast<vst::CtrlNumber>(number),
+                                                     id) == Steinberg::kResultTrue) {
+                const auto found = info(id);
+                midiTargets.at(channel).at(number) = {.id = id, .steps = found ? found->stepCount : 0};
+            }
+        }
+    }
 }
 
 std::optional<vst::ParameterInfo> Vst3Plugin::Impl::info(vst::ParamID id) const {
@@ -294,6 +318,7 @@ PluginResult createVst3Plugin(const std::filesystem::path& bundle, const std::st
     if (impl->component == nullptr || impl->component->initialize(&impl->host) != Steinberg::kResultOk) {
         return std::unexpected(pluginId + " failed to initialize");
     }
+    impl->sendsNotes = impl->component->getBusCount(vst::kEvent, vst::kOutput) > 0;
     impl->processor = Steinberg::U::cast<vst::IAudioProcessor>(impl->component);
     impl->controller = Steinberg::U::cast<vst::IEditController>(impl->component);
     if (impl->controller == nullptr) {
@@ -355,7 +380,7 @@ Vst3Plugin::~Vst3Plugin() {
 
 const std::string& Vst3Plugin::name() const { return impl_->name; }
 
-bool Vst3Plugin::producesMidi() const { return false; }
+bool Vst3Plugin::producesMidi() const { return impl_->sendsNotes; }
 
 bool Vst3Plugin::activate(double sampleRate, core::Frames maxFrames) {
     Impl& impl = *impl_;

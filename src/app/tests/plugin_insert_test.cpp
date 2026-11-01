@@ -91,7 +91,7 @@ TEST_CASE("plugins.list lists a VST3 effect and blocks the VST3 bundles that cra
     CHECK(blocked.size() == 2);
     CHECK(
         std::ranges::any_of(blocked, [](const Json& entry) { return entry.at("reason") == "crashed while loading"; }));
-    CHECK(listed.at("message").get<std::string>().starts_with("Found 0 CLAP and 2 VST3 plugins"));
+    CHECK(listed.at("message").get<std::string>().starts_with("Found 0 CLAP and 3 VST3 plugins"));
 }
 
 TEST_CASE("a VST3 insert plays in the mix, takes params by name and choice text, and bypass passes the audio") {
@@ -194,4 +194,49 @@ TEST_CASE("a built-in insert has no plugin window") {
     const std::string vox = rig.run("track.addAudio").at("id");
     const std::string eq = rig.run("insert.add", {{"track", vox}, {"type", "eq"}}).at("id");
     CHECK_THROWS_AS(rig.run("insert.openPluginWindow", {{"insert", eq}}), AppError);
+}
+
+namespace {
+
+const std::string kSynth = "454D525453594E310000000000000001";
+
+float mixPeak(PluginInsertRig& rig) {
+    const std::filesystem::path mix = rig.path("synth.wav");
+    rig.run("export.mix", {{"path", mix.string()}});
+    SF_INFO info{};
+    SNDFILE* file = sf_open(mix.c_str(), SFM_READ, &info);
+    REQUIRE(file != nullptr);
+    std::vector<float> samples(static_cast<std::size_t>(info.frames * info.channels));
+    sf_readf_float(file, samples.data(), info.frames);
+    sf_close(file);
+    return std::ranges::max(samples | std::views::transform([](float sample) { return std::abs(sample); }));
+}
+
+double levelOf(const PluginInsertRig& rig, const model::TrackId& track) {
+    return rig.run("instrument.params", {{"track", track.value}}).at("params")[0].at("value").get<double>();
+}
+
+}  // namespace
+
+TEST_CASE("a VST3 instrument plays a MIDI clip, and a gesture in its editor lands as one undo step") {
+    PluginInsertRig rig;
+    const model::TrackId track{
+        rig.run("track.addInstrument", {{"plugin", kSynth}, {"format", "vst3"}}).at("id").get<std::string>()};
+    REQUIRE(rig.controller->project().track(track)->instrument->format == core::PluginFormat::vst3);
+    rig.controller->project().editTrack(track, "add note", [](model::Track& edited) {
+        model::MidiClip clip;
+        clip.length = 960;
+        clip.notes = {{.pitch = 69, .velocity = 127, .start = 0, .length = 480, .channel = 1}};
+        edited.clips.emplace_back(clip);
+    });
+    rig.controller->flush();
+    CHECK(mixPeak(rig) == Approx(0.5F).margin(0.02));
+
+    rig.run("instrument.showEditor", {{"track", track.value}});
+    REQUIRE(turnEventsUntil([&] { return rig.controller->project().undoName() == "edit Test Synth"; }));
+    CHECK(levelOf(rig, track) == 0.25);
+    CHECK(mixPeak(rig) == Approx(0.25F).margin(0.02));
+    rig.run("project.undo");
+    rig.controller->flush();
+    CHECK(levelOf(rig, track) == 0.5);
 }

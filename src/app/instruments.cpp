@@ -202,8 +202,8 @@ bool Instruments::idle() {
             continue;
         }
         const bool changed = live.instrument->idle();
-        if (changed && live.insert) {
-            collectInsertEdit(live, id);
+        if (changed) {
+            collectPluginEdit(live, id);
         }
         dirty = changed || dirty;
         paramsChanged_ = live.instrument->takeParamsChanged() || paramsChanged_;
@@ -237,14 +237,14 @@ model::Document Instruments::withStates(model::Document document) const {
     return document;
 }
 
-void Instruments::collectInsertEdit(Live& live, const std::string& key) {
+void Instruments::collectPluginEdit(Live& live, const std::string& key) {
     auto state = live.instrument->saveState();
     if (!state || *state == live.slot.state) {
         return;
     }
     live.slot.state = *state;
-    insertEdits_.push_back({.track = model::TrackId{live.trackId},
-                            .insert = model::InsertId{key},
+    pluginEdits_.push_back({.track = model::TrackId{live.trackId},
+                            .insert = live.insert ? std::optional{model::InsertId{key}} : std::nullopt,
                             .name = live.slot.name,
                             .state = *std::move(state)});
 }

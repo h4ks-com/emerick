@@ -4,10 +4,14 @@
 #include <QString>
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
+#include <catch2/matchers/catch_matchers_string.hpp>
 #include <cmath>
+#include <filesystem>
+#include <format>
 #include <numbers>
 #include <random>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "emerick/app/audio_file.hpp"
@@ -173,6 +177,70 @@ TEST_CASE("a limiter added through the registry holds the mix under its ceiling,
     rig.run("export.mix", {{"path", mix}});
     CHECK(truePeak() <= -6.0);
     CHECK(truePeak() > -13.0);
+}
+
+TEST_CASE("export mix writes each format by its param or the path's suffix and refuses an unknown one") {
+    ProjectRig rig;
+    const std::string vox = rig.run("track.addAudio", {{"name", "Vox"}}).at("id");
+    writeWav(rig.path("tone.wav"), {sine(440, 0.5, 2)}, kRate);
+    rig.run("clip.import", {{"track", vox}, {"path", rig.path("tone.wav").string()}});
+
+    for (const auto& [name, format] : kAudioFormats) {
+        INFO(name);
+        const std::filesystem::path bySuffix = rig.path(std::format("mix.{}", name));
+        const std::filesystem::path byParam = rig.path(std::format("{}-mix", name));
+        rig.run("export.mix", {{"path", bySuffix.string()}, {"quality", 0.4}});
+        rig.run("export.mix", {{"path", byParam.string()}, {"format", name}});
+        for (const std::filesystem::path& file : {bySuffix, byParam}) {
+            const AudioData audio = readAudio(file);
+            CHECK(audio.sampleRate == kRate);
+            REQUIRE(audio.channels.size() == 2);
+            CHECK(static_cast<double>(audio.channels[0].size()) == Approx(2 * kRate).margin(0.05 * kRate));
+            CHECK(emerick::engine::truePeakDbtp(audio.channels) > -12.0);
+        }
+    }
+    CHECK_THROWS_WITH(rig.run("export.mix", {{"path", rig.path("mix.aiff").string()}}),
+                      Catch::Matchers::ContainsSubstring("wav, flac, ogg, opus or mp3"));
+    CHECK_THROWS_AS(rig.run("export.mix", {{"path", rig.path("mix.ogg").string()}, {"quality", 2}}), AppError);
+    CHECK_FALSE(std::filesystem::exists(rig.path("mix.aiff")));
+
+    const Json stems = rig.run("export.stems", {{"folder", rig.path("stems").string()}, {"format", "flac"}});
+    REQUIRE(stems.at("files").size() == 1);
+    CHECK(stems.at("files")[0].get<std::string>().ends_with("Vox.flac"));
+    CHECK(readAudio(stems.at("files")[0].get<std::string>()).channels.size() == 2);
+}
+
+TEST_CASE("opus refuses a rate it cannot encode before it renders") {
+    ProjectRig rig({}, 44100);
+    const std::string vox = rig.run("track.addAudio", {{"name", "Vox"}}).at("id");
+    writeWav(rig.path("tone.wav"), {std::vector<float>(44100, 0.5F)}, 44100);
+    rig.run("clip.import", {{"track", vox}, {"path", rig.path("tone.wav").string()}});
+    CHECK_THROWS_WITH(rig.run("export.mix", {{"path", rig.path("mix.opus").string()}}),
+                      Catch::Matchers::ContainsSubstring("Opus only supports sample rates of 8000"));
+}
+
+TEST_CASE("the render limit refuses a render longer than it before it starts") {
+    ProjectRig rig;
+    const std::string vox = rig.run("track.addAudio", {{"name", "Vox"}}).at("id");
+    writeWav(rig.path("tone.wav"), {sine(440, 0.5, 3)}, kRate);
+    rig.run("clip.import", {{"track", vox}, {"path", rig.path("tone.wav").string()}});
+    rig.registry.setLimits({.renderSeconds = 2});
+
+    for (const auto& [id, params] :
+         std::vector<std::pair<std::string, Json>>{{"export.mix", {{"path", rig.path("mix.wav").string()}}},
+                                                   {"export.stems", {{"folder", rig.path("stems").string()}}},
+                                                   {"render.analyze", Json::object()},
+                                                   {"track.analyze", {{"track", vox}}},
+                                                   {"tracks.analyze", Json::object()},
+                                                   {"mix.inspect", Json::object()}}) {
+        INFO(id);
+        CHECK_THROWS_WITH(rig.run(id, params), Catch::Matchers::ContainsSubstring("over the limit of 2 s"));
+    }
+    CHECK_FALSE(std::filesystem::exists(rig.path("mix.wav")));
+    CHECK_FALSE(std::filesystem::exists(rig.path("stems")));
+
+    rig.registry.setLimits({.renderSeconds = 10});
+    CHECK(rig.run("export.mix", {{"path", rig.path("mix.wav").string()}}).at("file").is_string());
 }
 
 TEST_CASE("export mix with a loudness target lands a quiet mix on it under the ceiling, also from the settings") {

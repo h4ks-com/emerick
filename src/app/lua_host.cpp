@@ -12,11 +12,13 @@
 #include <cstdint>
 #include <cstdlib>
 #include <exception>
+#include <format>
 #include <fstream>
 #include <iterator>
 #include <optional>
 #include <ranges>
 #include <sol/sol.hpp>
+#include <string>
 #include <string_view>
 #include <system_error>
 #include <tuple>
@@ -31,25 +33,36 @@ namespace {
 
 constexpr int kMaxDepth = 64;
 constexpr int kStackPerLevel = 8;
+constexpr int kHookInstructions = 10'000;
 constexpr int kInstructionLimit = 100'000'000;
-constexpr std::size_t kMemoryLimit = std::size_t{256} << 20;
 constexpr std::array kRemovedGlobals{"dofile", "loadfile", "load", "require"};
 // Lua patterns backtrack without a bound and run in C, where the instruction hook never fires, so scripts get only
 // plain string.find.
-struct MemoryBudget {
+struct Budget {
     std::size_t used = 0;
+    std::size_t limit = Limits{}.luaMemoryBytes;
+    int instructions = 0;
+    std::optional<std::chrono::milliseconds> timeout;
+    std::chrono::steady_clock::time_point deadline;
+    std::string stopped;
 };
+
+Budget& budgetOf(lua_State* state) {
+    void* budget = nullptr;
+    lua_getallocf(state, &budget);
+    return *static_cast<Budget*>(budget);
+}
 
 // We follow lua_Alloc's contract, which is realloc and free with a byte budget on top.
 void* limitedAlloc(void* budgetPointer, void* block, std::size_t oldSize, std::size_t newSize) {
-    auto* budget = static_cast<MemoryBudget*>(budgetPointer);
+    auto* budget = static_cast<Budget*>(budgetPointer);
     const std::size_t held = block == nullptr ? 0 : oldSize;
     if (newSize == 0) {
         std::free(block);  // NOLINT(cppcoreguidelines-no-malloc)
         budget->used -= held;
         return nullptr;
     }
-    if (newSize > held && budget->used + (newSize - held) > kMemoryLimit) {
+    if (newSize > held && budget->used + (newSize - held) > budget->limit) {
         return nullptr;
     }
     void* moved = std::realloc(block, newSize);  // NOLINT(cppcoreguidelines-no-malloc)
@@ -59,26 +72,58 @@ void* limitedAlloc(void* budgetPointer, void* block, std::size_t oldSize, std::s
     return moved;
 }
 
-// A pcall in the script catches one error, so after the limit we raise again on every instruction until it ends.
+// A pcall in the script catches one error, so after a limit we raise again on every instruction until it ends.
 void stopRunawayScript(lua_State* state, lua_Debug* /*debug*/) {
-    lua_sethook(state, stopRunawayScript, LUA_MASKCOUNT, 1);
-    lua_pushstring(state, "script ran over 100000000 instructions");
+    Budget& budget = budgetOf(state);
+    if (budget.stopped.empty()) {
+        budget.instructions += kHookInstructions;
+        if (budget.instructions >= kInstructionLimit) {
+            budget.stopped = std::format("script ran over {} instructions", kInstructionLimit);
+        } else if (budget.timeout && std::chrono::steady_clock::now() > budget.deadline) {
+            budget.stopped = std::format("script ran longer than {} ms", budget.timeout->count());
+        } else {
+            return;
+        }
+        lua_sethook(state, stopRunawayScript, LUA_MASKCOUNT, 1);
+    }
+    lua_pushstring(state, budget.stopped.c_str());
     lua_error(state);
 }
 
-class InstructionLimit {
+class RunBudget {
 public:
-    explicit InstructionLimit(lua_State* state) : state_(state) {
-        lua_sethook(state_, stopRunawayScript, LUA_MASKCOUNT, kInstructionLimit);
+    RunBudget(lua_State* state, const Limits& limits) : state_(state) {
+        Budget& budget = budgetOf(state_);
+        budget.limit = limits.luaMemoryBytes;
+        budget.instructions = 0;
+        budget.timeout = limits.luaTimeout;
+        budget.deadline = std::chrono::steady_clock::now() + limits.luaTimeout.value_or(std::chrono::milliseconds{});
+        budget.stopped.clear();
+        lua_sethook(state_, stopRunawayScript, LUA_MASKCOUNT, kHookInstructions);
     }
-    ~InstructionLimit() { lua_sethook(state_, nullptr, 0, 0); }
-    InstructionLimit(const InstructionLimit&) = delete;
-    InstructionLimit& operator=(const InstructionLimit&) = delete;
-    InstructionLimit(InstructionLimit&&) = delete;
-    InstructionLimit& operator=(InstructionLimit&&) = delete;
+    ~RunBudget() { lua_sethook(state_, nullptr, 0, 0); }
+    RunBudget(const RunBudget&) = delete;
+    RunBudget& operator=(const RunBudget&) = delete;
+    RunBudget(RunBudget&&) = delete;
+    RunBudget& operator=(RunBudget&&) = delete;
 
 private:
     lua_State* state_;
+};
+
+// The time a script waits on the event loop counts toward no time limit.
+class PausedDeadline {
+public:
+    explicit PausedDeadline(lua_State* state) : budget_(budgetOf(state)) {}
+    ~PausedDeadline() { budget_.deadline += std::chrono::steady_clock::now() - start_; }
+    PausedDeadline(const PausedDeadline&) = delete;
+    PausedDeadline& operator=(const PausedDeadline&) = delete;
+    PausedDeadline(PausedDeadline&&) = delete;
+    PausedDeadline& operator=(PausedDeadline&&) = delete;
+
+private:
+    Budget& budget_;
+    std::chrono::steady_clock::time_point start_ = std::chrono::steady_clock::now();
 };
 
 sol::object toLua(sol::state_view lua, const Json& value) {
@@ -211,7 +256,7 @@ constexpr std::array kLuaMembers{
               "first error unless keepGoing."},
     LuaMember{"actions", "actions(query?)", "List actions with their params, ranked by an optional fuzzy query."},
     LuaMember{"setting", "setting(id, value?)", "Read a setting, or set it when value is given."},
-    LuaMember{"state", "state(name)", "Read a state provider: project, transport, devices, nav or app."},
+    LuaMember{"state", "state(name)", "Read a state provider: project, transport, devices, nav, app or limits."},
     LuaMember{"project", "project()", "Read the project: tracks with their ids, names and clips, and the tempo."},
     LuaMember{"ui.find", "ui.find(query)", "Find actions, settings and live UI items by name."},
     LuaMember{"ui.reveal", "ui.reveal(id)", "Open the UI path to an action, setting or location."},
@@ -242,12 +287,13 @@ bool holds(const sol::protected_function& done) {
     return call.get<bool>();
 }
 
-bool waitFor(double seconds, const sol::optional<sol::protected_function>& done) {
+bool waitFor(lua_State* state, double seconds, const sol::optional<sol::protected_function>& done) {
     const QDeadlineTimer deadline(std::chrono::milliseconds{std::llround(seconds * 1000)});
     while (!(done && holds(*done))) {
         if (deadline.hasExpired()) {
             return false;
         }
+        const PausedDeadline paused(state);
         QEventLoop loop;
         QTimer::singleShot(
             std::min(std::chrono::duration_cast<std::chrono::milliseconds>(deadline.remainingTimeAsDuration()),
@@ -263,8 +309,8 @@ bool waitFor(double seconds, const sol::optional<sol::protected_function>& done)
 std::span<const LuaMember> luaMembers() { return kLuaMembers; }
 
 struct LuaHost::State {
-    MemoryBudget memory;
-    sol::state lua{sol::default_at_panic, limitedAlloc, &memory};
+    Budget budget;
+    sol::state lua{sol::default_at_panic, limitedAlloc, &budget};
     std::string output;
     std::function<void(const std::string&)> printSink;
     int depth = 0;
@@ -371,7 +417,8 @@ LuaHost::LuaHost(Registry& registry, const UiApi& ui) : registry_(&registry), st
 
     // An MCP request or a console line that ran the event loop could start another request inside its own, so we
     // let only a command line script wait, and never inside its own wait.
-    emerick["wait"] = [this](double seconds, const sol::optional<sol::protected_function>& done) {
+    emerick["wait"] = [this](double seconds, const sol::optional<sol::protected_function>& done,
+                             sol::this_state current) {
         if (!state_->canWait) {
             throw AppError("emerick.wait runs only in a script started with --script");
         }
@@ -380,7 +427,7 @@ LuaHost::LuaHost(Registry& registry, const UiApi& ui) : registry_(&registry), st
         }
         state_->canWait = false;
         const auto restore = qScopeGuard([this] { state_->canWait = true; });
-        return waitFor(seconds, done);
+        return waitFor(current, seconds, done);
     };
 
     sol::table uiTable = emerick.create_named("ui");
@@ -430,9 +477,9 @@ Json LuaHost::eval(const LuaChunk& chunk) {
     {
         const auto restore = qScopeGuard([&state, outer = state.canWait] { state.canWait = outer; });
         state.canWait = chunk.commandLine.has_value();
-        std::optional<InstructionLimit> limit;
+        std::optional<RunBudget> budget;
         if (state.depth == 0) {
-            limit.emplace(state.lua.lua_state());
+            budget.emplace(state.lua.lua_state(), registry_->limits());
         }
         ++state.depth;
         try {

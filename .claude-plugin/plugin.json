@@ -1,0 +1,6 @@
+{
+  "name": "emerick",
+  "description": "Skills for producing songs with the Emerick DAW over MCP or Lua: concept, harmony and arrangement, melody, mixing and review.",
+  "license": "GPL-3.0-or-later",
+  "skills": "./skills/"
+}

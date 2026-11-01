@@ -3,13 +3,16 @@
 #include <QTemporaryDir>
 #include <algorithm>
 #include <catch2/catch_test_macros.hpp>
+#include <catch2/matchers/catch_matchers_string.hpp>
 #include <chrono>
 #include <filesystem>
+#include <optional>
 #include <string>
 
 #include "emerick/app/nav.hpp"
 #include "emerick/app/plugin_actions.hpp"
 #include "emerick/app/registry.hpp"
+#include "emerick/engine/plugin.hpp"
 #include "qt_app.hpp"
 
 using namespace emerick::app;
@@ -98,6 +101,33 @@ TEST_CASE("the catalog lists the expansion voices instrument in the app's bundle
     REQUIRE(found.has_value());
     CHECK(found->descriptor.name == "Expansion Voices");
     CHECK(std::ranges::contains(found->descriptor.features, std::string{"instrument"}));
+}
+
+TEST_CASE(
+    "with bundled plugins only the catalog ignores user folders, refuses a rescan with them, and plugins "
+    "outside the bundled folder never load") {
+    const std::string sineBundle = CatalogRig{}.registry.run("plugins.list").at("plugins")[0].at("bundle");
+    CatalogRig rig;
+    rig.registry.setLimits({.bundledPluginsOnly = true});
+
+    CHECK(rig.registry.run("plugins.list").at("plugins").empty());
+    CHECK_THROWS_WITH(rig.registry.run("plugins.rescan"),
+                      Catch::Matchers::ContainsSubstring("clear the CLAP and VST3 folders"));
+    rig.registry.setSetting(kClapFoldersSetting, Json::array());
+    CHECK(rig.registry.run("plugins.rescan").at("plugins").empty());
+
+    const std::filesystem::path bundled = bundledClapFolder(EMERICK_GM_APP_FOLDER);
+    emerick::engine::allowPluginsOnlyIn(bundled);
+    const auto refused =
+        emerick::engine::createPlugin(emerick::core::PluginFormat::clap, sineBundle, "org.emerick.test.sine");
+    const auto general = emerick::engine::createPlugin(emerick::core::PluginFormat::clap, bundled / "Emerick GM.clap",
+                                                       kGeneralMidiPluginId);
+    emerick::engine::allowPluginsOnlyIn(std::nullopt);
+    CHECK_FALSE(refused.has_value());
+    CHECK(refused.error().contains("loads only the plugins the app ships"));
+    CHECK(general.has_value());
+    CHECK(emerick::engine::createPlugin(emerick::core::PluginFormat::clap, sineBundle, "org.emerick.test.sine")
+              .has_value());
 }
 
 TEST_CASE("rescanning loads every bundle again") {

@@ -133,5 +133,8 @@ PluginResult createClapPlugin(const std::filesystem::path& bundle, const std::st
 // The plugin id of a VST3 plugin is its class id as 32 hex digits.
 PluginResult createVst3Plugin(const std::filesystem::path& bundle, const std::string& pluginId);
 PluginResult createPlugin(PluginFormat format, const std::filesystem::path& bundle, const std::string& pluginId);
+// Makes createPlugin refuse every bundle outside folder, or lifts that with nothing. The main thread calls it at
+// startup, before any plugin loads.
+void allowPluginsOnlyIn(std::optional<std::filesystem::path> folder);
 
 }  // namespace emerick::engine

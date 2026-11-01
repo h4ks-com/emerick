@@ -7,6 +7,8 @@
 #include <QUrl>
 #include <QVariant>
 #include <array>
+#include <chrono>
+#include <cstddef>
 #include <cstdint>
 #include <filesystem>
 #include <functional>
@@ -34,6 +36,14 @@ struct AppError : std::runtime_error {
 };
 
 inline constexpr std::size_t kMaxBatchCalls = 1000;
+
+// What a run caps for the agents that drive it; a missing value leaves that limit off.
+struct Limits {
+    std::optional<std::chrono::milliseconds> luaTimeout;
+    std::size_t luaMemoryBytes = std::size_t{256} << 20;
+    std::optional<double> renderSeconds;
+    bool bundledPluginsOnly = false;
+};
 
 // The menu bar lists these menus in this order. A menu path such as "Plugins/Yamaha Arranger" shows as a submenu.
 inline constexpr const char* kFileMenu = "File";
@@ -324,6 +334,12 @@ public:
     Json runFrom(ActionSource origin, const std::function<Json()>& call) const;
     // Canonicalizes both roots, so a missing folder throws std::filesystem::filesystem_error.
     void setAgentRoots(AgentRoots roots);
+    void setLimits(Limits limits) { limits_ = limits; }
+    [[nodiscard]] const Limits& limits() const { return limits_; }
+    // The limits and agent roots, as the limits state shows them.
+    [[nodiscard]] Json limitsState() const;
+    // Throws AppError when an offline render of that many seconds of audio runs past the render limit.
+    void checkRenderSeconds(double seconds) const;
     // A headless run has no window, so run refuses the windowOnly actions.
     void setHeadless(bool headless) { headless_ = headless; }
     [[nodiscard]] bool headless() const { return headless_; }
@@ -410,6 +426,7 @@ private:
     mutable int runDepth_ = 0;
     mutable std::optional<ActionSource> origin_;
     AgentRoots agentRoots_;
+    Limits limits_;
     bool headless_ = false;
     struct Call {
         std::string id;

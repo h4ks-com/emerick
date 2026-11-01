@@ -9,13 +9,17 @@
 #include <QtLogging>
 #include <QtSystemDetection>
 #include <algorithm>
+#include <chrono>
+#include <cmath>
 #include <cstddef>
 #include <exception>
 #include <filesystem>
+#include <format>
 #include <iostream>
 #include <optional>
 #include <ranges>
 #include <span>
+#include <stdexcept>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -39,11 +43,17 @@
 #include "emerick/app/script_library.hpp"
 #include "emerick/app/track_list_model.hpp"
 #include "emerick/app/ui_api.hpp"
+#include "emerick/engine/plugin.hpp"
 #include "emerick/yamaha/plugin.hpp"
 
 using namespace emerick::app;
 
 namespace {
+
+constexpr double kMaxLuaTimeoutMs = 86'400'000;
+constexpr double kMaxLuaMemoryMb = 1 << 20;
+constexpr double kBytesPerMb = 1 << 20;
+constexpr double kMaxRenderSeconds = 86'400;
 
 // Finder hands a double-clicked .erk bundle to the running app as a file open event.
 class FileOpenFilter final : public QObject {
@@ -73,6 +83,20 @@ bool runsWithoutWindow(int argc, char** argv) {
         const std::string_view flag{arg};
         return flag == "--headless" || flag == "--script" || flag == "-s" || flag.starts_with("--script=");
     });
+}
+
+std::optional<double> positiveOption(const QCommandLineParser& parser, const QCommandLineOption& option,
+                                     double maximum) {
+    if (!parser.isSet(option)) {
+        return std::nullopt;
+    }
+    bool valid = false;
+    const double value = parser.value(option).toDouble(&valid);
+    if (!valid || std::isnan(value) || value <= 0 || value > maximum) {
+        throw std::invalid_argument(
+            std::format("--{} expects a number above 0, up to {}", option.names().constLast().toStdString(), maximum));
+    }
+    return value;
 }
 
 int runWindow(Registry& registry, Nav& nav, ProjectController& controller, Console& console) {
@@ -123,8 +147,18 @@ int run(int argc, char** argv) {
     const QCommandLineOption headlessOption("headless", "Run with no window, driven over MCP, which needs a port.");
     const QCommandLineOption scriptOption(
         {"s", "script"}, "Run this Lua script with no window and exit; pass its arguments after --.", "file");
+    const QCommandLineOption luaTimeout(
+        "lua-timeout-ms",
+        "Stop a Lua script or eval after this many ms of wall time, counting the actions it runs and leaving out "
+        "emerick.wait (default: no limit).",
+        "ms");
+    const QCommandLineOption luaMemory("lua-memory-mb", "Let Lua hold at most this many MB (default: 256).", "mb");
+    const QCommandLineOption maxRender(
+        "max-render-seconds", "Refuse an offline render longer than this much audio (default: no limit).", "seconds");
+    const QCommandLineOption bundledPluginsOnly(
+        "bundled-plugins-only", "Load and scan only the plugins the app ships, never system or user plugin folders.");
     parser.addOptions({headlessOption, scriptOption, mcpPort, mcpBindAny, noLuaMcp, audio, midi, profile, agentReadRoot,
-                       agentWriteRoot});
+                       agentWriteRoot, luaTimeout, luaMemory, maxRender, bundledPluginsOnly});
     parser.addPositionalArgument("args", "Arguments the script reads from its arg table.", "[-- args...]");
     parser.process(application);
     const bool script = parser.isSet(scriptOption);
@@ -137,6 +171,18 @@ int run(int argc, char** argv) {
                                     : std::nullopt;
     };
     registry.setAgentRoots({.read = optionalFolder(agentReadRoot), .write = optionalFolder(agentWriteRoot)});
+    const std::optional<double> luaMemoryMb = positiveOption(parser, luaMemory, kMaxLuaMemoryMb);
+    registry.setLimits(
+        {.luaTimeout = positiveOption(parser, luaTimeout, kMaxLuaTimeoutMs).transform([](double ms) {
+             return std::chrono::milliseconds{std::llround(ms)};
+         }),
+         .luaMemoryBytes = luaMemoryMb ? static_cast<std::size_t>(*luaMemoryMb * kBytesPerMb) : Limits{}.luaMemoryBytes,
+         .renderSeconds = positiveOption(parser, maxRender, kMaxRenderSeconds),
+         .bundledPluginsOnly = parser.isSet(bundledPluginsOnly)});
+    const std::filesystem::path appFolder = QCoreApplication::applicationDirPath().toStdString();
+    if (registry.limits().bundledPluginsOnly) {
+        emerick::engine::allowPluginsOnlyIn(bundledClapFolder(appFolder));
+    }
     Nav nav;
     const Backends backends{parser.value(audio).toStdString(), parser.value(midi).toStdString()};
     registerCoreActions(registry, nav, backends);
@@ -157,7 +203,8 @@ int run(int argc, char** argv) {
              (profileFolder.isEmpty() ? QStandardPaths::writableLocation(QStandardPaths::CacheLocation) : profileFolder)
                  .toStdString(),
          .scanner = (QCoreApplication::applicationDirPath() + "/emerick-plugin-scanner").toStdString(),
-         .folders = pluginSearchFolders(QCoreApplication::applicationDirPath().toStdString())});
+         .folders = registry.limits().bundledPluginsOnly ? std::vector{bundledClapFolder(appFolder)}
+                                                         : pluginSearchFolders(appFolder)});
     registerPluginActions(registry, nav, plugins);
     registerInstrumentActions(registry, controller, nav, plugins);
     const auto yamaha = emerick::yamaha::registerWith(registry, controller, nav);

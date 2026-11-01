@@ -79,10 +79,10 @@ Json addBus(const Registry& registry, const std::string& name, const Json& inser
     const std::string bus = registry.run("track.addBus", {{"name", name}}, ActionSource::Lua).at("id");
     Json ids = Json::array();
     for (const Json& entry : list) {
-        const auto& [type, params] = *entry.items().begin();
+        const auto first = entry.begin();
         const std::string insert =
-            registry.run("insert.add", {{"track", bus}, {"type", type}}, ActionSource::Lua).at("id");
-        for (const auto& [param, value] : params.items()) {
+            registry.run("insert.add", {{"track", bus}, {"type", first.key()}}, ActionSource::Lua).at("id");
+        for (const auto& [param, value] : first.value().items()) {
             registry.run("insert.setParam", {{"insert", insert}, {"param", param}, {"value", value}},
                          ActionSource::Lua);
         }

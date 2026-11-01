@@ -271,25 +271,41 @@ void registerExportSettings(Registry& registry) {
                          .location = "settings.audio"});
 }
 
+AudioEncoding encodingParam(const Json& params, const std::filesystem::path& path) {
+    return audioEncoding(path, optionalParam<std::string>(params, "format"), optionalParam<double>(params, "quality"));
+}
+
 }  // namespace
 
 void registerExportActions(Registry& registry, ProjectController& controller) {
     registerExportSettings(registry);
     const Json tracksSchema{{"tracks", {{"type", "array"}}}};
+    const Json formatSchema{{"type", "string"},
+                            {"enum", kAudioFormats | std::views::keys | std::ranges::to<std::vector<std::string>>()}};
+    const Json qualitySchema{{"type", "number"}, {"minimum", 0}, {"maximum", 1}};
+    Json stemsSchema = tracksSchema;
+    stemsSchema["format"] = formatSchema;
+    stemsSchema["quality"] = qualitySchema;
     registry.addAction(
         {.id = "export.stems",
          .title = "Export stems",
+         .description = "Render each track and bus, or the listed tracks, to its own file in folder. format is wav "
+                        "(the default), flac, ogg, opus or mp3, and quality from 0 to 1 (default 0.6) sets the "
+                        "bitrate of ogg, opus and mp3.",
          .aliases = {"bounce tracks", "render stems"},
          .category = "Export",
-         .schema = {{"required", {"folder"}}, {"properties", tracksSchema}},
+         .schema = {{"required", {"folder"}}, {"properties", stemsSchema}},
          .run =
              [&controller, &registry](const Json& params) {
                  const std::filesystem::path folder =
                      registry.checkedPath(param<std::string>(params, "folder"), PathAccess::Write);
+                 const AudioEncoding encoding =
+                     audioEncoding({}, optionalParam<std::string>(params, "format").value_or("wav"),
+                                   optionalParam<double>(params, "quality"));
                  const model::Document document = liveDocument(controller);
                  const engine::Session session = exportSession(controller, document, registry, params, false, true);
                  const auto files = exportStems(session, registry, playbackContext(controller, document), folder,
-                                                controller.sampleRate());
+                                                controller.sampleRate(), false, encoding);
                  return withWarnings(Json{{"files", fileList(files)},
                                           {"end", positionState(exportEnd(session, document), document.tempo)}},
                                      controller);
@@ -299,7 +315,9 @@ void registerExportActions(Registry& registry, ProjectController& controller) {
     registry.addAction(
         {.id = "export.mix",
          .title = "Export mix",
-         .description = "Render the mix to a stereo WAV at path. With normalize, or when targetLufs or ceilingDbtp is "
+         .description = "Render the mix to a stereo file at path, in format (wav, flac, ogg, opus or mp3) or else "
+                        "the format of path's suffix; quality from 0 to 1 (default 0.6) sets the bitrate of ogg, "
+                        "opus and mp3. With normalize, or when targetLufs or ceilingDbtp is "
                         "given, turn the mix to targetLufs integrated loudness and limit its true peak to "
                         "ceilingDbtp, and report the integratedLufs and truePeakDbtp the file ends at. Each one "
                         "defaults to its export setting.",
@@ -309,6 +327,8 @@ void registerExportActions(Registry& registry, ProjectController& controller) {
          .schema = {{"required", {"path"}},
                     {"properties",
                      {{"path", {{"type", "string"}}},
+                      {"format", formatSchema},
+                      {"quality", qualitySchema},
                       {"normalize", {{"type", "boolean"}}},
                       {"targetLufs", {{"type", "number"}, {"minimum", kMinTargetLufs}, {"maximum", 0}}},
                       {"ceilingDbtp", {{"type", "number"}, {"minimum", kMinCeilingDbtp}, {"maximum", 0}}}}}},
@@ -316,11 +336,12 @@ void registerExportActions(Registry& registry, ProjectController& controller) {
              [&controller, &registry](const Json& params) {
                  const std::filesystem::path file =
                      registry.checkedPath(param<std::string>(params, "path"), PathAccess::Write);
+                 const AudioEncoding encoding = encodingParam(params, file);
                  const model::Document document = liveDocument(controller);
                  const std::optional<MixLevels> levels =
                      exportMix(toSession(document, registry, controller.folder()), registry,
                                playbackContext(controller, document), file, controller.sampleRate(),
-                               loudnessTarget(registry, params));
+                               loudnessTarget(registry, params), encoding);
                  Json result{{"file", file.string()}};
                  if (levels) {
                      result["integratedLufs"] = levelDb(levels->integratedLufs);
@@ -329,8 +350,10 @@ void registerExportActions(Registry& registry, ProjectController& controller) {
                  return withWarnings(result, controller);
              },
          .menus = {kFileMenu},
-         .dialog = FileDialog{
-             .param = "path", .mode = FileDialogMode::Save, .nameFilter = "WAV files (*.wav)", .suffix = "wav"}});
+         .dialog = FileDialog{.param = "path",
+                              .mode = FileDialogMode::Save,
+                              .nameFilter = "Audio files (*.wav *.flac *.ogg *.opus *.mp3)",
+                              .suffix = "wav"}});
     registry.addAction({.id = "export.logic",
                         .title = "Export for Logic",
                         .aliases = {"logic pro", "send to logic"},

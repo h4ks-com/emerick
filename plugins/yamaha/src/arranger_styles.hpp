@@ -7,6 +7,7 @@
 #include <filesystem>
 #include <map>
 #include <optional>
+#include <string>
 
 #include "emerick/app/project_controller.hpp"
 #include "emerick/app/registry.hpp"
@@ -36,9 +37,10 @@ signals:
 private:
     struct Cached {
         std::filesystem::file_time_type modified;
+        std::string hash;
         std::optional<StyleSummary> summary;
     };
-    const std::optional<StyleSummary>& summaryOf(const std::filesystem::path& path);
+    const std::optional<StyleSummary>& summaryOf(const ArrangerState& state);
 
     app::ProjectController& controller_;
     app::Registry& registry_;

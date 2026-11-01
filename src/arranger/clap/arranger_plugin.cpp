@@ -24,6 +24,7 @@
 
 #include "emerick/arranger/arranger.hpp"
 #include "emerick/arranger/style.hpp"
+#include "emerick/core/base64.hpp"
 #include "emerick/core/midi.hpp"
 #include "emerick/yamaha/sysex.hpp"
 #include "player.hpp"
@@ -49,6 +50,7 @@ struct Plugin {
     // Main thread only.
     std::string stylePath;
     std::string styleHash;
+    std::vector<std::uint8_t> styleBytes;
     bool published = false;
     std::atomic<bool> autoFill{true};
     // The main thread hands a new arranger over through pending; the audio thread takes it when retired is empty and
@@ -84,15 +86,26 @@ std::optional<std::vector<std::uint8_t>> readFile(const std::filesystem::path& p
     return std::vector<std::uint8_t>{std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>()};
 }
 
-// A style that is missing or unreadable plays nothing, and the state keeps its path so the host can report it.
+std::optional<std::vector<std::uint8_t>> styleBytes(const Plugin& plugin) {
+    if (!plugin.styleBytes.empty()) {
+        return plugin.styleBytes;
+    }
+    return plugin.stylePath.empty() ? std::nullopt : readFile(plugin.stylePath);
+}
+
+// The style the state embeds plays first, else its file. A style that is missing or unreadable plays nothing, and the
+// state keeps its path so the host can report it.
 std::unique_ptr<Loaded> loadStyle(Plugin& plugin) {
     auto loaded = std::make_unique<Loaded>();
-    const auto bytes = plugin.stylePath.empty() ? std::nullopt : readFile(plugin.stylePath);
+    const auto bytes = styleBytes(plugin);
     if (!bytes) {
         return loaded;
     }
     if (plugin.styleHash.empty()) {
         plugin.styleHash = emerick::arranger::styleHash(*bytes);
+    }
+    if (bytes->size() <= emerick::arranger::kEmbeddedStyleLimit) {
+        plugin.styleBytes = *bytes;
     }
     try {
         loaded->style = std::make_unique<Style>(emerick::arranger::parseStyle(*bytes));
@@ -233,9 +246,12 @@ bool writeAll(const clap_ostream* stream, std::string_view text) {
 
 bool saveState(const clap_plugin* clapPlugin, const clap_ostream* stream) {
     const Plugin& plugin = pluginOf(clapPlugin);
-    const Json state{{"style", plugin.stylePath},
-                     {"hash", plugin.styleHash},
-                     {"autoFill", plugin.autoFill.load(std::memory_order_relaxed)}};
+    Json state{{"style", plugin.stylePath},
+               {"hash", plugin.styleHash},
+               {"autoFill", plugin.autoFill.load(std::memory_order_relaxed)}};
+    if (!plugin.styleBytes.empty()) {
+        state["data"] = emerick::core::toBase64(plugin.styleBytes);
+    }
     return writeAll(stream, state.dump());
 }
 
@@ -266,12 +282,14 @@ bool loadState(const clap_plugin* clapPlugin, const clap_istream* stream) {
                           std::memory_order_relaxed);
     const std::string path = textOf("style");
     const std::string hash = textOf("hash");
+    std::vector<std::uint8_t> data = emerick::core::fromBase64(textOf("data")).value_or(std::vector<std::uint8_t>{});
     // A state that only changed a param keeps the arranger playing.
     if (plugin.published && path == plugin.stylePath && (hash.empty() || hash == plugin.styleHash)) {
         return true;
     }
     plugin.stylePath = path;
-    plugin.styleHash = hash;
+    plugin.styleHash = data.empty() || !hash.empty() ? hash : emerick::arranger::styleHash(data);
+    plugin.styleBytes = std::move(data);
     publish(plugin, loadStyle(plugin));
     plugin.published = true;
     return true;

@@ -54,7 +54,7 @@ model::TrackId ensureTrack(const app::Registry& registry, app::ProjectController
 
 std::optional<StyleSummary> loadedStyle(const model::Track& style) {
     const auto state = arrangerState(style);
-    return state && !state->style.empty() ? readStyle(state->style) : std::nullopt;
+    return state ? stateStyle(*state) : std::nullopt;
 }
 
 // The 1-based General MIDI program each part plays when the voice list names no category for its voice.
@@ -331,7 +331,8 @@ Json setup(BuiltinArranger& builtin, app::Registry& registry, app::ProjectContro
 
 Json loadStyle(BuiltinArranger& builtin, app::Registry& registry, app::ProjectController& controller,
                const model::TrackId& id, const std::filesystem::path& path) {
-    const auto summary = readStyle(path);
+    const auto bytes = readStyleBytes(path);
+    const auto summary = bytes ? parseStyleSummary(path, *bytes) : std::nullopt;
     if (!summary) {
         throw AppError("cannot read " + path.string() + " as a style, pick a .sty, .prs or .sst file");
     }
@@ -342,6 +343,7 @@ Json loadStyle(BuiltinArranger& builtin, app::Registry& registry, app::ProjectCo
     ArrangerState state = *current;
     state.style = path.string();
     state.hash = summary->hash;
+    state.data = bytes->size() <= arranger::kEmbeddedStyleLimit ? *bytes : std::vector<std::uint8_t>{};
     controller.project().group("load style " + summary->name, [&] {
         app::editTrack(controller, id, "load style " + summary->name,
                        [&](model::Track& track) { track.instrument.value().state = stateBytes(state); });

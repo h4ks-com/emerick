@@ -19,6 +19,7 @@
 
 #include "emerick/app/event_wait.hpp"
 #include "emerick/app/project_bundle.hpp"
+#include "emerick/app/project_files.hpp"
 #include "emerick/app/project_health.hpp"
 #include "emerick/app/project_state.hpp"
 #include "emerick/app/session_mapping.hpp"
@@ -170,7 +171,7 @@ void ProjectController::createUntitled() {
 
 void ProjectController::write() {
     try {
-        model::saveProject(instruments_.withStates(project_.document()), folder_);
+        model::saveProject(withRelativePluginPaths(instruments_.withStates(project_.document()), folder_), folder_);
     } catch (const std::runtime_error& error) {
         throw AppError(error.what());
     }
@@ -260,7 +261,7 @@ void ProjectController::open(const std::filesystem::path& path) {
     }
     model::Document document;
     try {
-        document = model::loadProject(bundle);
+        document = withAbsolutePluginPaths(model::loadProject(bundle), bundle);
     } catch (const std::runtime_error& error) {
         throw AppError(error.what());
     } catch (const nlohmann::json::exception& error) {

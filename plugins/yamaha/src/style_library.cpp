@@ -8,6 +8,8 @@
 #include <string>
 #include <system_error>
 
+#include "emerick/core/base64.hpp"
+
 namespace emerick::yamaha {
 
 namespace {
@@ -24,12 +26,27 @@ bool isStyleFile(const std::filesystem::path& path) {
 
 }  // namespace
 
-std::optional<StyleSummary> readStyle(const std::filesystem::path& path) {
+std::optional<std::vector<std::uint8_t>> readStyleBytes(const std::filesystem::path& path) {
     std::ifstream file(path, std::ios::binary);
     if (!file) {
         return std::nullopt;
     }
-    const std::vector<std::uint8_t> bytes{std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>()};
+    return std::vector<std::uint8_t>{std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>()};
+}
+
+std::optional<StyleSummary> readStyle(const std::filesystem::path& path) {
+    const auto bytes = readStyleBytes(path);
+    return bytes ? parseStyleSummary(path, *bytes) : std::nullopt;
+}
+
+std::optional<StyleSummary> stateStyle(const ArrangerState& state) {
+    if (!state.data.empty()) {
+        return parseStyleSummary(state.style, state.data);
+    }
+    return state.style.empty() ? std::nullopt : readStyle(state.style);
+}
+
+std::optional<StyleSummary> parseStyleSummary(const std::filesystem::path& path, std::span<const std::uint8_t> bytes) {
     try {
         arranger::Style style = arranger::parseStyle(bytes);
         return StyleSummary{.path = path,
@@ -115,12 +132,16 @@ std::optional<ArrangerState> arrangerState(const model::Track& track) {
     const auto autoFill = state.find("autoFill");
     return ArrangerState{.style = text("style"),
                          .hash = text("hash"),
-                         .autoFill = autoFill == state.end() || !autoFill->is_boolean() || autoFill->get<bool>()};
+                         .autoFill = autoFill == state.end() || !autoFill->is_boolean() || autoFill->get<bool>(),
+                         .data = core::fromBase64(text("data")).value_or(std::vector<std::uint8_t>{})};
 }
 
 std::vector<std::uint8_t> stateBytes(const ArrangerState& state) {
-    const std::string text =
-        app::Json{{"style", state.style}, {"hash", state.hash}, {"autoFill", state.autoFill}}.dump();
+    app::Json json{{"style", state.style}, {"hash", state.hash}, {"autoFill", state.autoFill}};
+    if (!state.data.empty()) {
+        json["data"] = core::toBase64(state.data);
+    }
+    const std::string text = json.dump();
     return {text.begin(), text.end()};
 }
 

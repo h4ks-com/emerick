@@ -2,7 +2,12 @@
 
 Emerick is a digital audio workstation for recording and producing music that people and AI agents drive through the same actions: the window, a command palette, Lua scripts and MCP.
 
-![Emerick with a song of five instrument tracks, a mix bus and a reverb bus](docs/images/emerick.png)
+![Emerick arranging a 56-bar song: ten colored instrument tracks, section markers and filter and volume automation](docs/images/arrangement.png)
+
+| | |
+|---|---|
+| ![Mixer with fourteen channel strips, inserts, sends and live meters](docs/images/mixer.png) | ![Piano roll with a lead melody over velocity, pitch bend and modulation lanes](docs/images/piano-roll.png) |
+| ![Channel EQ shaping a lead synth with a low cut, a mid cut and a presence boost](docs/images/eq.png) | ![Command palette searching every action](docs/images/palette.png) |
 
 ## Build and run
 

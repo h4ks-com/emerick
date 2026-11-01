@@ -85,4 +85,7 @@ void writeAudio(const std::filesystem::path& path, const std::vector<std::vector
 model::AudioClip clipFromFile(const std::filesystem::path& source, const std::filesystem::path& folder,
                               core::Ticks start, const core::TempoMap& tempo, double sampleRate);
 
+// The path in folder named as name's file, with a number added until no file takes it.
+std::filesystem::path freePath(const std::filesystem::path& folder, const std::filesystem::path& name);
+
 }  // namespace emerick::app

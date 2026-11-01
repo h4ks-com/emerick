@@ -14,6 +14,7 @@
 
 #include "emerick/app/params.hpp"
 #include "emerick/app/project_actions.hpp"
+#include "emerick/app/project_files.hpp"
 #include "emerick/app/project_state.hpp"
 
 namespace emerick::app {
@@ -53,6 +54,13 @@ void reveal(const std::filesystem::path& folder) {
 #else
     QDesktopServices::openUrl(QUrl::fromLocalFile(qs(folder.parent_path().string())));
 #endif
+}
+
+Json collectedState(ProjectController& controller, const CollectedFiles& collected) {
+    Json state = projectState(controller);
+    state["copied"] = collected.copied;
+    state["missing"] = collected.missing;
+    return state;
 }
 
 #ifdef Q_OS_MACOS
@@ -147,14 +155,32 @@ void registerProjectFileActions(Registry& registry, ProjectController& controlle
                         .menus = {kFileMenu}});
     registry.addAction({.id = "project.save",
                         .title = "Save project",
+                        .description = "Saves the project, and with collect first copies the files it names from "
+                                       "outside its bundle into it.",
                         .category = "Project",
                         .shortcut = "Ctrl+S",
+                        .schema = {{"properties", {{"collect", {{"type", "boolean"}}}}}},
                         .run =
-                            [&controller](const Json&) {
+                            [&registry, &controller](const Json& params) {
+                                const std::optional<CollectedFiles> collected =
+                                    optionalParam<bool>(params, "collect").value_or(false)
+                                        ? std::optional{collectFiles(registry, controller)}
+                                        : std::nullopt;
                                 controller.save();
-                                return projectState(controller);
+                                return collected ? collectedState(controller, *collected) : projectState(controller);
                             },
                         .menus = {kFileMenu}});
+    registry.addAction(
+        {.id = "project.collectFiles",
+         .title = "Collect project files",
+         .description = "Copies every file the project names from outside its bundle into the bundle, "
+                        "audio into audio/ and styles, SoundFonts and voice folders into files/, and "
+                        "points the project at the copies as one undo step.",
+         .aliases = {"consolidate project", "copy files into project"},
+         .category = "Project",
+         .run = [&registry,
+                 &controller](const Json&) { return collectedState(controller, collectFiles(registry, controller)); },
+         .menus = {kFileMenu}});
     registry.addAction({.id = "project.saveAs",
                         .title = "Save project as",
                         .aliases = {"save to folder", "rename project"},

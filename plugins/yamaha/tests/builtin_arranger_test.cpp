@@ -13,11 +13,13 @@
 #include <ranges>
 #include <span>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "emerick/app/plugin_actions.hpp"
 #include "emerick/app/plugin_catalog.hpp"
 #include "emerick/app/session_mapping.hpp"
+#include "emerick/core/base64.hpp"
 #include "registration.hpp"
 #include "style_builder.hpp"
 #include "style_library.hpp"
@@ -129,6 +131,26 @@ float loudest(const std::filesystem::path& file) {
     sf_readf_float(opened, samples.data(), info.frames);
     sf_close(opened);
     return std::ranges::max(samples | std::views::transform([](float sample) { return std::abs(sample); }));
+}
+
+Json savedArrangerState(const std::filesystem::path& bundle, const std::string& style) {
+    std::ifstream file(bundle / "project.json");
+    const Json project = Json::parse(file);
+    const auto track =
+        std::ranges::find_if(project.at("tracks"), [&](const Json& saved) { return saved.at("id") == style; });
+    REQUIRE(track != project.at("tracks").end());
+    const auto state = core::fromBase64(track->at("instrument").at("state").get<std::string>());
+    REQUIRE(state);
+    return Json::parse(*state);
+}
+
+void playMainA(const ArrangerRig& rig, const std::string& style) {
+    rig.controller->project().editTrack(
+        model::TrackId{rig.trackOfKind("yamaha.chord")}, "chords",
+        [](model::Track& track) { track.data = Json::parse(R"([{"at":0,"chord":"C"}])"); });
+    rig.controller->project().editTrack(model::TrackId{style}, "sections", [](model::Track& track) {
+        track.data = Json::parse(R"([{"at":0,"kind":"main","variation":0}])");
+    });
 }
 
 }  // namespace
@@ -651,4 +673,124 @@ TEST_CASE("style notes name a part's voice as the pack instrument playing it nam
     const std::string expected = "Electric Bass (finger)";
 #endif
     CHECK(bass.at("sections").at(0).at("parts").at(0).at("voice").at("name") == expected);
+}
+
+TEST_CASE("a style inside the bundle or beside it is saved relative to the bundle and plays after the folder moves") {
+    for (const auto& [file, saved] :
+         {std::pair{"Song.erk/Inside.sty", "Inside.sty"}, std::pair{"Next.sty", "../Next.sty"}}) {
+        ArrangerRig rig;
+        const std::filesystem::path work = rig.path("Work");
+        const std::filesystem::path moved = rig.path("Moved");
+        rig.run("project.saveAs", {{"path", (work / "Song.erk").string()}});
+        std::filesystem::copy_file(rig.demo, work / file);
+        rig.run("arranger.setup");
+        const std::string style = rig.trackOfKind("yamaha.style");
+        rig.run("arranger.style.load", {{"track", style}, {"path", (work / file).string()}});
+        playMainA(rig, style);
+        rig.run("project.save");
+        CHECK(savedArrangerState(work / "Song.erk", style).at("style") == saved);
+
+        rig.run("project.new");
+        std::filesystem::rename(work, moved);
+        rig.run("project.open", {{"path", (moved / "Song.erk").string()}});
+        CHECK(rig.arrangerState().at("style") == (moved / file).string());
+        CHECK(rig.run("arranger.style.notes").at("style") == std::filesystem::path{file}.stem().string());
+        rig.run("export.mix", {{"path", rig.path("mix.wav").string()}});
+        CHECK(loudest(rig.path("mix.wav")) > 0.01F);
+    }
+}
+
+TEST_CASE("project.json alone plays its style after the style file is gone, since the Arranger state holds its bytes") {
+    ArrangerRig rig;
+    const std::filesystem::path bundle = rig.path("Work/Song.erk");
+    rig.run("project.saveAs", {{"path", bundle.string()}});
+    rig.run("arranger.setup");
+    const std::string style = rig.trackOfKind("yamaha.style");
+    rig.run("arranger.style.load", {{"track", style}, {"path", rig.demo.string()}});
+    playMainA(rig, style);
+    rig.run("project.save");
+    CHECK(savedArrangerState(bundle, style).at("data") == core::toBase64(fileBytes(rig.demo.string())));
+
+    rig.run("project.new");
+    const std::filesystem::path alone = rig.path("Alone/Song.erk");
+    std::filesystem::create_directories(alone);
+    std::filesystem::copy_file(bundle / "project.json", alone / "project.json");
+    std::filesystem::remove_all(rig.path("Work"));
+    std::filesystem::remove(rig.demo);
+    rig.run("project.open", {{"path", alone.string()}});
+    CHECK(rig.run("arranger.style.notes").at("style") == "Demo");
+    rig.run("export.mix", {{"path", rig.path("mix.wav").string()}});
+    CHECK(loudest(rig.path("mix.wav")) > 0.01F);
+}
+
+TEST_CASE("an older project whose Arranger state names only a style file outside its folder plays that file") {
+    ArrangerRig rig;
+    const std::filesystem::path bundle = rig.path("Work/Song.erk");
+    rig.run("project.saveAs", {{"path", bundle.string()}});
+    rig.run("arranger.setup");
+    const std::string style = rig.trackOfKind("yamaha.style");
+    rig.run("arranger.style.load", {{"track", style}, {"path", rig.demo.string()}});
+    playMainA(rig, style);
+    rig.run("project.save");
+    CHECK(savedArrangerState(bundle, style).at("style") == rig.demo.string());
+
+    rig.run("project.new");
+    Json project = Json::parse(std::ifstream(bundle / "project.json"));
+    for (Json& track : project.at("tracks")) {
+        if (track.at("id") == style) {
+            Json state = savedArrangerState(bundle, style);
+            state.erase("data");
+            const std::string text = state.dump();
+            track["instrument"]["state"] = core::toBase64(std::vector<std::uint8_t>(text.begin(), text.end()));
+        }
+    }
+    std::ofstream(bundle / "project.json") << project.dump();
+    rig.run("project.open", {{"path", bundle.string()}});
+    CHECK_FALSE(rig.arrangerState().contains("data"));
+    CHECK(rig.run("arranger.style.notes").at("style") == "Demo");
+    rig.run("export.mix", {{"path", rig.path("mix.wav").string()}});
+    CHECK(loudest(rig.path("mix.wav")) > 0.01F);
+}
+
+TEST_CASE("collecting project files copies an outside style and WAV into the bundle, so the bundle moves alone") {
+    ArrangerRig rig;
+    const std::filesystem::path bundle = rig.path("Work/Song.erk");
+    const std::filesystem::path moved = rig.path("Elsewhere/Song.erk");
+    rig.run("project.saveAs", {{"path", bundle.string()}});
+    rig.run("arranger.setup");
+    const std::string style = rig.trackOfKind("yamaha.style");
+    rig.run("arranger.style.load", {{"track", style}, {"path", rig.demo.string()}});
+    const std::filesystem::path wav = rig.path("ones.wav");
+    app::test::writeConstant(wav, 4800, 0.5F);
+    const std::string vox = rig.run("track.addAudio", {{"name", "Vox"}}).at("id");
+    rig.controller->project().editTrack(model::TrackId{vox}, "outside clip", [&](model::Track& track) {
+        model::AudioClip clip;
+        clip.file = wav.string();
+        clip.length = rig.document().tempo.framesToTicks(4800, app::test::kRate);
+        track.clips.emplace_back(clip);
+    });
+
+    rig.registry.setAgentRoots({.read = rig.path("Work"), .write = rig.path("Work")});
+    CHECK_THROWS_AS(rig.registry.run("project.collectFiles", Json::object(), app::ActionSource::Mcp), AppError);
+    CHECK(rig.arrangerState().at("style") == rig.demo.string());
+    rig.registry.setAgentRoots({});
+
+    const Json collected = rig.run("project.collectFiles");
+    CHECK(collected.at("copied").size() == 2);
+    CHECK(collected.at("missing").empty());
+    CHECK(rig.controller->project().undoName() == "collect project files");
+    CHECK(rig.run("project.collectFiles").at("copied").empty());
+    rig.run("project.save");
+    CHECK(savedArrangerState(bundle, style).at("style") == "files/Demo.sty");
+    CHECK(std::filesystem::exists(bundle / "audio" / "ones.wav"));
+
+    rig.run("project.new");
+    std::filesystem::create_directories(moved.parent_path());
+    std::filesystem::rename(bundle, moved);
+    std::filesystem::remove(rig.demo);
+    std::filesystem::remove(wav);
+    rig.run("project.open", {{"path", moved.string()}});
+    CHECK(rig.arrangerState().at("style") == (moved / "files" / "Demo.sty").string());
+    CHECK(rig.run("arranger.style.notes").at("style") == "Demo");
+    CHECK(rig.run("project.health").at("issues").empty());
 }

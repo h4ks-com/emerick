@@ -20,14 +20,6 @@ struct SndFileCloser {
 };
 using SndFile = std::unique_ptr<SNDFILE, SndFileCloser>;
 
-std::filesystem::path freePath(const std::filesystem::path& folder, const std::filesystem::path& name) {
-    std::filesystem::path path = folder / name.filename();
-    for (int number = 2; std::filesystem::exists(path); ++number) {
-        path = folder / (name.stem().string() + "-" + std::to_string(number) + name.extension().string());
-    }
-    return path;
-}
-
 std::filesystem::path copyIntoProject(const std::filesystem::path& source, const std::filesystem::path& folder) {
     const std::filesystem::path audio = folder / "audio";
     if (std::filesystem::absolute(source).parent_path() == std::filesystem::absolute(audio)) {
@@ -209,6 +201,14 @@ model::AudioClip clipFromFile(const std::filesystem::path& source, const std::fi
     clip.length = tempo.framesToTicks(info->frames, info->sampleRate);
     clip.file = std::filesystem::relative(file, folder).generic_string();
     return clip;
+}
+
+std::filesystem::path freePath(const std::filesystem::path& folder, const std::filesystem::path& name) {
+    std::filesystem::path path = folder / name.filename();
+    for (int number = 2; std::filesystem::exists(path); ++number) {
+        path = folder / (name.stem().string() + "-" + std::to_string(number) + name.extension().string());
+    }
+    return path;
 }
 
 }  // namespace emerick::app

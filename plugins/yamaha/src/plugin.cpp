@@ -163,8 +163,7 @@ core::Ticks sectionsEnd(const model::Track& style, const std::vector<SectionEven
         return last.at + (last.bars * tempo.ticksPerBar());
     }
     const auto state = arrangerState(style);
-    const auto summary =
-        last.kind == Section::Ending && state && !state->style.empty() ? readStyle(state->style) : std::nullopt;
+    const auto summary = last.kind == Section::Ending && state ? stateStyle(*state) : std::nullopt;
     if (!summary) {
         return 0;
     }

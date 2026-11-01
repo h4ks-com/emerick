@@ -8,6 +8,7 @@
 #include <string_view>
 #include <vector>
 
+#include "emerick/app/plugin_actions.hpp"
 #include "emerick/app/registry.hpp"
 #include "emerick/arranger/style.hpp"
 #include "emerick/core/time.hpp"
@@ -16,8 +17,8 @@
 
 namespace emerick::yamaha {
 
-inline constexpr const char* kArrangerPluginId = "org.emerick.arranger";
-inline constexpr const char* kVoicesPluginId = "org.emerick.voices";
+using app::kArrangerPluginId;
+using app::kVoicesPluginId;
 inline constexpr const char* kStyleFoldersSetting = "yamaha.styleFolders";
 inline constexpr const char* kVoiceListSetting = "yamaha.voiceList";
 inline constexpr const char* kVoicesFolderSetting = "yamaha.voicesFolder";
@@ -46,6 +47,9 @@ struct StyleSummary {
     arranger::Style style;
 };
 
+std::optional<std::vector<std::uint8_t>> readStyleBytes(const std::filesystem::path& path);
+// Nullopt for bytes that are no style. The path names the style.
+std::optional<StyleSummary> parseStyleSummary(const std::filesystem::path& path, std::span<const std::uint8_t> bytes);
 // Nullopt for a file that is missing or no style.
 std::optional<StyleSummary> readStyle(const std::filesystem::path& path);
 // Every style file in the folders and their subfolders, sorted by name.
@@ -60,14 +64,18 @@ app::Json summaryJson(const StyleSummary& summary);
 // What arranger.style.list returns: every style in the Style folders setting.
 app::Json styleList(const app::Registry& registry);
 
-// The Arranger device's state on a Style track: the style file, the hash of its bytes and Auto fill.
+// The Arranger device's state on a Style track: the style file, the hash of its bytes, Auto fill, and the bytes
+// themselves up to arranger::kEmbeddedStyleLimit, so project.json alone plays the style.
 struct ArrangerState {
     std::string style;
     std::string hash;
     bool autoFill = true;
+    std::vector<std::uint8_t> data;
 };
 // Nullopt when the track plays no Arranger.
 std::optional<ArrangerState> arrangerState(const model::Track& track);
+// The style the state holds, else the one its file holds.
+std::optional<StyleSummary> stateStyle(const ArrangerState& state);
 std::vector<std::uint8_t> stateBytes(const ArrangerState& state);
 
 }  // namespace emerick::yamaha

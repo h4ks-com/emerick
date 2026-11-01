@@ -7,6 +7,8 @@
 #include <string>
 #include <vector>
 
+#include "emerick/app/plugin_actions.hpp"
+#include "emerick/app/project_files.hpp"
 #include "emerick/app/stem_export.hpp"
 #include "emerick/model/json.hpp"
 #include "midi_file.hpp"
@@ -37,6 +39,20 @@ double tempoOf(const ProjectRig& rig) { return rig.run("project.summary").at("te
 
 std::vector<std::string> recent(const ProjectRig& rig) {
     return rig.registry.settingValue("project.recent").get<std::vector<std::string>>();
+}
+
+model::Track pluginTrack(const std::string& pluginId, const std::string& state) {
+    model::Track track;
+    track.instrument = model::PluginSlot{.pluginId = pluginId,
+                                         .bundle = {},
+                                         .name = pluginId,
+                                         .state = {state.begin(), state.end()},
+                                         .format = core::PluginFormat::clap};
+    return track;
+}
+
+std::string stateOf(const model::Track& track) {
+    return {track.instrument->state.begin(), track.instrument->state.end()};
 }
 
 }  // namespace
@@ -90,6 +106,34 @@ TEST_CASE("save as moves an untitled bundle, copies a named one, and the bundle 
     CHECK(opened.at("path") == song.string());
     CHECK(model::toJson(rig.controller->project().document()) == before);
     CHECK(rig.controller->edited() == false);
+}
+
+TEST_CASE("bundled plugins save paths beside their bundle relatively, and other paths and plugins stay as they are") {
+    ProjectRig rig;
+    const std::filesystem::path work = rig.path("Work");
+    const std::filesystem::path bundle = work / "Song.erk";
+    const auto json = [](const std::string& key, const std::filesystem::path& path) {
+        return Json{{key, path.string()}, {"sound", 3}}.dump();
+    };
+    model::Document document;
+    document.tracks = {pluginTrack(kGeneralMidiPluginId, json("soundFont", work / "Piano.sf2")),
+                       pluginTrack(kVoicesPluginId, json("folder", bundle / "voices")),
+                       pluginTrack(kArrangerPluginId, json("style", rig.path("Styles/Pop.sty"))),
+                       pluginTrack("com.example.synth", json("style", work / "Pop.sty")),
+                       pluginTrack(kGeneralMidiPluginId, (work / "Plain.sf2").string())};
+
+    const model::Document saved = withRelativePluginPaths(document, bundle);
+    CHECK(Json::parse(stateOf(saved.tracks[0])) == Json{{"soundFont", "../Piano.sf2"}, {"sound", 3}});
+    CHECK(Json::parse(stateOf(saved.tracks[1])).at("folder") == "voices");
+    CHECK(stateOf(saved.tracks[2]) == stateOf(document.tracks[2]));
+    CHECK(stateOf(saved.tracks[3]) == stateOf(document.tracks[3]));
+    CHECK(stateOf(saved.tracks[4]) == stateOf(document.tracks[4]));
+
+    const std::filesystem::path moved = rig.path("Moved/Song.erk");
+    const model::Document opened = withAbsolutePluginPaths(saved, moved);
+    CHECK(Json::parse(stateOf(opened.tracks[0])).at("soundFont") == rig.path("Moved/Piano.sf2").string());
+    CHECK(Json::parse(stateOf(opened.tracks[1])).at("folder") == (moved / "voices").string());
+    CHECK(withAbsolutePluginPaths(saved, bundle) == document);
 }
 
 TEST_CASE("a new project can start saved at a path with a tempo") {

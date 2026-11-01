@@ -57,6 +57,7 @@ qt_add_library(emerick_app STATIC
     include/emerick/app/plugin_catalog.hpp
     include/emerick/app/project_actions.hpp
     include/emerick/app/project_bundle.hpp
+    include/emerick/app/project_files.hpp
     include/emerick/app/project_controller.hpp
     include/emerick/app/project_health.hpp
     include/emerick/app/project_state.hpp
@@ -96,6 +97,7 @@ qt_add_library(emerick_app STATIC
     plugin_catalog.cpp
     project_actions.cpp
     project_bundle.cpp
+    project_files.cpp
     project_controller.cpp
     project_file_actions.cpp
     project_health.cpp

@@ -12,6 +12,8 @@ inline constexpr const char* kVst3FoldersSetting = "plugins.vst3Folders";
 inline constexpr const char* kGeneralMidiSoundFontSetting = "plugins.generalMidiSoundFont";
 // The General MIDI instrument that ships with the app. Its CLAP state is the path of the SoundFont it plays.
 inline constexpr const char* kGeneralMidiPluginId = "org.emerick.gm";
+inline constexpr const char* kVoicesPluginId = "org.emerick.voices";
+inline constexpr const char* kArrangerPluginId = "org.emerick.arranger";
 
 // The Plugins settings section with the user's CLAP folders, and the actions that rescan and list CLAP plugins.
 void registerPluginActions(Registry& registry, Nav& nav, PluginCatalog& catalog);

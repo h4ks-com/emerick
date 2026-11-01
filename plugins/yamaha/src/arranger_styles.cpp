@@ -30,12 +30,16 @@ ArrangerStyles::ArrangerStyles(app::ProjectController& controller, app::Registry
     });
 }
 
-const std::optional<StyleSummary>& ArrangerStyles::summaryOf(const std::filesystem::path& path) {
+const std::optional<StyleSummary>& ArrangerStyles::summaryOf(const ArrangerState& state) {
     std::error_code error;
-    const auto modified = std::filesystem::last_write_time(path, error);
-    auto found = cache_.find(path);
-    if (found == cache_.end() || found->second.modified != modified) {
-        found = cache_.insert_or_assign(path, Cached{.modified = modified, .summary = readStyle(path)}).first;
+    const auto modified =
+        state.data.empty() ? std::filesystem::last_write_time(state.style, error) : std::filesystem::file_time_type{};
+    auto found = cache_.find(state.style);
+    if (found == cache_.end() || found->second.modified != modified || found->second.hash != state.hash) {
+        found = cache_
+                    .insert_or_assign(state.style,
+                                      Cached{.modified = modified, .hash = state.hash, .summary = stateStyle(state)})
+                    .first;
     }
     return found->second.summary;
 }
@@ -51,7 +55,7 @@ QVariantMap ArrangerStyles::info(const QString& trackId) {
     if (state->style.empty()) {
         return result;
     }
-    const std::optional<StyleSummary>& summary = summaryOf(state->style);
+    const std::optional<StyleSummary>& summary = summaryOf(*state);
     result.insert("path", app::qs(state->style));
     result.insert("name", app::qs(std::filesystem::path{state->style}.stem().string()));
     if (!summary) {

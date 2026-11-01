@@ -127,4 +127,7 @@ std::array<std::map<int, int>, kParts> partNotes(const StyleSection& section);
 // FNV-1a of a style file's bytes in hex, so a project notices a style file that changed.
 std::string styleHash(std::span<const std::uint8_t> bytes);
 
+// The Arranger keeps a style up to this size in its state, so a project file alone plays it.
+inline constexpr std::size_t kEmbeddedStyleLimit = std::size_t{2} * 1024 * 1024;
+
 }  // namespace emerick::arranger

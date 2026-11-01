@@ -116,6 +116,7 @@ def test_top_level_mcp_lists_tools(make_client: MakeClient) -> None:
     assert names == {
         "project.create",
         "project.list",
+        "project.upload",
         "session.create",
         "session.list",
         "session.tools",
@@ -142,3 +143,37 @@ def test_top_level_mcp_drives_a_session_without_its_own_url(make_client: MakeCli
     assert "x" in (Path(str(session["project_dir"])) / "actions.log").read_text().split()
     closed = call("session.close", {"session_id": session["id"]})
     assert closed["status"] == "closed"
+
+
+def test_upload_stores_a_file_and_refuses_escapes_and_quota(make_client: MakeClient, tmp_path: Path) -> None:
+    client = make_client(project_max_mb=1)
+    project_id = new_project(client)
+    stored = client.put(f"/projects/{project_id}/files/styles/funk.sty", content=b"style bytes")
+    assert stored.status_code == 201, stored.text
+    assert stored.json()["path"] == "styles/funk.sty"
+    assert (tmp_path / "data" / "projects" / project_id / "styles" / "funk.sty").read_bytes() == b"style bytes"
+    assert client.get(f"/projects/{project_id}/files/styles/funk.sty").content == b"style bytes"
+
+    assert client.put(f"/projects/{project_id}/files/..%2Fescape.txt", content=b"x").status_code == 400
+    assert client.put(f"/projects/{project_id}/files/big.wav", content=bytes(2 << 20)).status_code == 413
+    assert client.put("/projects/missing/files/a.txt", content=b"x").status_code == 404
+
+
+def test_upload_reaches_a_live_session_and_the_mcp_tool(make_client: MakeClient) -> None:
+    client = make_client()
+    project_id = new_project(client)
+    session = client.post("/sessions", json={"project_id": project_id}).json()
+    assert client.put(f"/projects/{project_id}/files/voices.csv", content=b"0,0,1,Piano\n").status_code == 201
+    assert (Path(session["project_dir"]) / "voices.csv").read_bytes() == b"0,0,1,Piano\n"
+
+    headers = {"Accept": "application/json, text/event-stream"}
+    arguments = {"project_id": project_id, "path": "a.sty", "content_base64": "c3R5bGU="}
+    body = {
+        "jsonrpc": "2.0",
+        "id": 4,
+        "method": "tools/call",
+        "params": {"name": "project.upload", "arguments": arguments},
+    }
+    reply = client.post("/mcp", json=body, headers=headers).json()
+    assert reply["result"]["structuredContent"]["size"] == 5
+    assert (Path(session["project_dir"]) / "a.sty").read_bytes() == b"style"

@@ -11,8 +11,8 @@ from botocore.exceptions import BotoCoreError, ClientError
 from emerick_service.child import Child, ChildError, start_child
 from emerick_service.config import Settings
 from emerick_service.db import Database, now
-from emerick_service.models import Session, SessionStatus
-from emerick_service.storage import Storage, usage_bytes
+from emerick_service.models import ProjectFile, Session, SessionStatus
+from emerick_service.storage import Storage, relative_path, usage_bytes, write_contained
 
 log = logging.getLogger(__name__)
 BUNDLE = "project.erk"
@@ -37,6 +37,10 @@ class UnknownSessionError(LookupError):
 
 
 class SessionStartError(RuntimeError):
+    pass
+
+
+class QuotaExceededError(RuntimeError):
     pass
 
 
@@ -164,6 +168,29 @@ class SessionManager:
         if child is None or session_id in self._closing or self.get(session_id).status != SessionStatus.RUNNING:
             raise UnknownSessionError(session_id)
         return child
+
+    async def upload(self, project_id: str, path: str, data: bytes) -> ProjectFile:
+        """Write a file into the project, into its live session's folder when it has one, so Emerick sees it at once.
+
+        :raises UnknownProjectError: when there is no such project.
+        :raises PathEscapeError: when path leaves the project.
+        :raises QuotaExceededError: when the file would push the project past its quota.
+        """
+        if self.db.get_project(project_id) is None:
+            raise UnknownProjectError(project_id)
+        live = (session.id for session in self.db.list_sessions(live_only=True) if session.project_id == project_id)
+        child = next((self.children[id_] for id_ in live if id_ in self.children), None)
+        if child:
+            usage = await asyncio.to_thread(usage_bytes, child.project_dir)
+        else:
+            usage = await asyncio.to_thread(self.storage.usage, project_id)
+        if usage + len(data) > self.settings.project_max_mb * MEGABYTE:
+            raise QuotaExceededError(f"{path} would take project {project_id} past {self.settings.project_max_mb} MB")
+        if child:
+            await asyncio.to_thread(write_contained, child.project_dir, path, data)
+        else:
+            await asyncio.to_thread(self.storage.write, project_id, path, data)
+        return ProjectFile(path=relative_path(path).as_posix(), size=len(data), modified_at=now())
 
     async def save(self, session_id: str) -> None:
         """Save the project and store it.

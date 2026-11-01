@@ -31,6 +31,7 @@ from emerick_service.models import (
 from emerick_service.sessions import (
     PoolFullError,
     ProjectBusyError,
+    QuotaExceededError,
     SessionManager,
     SessionStartError,
     UnknownProjectError,
@@ -46,6 +47,7 @@ ERROR_STATUS: dict[type[Exception], int] = {
     FileNotFoundError: 404,
     PathEscapeError: 400,
     ProjectBusyError: 409,
+    QuotaExceededError: 413,
     PoolFullError: 429,
     SessionStartError: 502,
     ChildError: 502,
@@ -152,6 +154,10 @@ def create_app(settings: Settings, storage: Storage | None = None) -> FastAPI:
             media_type=mimetypes.guess_type(name)[0] or "application/octet-stream",
             headers={"Content-Disposition": f"attachment; filename*=utf-8''{quote(name)}"},
         )
+
+    @app.put("/projects/{project_id}/files/{path:path}", status_code=201)
+    async def upload_file(request: Request, project_id: str, path: str) -> ProjectFile:
+        return await manager.upload(project_id, path, await request.body())
 
     @app.post("/sessions", status_code=201)
     async def create_session(request: Request, body: SessionCreate) -> SessionView:

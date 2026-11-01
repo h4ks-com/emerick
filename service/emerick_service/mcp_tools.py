@@ -1,3 +1,4 @@
+import base64
 from typing import Annotated
 
 from mcp.server import MCPServer
@@ -6,7 +7,7 @@ from pydantic import Field, JsonValue
 from starlette.requests import Request
 
 from emerick_service.db import Database
-from emerick_service.models import Project, SessionView
+from emerick_service.models import Project, ProjectFile, SessionView
 from emerick_service.sessions import SessionManager
 
 INSTRUCTIONS = (
@@ -47,6 +48,16 @@ def build_mcp(manager: SessionManager, db: Database) -> MCPServer:
     @mcp.tool(name="project.list", description="List the projects.")
     def project_list() -> list[Project]:
         return db.list_projects()
+
+    @mcp.tool(
+        name="project.upload",
+        description=(
+            "Write a file, such as a style, sample or voice list, into a project at path, from base64 content. "
+            "A live session sees it at once in its project_dir."
+        ),
+    )
+    async def project_upload(project_id: str, path: str, content_base64: str) -> ProjectFile:
+        return await manager.upload(project_id, path, base64.b64decode(content_base64, validate=True))
 
     @mcp.tool(
         name="session.create",

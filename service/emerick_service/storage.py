@@ -50,6 +50,16 @@ def usage_bytes(root: Path) -> int:
     return sum(stat.st_size for _, stat in walk(root))
 
 
+def write_contained(root: Path, path: str, data: bytes) -> None:
+    """Write data to a request path under root, creating its folders.
+
+    :raises PathEscapeError: when path leaves root.
+    """
+    target = contained(root, path)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_bytes(data)
+
+
 def read_chunks(path: Path) -> Iterator[bytes]:
     with path.open("rb") as file:
         while chunk := file.read(CHUNK_BYTES):
@@ -77,6 +87,17 @@ class Storage(Protocol):
         :raises PathEscapeError: when path leaves the project.
         :raises FileNotFoundError: when the project holds no such file.
         """
+        ...
+
+    def write(self, project_id: str, path: str, data: bytes) -> None:
+        """Store one file in the project, replacing any file at path.
+
+        :raises PathEscapeError: when path leaves the project.
+        """
+        ...
+
+    def usage(self, project_id: str) -> int:
+        """Return the bytes the project's files take."""
         ...
 
 
@@ -115,6 +136,12 @@ class LocalStorage:
         if not file.is_file():
             raise FileNotFoundError(path)
         return read_chunks(file)
+
+    def write(self, project_id: str, path: str, data: bytes) -> None:
+        write_contained(self._dir(project_id), path, data)
+
+    def usage(self, project_id: str) -> int:
+        return usage_bytes(self._dir(project_id))
 
 
 class S3Storage:
@@ -184,3 +211,10 @@ class S3Storage:
         except self.client.exceptions.NoSuchKey as error:
             raise FileNotFoundError(path) from error
         return body.iter_chunks(CHUNK_BYTES)
+
+    def write(self, project_id: str, path: str, data: bytes) -> None:
+        key = self._prefix(project_id) + relative_path(path).as_posix()
+        self.client.put_object(Bucket=self.bucket, Key=key, Body=data)
+
+    def usage(self, project_id: str) -> int:
+        return sum(size for size, _ in self._objects(project_id).values())

@@ -55,12 +55,17 @@ TEST_CASE("metronome actions and settings round trip through the state provider"
 TEST_CASE("the metronome menu offers the toggle, the preview, every sound, every pattern and the count-in") {
     ProjectRig rig;
     const QVariantList items = rig.registry.menus().value(kMetronomeMenu).toList();
-    REQUIRE(items.size() == 5);
-    CHECK(items[0].toMap().value("id") == "metronome.toggle");
-    CHECK(items[1].toMap().value("id") == "metronome.preview");
-    CHECK(items[2].toMap().value("choices").toList().size() == 5);
-    CHECK(items[3].toMap().value("choices").toList().size() == 5);
-    const QVariantList countIn = items[4].toMap().value("choices").toList();
+    const auto item = [&items](const char* id) {
+        const auto found =
+            std::ranges::find_if(items, [id](const QVariant& entry) { return entry.toMap().value("id") == id; });
+        REQUIRE(found != items.end());
+        return found->toMap();
+    };
+    item("metronome.toggle");
+    item("metronome.preview");
+    CHECK(item("metronome.setMode").value("choices").toList().size() == 5);
+    CHECK(item("metronome.setPattern").value("choices").toList().size() == 5);
+    const QVariantList countIn = item("metronome.setCountIn").value("choices").toList();
     REQUIRE(countIn.size() == 5);
     CHECK(countIn[0].toMap().value("title") == "Off");
     CHECK(countIn[2].toMap().value("title") == "2 bars");

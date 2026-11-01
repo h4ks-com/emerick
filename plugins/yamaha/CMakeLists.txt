@@ -15,6 +15,8 @@ qt_add_library(emerick_yamaha_plugin STATIC
     src/arranger_actions.cpp
     src/arranger_styles.cpp
     src/arranger_styles.hpp
+    src/block_actions.cpp
+    src/block_edit.hpp
     src/builtin_arranger.cpp
     src/chart_actions.cpp
     src/chord_input.cpp

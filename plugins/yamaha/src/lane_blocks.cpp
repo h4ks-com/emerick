@@ -12,8 +12,6 @@ namespace emerick::yamaha {
 
 namespace {
 
-constexpr core::Ticks kLastBlockTicks = 4 * core::kTicksPerQuarter;
-
 constexpr std::array kNoteNames{"C",  "C#", "Db", "D",  "D#", "Eb", "E",  "F", "F#",
                                 "Gb", "G",  "G#", "Ab", "A",  "A#", "Bb", "B"};
 

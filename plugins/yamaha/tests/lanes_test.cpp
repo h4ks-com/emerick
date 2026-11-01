@@ -58,6 +58,12 @@ QQuickItem* block(const MainWindow& main, const std::string& prefix, const std::
     return main.item(QString::fromStdString(prefix + ".move:" + id + ":" + std::to_string(at)));
 }
 
+// A click selects the block and Return opens its picker.
+void edit(const MainWindow& main, QQuickItem* block) {
+    main.click(block);
+    QTest::keyClick(main.window, Qt::Key_Return);
+}
+
 QObject* popupOf(QQuickItem* picker) { return picker->property("popup").value<QObject*>(); }
 
 bool opened(QObject* popup) {
@@ -131,7 +137,7 @@ TEST_CASE("the Style lane dims the sections the style lacks and marks a block th
     CHECK(MainWindow::find(main.window->contentItem(), QString::fromStdString("yamaha.section.missing:" + id + ":0")) ==
           nullptr);
 
-    main.click(block(main, "yamaha.section", id, 0));
+    edit(main, block(main, "yamaha.section", id, 0));
     QQuickItem* picker = main.item("yamaha.section.set:" + qid(id));
     REQUIRE(opened(popupOf(picker)));
     const QVariantList matches = picker->property("matches").toList();
@@ -174,10 +180,11 @@ TEST_CASE("dropping a style file on a Style track loads it into the track's Arra
     removeTrack(main, id);
 }
 
-TEST_CASE("a click on a chord block opens a picker that sets the root, the type and the bass from the keyboard") {
+TEST_CASE(
+    "Return on a selected chord block opens a picker that sets the root, the type and the bass from the keyboard") {
     MainWindow& main = yamahaWindow();
     const std::string id = addTrack(main, "yamaha.chord", Json::parse(R"([{"at":0,"chord":"C"}])"));
-    main.click(block(main, "yamaha.chord", id, 0));
+    edit(main, block(main, "yamaha.chord", id, 0));
     QQuickItem* root = main.item("yamaha.chord.set:" + qid(id) + ":root");
     REQUIRE(opened(popupOf(root)));
 
@@ -208,7 +215,7 @@ TEST_CASE("a click on a chord block opens a picker that sets the root, the type 
 TEST_CASE("a chord played on the keyboard sets the block whose picker is open and closes the picker") {
     MainWindow& main = yamahaWindow();
     const std::string id = addTrack(main, "yamaha.chord", Json::parse(R"([{"at":0,"chord":"C"}])"));
-    main.click(block(main, "yamaha.chord", id, 0));
+    edit(main, block(main, "yamaha.chord", id, 0));
     REQUIRE(opened(popupOf(main.item("yamaha.chord.set:" + qid(id) + ":root"))));
     for (const Bytes& bytes : std::vector<Bytes>{{0x93, 55, 90},
                                                  {0x93, 59, 90},
@@ -228,7 +235,7 @@ TEST_CASE("a chord played on the keyboard sets the block whose picker is open an
 TEST_CASE("the section picker lists only the sections a style plays") {
     MainWindow& main = yamahaWindow();
     const std::string id = addTrack(main, "yamaha.style", Json::parse(R"([{"at":0,"kind":"main","variation":0}])"));
-    main.click(block(main, "yamaha.section", id, 0));
+    edit(main, block(main, "yamaha.section", id, 0));
     QQuickItem* picker = main.item("yamaha.section.set:" + qid(id));
     REQUIRE(opened(popupOf(picker)));
     CHECK(picker->property("matches").toList().size() == 16);
@@ -242,16 +249,17 @@ TEST_CASE("a right click selects a block and opens its menu, and Backspace or De
     MainWindow& main = yamahaWindow();
     const std::string id = addTrack(
         main, "yamaha.chord", Json::parse(R"([{"at":0,"chord":"C"},{"at":3840,"chord":"F"},{"at":7680,"chord":"G"}])"));
-    QQuickItem* first = block(main, "yamaha.chord", id, 0);
-    main.click(first, Qt::RightButton);
-    QObject* menu = main.item("yamaha.chord.edit:" + qid(id))->findChild<QObject*>("menu.yamaha.chord.context");
+    main.click(block(main, "yamaha.chord", id, 0), Qt::RightButton);
+    QQuickItem* lane = main.item("yamaha.chord.edit:" + qid(id));
+    QObject* menu = lane->findChild<QObject*>("menu.yamaha.chord.context");
     REQUIRE(menu != nullptr);
     CHECK(opened(menu));
-    CHECK(itemTitles(menu) == std::vector<QString>{"Change chord", "Split chord", "Delete chord"});
+    CHECK(itemTitles(menu) == std::vector<QString>{"Change chord", "Split chord", "Delete chord", "Copy chords",
+                                                   "Paste chords", "Duplicate chords", "Loop selected chords"});
     CHECK_FALSE(main.menu("menu.laneContext")->property("visible").toBool());
     QMetaObject::invokeMethod(menu, "close");
     REQUIRE(processUntil([&] { return !menu->property("visible").toBool(); }));
-    CHECK(processUntil([&] { return first->hasActiveFocus(); }));
+    CHECK(processUntil([&] { return lane->hasActiveFocus(); }));
 
     QTest::keyClick(main.window, Qt::Key_Backspace);
     CHECK(processUntil([&] { return dataOf(main, id).size() == 2; }));
@@ -291,13 +299,13 @@ TEST_CASE("Delete in the picker of a clicked block deletes it until something is
     MainWindow& main = yamahaWindow();
     const std::string id =
         addTrack(main, "yamaha.chord", Json::parse(R"([{"at":0,"chord":"C"},{"at":3840,"chord":"F"}])"));
-    main.click(block(main, "yamaha.chord", id, 0));
+    edit(main, block(main, "yamaha.chord", id, 0));
     REQUIRE(opened(popupOf(main.item("yamaha.chord.set:" + qid(id) + ":root"))));
     QTest::keyClick(main.window, Qt::Key_Delete);
     CHECK(processUntil([&] { return dataOf(main, id) == Json::parse(R"([{"at":3840,"chord":"F"}])"); }));
     CHECK(processUntil([&] { return main.rig.nav.editingBlock().isEmpty(); }));
 
-    main.click(block(main, "yamaha.chord", id, kBar));
+    edit(main, block(main, "yamaha.chord", id, kBar));
     REQUIRE(opened(popupOf(main.item("yamaha.chord.set:" + qid(id) + ":root"))));
     type(main, "b");
     QTest::keyClick(main.window, Qt::Key_Backspace);
@@ -329,9 +337,66 @@ TEST_CASE(
     main.drag(wide, QPointF{main.rig.nav.pixelsPerTick() * kBar, 0});
     CHECK_FALSE(attached(block(main, "yamaha.chord", id, 0), "ToolTip.visible").toBool());
     CHECK(processUntil([&] { return dataOf(main, id).size() == 2 && dataOf(main, id).at(1).at("at") > 240; }));
-    CHECK(main.rig.controller->project().undoName() == "move chord");
+    CHECK(main.rig.controller->project().undoName() == "move chords");
     main.rig.run("project.undo");
     CHECK(dataOf(main, id).at(1).at("at") == 240);
+    removeTrack(main, id);
+}
+
+TEST_CASE("dragging selected chords moves them while the pointer moves and lands as one undo step") {
+    MainWindow& main = yamahaWindow();
+    const Json chords = Json::parse(R"([{"at":0,"chord":"C"},{"at":3840,"chord":"F"},{"at":7680,"chord":"G"}])");
+    const std::string id = addTrack(main, "yamaha.chord", chords);
+    main.click(block(main, "yamaha.chord", id, 0));
+    QQuickItem* second = block(main, "yamaha.chord", id, kBar);
+    const QPointF from = second->mapToScene({second->width() / 2, second->height() / 2});
+    main.send(QEvent::MouseButtonPress, from, Qt::LeftButton, Qt::ShiftModifier);
+    main.send(QEvent::MouseButtonRelease, from, Qt::NoButton, Qt::ShiftModifier);
+    CHECK(main.rig.nav.selectedBlocks().value("to").toLongLong() == 2 * kBar);
+
+    const double bar = main.rig.nav.pixelsPerTick() * kBar;
+    main.send(QEvent::MouseButtonPress, from, Qt::LeftButton, Qt::NoModifier);
+    for (int step = 1; step <= 6; ++step) {
+        main.send(QEvent::MouseMove, from + QPointF{bar * step / 2, 0}, Qt::LeftButton, Qt::NoModifier);
+    }
+    const Json moved = Json::parse(R"([{"at":7680,"chord":"G"},{"at":11520,"chord":"C"},{"at":15360,"chord":"F"}])");
+    CHECK(processUntil([&] { return dataOf(main, id) == moved; }));
+    CHECK(main.rig.nav.selectedBlocks().value("from").toLongLong() == 3 * kBar);
+    main.send(QEvent::MouseButtonRelease, from + QPointF{3 * bar, 0}, Qt::NoButton, Qt::NoModifier);
+    MainWindow::settle();
+    CHECK(dataOf(main, id) == moved);
+    CHECK(main.rig.controller->project().undoName() == "move chords");
+    main.rig.run("project.undo");
+    CHECK(dataOf(main, id) == chords);
+    removeTrack(main, id);
+}
+
+TEST_CASE("a drag over empty lane space selects the chords it touches, Cmd+D repeats them and Cmd+U loops them") {
+    MainWindow& main = yamahaWindow();
+    const std::string id =
+        addTrack(main, "yamaha.chord", Json::parse(R"([{"at":0,"chord":"C"},{"at":3840,"chord":"F"}])"));
+    QQuickItem* lane = main.item("yamaha.chord.edit:" + qid(id));
+    const double bar = main.rig.nav.pixelsPerTick() * kBar;
+    main.window->grabWindow();
+    const QPointF empty = lane->mapToScene({2.5 * bar, lane->height() / 2});
+    main.send(QEvent::MouseButtonPress, empty, Qt::LeftButton, Qt::NoModifier);
+    for (int step = 1; step <= 4; ++step) {
+        main.send(QEvent::MouseMove, empty - QPointF{2 * bar * step / 4, 0}, Qt::LeftButton, Qt::NoModifier);
+    }
+    main.send(QEvent::MouseButtonRelease, empty - QPointF{2 * bar, 0}, Qt::NoButton, Qt::NoModifier);
+    CHECK(main.rig.nav.selectedBlocks().value("from").toLongLong() == 0);
+    CHECK(main.rig.nav.selectedBlocks().value("to").toLongLong() == 2 * kBar);
+    CHECK(main.rig.nav.editingBlock().value("track").toString() != qid(id));
+
+    QTest::keyClick(main.window, Qt::Key_D, Qt::ControlModifier);
+    CHECK(processUntil([&] {
+        return dataOf(main, id) == Json::parse(R"([{"at":0,"chord":"C"},{"at":3840,"chord":"F"},
+                                                   {"at":7680,"chord":"C"},{"at":11520,"chord":"F"}])");
+    }));
+    QTest::keyClick(main.window, Qt::Key_U, Qt::ControlModifier);
+    const model::Cycle& cycle = main.rig.controller->project().document().cycle;
+    CHECK(processUntil([&] { return cycle.enabled && cycle.start == 2 * kBar && cycle.end == 4 * kBar; }));
+    main.rig.run("cycle.toggle", {{"enabled", false}});
     removeTrack(main, id);
 }
 

@@ -1,5 +1,8 @@
 #include "emerick/app/registry.hpp"
 
+#include <QCoreApplication>
+#include <QCursor>
+#include <QGuiApplication>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QKeySequence>
@@ -190,6 +193,29 @@ std::string portableShortcut(const std::string& sequence) {
         .toString(QKeySequence::PortableText)
         .toStdString();
 }
+
+// Actions run on the UI thread, so we show the wait cursor while one runs, since the window cannot answer meanwhile.
+class WaitCursor {
+public:
+    explicit WaitCursor(bool wanted)
+        : shown_(wanted && qobject_cast<QGuiApplication*>(QCoreApplication::instance()) != nullptr) {
+        if (shown_) {
+            QGuiApplication::setOverrideCursor(Qt::WaitCursor);
+        }
+    }
+    ~WaitCursor() {
+        if (shown_) {
+            QGuiApplication::restoreOverrideCursor();
+        }
+    }
+    WaitCursor(const WaitCursor&) = delete;
+    WaitCursor& operator=(const WaitCursor&) = delete;
+    WaitCursor(WaitCursor&&) = delete;
+    WaitCursor& operator=(WaitCursor&&) = delete;
+
+private:
+    bool shown_;
+};
 
 }  // namespace
 
@@ -759,6 +785,7 @@ std::optional<Json> Registry::runFromUi(const std::string& id, const Json& param
             emit noticeRaised(qs(found->title), text);
         }
     };
+    const WaitCursor waitCursor{!gesturing_};
     try {
         Json result = run(id, params, ActionSource::Ui);
         notify(qs(result.value("message", std::string{})));

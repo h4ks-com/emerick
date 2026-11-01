@@ -1,11 +1,16 @@
 #include "emerick/app/registry.hpp"
 
+#include <QCursor>
+#include <QGuiApplication>
 #include <QTemporaryDir>
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
+#include <optional>
+#include <stdexcept>
 
 #include "emerick/app/core_actions.hpp"
 #include "emerick/app/nav.hpp"
+#include "qt_app.hpp"
 
 using namespace emerick::app;
 
@@ -30,6 +35,21 @@ TEST_CASE("actions run with params and refuse when disabled or unknown") {
     CHECK_THROWS_AS(registry.run("test.echo"), AppError);
     CHECK_THROWS_AS(registry.run("test.missing"), AppError);
     CHECK_THROWS_AS(registry.addAction(echo("test.echo", "Again")), std::logic_error);
+}
+
+TEST_CASE("a UI run shows the wait cursor while the action runs and restores it even when the action throws") {
+    ensureApplication();
+    QTemporaryDir dir;
+    Registry registry{dir.filePath("settings.ini")};
+    std::optional<Qt::CursorShape> shapeWhileRunning;
+    registry.addAction({.id = "test.fail", .title = "Fail", .run = [&](const Json&) -> Json {
+                            shapeWhileRunning = QGuiApplication::overrideCursor()->shape();
+                            throw std::logic_error("broken action");
+                        }});
+
+    CHECK_THROWS_AS(registry.runAction("test.fail", {}), std::logic_error);
+    CHECK(shapeWhileRunning == Qt::WaitCursor);
+    CHECK(QGuiApplication::overrideCursor() == nullptr);
 }
 
 TEST_CASE("a headless registry refuses the window only actions") {

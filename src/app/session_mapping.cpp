@@ -83,7 +83,8 @@ std::optional<engine::Insert> toEngine(const model::Insert& insert) {
             params.at(*index) = std::clamp(static_cast<float>(value), described.minimum, described.maximum);
         }
     }
-    return engine::Insert{.id = insert.id.value, .type = spec->type, .bypass = insert.bypass, .params = params};
+    return engine::Insert{
+        .id = insert.id.value, .type = spec->type, .bypass = insert.bypass, .params = params, .plugin = nullptr};
 }
 
 // Disabled sends stay in the model so they keep their level, and play nothing.

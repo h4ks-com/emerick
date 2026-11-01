@@ -1,4 +1,4 @@
-// The main-thread side of a CLAP instrument: creation, activation, state, the editor and destruction.
+// The main-thread side of a CLAP plugin: creation, activation, state, the editor and destruction.
 
 // clap-helpers' host.hxx calls std::terminate without including <exception>, so we include it first.
 // clang-format off
@@ -82,36 +82,28 @@ std::uint32_t noteDialects(const ClapPluginProxy& proxy) {
 
 }  // namespace
 
-AudioGuard::AudioGuard(std::atomic<bool>& guard) : guard_(guard) {
-    while (guard_.exchange(true, std::memory_order_acquire)) {
-        std::this_thread::yield();
-    }
-}
-
-AudioGuard::~AudioGuard() { guard_.store(false, std::memory_order_release); }
-
 AudioThreadScope::AudioThreadScope() { audioThreadFlag() = true; }
 
 AudioThreadScope::~AudioThreadScope() { audioThreadFlag() = false; }
 
 bool AudioThreadScope::active() { return audioThreadFlag(); }
 
-ClapInstrument::Impl::Impl() : ClapHostBase("Emerick", "Emerick", "", "1") {}
+ClapPlugin::Impl::Impl() : ClapHostBase("Emerick", "Emerick", "", "1") {}
 
-bool ClapInstrument::Impl::threadCheckIsMainThread() const noexcept {
+bool ClapPlugin::Impl::threadCheckIsMainThread() const noexcept {
     return std::this_thread::get_id() == mainThread && !AudioThreadScope::active();
 }
 
-bool ClapInstrument::Impl::threadCheckIsAudioThread() const noexcept { return AudioThreadScope::active(); }
+bool ClapPlugin::Impl::threadCheckIsAudioThread() const noexcept { return AudioThreadScope::active(); }
 
-bool ClapInstrument::Impl::guiRequestResize(std::uint32_t width, std::uint32_t height) noexcept {
+bool ClapPlugin::Impl::guiRequestResize(std::uint32_t width, std::uint32_t height) noexcept {
     requestedWidth.store(width, std::memory_order_relaxed);
     requestedHeight.store(height, std::memory_order_relaxed);
     resizeRequested.store(true, std::memory_order_release);
     return true;
 }
 
-bool ClapInstrument::Impl::timerSupportRegisterTimer(std::uint32_t periodMs, clap_id* timerId) noexcept {
+bool ClapPlugin::Impl::timerSupportRegisterTimer(std::uint32_t periodMs, clap_id* timerId) noexcept {
     if (!threadCheckIsMainThread()) {
         return false;
     }
@@ -127,11 +119,11 @@ bool ClapInstrument::Impl::timerSupportRegisterTimer(std::uint32_t periodMs, cla
     return true;
 }
 
-bool ClapInstrument::Impl::timerSupportUnregisterTimer(clap_id timerId) noexcept {
+bool ClapPlugin::Impl::timerSupportUnregisterTimer(clap_id timerId) noexcept {
     return std::erase_if(timers, [timerId](const PluginTimer& timer) { return timer.id == timerId; }) > 0;
 }
 
-void ClapInstrument::Impl::fireDueTimers() {
+void ClapPlugin::Impl::fireDueTimers() {
     const auto now = std::chrono::steady_clock::now();
     // A timer callback can unregister timers, so we collect the due ids before calling any.
     std::vector<clap_id> due;
@@ -146,12 +138,12 @@ void ClapInstrument::Impl::fireDueTimers() {
     }
 }
 
-void ClapInstrument::Impl::guiClosed(bool wasDestroyed) noexcept {
+void ClapPlugin::Impl::guiClosed(bool wasDestroyed) noexcept {
     editorClosedByPlugin = !wasDestroyed;
     editorOpen = false;
 }
 
-void ClapInstrument::Impl::deactivate() {
+void ClapPlugin::Impl::deactivate() {
     if (processing.load(std::memory_order_relaxed)) {
         const AudioThreadScope audioThread;
         proxy->stopProcessing();
@@ -163,18 +155,17 @@ void ClapInstrument::Impl::deactivate() {
     }
 }
 
-void ClapInstrument::Impl::allocateBuffers(core::Frames frames) {
+void ClapPlugin::Impl::allocateBuffers(core::Frames frames) {
     allocatePorts(portChannels(*proxy, true), frames, inputPorts, inputBuffers);
     allocatePorts(portChannels(*proxy, false), frames, outputPorts, outputBuffers);
 }
 
-std::expected<std::shared_ptr<ClapInstrument>, std::string> ClapInstrument::create(const std::filesystem::path& bundle,
-                                                                                   const std::string& pluginId) {
+PluginResult createClapPlugin(const std::filesystem::path& bundle, const std::string& pluginId) {
     auto library = ClapLibrary::open(bundle);
     if (!library) {
         return std::unexpected(library.error());
     }
-    auto impl = std::make_unique<Impl>();
+    auto impl = std::make_unique<ClapPlugin::Impl>();
     impl->library = *library;
     const clap_plugin_factory& factory = impl->library->factory();
     const clap_plugin* plugin = factory.create_plugin(&factory, impl->clapHost(), pluginId.c_str());
@@ -187,12 +178,12 @@ std::expected<std::shared_ptr<ClapInstrument>, std::string> ClapInstrument::crea
         return std::unexpected(pluginId + " failed to initialize");
     }
     impl->name = plugin->desc != nullptr && plugin->desc->name != nullptr ? plugin->desc->name : pluginId;
-    return std::make_shared<ClapInstrument>(std::move(impl));
+    return std::make_shared<ClapPlugin>(std::move(impl));
 }
 
-ClapInstrument::ClapInstrument(std::unique_ptr<Impl> impl) : impl_(std::move(impl)) {}
+ClapPlugin::ClapPlugin(std::unique_ptr<Impl> impl) : impl_(std::move(impl)) {}
 
-ClapInstrument::~ClapInstrument() {
+ClapPlugin::~ClapPlugin() {
     closeEditor();
     {
         const AudioGuard guard(impl_->audioGuard);
@@ -201,13 +192,13 @@ ClapInstrument::~ClapInstrument() {
     impl_->proxy->destroy();
 }
 
-const std::string& ClapInstrument::name() const { return impl_->name; }
+const std::string& ClapPlugin::name() const { return impl_->name; }
 
-bool ClapInstrument::producesMidi() const {
+bool ClapPlugin::producesMidi() const {
     return impl_->proxy->canUseNotePorts() && impl_->proxy->notePortsCount(false) > 0;
 }
 
-bool ClapInstrument::activate(double sampleRate, core::Frames maxFrames) {
+bool ClapPlugin::activate(double sampleRate, core::Frames maxFrames) {
     Impl& impl = *impl_;
     if (impl.active && impl.sampleRate == sampleRate && impl.maxFrames == maxFrames) {
         return true;
@@ -224,7 +215,11 @@ bool ClapInstrument::activate(double sampleRate, core::Frames maxFrames) {
     return impl.active;
 }
 
-bool ClapInstrument::idle() {
+core::Frames ClapPlugin::latency() const {
+    return impl_->active && impl_->proxy->canUseLatency() ? impl_->proxy->latencyGet() : 0;
+}
+
+bool ClapPlugin::idle() {
     Impl& impl = *impl_;
     if (impl.callbackRequested.exchange(false, std::memory_order_relaxed)) {
         impl.proxy->onMainThread();
@@ -249,7 +244,7 @@ bool ClapInstrument::idle() {
     return impl.stateDirty.exchange(false, std::memory_order_relaxed);
 }
 
-std::optional<std::vector<std::uint8_t>> ClapInstrument::saveState() const {
+std::optional<std::vector<std::uint8_t>> ClapPlugin::saveState() const {
     if (!impl_->proxy->canUseState()) {
         return std::nullopt;
     }
@@ -264,7 +259,7 @@ std::optional<std::vector<std::uint8_t>> ClapInstrument::saveState() const {
     return impl_->proxy->stateSave(&stream) ? std::optional{std::move(bytes)} : std::nullopt;
 }
 
-bool ClapInstrument::loadState(std::span<const std::uint8_t> bytes) {
+bool ClapPlugin::loadState(std::span<const std::uint8_t> bytes) {
     if (!impl_->proxy->canUseState()) {
         return false;
     }
@@ -281,11 +276,11 @@ bool ClapInstrument::loadState(std::span<const std::uint8_t> bytes) {
     return impl_->proxy->stateLoad(&stream);
 }
 
-bool ClapInstrument::hasEditor() const { return impl_->proxy->canUseGui(); }
+bool ClapPlugin::hasEditor() const { return impl_->proxy->canUseGui(); }
 
-bool ClapInstrument::editorOpen() const { return impl_->editorOpen; }
+bool ClapPlugin::editorOpen() const { return impl_->editorOpen; }
 
-bool ClapInstrument::openFloatingEditor(const std::string& title) {
+bool ClapPlugin::openFloatingEditor(const std::string& title) {
     ClapPluginProxy& proxy = *impl_->proxy;
     // Some plugins never report that the user closed their window, and showing it again then shows nothing, so we
     // always create it anew.
@@ -301,7 +296,7 @@ bool ClapInstrument::openFloatingEditor(const std::string& title) {
     return impl_->editorOpen;
 }
 
-std::optional<EditorSize> ClapInstrument::embedEditor(void* parent) {
+std::optional<EditorSize> ClapPlugin::embedEditor(void* parent) {
     ClapPluginProxy& proxy = *impl_->proxy;
     if (!proxy.canUseGui() || !proxy.guiIsApiSupported(kEditorApi, false) || !proxy.guiCreate(kEditorApi, false)) {
         return std::nullopt;
@@ -327,13 +322,13 @@ std::optional<EditorSize> ClapInstrument::embedEditor(void* parent) {
     return size;
 }
 
-void ClapInstrument::closeEditor() {
+void ClapPlugin::closeEditor() {
     if (std::exchange(impl_->editorOpen, false)) {
         impl_->proxy->guiDestroy();
     }
 }
 
-std::optional<EditorSize> ClapInstrument::takeEditorResize() {
+std::optional<EditorSize> ClapPlugin::takeEditorResize() {
     if (!impl_->resizeRequested.exchange(false, std::memory_order_acquire)) {
         return std::nullopt;
     }

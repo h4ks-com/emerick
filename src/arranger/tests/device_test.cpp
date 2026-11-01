@@ -11,7 +11,7 @@
 #include <string>
 #include <vector>
 
-#include "emerick/engine/clap_instrument.hpp"
+#include "emerick/engine/plugin.hpp"
 #include "style_builder.hpp"
 
 using namespace emerick::engine;
@@ -50,7 +50,7 @@ struct Rig {
     std::filesystem::path folder =
         std::filesystem::temp_directory_path() / ("emerick-arranger-" + std::to_string(std::random_device{}()));
     std::filesystem::path style = folder / "Demo.sty";
-    std::shared_ptr<ClapInstrument> instrument;
+    std::shared_ptr<Plugin> instrument;
     std::array<std::vector<float>, 2> channels{std::vector<float>(kBlock), std::vector<float>(kBlock)};
     std::array<float*, 2> mix{channels[0].data(), channels[1].data()};
 
@@ -68,8 +68,8 @@ struct Rig {
     Rig(Rig&&) = delete;
     Rig& operator=(Rig&&) = delete;
 
-    static std::shared_ptr<ClapInstrument> create(const Json& state) {
-        auto created = ClapInstrument::create(EMERICK_ARRANGER_CLAP, "org.emerick.arranger");
+    static std::shared_ptr<Plugin> create(const Json& state) {
+        auto created = createClapPlugin(EMERICK_ARRANGER_CLAP, "org.emerick.arranger");
         REQUIRE(created.has_value());
         REQUIRE((*created)->loadState(text(state.dump())));
         REQUIRE((*created)->activate(kRate, kBlock));

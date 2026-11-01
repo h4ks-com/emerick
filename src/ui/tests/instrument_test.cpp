@@ -12,7 +12,8 @@ using namespace emerick::app::test;
 
 TEST_CASE("the inspector shows the Sound picker of a General MIDI track, and picking a sound sets it") {
     const QTemporaryDir cache;
-    PluginCatalog catalog({.cacheFolder = cache.path().toStdString(), .scanner = EMERICK_CLAP_SCANNER, .folders = {}});
+    PluginCatalog catalog(
+        {.cacheFolder = cache.path().toStdString(), .scanner = EMERICK_PLUGIN_SCANNER, .folders = {}});
     // We never delete the window, because destroying Qt Quick during static teardown crashes.
     auto* main = new MainWindow([&catalog](ProjectRig& rig) {
         registerPluginActions(rig.registry, rig.nav, catalog);
@@ -44,7 +45,8 @@ TEST_CASE("the inspector shows the Sound picker of a General MIDI track, and pic
 
 TEST_CASE("the highlighted sound shows a preview button that auditions it without picking it") {
     const QTemporaryDir cache;
-    PluginCatalog catalog({.cacheFolder = cache.path().toStdString(), .scanner = EMERICK_CLAP_SCANNER, .folders = {}});
+    PluginCatalog catalog(
+        {.cacheFolder = cache.path().toStdString(), .scanner = EMERICK_PLUGIN_SCANNER, .folders = {}});
     auto* main = new MainWindow([&catalog](ProjectRig& rig) {
         registerPluginActions(rig.registry, rig.nav, catalog);
         registerInstrumentActions(rig.registry, *rig.controller, rig.nav, catalog);

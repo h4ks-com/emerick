@@ -156,7 +156,7 @@ int run(int argc, char** argv) {
         {.cacheFolder =
              (profileFolder.isEmpty() ? QStandardPaths::writableLocation(QStandardPaths::CacheLocation) : profileFolder)
                  .toStdString(),
-         .scanner = (QCoreApplication::applicationDirPath() + "/emerick-clap-scanner").toStdString(),
+         .scanner = (QCoreApplication::applicationDirPath() + "/emerick-plugin-scanner").toStdString(),
          .folders = clapSearchFolders(QCoreApplication::applicationDirPath().toStdString())});
     registerPluginActions(registry, nav, plugins);
     registerInstrumentActions(registry, controller, nav, plugins);

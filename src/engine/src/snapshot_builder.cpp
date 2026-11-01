@@ -194,7 +194,7 @@ void addLanes(Snapshot& snapshot, const Session& session) {
             if (lane.target == AutomationTarget::insert) {
                 const auto& inserts = session.tracks[index].inserts;
                 const auto insert = std::ranges::find(inserts, lane.insert, &Insert::id);
-                if (insert == inserts.end() || lane.param >= kMaxEffectParams) {
+                if (insert == inserts.end() || (!insert->plugin && lane.param >= kMaxEffectParams)) {
                     continue;
                 }
                 added.insert = static_cast<std::size_t>(insert - inserts.begin());
@@ -334,7 +334,7 @@ BuiltSnapshot SnapshotBuilder::build(const Session& session, const StreamLayout&
             state.mixPointers = state.mix |
                                 std::views::transform([](std::vector<float>& channel) { return channel.data(); }) |
                                 std::ranges::to<std::vector>();
-            addInserts(state, track, layout);
+            addInserts(state, track, layout, built.errors);
         }
         if (track.instrument && track.instrument->activate(layout.sampleRate, layout.maxFrames)) {
             state.instrument = track.instrument;
@@ -359,8 +359,19 @@ BuiltSnapshot SnapshotBuilder::build(const Session& session, const StreamLayout&
     return built;
 }
 
-void SnapshotBuilder::addInserts(TrackState& state, const Track& track, const StreamLayout& layout) {
+void SnapshotBuilder::addInserts(TrackState& state, const Track& track, const StreamLayout& layout,
+                                 std::vector<SessionError>& errors) {
     for (const Insert& insert : track.inserts) {
+        if (insert.plugin) {
+            if (insert.plugin->activate(layout.sampleRate, layout.maxFrames)) {
+                state.inserts.push_back(
+                    {.effect = nullptr, .plugin = insert.plugin, .params = {}, .bypass = insert.bypass});
+            } else {
+                errors.push_back({track.id, insert.plugin->name() + " cannot play at " +
+                                                std::to_string(std::lround(layout.sampleRate)) + " Hz"});
+            }
+            continue;
+        }
         const std::string key = track.id + "/" + insert.id + "/" + std::to_string(static_cast<int>(insert.type)) + "/" +
                                 std::to_string(state.mix.size()) + "/" + std::to_string(layout.sampleRate) + "/" +
                                 std::to_string(layout.maxFrames);
@@ -370,7 +381,8 @@ void SnapshotBuilder::addInserts(TrackState& state, const Track& track, const St
         if (effectSpec(insert.type).reportsReduction) {
             meteredInserts_[insert.id] = effect;
         }
-        state.inserts.push_back({.effect = std::move(effect), .params = insert.params, .bypass = insert.bypass});
+        state.inserts.push_back(
+            {.effect = std::move(effect), .plugin = nullptr, .params = insert.params, .bypass = insert.bypass});
     }
 }
 

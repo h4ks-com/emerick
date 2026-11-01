@@ -16,8 +16,8 @@
 #include <utility>
 #include <vector>
 
-#include "emerick/engine/clap_instrument.hpp"
-#include "emerick/engine/clap_scan.hpp"
+#include "emerick/engine/plugin.hpp"
+#include "emerick/engine/plugin_scan.hpp"
 
 using namespace emerick::engine;
 
@@ -27,8 +27,8 @@ constexpr double kRate = 48000.0;
 constexpr emerick::core::Frames kBlock = 512;
 using Message = std::array<std::uint8_t, 3>;
 
-std::shared_ptr<ClapInstrument> generalMidi() {
-    auto created = ClapInstrument::create(EMERICK_GM_CLAP, "org.emerick.gm");
+std::shared_ptr<Plugin> generalMidi() {
+    auto created = createClapPlugin(EMERICK_GM_CLAP, "org.emerick.gm");
     REQUIRE(created.has_value());
     return *created;
 }
@@ -49,7 +49,7 @@ struct ParamValue {
 // Loads the state, sets the params, plays the messages at the start and returns a quarter second of the left channel.
 std::vector<float> render(const std::vector<Message>& messages, const std::vector<ParamValue>& params = {},
                           const std::vector<std::uint8_t>& state = {}) {
-    const std::shared_ptr<ClapInstrument> instrument = generalMidi();
+    const std::shared_ptr<Plugin> instrument = generalMidi();
     if (!state.empty()) {
         REQUIRE(instrument->loadState(state));
     }
@@ -66,18 +66,18 @@ std::vector<float> render(const std::vector<Message>& messages, const std::vecto
         std::vector<float> chunk(kBlock);
         std::ranges::fill(right, 0.0F);
         const std::array<float*, 2> mix{chunk.data(), right.data()};
-        instrument->processBlock(mix, kBlock, 0);
+        instrument->processBlock(mix, kBlock, 0, {});
         left.insert(left.end(), chunk.begin(), chunk.end());
     }
     return left;
 }
 
-void playBlock(ClapInstrument& instrument, const Message& message) {
+void playBlock(Plugin& instrument, const Message& message) {
     instrument.queueMidi(message, 0);
     std::vector<float> left(kBlock);
     std::vector<float> right(kBlock);
     const std::array<float*, 2> mix{left.data(), right.data()};
-    instrument.processBlock(mix, kBlock, 0);
+    instrument.processBlock(mix, kBlock, 0, {});
 }
 
 float loudest(std::span<const float> samples) {
@@ -156,7 +156,7 @@ TEST_CASE("a program change plays another General MIDI sound") {
 }
 
 TEST_CASE("the General MIDI instrument lists its sounds, drum kits and Follow program changes as params") {
-    const std::vector<ClapParam> params = generalMidi()->params();
+    const std::vector<PluginParam> params = generalMidi()->params();
     REQUIRE(params.size() == 5);
     CHECK(params[0].name == "Sound");
     CHECK(params[0].enumerated);
@@ -185,7 +185,7 @@ TEST_CASE("the Highest note param drops note-ons above it and keeps their note-o
     CHECK(loudest(render({{0x90, 96, 100}})) > 0.01F);
 
     const auto lastBlock = [](bool release) {
-        const std::shared_ptr<ClapInstrument> instrument = generalMidi();
+        const std::shared_ptr<Plugin> instrument = generalMidi();
         REQUIRE(instrument->activate(kRate, kBlock));
         playBlock(*instrument, {0xC0, kOrgan, 0});
         playBlock(*instrument, {0x90, 96, 100});
@@ -195,7 +195,7 @@ TEST_CASE("the Highest note param drops note-ons above it and keeps their note-o
         std::vector<float> right(kBlock);
         const std::array<float*, 2> mix{left.data(), right.data()};
         for (int block = 0; block < 40; ++block) {
-            instrument->processBlock(mix, kBlock, 0);
+            instrument->processBlock(mix, kBlock, 0, {});
         }
         return left;
     };
@@ -217,7 +217,7 @@ TEST_CASE("the Sound param plays its sound on every melodic channel until a prog
 }
 
 TEST_CASE("a program change on a melodic channel sets the Sound param and tells the host") {
-    const std::shared_ptr<ClapInstrument> instrument = generalMidi();
+    const std::shared_ptr<Plugin> instrument = generalMidi();
     REQUIRE(instrument->activate(kRate, kBlock));
     playBlock(*instrument, {0xC3, 73, 0});
     CHECK(instrument->takeParamsChanged());
@@ -230,7 +230,7 @@ TEST_CASE("a program change on a melodic channel sets the Sound param and tells 
 }
 
 TEST_CASE("a program change on a drum channel that names a kit sets the Drum kit param and tells the host") {
-    const std::shared_ptr<ClapInstrument> instrument = generalMidi();
+    const std::shared_ptr<Plugin> instrument = generalMidi();
     REQUIRE(instrument->activate(kRate, kBlock));
     playBlock(*instrument, {0xC9, 25, 0});
     CHECK(instrument->takeParamsChanged());
@@ -353,7 +353,7 @@ TEST_CASE("a channel a drum bank select made a drum channel keeps its kit when a
 TEST_CASE(
     "the instrument saves its SoundFont path, sound, drum kit and Follow program changes, and reads a plain path as "
     "older projects saved") {
-    const std::shared_ptr<ClapInstrument> instrument = generalMidi();
+    const std::shared_ptr<Plugin> instrument = generalMidi();
     instrument->setParam(kSound, kFlute);
     instrument->setParam(kDrumKit, 4.0);
     instrument->setParam(kFollow, 0.0);
@@ -364,7 +364,7 @@ TEST_CASE(
     CHECK(std::string(saved->begin(), saved->end()) ==
           R"({"drumKit":4,"drumsEverywhere":true,"followProgramChanges":false,"highestNote":95,"sound":73,)"
           R"("soundFont":""})");
-    const std::shared_ptr<ClapInstrument> reloaded = generalMidi();
+    const std::shared_ptr<Plugin> reloaded = generalMidi();
     REQUIRE(reloaded->loadState(*saved));
     CHECK(reloaded->paramValue(kSound) == kFlute);
     CHECK(reloaded->paramText(kDrumKit, *reloaded->paramValue(kDrumKit)) == "TR-808");
@@ -393,7 +393,7 @@ TEST_CASE("a drum map plays each drum channel note as its mapped note and drops 
     }
     const std::string map = R"("drumMap":[)" + notes + "]";
     const std::string mapped = "{" + map + "}";
-    const std::shared_ptr<ClapInstrument> instrument = generalMidi();
+    const std::shared_ptr<Plugin> instrument = generalMidi();
     REQUIRE(instrument->loadState(std::vector<std::uint8_t>(mapped.begin(), mapped.end())));
     const auto saved = instrument->saveState();
     REQUIRE(saved.has_value());

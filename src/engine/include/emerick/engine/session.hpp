@@ -12,8 +12,8 @@
 #include "emerick/core/fade.hpp"
 #include "emerick/core/shared_vector.hpp"
 #include "emerick/core/time.hpp"
-#include "emerick/engine/clap_instrument.hpp"
 #include "emerick/engine/effects.hpp"
+#include "emerick/engine/plugin.hpp"
 
 namespace emerick::engine {
 
@@ -69,12 +69,14 @@ struct Send {
 };
 
 // An insert effect on a track's signal before its fader, pan and sends. Its id stays the same across sessions, so the
-// effect keeps its state while the insert lives.
+// effect keeps its state while the insert lives. An insert with a plugin plays the plugin in place of a built-in
+// effect; the app owns the plugin, and a snapshot shares it until it retires on the UI thread.
 struct Insert {
     std::string id;
     EffectType type = EffectType::eq;
     bool bypass = false;
     EffectParams params{};
+    std::shared_ptr<Plugin> plugin;
 };
 
 // The parameter a lane moves. Gain and send levels are in dB, pan runs from -1 to 1 and mute is on from 0.5.
@@ -92,7 +94,8 @@ struct AutomationLane {
     AutomationTarget target = AutomationTarget::gain;
     std::string bus;
     std::vector<AutomationPoint> points;  // sorted by tick
-    // An insert lane names the insert and the index of the param it moves in the effect's table.
+    // An insert lane names the insert and the index of the param it moves in the effect's table, or for a plugin insert
+    // the plugin's param id, with values from Plugin::processValue.
     std::string insert;
     std::size_t param = 0;
 };
@@ -130,7 +133,7 @@ struct Track {
     std::vector<AutomationLane> automation;
     // A MIDI track with an instrument plays its MIDI through it, and its audio mixes like an audio track's. The app
     // owns the instrument; a snapshot shares it until it retires on the UI thread.
-    std::shared_ptr<ClapInstrument> instrument;
+    std::shared_ptr<Plugin> instrument;
 };
 
 // Click and sample play one sound per beat, a groove plays a drum pattern, and the MIDI modes send either as notes.

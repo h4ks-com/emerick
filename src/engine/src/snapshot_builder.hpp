@@ -56,7 +56,8 @@ private:
                                                      double sampleRate);
     void addRecorder(TrackState& state, const Track& track, const Session& session, const StreamLayout& layout,
                      Frames captureOffset);
-    void addInserts(TrackState& state, const Track& track, const StreamLayout& layout);
+    void addInserts(TrackState& state, const Track& track, const StreamLayout& layout,
+                    std::vector<SessionError>& errors);
     void addMetronome(Snapshot& snapshot, const Session& session, const StreamLayout& layout,
                       std::vector<SessionError>& errors);
     std::shared_ptr<const DrumSounds> drumSounds(const Metronome& metronome, double sampleRate,

@@ -44,7 +44,7 @@ struct SourceRig : ProjectRig {
 
     // The test folder holds a bundle that hangs, so a short timeout keeps each scan quick.
     PluginCatalog catalog{{.cacheFolder = path("cache"),
-                           .scanner = EMERICK_CLAP_SCANNER,
+                           .scanner = EMERICK_PLUGIN_SCANNER,
                            .folders = {},
                            .timeout = std::chrono::milliseconds(500)}};
 };

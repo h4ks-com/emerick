@@ -16,7 +16,7 @@ TEST_CASE("the MIDI input picker lists the devices of other tracks, and picking 
     const QTemporaryDir cache;
     // The test folder holds a bundle that hangs, so a short timeout keeps the scan quick.
     PluginCatalog catalog({.cacheFolder = cache.path().toStdString(),
-                           .scanner = EMERICK_CLAP_SCANNER,
+                           .scanner = EMERICK_PLUGIN_SCANNER,
                            .folders = {},
                            .timeout = std::chrono::milliseconds(500)});
     // We never delete the window, because destroying Qt Quick during static teardown crashes.

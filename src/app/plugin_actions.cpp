@@ -20,7 +20,7 @@ Json catalogJson(const PluginCatalog& catalog) {
     const std::vector<CatalogPlugin> plugins = catalog.plugins();
     const auto blocked = catalog.blocked();
     return {{"plugins", plugins | std::views::transform([](const CatalogPlugin& plugin) {
-                            const engine::ClapDescriptor& described = plugin.descriptor;
+                            const engine::PluginDescriptor& described = plugin.descriptor;
                             return Json{{"id", described.id},
                                         {"name", described.name},
                                         {"vendor", described.vendor},

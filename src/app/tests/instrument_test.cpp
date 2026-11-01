@@ -38,7 +38,7 @@ struct InstrumentRig : ProjectRig {
 
     // The test folder holds a bundle that hangs, so a short timeout keeps each scan quick.
     PluginCatalog catalog{{.cacheFolder = path("cache"),
-                           .scanner = EMERICK_CLAP_SCANNER,
+                           .scanner = EMERICK_PLUGIN_SCANNER,
                            .folders = {},
                            .timeout = std::chrono::milliseconds(500)}};
 };
@@ -335,7 +335,7 @@ TEST_CASE("instrument.setParam picks a stepped param's choice by its text and na
 }
 
 TEST_CASE("a choice text picks the exact match first, else the only case-insensitive match") {
-    const engine::ClapParam voice{
+    const engine::PluginParam voice{
         .id = 0,
         .name = "Voice",
         .choices = {"Colors Of Iberia Genos / Italian TenorSax", "Colors of Iberia Genos / Italian TenorSax",
@@ -345,7 +345,7 @@ TEST_CASE("a choice text picks the exact match first, else the only case-insensi
 }
 
 TEST_CASE("an ambiguous or unknown choice text names up to three close choices") {
-    const engine::ClapParam voice{
+    const engine::PluginParam voice{
         .id = 0,
         .name = "Voice",
         .choices = {"Colors Of Iberia Genos / Italian TenorSax", "Colors of Iberia Genos / Italian TenorSax",

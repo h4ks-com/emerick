@@ -36,10 +36,10 @@ constexpr std::array kPhrase{48, 52, 55, 60};
 constexpr double kPhraseSeconds = 0.4;
 const core::TempoMap kAuditionTempo;
 
-const engine::ClapParam& voiceParam(const std::vector<engine::ClapParam>& params, const Json& given,
-                                    const std::string& instrument) {
+const engine::PluginParam& voiceParam(const std::vector<engine::PluginParam>& params, const Json& given,
+                                      const std::string& instrument) {
     if (const auto id = optionalParam<std::uint32_t>(given, "param")) {
-        const auto found = std::ranges::find(params, *id, &engine::ClapParam::id);
+        const auto found = std::ranges::find(params, *id, &engine::PluginParam::id);
         if (found == params.end() || found->choices.empty()) {
             throw AppError(instrument + " has no param " + std::to_string(*id) +
                            " with choices, run instrument.params for ids");
@@ -47,7 +47,7 @@ const engine::ClapParam& voiceParam(const std::vector<engine::ClapParam>& params
         return *found;
     }
     const auto found =
-        std::ranges::find_if(params, [](const engine::ClapParam& param) { return !param.choices.empty(); });
+        std::ranges::find_if(params, [](const engine::PluginParam& param) { return !param.choices.empty(); });
     if (found == params.end()) {
         throw AppError(instrument + " has no voices to audition, run instrument.params for its params");
     }
@@ -134,8 +134,8 @@ Audition prepareAudition(const Registry& registry, ProjectController& controller
     if (!live) {
         throw AppError("the instrument of track " + track.name + " is not loaded, see the track's warning");
     }
-    const std::vector<engine::ClapParam> choices = live->params();
-    const engine::ClapParam& info = voiceParam(choices, params, live->name());
+    const std::vector<engine::PluginParam> choices = live->params();
+    const engine::PluginParam& info = voiceParam(choices, params, live->name());
     Audition audition;
     audition.trackId = id.value;
     audition.slot = *track.instrument;
@@ -172,15 +172,15 @@ Audition prepareAudition(const Registry& registry, ProjectController& controller
 }
 
 RenderJob auditionJob(const Audition& audition) {
-    auto created = engine::ClapInstrument::create(audition.slot.bundle, audition.slot.pluginId);
+    auto created = engine::createClapPlugin(audition.slot.bundle, audition.slot.pluginId);
     if (!created) {
         throw AppError("cannot audition " + audition.slot.name + ": " + created.error());
     }
-    const std::shared_ptr<engine::ClapInstrument>& instrument = *created;
+    const std::shared_ptr<engine::Plugin>& instrument = *created;
     if (!audition.slot.state.empty() && !instrument->loadState(audition.slot.state)) {
         throw AppError("cannot audition " + audition.slot.name + ": it did not load its settings");
     }
-    for (const engine::ClapParam& param : instrument->params()) {
+    for (const engine::PluginParam& param : instrument->params()) {
         if (const auto channel = paramChannel(param); channel && *channel != audition.channel) {
             instrument->setParam(param.id, param.defaultValue);
         }

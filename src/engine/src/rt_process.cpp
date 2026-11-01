@@ -338,7 +338,8 @@ float laneValue(const LaneState& lane, Frames frame) {
 
 float gainOfDb(float db) { return std::pow(10.0F, db / 20.0F); }
 
-void applyLanes(TrackState& track, Frames frame) {
+// A plugin takes one value per lane at the start of each block, so later parts of the block leave its params alone.
+void applyLanes(TrackState& track, Frames frame, bool blockStart) {
     for (const LaneState& lane : track.lanes) {
         const float value = laneValue(lane, frame);
         switch (lane.target) {
@@ -355,7 +356,11 @@ void applyLanes(TrackState& track, Frames frame) {
                 track.sends[lane.send].gain = gainOfDb(value);
                 break;
             case AutomationTarget::insert:
-                track.inserts[lane.insert].params.at(lane.param) = value;
+                if (InsertState& insert = track.inserts[lane.insert]; !insert.plugin) {
+                    insert.params.at(lane.param) = value;
+                } else if (blockStart) {
+                    insert.plugin->queueParam(static_cast<std::uint32_t>(lane.param), value);
+                }
                 break;
         }
     }
@@ -376,7 +381,8 @@ constexpr Frames kAutomationStep = 32;
 // In mix order, so each bus has every source in its mix before its turn: trims each track, runs its inserts, applies
 // its fader and pan, feeds its sends, meters it, adds it to its outputs or its output bus and clears it for the next
 // block.
-void mixTracks(Snapshot& snapshot, const AudioBlock& block, const BlockTime& time) {
+void mixTracks(Snapshot& snapshot, const AudioBlock& block, const BlockTime& time,
+               const InstrumentTransport& transport) {
     if (block.frames == 0) {
         return;
     }
@@ -385,17 +391,21 @@ void mixTracks(Snapshot& snapshot, const AudioBlock& block, const BlockTime& tim
         TrackState& track = snapshot.tracks[index];
         if (!track.mix.empty() && audible(track, soloActive)) {
             if (!track.lanes.empty()) {
-                applyLanes(track, time.at(block.frames));
+                applyLanes(track, time.at(block.frames), true);
             }
             applyTrim(track, block.frames);
             for (InsertState& insert : track.inserts) {
-                insert.effect->process(track.mixPointers, block.frames, insert.params, insert.bypass,
-                                       snapshot.tempo.bpm);
+                if (insert.effect) {
+                    insert.effect->process(track.mixPointers, block.frames, insert.params, insert.bypass,
+                                           snapshot.tempo.bpm);
+                } else if (!insert.bypass) {
+                    insert.plugin->processEffect(track.mixPointers, block.frames, block.hostTimeNs, transport);
+                }
             }
             const Frames step = track.lanes.empty() ? block.frames : kAutomationStep;
             for (Frames offset = 0; offset < block.frames; offset += step) {
                 const Frames frames = std::min(step, block.frames - offset);
-                applyLanes(track, time.at(offset + frames));
+                applyLanes(track, time.at(offset + frames), false);
                 mixPart(snapshot, track, offset, frames);
             }
             for (std::size_t channel = 0; channel < track.mix.size(); ++channel) {
@@ -686,7 +696,7 @@ void processBlock(RealtimeState& state, const AudioBlock& block) {
     monitorAndRecordAudio(snapshot, block, rollFrom);
     playInstruments(state, snapshot, block, blockStartFrame, time);
     playPreview(state, snapshot, block.frames);
-    mixTracks(snapshot, block, time);
+    mixTracks(snapshot, block, time, instrumentTransport(state, snapshot, time));
     state.publishedFrame.store(state.frame, std::memory_order_relaxed);
     state.publishedPlaying.store(state.transportPlaying || state.countInLeft > 0, std::memory_order_relaxed);
 }

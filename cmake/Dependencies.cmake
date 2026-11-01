@@ -66,6 +66,49 @@ FetchContent_Declare(pugixml
     SYSTEM)
 
 FetchContent_MakeAvailable(nlohmann_json readerwriterqueue libremidi sol2 Catch2 clap clap_helpers pugixml)
+
+# The VST3 SDK's headers include each other from the folder that holds pluginterfaces and public.sdk, so both land in
+# one folder. We build only the hosting parts we use, as their own target without our warnings.
+set(vst3_sdk_tag v3.8.1_build_84)
+set(vst3_sdk_folder ${FETCHCONTENT_BASE_DIR}/vst3sdk)
+FetchContent_Declare(vst3_pluginterfaces
+    URL https://github.com/steinbergmedia/vst3_pluginterfaces/archive/refs/tags/${vst3_sdk_tag}.tar.gz
+    URL_HASH SHA256=19e88e225b6ecb4a3c429d3ff2fd511be9c6c8b8b1c7e86b05949b45c0553e2d
+    SOURCE_DIR ${vst3_sdk_folder}/pluginterfaces
+    SOURCE_SUBDIR no-cmake)
+FetchContent_Declare(vst3_public_sdk
+    URL https://github.com/steinbergmedia/vst3_public_sdk/archive/refs/tags/${vst3_sdk_tag}.tar.gz
+    URL_HASH SHA256=f683db0c831dd6603a1bb8c7747a6e1dd223ac3423e288b08c5706cf30b76ae8
+    SOURCE_DIR ${vst3_sdk_folder}/public.sdk
+    SOURCE_SUBDIR no-cmake)
+FetchContent_MakeAvailable(vst3_pluginterfaces vst3_public_sdk)
+set(vst3_hosting ${vst3_sdk_folder}/public.sdk/source/vst/hosting)
+add_library(vst3_sdk STATIC
+    ${vst3_sdk_folder}/pluginterfaces/base/coreiids.cpp
+    ${vst3_sdk_folder}/pluginterfaces/base/funknown.cpp
+    ${vst3_sdk_folder}/public.sdk/source/common/commonstringconvert.cpp
+    ${vst3_sdk_folder}/public.sdk/source/common/memorystream.cpp
+    ${vst3_sdk_folder}/public.sdk/source/vst/vstinitiids.cpp
+    ${vst3_sdk_folder}/public.sdk/source/vst/utility/stringconvert.cpp
+    ${vst3_sdk_folder}/public.sdk/source/vst/moduleinfo/moduleinfoparser.cpp
+    ${vst3_hosting}/hostclasses.cpp
+    ${vst3_hosting}/module.cpp
+    ${vst3_hosting}/pluginterfacesupport.cpp)
+if(APPLE)
+    enable_language(OBJCXX)
+    target_sources(vst3_sdk PRIVATE ${vst3_hosting}/module_mac.mm)
+    set_source_files_properties(${vst3_hosting}/module_mac.mm PROPERTIES COMPILE_OPTIONS -fobjc-arc)
+    target_link_libraries(vst3_sdk PUBLIC "-framework Cocoa")
+elseif(WIN32)
+    target_sources(vst3_sdk PRIVATE ${vst3_hosting}/module_win32.cpp)
+else()
+    target_sources(vst3_sdk PRIVATE ${vst3_hosting}/module_linux.cpp)
+    target_link_libraries(vst3_sdk PUBLIC ${CMAKE_DL_LIBS})
+endif()
+target_include_directories(vst3_sdk SYSTEM PUBLIC ${vst3_sdk_folder})
+target_compile_options(vst3_sdk PRIVATE -w)
+# The test plugins link the SDK into shared modules.
+set_target_properties(vst3_sdk PROPERTIES POSITION_INDEPENDENT_CODE ON)
 # The expansion voices instrument is a shared module, so the static pugixml it links must be position independent.
 set_target_properties(pugixml-static PROPERTIES POSITION_INDEPENDENT_CODE ON)
 

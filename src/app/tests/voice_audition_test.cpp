@@ -27,7 +27,7 @@ struct GeneralMidiRig : ProjectRig {
     }
 
     PluginCatalog catalog{{.cacheFolder = path("cache"),
-                           .scanner = EMERICK_CLAP_SCANNER,
+                           .scanner = EMERICK_PLUGIN_SCANNER,
                            .folders = {},
                            .timeout = std::chrono::milliseconds(5000)}};
     std::string id;

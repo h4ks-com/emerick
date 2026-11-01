@@ -1,4 +1,4 @@
-// Everything here runs on the audio thread: it queues MIDI for a CLAP instrument and runs its process call on
+// Everything here runs on the audio thread: it queues MIDI and params for a CLAP plugin and runs its process call on
 // buffers and event lists the main thread allocated when it activated the plugin.
 
 #include <algorithm>
@@ -20,7 +20,7 @@ clap_event_header header(std::uint32_t size, std::uint32_t time, std::uint16_t t
 
 // Notes go as CLAP note events to a plugin that reads them, every other channel message as MIDI, and a sysex as a
 // sysex whose bytes stay in the queue's pool through the process call.
-void addEvent(ClapInstrument::Impl& impl, const QueuedMidi& message, std::uint32_t time) {
+void addEvent(ClapPlugin::Impl& impl, const QueuedMidi& message, std::uint32_t time) {
     const auto bytes = std::span(impl.queued.bytes).subspan(message.offset, message.size);
     const std::size_t index = impl.eventCount;
     if (bytes[0] == core::midi::kSysexStart) {
@@ -59,7 +59,7 @@ void addEvent(ClapInstrument::Impl& impl, const QueuedMidi& message, std::uint32
 }
 
 // CLAP wants events in time order, and an insertion sort keeps messages at the same time in the order they came.
-void sortEvents(ClapInstrument::Impl& impl) {
+void sortEvents(ClapPlugin::Impl& impl) {
     const auto events = std::span(impl.events).first(impl.eventCount);
     for (std::size_t index = 1; index < events.size(); ++index) {
         const clap_event_header* moving = events[index];
@@ -71,7 +71,7 @@ void sortEvents(ClapInstrument::Impl& impl) {
     }
 }
 
-void collectEvents(ClapInstrument::Impl& impl, core::Frames frames, std::int64_t hostTimeNs) {
+void collectEvents(ClapPlugin::Impl& impl, core::Frames frames, std::int64_t hostTimeNs) {
     impl.eventCount = 0;
     for (const QueuedMidi& message : std::span(impl.queued.messages).first(impl.queued.count)) {
         const core::Frames offset =
@@ -79,10 +79,11 @@ void collectEvents(ClapInstrument::Impl& impl, core::Frames frames, std::int64_t
         addEvent(impl, message, static_cast<std::uint32_t>(offset));
     }
     impl.collectParams();
+    impl.collectAutomation();
     sortEvents(impl);
 }
 
-void mixInto(const ClapInstrument::Impl& impl, std::span<float* const> mix, core::Frames frames) {
+void mixInto(const ClapPlugin::Impl& impl, std::span<float* const> mix, core::Frames frames) {
     if (impl.outputPorts.empty() || impl.outputPorts.front().channels.empty()) {
         return;
     }
@@ -95,7 +96,7 @@ void mixInto(const ClapInstrument::Impl& impl, std::span<float* const> mix, core
 
 }  // namespace
 
-void ClapInstrument::Impl::collectParams() {
+void ClapPlugin::Impl::collectParams() {
     paramEventCount = 0;
     QueuedParam change;
     while (paramEventCount < paramEvents.size() && readValue(paramQueue, change)) {
@@ -112,7 +113,23 @@ void ClapInstrument::Impl::collectParams() {
     }
 }
 
-clap_input_events ClapInstrument::Impl::inputEvents() {
+void ClapPlugin::Impl::collectAutomation() {
+    for (std::size_t index = 0; index < automatedCount; ++index) {
+        clap_event_param_value& event = automatedEvents[index];
+        event = {.header = header(sizeof(clap_event_param_value), 0, CLAP_EVENT_PARAM_VALUE),
+                 .param_id = automated[index].id,
+                 .cookie = nullptr,
+                 .note_id = -1,
+                 .port_index = -1,
+                 .channel = -1,
+                 .key = -1,
+                 .value = automated[index].value};
+        events[eventCount++] = &event.header;
+    }
+    automatedCount = 0;
+}
+
+clap_input_events ClapPlugin::Impl::inputEvents() {
     return {.ctx = this,
             .size =
                 [](const clap_input_events* list) {
@@ -122,7 +139,7 @@ clap_input_events ClapInstrument::Impl::inputEvents() {
                       std::uint32_t index) { return static_cast<const Impl*>(list->ctx)->events[index]; }};
 }
 
-clap_output_events ClapInstrument::Impl::outputEvents() {
+clap_output_events ClapPlugin::Impl::outputEvents() {
     return {.ctx = this, .try_push = [](const clap_output_events* list, const clap_event_header* event) {
                 if (event->space_id == CLAP_CORE_EVENT_SPACE_ID && event->type == CLAP_EVENT_PARAM_VALUE) {
                     static_cast<Impl*>(list->ctx)->paramsChanged.store(true, std::memory_order_relaxed);
@@ -145,7 +162,7 @@ std::uint8_t velocityByte(double velocity, bool on) {
 }
 
 // The plugin's notes come out as MIDI note messages, so a track that takes them records and plays them as MIDI.
-void produce(ClapInstrument::Impl& impl, const clap_event_header& event) {
+void produce(ClapPlugin::Impl& impl, const clap_event_header& event) {
     std::array<std::uint8_t, 3> message{};
     std::span<const std::uint8_t> bytes;
     switch (event.type) {
@@ -189,7 +206,7 @@ void produce(ClapInstrument::Impl& impl, const clap_event_header& event) {
 
 }  // namespace
 
-clap_output_events ClapInstrument::Impl::processOutputEvents() {
+clap_output_events ClapPlugin::Impl::processOutputEvents() {
     return {.ctx = this, .try_push = [](const clap_output_events* list, const clap_event_header* event) {
                 auto& impl = *static_cast<Impl*>(list->ctx);
                 if (event->space_id != CLAP_CORE_EVENT_SPACE_ID) {
@@ -204,7 +221,7 @@ clap_output_events ClapInstrument::Impl::processOutputEvents() {
             }};
 }
 
-void ClapInstrument::queueMidi(std::span<const std::uint8_t> bytes, std::int64_t timestampNs) {
+void ClapPlugin::queueMidi(std::span<const std::uint8_t> bytes, std::int64_t timestampNs) {
     Impl& impl = *impl_;
     const bool sysex = !bytes.empty() && bytes[0] == core::midi::kSysexStart;
     if (bytes.empty() || (!sysex && (bytes.size() > 3 || !core::midi::isChannelMessage(bytes[0])))) {
@@ -217,7 +234,14 @@ void ClapInstrument::queueMidi(std::span<const std::uint8_t> bytes, std::int64_t
     }
 }
 
-std::span<const InstrumentMidi> ClapInstrument::producedMidi() const {
+void ClapPlugin::queueParam(std::uint32_t id, double value) {
+    Impl& impl = *impl_;
+    if (impl.automatedCount < impl.automated.size()) {
+        impl.automated[impl.automatedCount++] = {.id = id, .value = value};
+    }
+}
+
+std::span<const InstrumentMidi> ClapPlugin::producedMidi() const {
     return std::span(impl_->produced.messages).first(impl_->produced.count);
 }
 
@@ -254,40 +278,76 @@ clap_event_transport clapTransport(const InstrumentTransport& transport) {
 
 }  // namespace
 
-void ClapInstrument::processBlock(std::span<float* const> mix, core::Frames frames, std::int64_t hostTimeNs,
-                                  const InstrumentTransport& transport) {
+bool ClapPlugin::Impl::process(core::Frames frames, std::int64_t hostTimeNs, const InstrumentTransport& transport) {
+    if (active && frames <= maxFrames && !processing.load(std::memory_order_relaxed)) {
+        processing.store(proxy->startProcessing(), std::memory_order_relaxed);
+    }
+    if (!active || frames > maxFrames || !processing.load(std::memory_order_relaxed)) {
+        return false;
+    }
+    collectEvents(*this, frames, hostTimeNs);
+    for (PortBuffers& port : outputPorts) {
+        for (std::vector<float>& channel : port.channels) {
+            std::fill_n(channel.data(), frames, 0.0F);
+        }
+    }
+    const clap_input_events input = inputEvents();
+    const clap_output_events output = processOutputEvents();
+    const clap_event_transport clock = clapTransport(transport);
+    const clap_process process{.steady_time = -1,
+                               .frames_count = static_cast<std::uint32_t>(frames),
+                               .transport = &clock,
+                               .audio_inputs = inputBuffers.data(),
+                               .audio_outputs = outputBuffers.data(),
+                               .audio_inputs_count = static_cast<std::uint32_t>(inputBuffers.size()),
+                               .audio_outputs_count = static_cast<std::uint32_t>(outputBuffers.size()),
+                               .in_events = &input,
+                               .out_events = &output};
+    const bool played = proxy->process(&process) != CLAP_PROCESS_ERROR;
+    paramsApplied.fetch_add(paramEventCount, std::memory_order_release);
+    return played;
+}
+
+void ClapPlugin::processBlock(std::span<float* const> mix, core::Frames frames, std::int64_t hostTimeNs,
+                              const InstrumentTransport& transport) {
     Impl& impl = *impl_;
     impl.produced.clear();
     if (frames <= 0 || impl.audioGuard.exchange(true, std::memory_order_acquire)) {
         return;
     }
-    const AudioThreadScope audioThread;
-    if (impl.active && frames <= impl.maxFrames && !impl.processing.load(std::memory_order_relaxed)) {
-        impl.processing.store(impl.proxy->startProcessing(), std::memory_order_relaxed);
-    }
-    if (impl.active && frames <= impl.maxFrames && impl.processing.load(std::memory_order_relaxed)) {
-        collectEvents(impl, frames, hostTimeNs);
-        for (PortBuffers& port : impl.outputPorts) {
-            for (std::vector<float>& channel : port.channels) {
-                std::fill_n(channel.data(), frames, 0.0F);
-            }
-        }
-        const clap_input_events input = impl.inputEvents();
-        const clap_output_events output = impl.processOutputEvents();
-        const clap_event_transport clock = clapTransport(transport);
-        const clap_process process{.steady_time = -1,
-                                   .frames_count = static_cast<std::uint32_t>(frames),
-                                   .transport = &clock,
-                                   .audio_inputs = impl.inputBuffers.data(),
-                                   .audio_outputs = impl.outputBuffers.data(),
-                                   .audio_inputs_count = static_cast<std::uint32_t>(impl.inputBuffers.size()),
-                                   .audio_outputs_count = static_cast<std::uint32_t>(impl.outputBuffers.size()),
-                                   .in_events = &input,
-                                   .out_events = &output};
-        if (impl.proxy->process(&process) != CLAP_PROCESS_ERROR) {
+    {
+        const AudioThreadScope audioThread;
+        if (impl.process(frames, hostTimeNs, transport)) {
             mixInto(impl, mix, frames);
         }
-        impl.paramsApplied.fetch_add(impl.paramEventCount, std::memory_order_release);
+    }
+    impl.queued.clear();
+    impl.audioGuard.store(false, std::memory_order_release);
+}
+
+void ClapPlugin::processEffect(std::span<float* const> channels, core::Frames frames, std::int64_t hostTimeNs,
+                               const InstrumentTransport& transport) {
+    Impl& impl = *impl_;
+    impl.produced.clear();
+    if (frames <= 0 || channels.empty() || impl.audioGuard.exchange(true, std::memory_order_acquire)) {
+        return;
+    }
+    {
+        const AudioThreadScope audioThread;
+        if (!impl.inputPorts.empty()) {
+            auto& inputs = impl.inputPorts.front().channels;
+            for (std::size_t channel = 0; channel < inputs.size(); ++channel) {
+                const float* source = channels[std::min(channel, channels.size() - 1)];
+                std::copy_n(source, frames, inputs[channel].data());
+            }
+        }
+        if (impl.process(frames, hostTimeNs, transport) && !impl.outputPorts.empty() &&
+            !impl.outputPorts.front().channels.empty()) {
+            const auto& outputs = impl.outputPorts.front().channels;
+            for (std::size_t channel = 0; channel < channels.size(); ++channel) {
+                std::copy_n(outputs[std::min(channel, outputs.size() - 1)].data(), frames, channels[channel]);
+            }
+        }
     }
     impl.queued.clear();
     impl.audioGuard.store(false, std::memory_order_release);

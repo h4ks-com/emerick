@@ -7,7 +7,7 @@
 #include <ranges>
 #include <vector>
 
-#include "emerick/engine/clap_instrument.hpp"
+#include "emerick/engine/plugin.hpp"
 #include "rig.hpp"
 
 using namespace emerick::engine;
@@ -43,8 +43,8 @@ const emerick::core::TempoMap kTempo{120.0, {4, 4}};
 constexpr Frames kBeatFrames = 24000;
 const Bytes kSysex{0xF0, 0x43, 0x7E, 0x02, 0x10, 0x00, 0xF7};
 
-std::shared_ptr<ClapInstrument> sine() {
-    auto created = ClapInstrument::create(EMERICK_TEST_SINE_CLAP, "org.emerick.test.sine");
+std::shared_ptr<Plugin> sine() {
+    auto created = createClapPlugin(EMERICK_TEST_SINE_CLAP, "org.emerick.test.sine");
     REQUIRE(created.has_value());
     return *created;
 }
@@ -86,27 +86,27 @@ struct Buffers {
 }  // namespace
 
 TEST_CASE("a sysex reaches an instrument intact, and what it sends comes back as MIDI") {
-    const std::shared_ptr<ClapInstrument> instrument = sine();
+    const std::shared_ptr<Plugin> instrument = sine();
     CHECK(instrument->producesMidi());
     REQUIRE(instrument->activate(kRate, 512));
     Buffers buffers;
     instrument->queueMidi(kSysex, 0);
     instrument->queueMidi(Bytes{0x91, 60, 100}, 0);
-    instrument->processBlock(buffers.mix, 512, 0);
+    instrument->processBlock(buffers.mix, 512, 0, {});
     CHECK(bytesOf(instrument->producedMidi()) == std::vector<Bytes>{kSysex, {0x91, 60, 100}});
-    instrument->processBlock(buffers.mix, 512, 0);
+    instrument->processBlock(buffers.mix, 512, 0, {});
     CHECK(instrument->producedMidi().empty());
 }
 
 TEST_CASE("queueing MIDI and sysex and processing an instrument never allocate") {
-    const std::shared_ptr<ClapInstrument> instrument = sine();
+    const std::shared_ptr<Plugin> instrument = sine();
     REQUIRE(instrument->activate(kRate, 512));
     Buffers buffers;
-    instrument->processBlock(buffers.mix, 512, 0);
+    instrument->processBlock(buffers.mix, 512, 0, {});
     countingAllocations = true;
     instrument->queueMidi(kSysex, 0);
     instrument->queueMidi(std::array<std::uint8_t, 3>{0x90, 60, 100}, 0);
-    instrument->processBlock(buffers.mix, 512, 0);
+    instrument->processBlock(buffers.mix, 512, 0, {});
     const std::size_t produced = instrument->producedMidi().size();
     countingAllocations = false;
     CHECK(produced == 2);

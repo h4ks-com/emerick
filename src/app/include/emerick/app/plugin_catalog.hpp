@@ -7,12 +7,12 @@
 #include <string>
 #include <vector>
 
-#include "emerick/engine/clap_scan.hpp"
+#include "emerick/engine/plugin_scan.hpp"
 
 namespace emerick::app {
 
 struct CatalogPlugin {
-    engine::ClapDescriptor descriptor;
+    engine::PluginDescriptor descriptor;
     std::filesystem::path bundle;
 };
 
@@ -44,7 +44,7 @@ public:
 private:
     struct Bundle {
         long long modified = 0;
-        std::vector<engine::ClapDescriptor> plugins;
+        std::vector<engine::PluginDescriptor> plugins;
         // Set for a bundle that crashed, hung or failed to load.
         std::string blockedReason;
     };

@@ -1,4 +1,4 @@
-// The main-thread side of a CLAP instrument's params: listing them, reading their values and labels, and setting them.
+// The main-thread side of a CLAP plugin's params: listing them, reading their values and labels, and setting them.
 
 #include <array>
 #include <chrono>
@@ -15,33 +15,32 @@ namespace {
 // A plugin that stopped processing without telling us leaves the queue unread, so we flush it ourselves after this.
 constexpr auto kParamWait = std::chrono::milliseconds(50);
 
-std::optional<ClapParam> paramAt(const ClapInstrument& instrument, const ClapPluginProxy& proxy, std::uint32_t index) {
+std::optional<PluginParam> paramAt(const ClapPlugin& plugin, const ClapPluginProxy& proxy, std::uint32_t index) {
     clap_param_info info{};
     if (!proxy.paramsGetInfo(index, &info) || (info.flags & (CLAP_PARAM_IS_HIDDEN | CLAP_PARAM_IS_READONLY)) != 0) {
         return std::nullopt;
     }
-    ClapParam param{.id = info.id,
-                    .name = std::data(info.name),
-                    .module = std::data(info.module),
-                    .min = info.min_value,
-                    .max = info.max_value,
-                    .defaultValue = info.default_value,
-                    .stepped = (info.flags & CLAP_PARAM_IS_STEPPED) != 0,
-                    .enumerated = (info.flags & CLAP_PARAM_IS_ENUM) != 0,
-                    .choices = {}};
+    PluginParam param{.id = info.id,
+                      .name = std::data(info.name),
+                      .module = std::data(info.module),
+                      .min = info.min_value,
+                      .max = info.max_value,
+                      .defaultValue = info.default_value,
+                      .stepped = (info.flags & CLAP_PARAM_IS_STEPPED) != 0,
+                      .enumerated = (info.flags & CLAP_PARAM_IS_ENUM) != 0,
+                      .choices = {}};
     if (param.stepped && param.max >= param.min && param.max - param.min < kMaxParamChoices) {
         const auto steps = static_cast<int>(param.max - param.min);
-        param.choices =
-            std::views::iota(0, steps + 1) |
-            std::views::transform([&](int step) { return instrument.paramText(param.id, param.min + step); }) |
-            std::ranges::to<std::vector>();
+        param.choices = std::views::iota(0, steps + 1) |
+                        std::views::transform([&](int step) { return plugin.paramText(param.id, param.min + step); }) |
+                        std::ranges::to<std::vector>();
     }
     return param;
 }
 
 }  // namespace
 
-void ClapInstrument::Impl::flushParams() {
+void ClapPlugin::Impl::flushParams() {
     if (!proxy->canUseParams()) {
         return;
     }
@@ -60,19 +59,19 @@ void ClapInstrument::Impl::flushParams() {
     paramEventCount = 0;
 }
 
-std::vector<ClapParam> ClapInstrument::params() const {
+std::vector<PluginParam> ClapPlugin::params() const {
     const ClapPluginProxy& proxy = *impl_->proxy;
     if (!proxy.canUseParams()) {
         return {};
     }
     return std::views::iota(std::uint32_t{0}, proxy.paramsCount()) |
            std::views::transform([&](std::uint32_t index) { return paramAt(*this, proxy, index); }) |
-           std::views::filter([](const std::optional<ClapParam>& param) { return param.has_value(); }) |
-           std::views::transform([](const std::optional<ClapParam>& param) { return *param; }) |
+           std::views::filter([](const std::optional<PluginParam>& param) { return param.has_value(); }) |
+           std::views::transform([](const std::optional<PluginParam>& param) { return *param; }) |
            std::ranges::to<std::vector>();
 }
 
-std::optional<double> ClapInstrument::paramValue(std::uint32_t id) const {
+std::optional<double> ClapPlugin::paramValue(std::uint32_t id) const {
     double value = 0.0;
     if (!impl_->proxy->canUseParams() || !impl_->proxy->paramsGetValue(id, &value)) {
         return std::nullopt;
@@ -80,7 +79,7 @@ std::optional<double> ClapInstrument::paramValue(std::uint32_t id) const {
     return value;
 }
 
-std::string ClapInstrument::paramText(std::uint32_t id, double value) const {
+std::string ClapPlugin::paramText(std::uint32_t id, double value) const {
     std::array<char, CLAP_NAME_SIZE> text{};
     if (!impl_->proxy->canUseParams() || !impl_->proxy->paramsValueToText(id, value, text.data(), text.size())) {
         return std::format("{}", value);
@@ -88,7 +87,7 @@ std::string ClapInstrument::paramText(std::uint32_t id, double value) const {
     return text.data();
 }
 
-void ClapInstrument::setParam(std::uint32_t id, double value) {
+void ClapPlugin::setParam(std::uint32_t id, double value) {
     Impl& impl = *impl_;
     // We wait for every change before returning, so the queue holds at most this one.
     if (!impl.proxy->canUseParams() || !writeRecord(impl.paramQueue, QueuedParam{.id = id, .value = value})) {
@@ -106,6 +105,8 @@ void ClapInstrument::setParam(std::uint32_t id, double value) {
     }
 }
 
-bool ClapInstrument::takeParamsChanged() { return impl_->paramsChanged.exchange(false, std::memory_order_relaxed); }
+double ClapPlugin::processValue(std::uint32_t /*id*/, double value) const { return value; }
+
+bool ClapPlugin::takeParamsChanged() { return impl_->paramsChanged.exchange(false, std::memory_order_relaxed); }
 
 }  // namespace emerick::engine

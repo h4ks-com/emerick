@@ -33,7 +33,7 @@ struct CatalogRig {
     QTemporaryDir dir;
     Registry registry{dir.filePath("settings.ini")};
     Nav nav;
-    PluginCatalog catalog{catalogOptions(dir, EMERICK_CLAP_SCANNER)};
+    PluginCatalog catalog{catalogOptions(dir, EMERICK_PLUGIN_SCANNER)};
 };
 
 std::string reasonFor(const Json& blocked, const std::string& name) {
@@ -78,7 +78,7 @@ TEST_CASE("the catalog always searches the app's bundled folder first and lists 
     QTemporaryDir dir;
     const std::filesystem::path bundled = bundledClapFolder(EMERICK_GM_APP_FOLDER);
     CHECK(clapSearchFolders(EMERICK_GM_APP_FOLDER).front() == bundled);
-    PluginCatalog::Options options = catalogOptions(dir, EMERICK_CLAP_SCANNER);
+    PluginCatalog::Options options = catalogOptions(dir, EMERICK_PLUGIN_SCANNER);
     options.folders = {bundled};
     PluginCatalog catalog(options);
     catalog.scan({}, false);
@@ -90,7 +90,7 @@ TEST_CASE("the catalog always searches the app's bundled folder first and lists 
 
 TEST_CASE("the catalog lists the expansion voices instrument in the app's bundled folder") {
     QTemporaryDir dir;
-    PluginCatalog::Options options = catalogOptions(dir, EMERICK_CLAP_SCANNER);
+    PluginCatalog::Options options = catalogOptions(dir, EMERICK_PLUGIN_SCANNER);
     options.folders = {bundledClapFolder(EMERICK_GM_APP_FOLDER)};
     PluginCatalog catalog(options);
     catalog.scan({}, false);

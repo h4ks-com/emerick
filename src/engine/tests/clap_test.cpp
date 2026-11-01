@@ -10,8 +10,8 @@
 #include <thread>
 #include <vector>
 
-#include "emerick/engine/clap_instrument.hpp"
-#include "emerick/engine/clap_scan.hpp"
+#include "emerick/engine/plugin.hpp"
+#include "emerick/engine/plugin_scan.hpp"
 #include "rig.hpp"
 
 using namespace emerick::engine;
@@ -22,13 +22,13 @@ namespace {
 const emerick::core::TempoMap kTempo{120.0, {4, 4}};
 constexpr Frames kBeatFrames = 24000;
 
-std::shared_ptr<ClapInstrument> sine() {
-    auto created = ClapInstrument::create(EMERICK_TEST_SINE_CLAP, "org.emerick.test.sine");
+std::shared_ptr<Plugin> sine() {
+    auto created = createClapPlugin(EMERICK_TEST_SINE_CLAP, "org.emerick.test.sine");
     REQUIRE(created.has_value());
     return *created;
 }
 
-Track synthTrack(std::shared_ptr<ClapInstrument> instrument) {
+Track synthTrack(std::shared_ptr<Plugin> instrument) {
     Track track{.id = "synth", .kind = TrackKind::midi};
     track.audioOut = {"interface", {1, 2}};
     track.instrument = std::move(instrument);
@@ -59,7 +59,7 @@ TEST_CASE("a file that is no CLAP bundle reports why") {
     const auto described = describeClapBundle("/no/such/plugin.clap");
     REQUIRE_FALSE(described.has_value());
     CHECK(described.error().find("/no/such/plugin.clap") != std::string::npos);
-    CHECK_FALSE(ClapInstrument::create(EMERICK_TEST_SINE_CLAP, "org.emerick.missing").has_value());
+    CHECK_FALSE(createClapPlugin(EMERICK_TEST_SINE_CLAP, "org.emerick.missing").has_value());
 }
 
 TEST_CASE("a note in a MIDI clip plays through the instrument into the track's output, and stops at its note-off") {
@@ -94,7 +94,7 @@ TEST_CASE("live MIDI plays a monitored instrument while the transport stops") {
 
 TEST_CASE("an instrument saves and loads its state, and plays as the loaded state says") {
     Rig rig;
-    const std::shared_ptr<ClapInstrument> instrument = sine();
+    const std::shared_ptr<Plugin> instrument = sine();
     REQUIRE(instrument->loadState(levelState(0.25F)));
     CHECK(instrument->saveState() == levelState(0.25F));
     Track track = synthTrack(instrument);
@@ -108,21 +108,21 @@ TEST_CASE("an instrument saves and loads its state, and plays as the loaded stat
 }
 
 TEST_CASE("an instrument reactivates at a new sample rate and keeps playing") {
-    const std::shared_ptr<ClapInstrument> instrument = sine();
+    const std::shared_ptr<Plugin> instrument = sine();
     CHECK(instrument->activate(48000.0, 256));
     CHECK(instrument->activate(44100.0, 512));
     std::vector<float> left(512);
     std::vector<float> right(512);
     const std::array<float*, 2> mix{left.data(), right.data()};
     instrument->queueMidi(std::array<std::uint8_t, 3>{0x90, 69, 100}, 0);
-    instrument->processBlock(mix, 512, 0);
+    instrument->processBlock(mix, 512, 0, {});
     CHECK(loudest(left) > 0.4F);
     CHECK_FALSE(instrument->hasEditor());
 }
 
 TEST_CASE("an instrument lists its params, and a value set while it is idle reaches its state") {
-    const std::shared_ptr<ClapInstrument> instrument = sine();
-    const std::vector<ClapParam> params = instrument->params();
+    const std::shared_ptr<Plugin> instrument = sine();
+    const std::vector<PluginParam> params = instrument->params();
     REQUIRE(params.size() == 1);
     CHECK(params[0].name == "Level");
     CHECK(params[0].max == 1.0);
@@ -133,30 +133,30 @@ TEST_CASE("an instrument lists its params, and a value set while it is idle reac
     instrument->setParam(0, 0.25);
     CHECK(instrument->paramValue(0) == 0.25);
     REQUIRE(instrument->saveState() == levelState(0.25F));
-    const std::shared_ptr<ClapInstrument> reloaded = sine();
+    const std::shared_ptr<Plugin> reloaded = sine();
     REQUIRE(reloaded->loadState(*instrument->saveState()));
     CHECK(reloaded->paramValue(0) == 0.25);
 }
 
 TEST_CASE("a param set while the instrument processes reaches it through its next process call") {
-    const std::shared_ptr<ClapInstrument> instrument = sine();
+    const std::shared_ptr<Plugin> instrument = sine();
     REQUIRE(instrument->activate(48000.0, 512));
     std::vector<float> left(512);
     std::vector<float> right(512);
     const std::array<float*, 2> mix{left.data(), right.data()};
     instrument->queueMidi(std::array<std::uint8_t, 3>{0x90, 69, 100}, 0);
-    instrument->processBlock(mix, 512, 0);
+    instrument->processBlock(mix, 512, 0, {});
     {
         const std::jthread audio([&](const std::stop_token& stop) {
             while (!stop.stop_requested()) {
-                instrument->processBlock(mix, 512, 0);
+                instrument->processBlock(mix, 512, 0, {});
             }
         });
         instrument->setParam(0, 0.25);
         CHECK(instrument->paramValue(0) == 0.25);
     }
     std::ranges::fill(left, 0.0F);
-    instrument->processBlock(mix, 512, 0);
+    instrument->processBlock(mix, 512, 0, {});
     CHECK(loudest(left) > 0.2F);
     CHECK(loudest(left) <= 0.25F);
 }

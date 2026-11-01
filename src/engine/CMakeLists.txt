@@ -1,10 +1,10 @@
 add_library(emerick_engine
     src/audio_analysis.cpp
     src/audio_backend.cpp
-    src/clap_instrument.cpp
+    src/clap_plugin.cpp
     src/clap_library.cpp
     src/clap_params.cpp
-    src/clap_scan.cpp
+    src/plugin_scan.cpp
     src/clip_stream.cpp
     src/effects.cpp
     src/engine.cpp
@@ -15,6 +15,7 @@ add_library(emerick_engine
     src/midi_ports.cpp
     src/mix_issues.cpp
     src/note_analysis.cpp
+    src/plugin.cpp
     src/rt_clap.cpp
     src/rt_metronome.cpp
     src/rt_effects.cpp
@@ -22,10 +23,13 @@ add_library(emerick_engine
     src/rt_midi.cpp
     src/rt_process.cpp
     src/rt_standard_effects.cpp
+    src/rt_vst3.cpp
     src/snapshot_builder.cpp
     src/spectrum.cpp
     src/take_recorder.cpp
     src/virtual_midi_backend.cpp
+    src/vst3_plugin.cpp
+    src/vst3_scan.cpp
     src/window_meter.cpp)
 if(APPLE)
     target_sources(emerick_engine PRIVATE
@@ -38,17 +42,17 @@ endif()
 target_include_directories(emerick_engine PUBLIC include)
 target_link_libraries(emerick_engine
     PUBLIC emerick_core
-    PRIVATE libremidi readerwriterqueue PkgConfig::SNDFILE clap-helpers ${CMAKE_DL_LIBS})
+    PRIVATE libremidi readerwriterqueue PkgConfig::SNDFILE clap-helpers vst3_sdk ${CMAKE_DL_LIBS})
 emerick_target(emerick_engine)
 
-add_executable(emerick-clap-scanner scanner/clap_scanner.cpp)
-target_link_libraries(emerick-clap-scanner PRIVATE emerick_engine nlohmann_json::nlohmann_json)
-emerick_target(emerick-clap-scanner)
+add_executable(emerick-plugin-scanner scanner/plugin_scanner.cpp)
+target_link_libraries(emerick-plugin-scanner PRIVATE emerick_engine nlohmann_json::nlohmann_json)
+emerick_target(emerick-plugin-scanner)
 
 if(EMERICK_BUILD_TESTS)
     emerick_test(emerick_engine_tests tests/audio_analysis_test.cpp tests/automation_test.cpp tests/bus_test.cpp tests/clap_test.cpp tests/effects_test.cpp tests/engine_test.cpp tests/fade_test.cpp tests/gm_test.cpp tests/interleaved_io_test.cpp tests/listed_devices_test.cpp
         tests/metronome_test.cpp tests/cycle_test.cpp tests/midi_chase_test.cpp tests/midi_route_test.cpp tests/note_analysis_test.cpp tests/preview_test.cpp
-        tests/recording_test.cpp tests/spectrum_test.cpp tests/standard_effects_test.cpp tests/stream_health_test.cpp tests/take_progress_test.cpp tests/window_meter_test.cpp)
+        tests/recording_test.cpp tests/spectrum_test.cpp tests/standard_effects_test.cpp tests/stream_health_test.cpp tests/take_progress_test.cpp tests/vst3_test.cpp tests/window_meter_test.cpp)
     target_include_directories(emerick_engine_tests PRIVATE src)
 
     # Test instruments as CLAP bundles: a sine synth, and copies whose entry crashes or hangs.
@@ -71,8 +75,40 @@ if(EMERICK_BUILD_TESTS)
         set(test_sine_clap "$<TARGET_FILE:emerick_test_sine>")
     endif()
     add_library(emerick_test_clap INTERFACE)
-    add_dependencies(emerick_test_clap emerick_test_sine emerick_test_crash emerick_test_hang emerick-clap-scanner)
+    add_dependencies(emerick_test_clap emerick_test_sine emerick_test_crash emerick_test_hang emerick-plugin-scanner)
     target_compile_definitions(emerick_test_clap INTERFACE EMERICK_TEST_CLAP_FOLDER="${test_clap_folder}"
-        EMERICK_TEST_SINE_CLAP="${test_sine_clap}" EMERICK_CLAP_SCANNER="$<TARGET_FILE:emerick-clap-scanner>")
-    target_link_libraries(emerick_engine_tests PRIVATE emerick_engine emerick_test_clap emerick_gm_clap emerick_gm_midi PkgConfig::SNDFILE)
+        EMERICK_TEST_SINE_CLAP="${test_sine_clap}" EMERICK_PLUGIN_SCANNER="$<TARGET_FILE:emerick-plugin-scanner>")
+
+    # Test effects as VST3 bundles: a gain, copies whose module entry crashes or hangs, and a crashing copy whose
+    # moduleinfo.json describes it, so a scan never loads it.
+    set(test_vst3_folder ${CMAKE_BINARY_DIR}/test-vst3)
+    foreach(variant gain crash hang described)
+        set(name emerick_test_vst3_${variant})
+        set(bundle "${test_vst3_folder}/Emerick Test ${variant}.vst3")
+        add_library(${name} MODULE tests/vst3/gain_plugin_test.cpp)
+        target_link_libraries(${name} PRIVATE vst3_sdk)
+        set_target_properties(${name} PROPERTIES PREFIX "" OUTPUT_NAME "Emerick Test ${variant}"
+            CXX_VISIBILITY_PRESET hidden)
+        if(APPLE)
+            set_target_properties(${name} PROPERTIES BUNDLE TRUE BUNDLE_EXTENSION vst3
+                LIBRARY_OUTPUT_DIRECTORY ${test_vst3_folder})
+        else()
+            set_target_properties(${name} PROPERTIES SUFFIX ".so"
+                LIBRARY_OUTPUT_DIRECTORY "${bundle}/Contents/${CMAKE_SYSTEM_PROCESSOR}-linux")
+        endif()
+    endforeach()
+    target_compile_definitions(emerick_test_vst3_crash PRIVATE EMERICK_TEST_CRASH)
+    target_compile_definitions(emerick_test_vst3_hang PRIVATE EMERICK_TEST_HANG)
+    target_compile_definitions(emerick_test_vst3_described PRIVATE EMERICK_TEST_CRASH)
+    set(resources "${test_vst3_folder}/Emerick Test described.vst3/Contents/Resources")
+    add_custom_command(TARGET emerick_test_vst3_described POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E make_directory "${resources}"
+        COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_CURRENT_SOURCE_DIR}/tests/vst3/moduleinfo.json "${resources}")
+    add_library(emerick_test_vst3 INTERFACE)
+    add_dependencies(emerick_test_vst3 emerick_test_vst3_gain emerick_test_vst3_crash emerick_test_vst3_hang
+        emerick_test_vst3_described emerick-plugin-scanner)
+    target_compile_definitions(emerick_test_vst3 INTERFACE EMERICK_TEST_VST3_FOLDER="${test_vst3_folder}"
+        EMERICK_TEST_GAIN_VST3="${test_vst3_folder}/Emerick Test gain.vst3"
+        EMERICK_TEST_DESCRIBED_VST3="${test_vst3_folder}/Emerick Test described.vst3")
+    target_link_libraries(emerick_engine_tests PRIVATE emerick_engine emerick_test_clap emerick_test_vst3 emerick_gm_clap emerick_gm_midi PkgConfig::SNDFILE)
 endif()

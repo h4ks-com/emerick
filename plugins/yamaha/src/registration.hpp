@@ -96,8 +96,7 @@ void registerTemplateActions(app::Registry& registry);
 std::vector<engine::SessionError> partWarnings(const model::Track& style, const model::Document& document,
                                                const app::Instruments& instruments);
 // The track's live Expansion Voices instance, or null when the track plays another instrument or none.
-std::shared_ptr<engine::ClapInstrument> voicesInstrument(const app::Instruments& instruments,
-                                                         const model::Track& track);
+std::shared_ptr<engine::Plugin> voicesInstrument(const app::Instruments& instruments, const model::Track& track);
 // True while the track's Expansion Voices instance still reads its store.
 bool voicesLoading(const app::Instruments& instruments, const model::Track& track);
 // The built-in arranger: its set-up and the style actions of a Style track that plays the Arranger device.

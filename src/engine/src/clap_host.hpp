@@ -17,8 +17,9 @@
 #include <thread>
 #include <vector>
 
+#include "audio_guard.hpp"
 #include "clap_library.hpp"
-#include "emerick/engine/clap_instrument.hpp"
+#include "clap_plugin.hpp"
 #include "spsc_ring.hpp"
 
 namespace emerick::engine {
@@ -82,7 +83,7 @@ struct PortBuffers {
 
 // The host side of one plugin instance. The plugin calls back into it from any thread, so a callback that is not
 // realtime safe only sets a flag that idle reads on the main thread.
-struct ClapInstrument::Impl final : ClapHostBase {
+struct ClapPlugin::Impl final : ClapHostBase {
     Impl();
     ~Impl() override = default;
     Impl(const Impl&) = delete;
@@ -108,6 +109,7 @@ struct ClapInstrument::Impl final : ClapHostBase {
         paramsChanged.store(true, std::memory_order_relaxed);
     }
     void paramsRequestFlush() noexcept override { flushRequested.store(true, std::memory_order_relaxed); }
+    [[nodiscard]] bool implementsLatency() const noexcept override { return true; }
 
     // Main thread: idle calls this as often as it runs, so a timer fires at most once per idle.
     void fireDueTimers();
@@ -117,6 +119,11 @@ struct ClapInstrument::Impl final : ClapHostBase {
     void allocateBuffers(core::Frames maxFrames);
     // Holding the audio guard: moves the queued param changes into the event list, after any MIDI already there.
     void collectParams();
+    // Audio thread: moves the automated param values into the event list.
+    void collectAutomation();
+    // Holding the audio guard as the audio thread: runs one process call into the output ports; false when the plugin
+    // is not processing or fails.
+    bool process(core::Frames frames, std::int64_t hostTimeNs, const InstrumentTransport& transport);
     // Main thread, holding the audio guard: hands the queued param changes to the plugin's flush.
     void flushParams();
     // The event list holds the collected events, and the output list marks params changed by the plugin itself.
@@ -162,7 +169,10 @@ struct ClapInstrument::Impl final : ClapHostBase {
     std::array<clap_event_midi_sysex, kMaxQueuedMidi> sysex{};
     std::array<clap_event_param_value, kMaxQueuedParams> paramEvents{};
     std::size_t paramEventCount = 0;
-    std::array<const clap_event_header*, kMaxQueuedMidi + kMaxQueuedParams> events{};
+    std::array<QueuedParam, kMaxQueuedParams> automated{};
+    std::size_t automatedCount = 0;
+    std::array<clap_event_param_value, kMaxQueuedParams> automatedEvents{};
+    std::array<const clap_event_header*, kMaxQueuedMidi + (2 * kMaxQueuedParams)> events{};
     std::size_t eventCount = 0;
 
     // Only the audio thread touches these, in and after processBlock.
@@ -173,20 +183,6 @@ struct ClapInstrument::Impl final : ClapHostBase {
     bool editorClosedByPlugin = false;
     std::vector<PluginTimer> timers;
     clap_id nextTimerId = 1;
-};
-
-// Takes the audio guard for the main thread, waiting out the block the audio thread may be processing.
-class AudioGuard {
-public:
-    explicit AudioGuard(std::atomic<bool>& guard);
-    ~AudioGuard();
-    AudioGuard(const AudioGuard&) = delete;
-    AudioGuard& operator=(const AudioGuard&) = delete;
-    AudioGuard(AudioGuard&&) = delete;
-    AudioGuard& operator=(AudioGuard&&) = delete;
-
-private:
-    std::atomic<bool>& guard_;
 };
 
 // Marks the current thread as the plugin's audio thread while it holds the audio guard.

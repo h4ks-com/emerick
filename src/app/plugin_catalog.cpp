@@ -45,7 +45,7 @@ std::vector<std::filesystem::path> findBundles(const std::vector<std::filesystem
     return bundles;
 }
 
-Json descriptorJson(const engine::ClapDescriptor& plugin) {
+Json descriptorJson(const engine::PluginDescriptor& plugin) {
     return {{"id", plugin.id},
             {"name", plugin.name},
             {"vendor", plugin.vendor},
@@ -54,7 +54,7 @@ Json descriptorJson(const engine::ClapDescriptor& plugin) {
             {"features", plugin.features}};
 }
 
-engine::ClapDescriptor descriptorFromJson(const Json& json) {
+engine::PluginDescriptor descriptorFromJson(const Json& json) {
     return {.id = json.at("id"),
             .name = json.at("name"),
             .vendor = json.value("vendor", ""),
@@ -63,7 +63,7 @@ engine::ClapDescriptor descriptorFromJson(const Json& json) {
             .features = json.value("features", std::vector<std::string>{})};
 }
 
-std::vector<engine::ClapDescriptor> descriptorsFromJson(const Json& json) {
+std::vector<engine::PluginDescriptor> descriptorsFromJson(const Json& json) {
     return json | std::views::transform(descriptorFromJson) | std::ranges::to<std::vector>();
 }
 
@@ -95,7 +95,7 @@ void PluginCatalog::scan(const std::vector<std::filesystem::path>& userFolders, 
 std::vector<CatalogPlugin> PluginCatalog::plugins() const {
     std::vector<CatalogPlugin> listed;
     for (const auto& [path, bundle] : bundles_) {
-        for (const engine::ClapDescriptor& plugin : bundle.plugins) {
+        for (const engine::PluginDescriptor& plugin : bundle.plugins) {
             listed.push_back({.descriptor = plugin, .bundle = path});
         }
     }

@@ -53,7 +53,7 @@ private:
 struct ArrangerRig : YamahaRig {
     HomeFolder home{path("home")};
     app::PluginCatalog catalog{{.cacheFolder = path("cache"),
-                                .scanner = EMERICK_CLAP_SCANNER,
+                                .scanner = EMERICK_PLUGIN_SCANNER,
                                 .folders = {},
                                 .timeout = std::chrono::seconds(10)}};
     std::filesystem::path styles = path("Styles");

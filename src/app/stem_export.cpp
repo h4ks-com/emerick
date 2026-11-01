@@ -27,7 +27,7 @@ constexpr int kSettleBlocks = 16;
 constexpr auto kReadAheadTimeout = std::chrono::seconds{5};
 constexpr const char* kRenderDevice = "render";
 
-using RenderInstruments = std::vector<std::shared_ptr<engine::ClapInstrument>>;
+using RenderInstruments = std::vector<std::shared_ptr<engine::Plugin>>;
 
 std::string fileStem(const std::string& name) {
     std::string stem = name.empty() ? std::string{"track"} : name;
@@ -154,7 +154,7 @@ RenderInstruments attachInstruments(engine::Session& session, const model::Docum
             continue;
         }
         const model::PluginSlot& slot = *source->instrument;
-        auto instrument = engine::ClapInstrument::create(slot.bundle, slot.pluginId);
+        auto instrument = engine::createClapPlugin(slot.bundle, slot.pluginId);
         if (!instrument) {
             throw AppError("cannot render track " + source->name + ": " + instrument.error());
         }
@@ -318,7 +318,7 @@ OfflineRender::OfflineRender(engine::Session session, const Registry& registry, 
     start(std::move(session), sampleRate);
 }
 
-OfflineRender::OfflineRender(engine::Session session, std::vector<std::shared_ptr<engine::ClapInstrument>> instruments,
+OfflineRender::OfflineRender(engine::Session session, std::vector<std::shared_ptr<engine::Plugin>> instruments,
                              double sampleRate)
     : instruments_(std::move(instruments)) {
     start(std::move(session), sampleRate);
@@ -406,8 +406,8 @@ void OfflineRender::idleInstruments() {
     }
 }
 
-std::unique_ptr<OfflineRender> instrumentRender(std::shared_ptr<engine::ClapInstrument> instrument,
-                                                engine::MidiClip clip, const core::TempoMap& tempo, double sampleRate) {
+std::unique_ptr<OfflineRender> instrumentRender(std::shared_ptr<engine::Plugin> instrument, engine::MidiClip clip,
+                                                const core::TempoMap& tempo, double sampleRate) {
     engine::Track track;
     track.id = "render";
     track.kind = engine::TrackKind::midi;
@@ -418,7 +418,7 @@ std::unique_ptr<OfflineRender> instrumentRender(std::shared_ptr<engine::ClapInst
     session.tempo = tempo;
     session.tracks.push_back(std::move(track));
     return std::make_unique<OfflineRender>(
-        std::move(session), std::vector<std::shared_ptr<engine::ClapInstrument>>{std::move(instrument)}, sampleRate);
+        std::move(session), std::vector<std::shared_ptr<engine::Plugin>>{std::move(instrument)}, sampleRate);
 }
 
 std::unique_ptr<OfflineRender> trackRender(const engine::Session& session, const Registry& registry,

@@ -174,8 +174,7 @@ core::Ticks sectionsEnd(const model::Track& style, const std::vector<SectionEven
 
 }  // namespace
 
-std::shared_ptr<engine::ClapInstrument> voicesInstrument(const app::Instruments& instruments,
-                                                         const model::Track& track) {
+std::shared_ptr<engine::Plugin> voicesInstrument(const app::Instruments& instruments, const model::Track& track) {
     return track.instrument && track.instrument->pluginId == kVoicesPluginId ? instruments.find(track.id) : nullptr;
 }
 

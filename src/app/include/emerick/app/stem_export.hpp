@@ -68,8 +68,7 @@ public:
 
     OfflineRender(engine::Session session, const Registry& registry, const PlaybackContext& context, double sampleRate);
     // Renders a session whose tracks already hold their instruments.
-    OfflineRender(engine::Session session, std::vector<std::shared_ptr<engine::ClapInstrument>> instruments,
-                  double sampleRate);
+    OfflineRender(engine::Session session, std::vector<std::shared_ptr<engine::Plugin>> instruments, double sampleRate);
     ~OfflineRender();
     OfflineRender(const OfflineRender&) = delete;
     OfflineRender& operator=(const OfflineRender&) = delete;
@@ -89,7 +88,7 @@ public:
 private:
     void start(engine::Session session, double sampleRate);
 
-    std::vector<std::shared_ptr<engine::ClapInstrument>> instruments_;
+    std::vector<std::shared_ptr<engine::Plugin>> instruments_;
     std::vector<InstrumentMessage> chase_;
     engine::OfflineBackend* offline_ = nullptr;
     std::unique_ptr<engine::Engine> engine_;
@@ -99,8 +98,8 @@ private:
 void appendStereo(std::vector<std::vector<float>>& stereo, const std::vector<std::vector<float>>& chunk);
 
 // Sets up the render of the clip played through the instrument.
-std::unique_ptr<OfflineRender> instrumentRender(std::shared_ptr<engine::ClapInstrument> instrument,
-                                                engine::MidiClip clip, const core::TempoMap& tempo, double sampleRate);
+std::unique_ptr<OfflineRender> instrumentRender(std::shared_ptr<engine::Plugin> instrument, engine::MidiClip clip,
+                                                const core::TempoMap& tempo, double sampleRate);
 
 // Sets up the render of one track or bus as its stem plays.
 std::unique_ptr<OfflineRender> trackRender(const engine::Session& session, const Registry& registry,

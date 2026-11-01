@@ -69,8 +69,10 @@ struct SendState {
     float rampFrom = 1.0F;
 };
 
+// Exactly one of effect and plugin is set.
 struct InsertState {
     std::shared_ptr<Effect> effect;
+    std::shared_ptr<Plugin> plugin;
     EffectParams params{};
     bool bypass = false;
 };
@@ -128,7 +130,7 @@ struct TrackState {
     std::vector<std::vector<float>> mix;
     std::vector<float*> mixPointers;
     std::vector<InsertState> inserts;
-    std::shared_ptr<ClapInstrument> instrument;
+    std::shared_ptr<Plugin> instrument;
     // The gain per channel that the last block ended on, so we ramp from it and a fader move never clicks.
     std::vector<float> outputGains;
     std::vector<SendState> sends;
@@ -144,7 +146,7 @@ struct TrackState {
 // Bytes for a port, or for an instrument when port is null.
 struct RestartMessage {
     std::shared_ptr<MidiOutputPort> port;
-    std::shared_ptr<ClapInstrument> instrument;
+    std::shared_ptr<Plugin> instrument;
     std::vector<std::uint8_t> bytes;
 };
 

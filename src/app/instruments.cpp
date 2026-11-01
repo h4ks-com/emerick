@@ -26,7 +26,7 @@ bool samePlugin(const model::PluginSlot& left, const model::PluginSlot& right) {
     return left.pluginId == right.pluginId && left.bundle == right.bundle;
 }
 
-double paramNumber(const engine::ClapParam& info, const ParamValue& given) {
+double paramNumber(const engine::PluginParam& info, const ParamValue& given) {
     const auto number = [&](double value) {
         if (value < info.min || value > info.max) {
             throw AppError(info.name + std::format(" takes a value from {} to {}", info.min, info.max));
@@ -41,7 +41,7 @@ double paramNumber(const engine::ClapParam& info, const ParamValue& given) {
 
 }  // namespace
 
-std::optional<int> paramChannel(const engine::ClapParam& param) {
+std::optional<int> paramChannel(const engine::PluginParam& param) {
     constexpr std::string_view kPrefix = "Channel ";
     constexpr int kChannels = 16;
     if (!param.module.starts_with(kPrefix)) {
@@ -56,7 +56,7 @@ std::optional<int> paramChannel(const engine::ClapParam& param) {
     return channel;
 }
 
-std::size_t paramChoice(const engine::ClapParam& param, std::string_view text) {
+std::size_t paramChoice(const engine::PluginParam& param, std::string_view text) {
     const std::vector<std::string_view> choices(param.choices.begin(), param.choices.end());
     return choiceIndex(param.name, choices, text, "run instrument.params for its choices");
 }
@@ -88,7 +88,7 @@ void Instruments::sync(const model::Document& document) {
             continue;
         }
         Live live{.slot = slot, .instrument = nullptr, .error = {}, .window = nullptr};
-        auto created = engine::ClapInstrument::create(slot.bundle, slot.pluginId);
+        auto created = engine::createClapPlugin(slot.bundle, slot.pluginId);
         if (!created) {
             live.error = "Install " + slot.name + " or load another instrument; the track keeps its settings (" +
                          created.error() + ")";
@@ -117,7 +117,7 @@ void Instruments::attach(engine::Session& session) const {
     }
 }
 
-std::shared_ptr<engine::ClapInstrument> Instruments::find(const model::TrackId& id) const {
+std::shared_ptr<engine::Plugin> Instruments::find(const model::TrackId& id) const {
     const auto found = live_.find(id.value);
     return found == live_.end() ? nullptr : found->second.instrument;
 }
@@ -159,7 +159,7 @@ void Instruments::showEditor(const model::TrackId& id, const std::string& title)
     if (!live.instrument) {
         throw AppError(live.error);
     }
-    engine::ClapInstrument& instrument = *live.instrument;
+    engine::Plugin& instrument = *live.instrument;
     if (!instrument.hasEditor()) {
         throw AppError(instrument.name() + " has no editor");
     }
@@ -205,7 +205,7 @@ Json Instruments::describe(const model::TrackId& id) const {
         return nullptr;
     }
     return {{"editor", instrument->hasEditor()},
-            {"params", instrument->params() | std::views::transform([&](const engine::ClapParam& param) {
+            {"params", instrument->params() | std::views::transform([&](const engine::PluginParam& param) {
                            const double value = instrument->paramValue(param.id).value_or(param.defaultValue);
                            Json described{{"id", param.id},           {"name", param.name},
                                           {"module", param.module},   {"min", param.min},
@@ -228,8 +228,8 @@ ParamSet Instruments::setParam(const model::TrackId& id, std::uint32_t param, co
                                             : found->second.error);
     }
     Live& live = found->second;
-    const std::vector<engine::ClapParam> params = live.instrument->params();
-    const auto info = std::ranges::find(params, param, &engine::ClapParam::id);
+    const std::vector<engine::PluginParam> params = live.instrument->params();
+    const auto info = std::ranges::find(params, param, &engine::PluginParam::id);
     if (info == params.end()) {
         throw AppError(live.slot.name + " has no param " + std::to_string(param) + ", run instrument.params for ids");
     }

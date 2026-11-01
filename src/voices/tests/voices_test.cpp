@@ -14,8 +14,8 @@
 #include <thread>
 #include <vector>
 
-#include "emerick/engine/clap_instrument.hpp"
-#include "emerick/engine/clap_scan.hpp"
+#include "emerick/engine/plugin.hpp"
+#include "emerick/engine/plugin_scan.hpp"
 #include "synthetic_store.hpp"
 
 using namespace emerick::engine;
@@ -34,7 +34,7 @@ constexpr std::uint32_t kNoisySamples = 7;
 using Message = std::array<std::uint8_t, 3>;
 
 // Runs the main thread until the plugin publishes the store its thread read, which rescans the params.
-void waitForStore(ClapInstrument& instrument) {
+void waitForStore(Plugin& instrument) {
     const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(10);
     while (!instrument.takeParamsChanged()) {
         REQUIRE(std::chrono::steady_clock::now() < deadline);
@@ -76,8 +76,8 @@ struct Rig {
             });
     }
 
-    [[nodiscard]] std::shared_ptr<ClapInstrument> instrument(const Json& state) const {
-        auto created = ClapInstrument::create(EMERICK_VOICES_CLAP, "org.emerick.voices");
+    [[nodiscard]] std::shared_ptr<Plugin> instrument(const Json& state) const {
+        auto created = createClapPlugin(EMERICK_VOICES_CLAP, "org.emerick.voices");
         REQUIRE(created.has_value());
         Json withFolder = state;
         withFolder["folder"] = store.folder().string();
@@ -93,8 +93,7 @@ Json voiceNamed(const std::string& name, int program) {
     return Json{{"voice", {{"pack", "Test Pack"}, {"name", name}, {"msb", 8}, {"lsb", 0}, {"program", program}}}};
 }
 
-std::array<std::vector<float>, 2> renderStereo(ClapInstrument& instrument, const std::vector<Message>& messages,
-                                               int blocks) {
+std::array<std::vector<float>, 2> renderStereo(Plugin& instrument, const std::vector<Message>& messages, int blocks) {
     for (const Message& message : messages) {
         instrument.queueMidi(message, 0);
     }
@@ -103,14 +102,14 @@ std::array<std::vector<float>, 2> renderStereo(ClapInstrument& instrument, const
         std::vector<float> left(kBlock);
         std::vector<float> right(kBlock);
         const std::array<float*, 2> mix{left.data(), right.data()};
-        instrument.processBlock(mix, kBlock, 0);
+        instrument.processBlock(mix, kBlock, 0, {});
         sides[0].insert(sides[0].end(), left.begin(), left.end());
         sides[1].insert(sides[1].end(), right.begin(), right.end());
     }
     return sides;
 }
 
-std::vector<float> render(ClapInstrument& instrument, const std::vector<Message>& messages, int blocks) {
+std::vector<float> render(Plugin& instrument, const std::vector<Message>& messages, int blocks) {
     return renderStereo(instrument, messages, blocks)[0];
 }
 
@@ -179,7 +178,7 @@ TEST_CASE("the expansion voices instrument loads through the CLAP host and lists
     CHECK(std::ranges::contains(described->front().features, std::string{"instrument"}));
 
     const Rig rig;
-    const std::vector<ClapParam> params = rig.instrument({})->params();
+    const std::vector<PluginParam> params = rig.instrument({})->params();
     REQUIRE(params.size() == 7);
     CHECK(params[0].name == "Voice");
     CHECK(params[0].enumerated);
@@ -461,7 +460,7 @@ TEST_CASE("the state names the voice by pack, name and address, so a changed sto
 TEST_CASE("the store loads on its own thread and the state's voice plays once the main thread publishes it") {
     const Rig rig;
     const auto load = [&] {
-        auto created = ClapInstrument::create(EMERICK_VOICES_CLAP, "org.emerick.voices");
+        auto created = createClapPlugin(EMERICK_VOICES_CLAP, "org.emerick.voices");
         REQUIRE(created.has_value());
         Json state = voiceNamed("Sine", 3);
         state["folder"] = rig.store.folder().string();

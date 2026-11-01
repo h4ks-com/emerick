@@ -13,7 +13,7 @@
 #include <variant>
 #include <vector>
 
-#include "emerick/engine/clap_instrument.hpp"
+#include "emerick/engine/plugin.hpp"
 #include "emerick/engine/session.hpp"
 #include "emerick/model/document.hpp"
 
@@ -30,10 +30,10 @@ struct ParamSet {
 
 // The MIDI channel, from 1, of a param whose module is "Channel <n>": the param sets what the instrument plays on that
 // channel, as General MIDI labels its Drum kit "Channel 10".
-[[nodiscard]] std::optional<int> paramChannel(const engine::ClapParam& param);
+[[nodiscard]] std::optional<int> paramChannel(const engine::PluginParam& param);
 
 // The choice of the param the text names, as choiceIndex matches it.
-[[nodiscard]] std::size_t paramChoice(const engine::ClapParam& param, std::string_view text);
+[[nodiscard]] std::size_t paramChoice(const engine::PluginParam& param, std::string_view text);
 
 // The live CLAP instrument of every track whose slot names one, with its editor window. A track keeps its instrument
 // while its slot names the same plugin, so the plugin keeps the state the user gave it since the project loaded.
@@ -50,7 +50,7 @@ public:
     // kept instrument loads its slot's state when the state changed since it last loaded or set it, as after an undo.
     void sync(const model::Document& document);
     void attach(engine::Session& session) const;
-    [[nodiscard]] std::shared_ptr<engine::ClapInstrument> find(const model::TrackId& id) const;
+    [[nodiscard]] std::shared_ptr<engine::Plugin> find(const model::TrackId& id) const;
     // Why a track with a slot plays no instrument, such as a plugin that is not installed.
     [[nodiscard]] const std::vector<engine::SessionError>& errors() const { return errors_; }
     // Runs each plugin's main-thread requests and follows its editor; true when a plugin marked its state changed.
@@ -72,7 +72,7 @@ public:
 private:
     struct Live {
         model::PluginSlot slot;
-        std::shared_ptr<engine::ClapInstrument> instrument;
+        std::shared_ptr<engine::Plugin> instrument;
         // Set while the instrument is missing or its state did not load.
         std::string error;
         std::unique_ptr<QWindow> window;

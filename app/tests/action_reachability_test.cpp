@@ -59,9 +59,9 @@ bool namedInQml(const std::string& id, const std::string& qml) {
     return false;
 }
 
-bool reachable(const Action& action, const std::string& qml) {
+bool reachable(const Action& action, const std::string& qml, const Registry& registry) {
     return !action.menus.empty() || !action.shortcut.empty() || !action.extraShortcuts.empty() ||
-           namedInQml(action.id, qml);
+           namedInQml(action.id, qml) || std::ranges::contains(registry.allSettings(), action.id, &Setting::action);
 }
 
 }  // namespace
@@ -82,8 +82,9 @@ TEST_CASE("every action has a menu entry, a shortcut or a control") {
 
     const std::string qml = qmlSource();
     const auto ids = [&](bool wanted) {
-        return rig.registry.actions() |
-               std::views::filter([&](const Action& action) { return reachable(action, qml) == wanted; }) |
+        return rig.registry.actions() | std::views::filter([&](const Action& action) {
+                   return reachable(action, qml, rig.registry) == wanted;
+               }) |
                std::views::transform(&Action::id) | std::ranges::to<std::set>();
     };
     std::set<std::string> unreached;

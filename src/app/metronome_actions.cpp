@@ -175,6 +175,12 @@ void addSetting(Registry& registry, Setting setting) {
     registry.addSetting(std::move(setting));
 }
 
+void addSampleSetting(Registry& registry, Setting setting) {
+    setting.category = "Settings / Metronome";
+    setting.location = "settings.metronome";
+    addPathSetting(registry, std::move(setting), FileDialogMode::Open, "WAV files (*.wav)");
+}
+
 void registerSettings(Registry& registry, const ProjectController& controller, Nav& nav) {
     addSettingsSection(registry, nav, {.key = "metronome", .title = "Metronome"});
     addSetting(registry, {.id = kEnabled,
@@ -248,18 +254,16 @@ void registerSettings(Registry& registry, const ProjectController& controller, N
                           .type = SettingType::String,
                           .defaultValue = "1 2",
                           .hint = "Channels of the output device, such as 3 4"});
-    addSetting(registry, {.id = kAccentSample,
-                          .title = "Accent sample",
-                          .type = SettingType::String,
-                          .defaultValue = "",
-                          .hint = "Path of a short WAV for accented beats in the Sample sound",
-                          .merge = readablePath(registry)});
-    addSetting(registry, {.id = kBeatSample,
-                          .title = "Beat sample",
-                          .type = SettingType::String,
-                          .defaultValue = "",
-                          .hint = "Path of a short WAV for the other beats in the Sample sound",
-                          .merge = readablePath(registry)});
+    addSampleSetting(registry, {.id = kAccentSample,
+                                .title = "Accent sample",
+                                .type = SettingType::String,
+                                .defaultValue = "",
+                                .hint = "Path of a short WAV for accented beats in the Sample sound"});
+    addSampleSetting(registry, {.id = kBeatSample,
+                                .title = "Beat sample",
+                                .type = SettingType::String,
+                                .defaultValue = "",
+                                .hint = "Path of a short WAV for the other beats in the Sample sound"});
     addSetting(registry, {.id = kMidiPort,
                           .title = "MIDI port",
                           .aliases = {"metronome midi output"},

@@ -295,15 +295,17 @@ void registerSettings(app::Registry& registry, app::ProjectController& controlle
                             },
                         .menus = {kYamahaMenu},
                         .dialog = app::FileDialog{.param = "path", .nameFilter = "Voice lists (*.csv)"}});
-    addSetting(registry,
-               {.id = kVoicesFolderSetting,
-                .title = "Expansion Voices folder",
-                .aliases = {"expansion packs folder", "voices store"},
-                .type = app::SettingType::String,
-                .defaultValue = "",
-                .hint = "Pick the folder of expansion packs Expansion Voices reads when its state names none, "
-                        "or leave it empty to use Expansion Manager's folder",
-                .merge = app::readablePath(registry)});
+    app::addPathSetting(registry,
+                        {.id = kVoicesFolderSetting,
+                         .title = "Expansion Voices folder",
+                         .aliases = {"expansion packs folder", "voices store"},
+                         .category = "Settings / Yamaha",
+                         .type = app::SettingType::String,
+                         .defaultValue = "",
+                         .hint = "Pick the folder of expansion packs Expansion Voices reads when its state names none, "
+                                 "or leave it empty to use Expansion Manager's folder",
+                         .location = "settings.yamaha"},
+                        app::FileDialogMode::Folder);
     followVoicesFolder(registry, controller);
     warnNoisyVoices(registry, controller);
     reportLoadingVoices(registry, controller);

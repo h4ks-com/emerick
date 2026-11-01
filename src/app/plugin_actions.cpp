@@ -56,16 +56,16 @@ void registerPluginActions(Registry& registry, Nav& nav, PluginCatalog& catalog)
                          .hint = "Folders to search for CLAP plugins besides the standard ones",
                          .location = "settings.plugins",
                          .action = "plugins.rescan"});
-    registry.addSetting({.id = kGeneralMidiSoundFontSetting,
-                         .title = "General MIDI SoundFont",
-                         .aliases = {"sf2", "soundfont", "gm sounds"},
-                         .category = "Settings / Plugins",
-                         .type = SettingType::String,
-                         .defaultValue = "",
-                         .hint = "Path of the .sf2 that new General MIDI instruments play; leave empty for "
-                                 "GeneralUser GS",
-                         .location = "settings.plugins",
-                         .merge = readablePath(registry)});
+    addPathSetting(registry,
+                   {.id = kGeneralMidiSoundFontSetting,
+                    .title = "General MIDI SoundFont",
+                    .aliases = {"sf2", "soundfont", "gm sounds"},
+                    .category = "Settings / Plugins",
+                    .type = SettingType::String,
+                    .defaultValue = "",
+                    .hint = "Path of the .sf2 that new General MIDI instruments play; leave empty for GeneralUser GS",
+                    .location = "settings.plugins"},
+                   FileDialogMode::Open, "SoundFonts (*.sf2)");
     registry.addAction({.id = "plugins.rescan",
                         .title = "Rescan plugins",
                         .description = "Scans every CLAP folder again, including bundles that crashed or hung before.",

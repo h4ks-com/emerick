@@ -149,6 +149,23 @@ std::function<Json(const Json&, const Json&)> readablePath(const Registry& regis
     };
 }
 
+void addPathSetting(Registry& registry, Setting setting, FileDialogMode mode, const std::string& nameFilter) {
+    auto id = std::make_shared<const std::string>(setting.id);
+    setting.merge = readablePath(registry);
+    setting.action = *id + ".choose";
+    registry.addAction({.id = setting.action,
+                        .title = "Choose " + setting.title,
+                        .category = setting.category,
+                        .schema = {{"required", {"path"}}, {"properties", {{"path", {{"type", "string"}}}}}},
+                        .run =
+                            [&registry, id](const Json& params) {
+                                registry.setSetting(*id, param<std::string>(params, "path"));
+                                return Json{{"path", registry.settingValue(*id)}};
+                            },
+                        .dialog = FileDialog{.param = "path", .mode = mode, .nameFilter = nameFilter}});
+    registry.addSetting(std::move(setting));
+}
+
 void registerCoreActions(Registry& registry, Nav& nav, const Backends& backends) {
     registry.addStateProvider("nav", [&nav] { return nav.toJson(); });
     // Copies of the provider share these names, so copying the provider never allocates.

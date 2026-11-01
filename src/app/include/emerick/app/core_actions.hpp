@@ -41,4 +41,8 @@ void addSettingsSection(Registry& registry, Nav& nav, const SettingsSection& sec
 // The merge of a String setting that holds a file path, which checks an agent may read the file; empty stays empty.
 std::function<Json(const Json&, const Json&)> readablePath(const Registry& registry);
 
+// Adds a String setting that holds such a path, with a <id>.choose action the settings page offers as a button that
+// opens a file dialog in the given mode.
+void addPathSetting(Registry& registry, Setting setting, FileDialogMode mode, const std::string& nameFilter = {});
+
 }  // namespace emerick::app

@@ -116,3 +116,17 @@ TEST_CASE("the cache loads a file off the calling thread once and keeps it") {
     REQUIRE(processUntil([&] { return loads == 2; }));
     CHECK(cache.levels(dir.filePath("missing.wav").toStdString())->levels.front().maximum.empty());
 }
+
+TEST_CASE("writing a project's peaks writes one peak file per audio file its clips play") {
+    const QTemporaryDir dir;
+    const TestFile file = writeTestFile(dir);
+    model::Document document;
+    model::Track track{.name = "Swing", .kind = "audio"};
+    track.clips.emplace_back(model::AudioClip{.start = 0, .length = 3840, .file = "swing.wav"});
+    track.clips.emplace_back(model::AudioClip{.start = 3840, .length = 3840, .file = "swing.wav"});
+    track.clips.emplace_back(model::AudioClip{.start = 7680, .length = 3840, .file = "missing.wav"});
+    document.tracks.push_back(track);
+
+    CHECK(writePeaks(document, dir.path().toStdString()) == std::vector{peakFile(file.path).string()});
+    CHECK(std::filesystem::exists(peakFile(file.path)));
+}

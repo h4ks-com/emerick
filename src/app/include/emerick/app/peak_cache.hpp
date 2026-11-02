@@ -6,14 +6,19 @@
 #include <memory>
 #include <mutex>
 #include <set>
+#include <string>
+#include <vector>
 
 #include "emerick/app/peak_levels.hpp"
+#include "emerick/model/document.hpp"
 
 namespace emerick::app {
 
 // Reads the peak file when its recorded size and modification time still match the audio, else reads the audio and
 // writes the peak file. A file that cannot be read gives empty peaks.
 PeakLevels loadPeaks(const std::filesystem::path& audio);
+// Loads the peaks of every audio file a clip plays, which writes their peak files, and lists the peak files that exist.
+std::vector<std::string> writePeaks(const model::Document& document, const std::filesystem::path& folder);
 
 // Loads each file's peaks once on its own thread pool and keeps them for the life of the cache.
 class PeakCache : public PeakSource {

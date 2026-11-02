@@ -13,6 +13,7 @@
 #include <vector>
 
 #include "emerick/app/params.hpp"
+#include "emerick/app/peak_cache.hpp"
 #include "emerick/app/project_actions.hpp"
 #include "emerick/app/project_files.hpp"
 #include "emerick/app/project_state.hpp"
@@ -231,6 +232,18 @@ void registerProjectFolderActions(Registry& registry, ProjectController& control
                             },
                         .menus = {kFileMenu, kProjectMenu},
                         .windowOnly = true});
+    registry.addAction(
+        {.id = "project.writePeaks",
+         .title = "Write waveform peaks",
+         .description = "Writes the peak file of every audio file a clip plays into the .peaks folder beside it, which "
+                        "waveforms and the browser viewer draw from, and lists the peak files.",
+         .aliases = {"build waveforms", "write peak files"},
+         .category = "Project",
+         .run =
+             [&controller](const Json&) {
+                 return Json{{"peaks", writePeaks(controller.project().document(), controller.folder())}};
+             },
+         .menus = {kFileMenu}});
     registry.addAction({.id = "project.removeUnusedAudio",
                         .title = "Remove unused audio files",
                         .aliases = {"clean up project", "delete unused takes"},

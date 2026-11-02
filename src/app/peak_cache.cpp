@@ -9,6 +9,7 @@
 #include <span>
 #include <system_error>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "emerick/engine/sound_file.hpp"
@@ -95,6 +96,26 @@ PeakLevels loadPeaks(const std::filesystem::path& audio) {
     PeakFile file{.stamp = *stamp, .peaks = readAudioPeaks(audio)};
     storePeaks(peakFile(audio), file);
     return buildLevels(std::move(file.peaks));
+}
+
+std::vector<std::string> writePeaks(const model::Document& document, const std::filesystem::path& folder) {
+    std::set<std::filesystem::path> files;
+    for (const model::Track& track : document.tracks) {
+        for (const model::Clip& clip : track.clips) {
+            if (const auto* audio = std::get_if<model::AudioClip>(&clip)) {
+                const std::filesystem::path file{audio->file};
+                files.insert(file.is_absolute() ? file : folder / file);
+            }
+        }
+    }
+    std::vector<std::string> written;
+    for (const std::filesystem::path& file : files) {
+        loadPeaks(file);
+        if (std::error_code error; std::filesystem::exists(peakFile(file), error)) {
+            written.push_back(peakFile(file).string());
+        }
+    }
+    return written;
 }
 
 const PeakLevels* PeakCache::levels(const std::filesystem::path& file) {

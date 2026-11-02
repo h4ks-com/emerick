@@ -276,8 +276,9 @@ Rectangle {
                         id: setting
                         required property int index
                         readonly property var modelData: panel.instrument?.params[index]
-                            ?? {id: 0, name: "", min: 0, max: 0, value: 0, stepped: false, text: "", choices: []}
+                            ?? {id: 0, name: "", min: 0, max: 0, value: 0, stepped: false, text: "", choices: [], shown: false}
                         readonly property string controlName: "instrument.setParam:" + panel.trackId + ":" + modelData.id
+                        visible: modelData.shown
                         spacing: Theme.space1
                         Layout.fillWidth: true
 
@@ -286,7 +287,7 @@ Rectangle {
                         }
 
                         readonly property bool previewsVoice:
-                            panel.instrument?.params.findIndex(param => param.choices.length > 0) === index
+                            panel.instrument?.params.findIndex(param => param.choices.length > 0 && param.shown) === index
                         readonly property bool isSwitch: setting.modelData.stepped && setting.modelData.min === 0
                                                          && setting.modelData.max === 1
                         RouteLabel { text: setting.modelData.name; visible: !setting.isSwitch }

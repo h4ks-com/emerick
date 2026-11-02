@@ -166,7 +166,7 @@ void registerInstrumentActions(Registry& registry, ProjectController& controller
                             [&registry, &controller, &nav](const Json& params) {
                                 const model::TrackId id = instrumentTrack(registry, controller, nav, params);
                                 syncInstruments(controller);
-                                Json described = controller.instruments().describe(id);
+                                Json described = controller.instruments().describe(*controller.project().track(id));
                                 if (described.is_null()) {
                                     throw AppError("the instrument of track " + controller.project().track(id)->name +
                                                    " is not loaded, see the track's warning");

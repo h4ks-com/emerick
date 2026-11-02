@@ -7,6 +7,7 @@
 #include <memory>
 #include <nlohmann/json.hpp>
 #include <optional>
+#include <set>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -92,7 +93,9 @@ public:
     [[nodiscard]] bool editorOpen(const model::TrackId& id) const;
     [[nodiscard]] bool editorOpen(const model::InsertId& id) const;
     // The track's instrument as the inspector shows it: whether it has an editor, and each param with its value, its
-    // label and, for a stepped param, the label of every step. Null when the track plays no live instrument.
+    // label, for a stepped param the label of every step, and whether it applies to the channels the track plays. Null
+    // when the track plays no live instrument.
+    [[nodiscard]] nlohmann::json describe(const model::Track& track) const;
     [[nodiscard]] nlohmann::json describe(const model::TrackId& id) const;
     [[nodiscard]] nlohmann::json describe(const model::InsertId& id) const;
     // Sets the param on the live instrument and returns the state the instrument saves with it, with the value and its
@@ -126,7 +129,7 @@ private:
               const model::PluginSlot& slot, bool insert);
     void updateErrors();
     [[nodiscard]] std::shared_ptr<engine::Plugin> plugin(const std::string& key) const;
-    [[nodiscard]] nlohmann::json describePlugin(const std::string& key) const;
+    [[nodiscard]] nlohmann::json describePlugin(const std::string& key, const std::set<int>& played) const;
     ParamSet setPluginParam(const std::string& key, std::uint32_t param, const ParamValue& given);
 
     std::map<std::string, Live> live_;

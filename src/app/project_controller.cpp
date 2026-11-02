@@ -842,7 +842,7 @@ QVariantList ProjectController::markers() const { return toVariant(markersState(
 QVariantMap ProjectController::instrumentsInfo() const {
     QVariantMap info;
     for (const model::Track& track : project_.document().tracks) {
-        if (const Json described = instruments_.describe(track.id); !described.is_null()) {
+        if (const Json described = instruments_.describe(track); !described.is_null()) {
             info[qs(track.id.value)] = toVariant(described);
         }
     }

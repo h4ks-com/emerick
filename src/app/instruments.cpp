@@ -7,7 +7,9 @@
 #include <cmath>
 #include <cstddef>
 #include <format>
+#include <optional>
 #include <ranges>
+#include <set>
 #include <string>
 #include <system_error>
 #include <utility>
@@ -24,6 +26,26 @@ namespace emerick::app {
 namespace {
 
 constexpr int kQtLargestWindow = (1 << 24) - 1;
+constexpr double kSwitchOn = 0.5;
+
+// The channels the track's notes play and its MIDI input takes, empty when its input takes every channel and it has no
+// notes.
+std::set<int> playedChannels(const model::Track& track) {
+    std::set<int> channels;
+    if (track.midiIn.channel > 0) {
+        channels.insert(track.midiIn.channel);
+    }
+    for (const model::Clip& clip : track.clips) {
+        std::visit(core::Overloaded{[&](const model::MidiClip& midi) {
+                                        for (const model::Note& note : midi.notes) {
+                                            channels.insert(note.channel);
+                                        }
+                                    },
+                                    [](const model::AudioClip&) {}},
+                   clip);
+    }
+    return channels;
+}
 
 bool samePlugin(const model::PluginSlot& left, const model::PluginSlot& right) {
     return left.pluginId == right.pluginId && left.bundle == right.bundle && left.format == right.format;
@@ -343,25 +365,54 @@ bool Instruments::pluginEditorOpen(const std::string& key) const {
     return found != live_.end() && found->second.instrument && found->second.instrument->editorOpen();
 }
 
-Json Instruments::describe(const model::TrackId& id) const { return describePlugin(id.value); }
+Json Instruments::describe(const model::Track& track) const {
+    return describePlugin(track.id.value, playedChannels(track));
+}
 
-Json Instruments::describe(const model::InsertId& id) const { return describePlugin(id.value); }
+Json Instruments::describe(const model::TrackId& id) const { return describePlugin(id.value, {}); }
 
-Json Instruments::describePlugin(const std::string& key) const {
+Json Instruments::describe(const model::InsertId& id) const { return describePlugin(id.value, {}); }
+
+Json Instruments::describePlugin(const std::string& key, const std::set<int>& played) const {
     const auto instrument = plugin(key);
     if (!instrument) {
         return nullptr;
     }
+    const auto valueOf = [&](const engine::PluginParam& param) {
+        return instrument->paramValue(param.id).value_or(param.defaultValue);
+    };
+    const auto isSwitch = [](const engine::PluginParam& param) {
+        return param.stepped && param.min == 0.0 && param.max == 1.0;
+    };
+    const std::vector<engine::PluginParam> params = instrument->params();
+    const auto channels = params | std::views::transform(paramChannel) |
+                          std::views::filter([](const std::optional<int>& channel) { return channel.has_value(); }) |
+                          std::views::transform([](const std::optional<int>& channel) { return *channel; }) |
+                          std::ranges::to<std::set>();
+    // A param whose module names a channel sets that channel, such as the General MIDI drum kit on channel 10, and a
+    // switch of theirs that is on, such as Play drums on every channel, makes every channel play as that one. We hide
+    // those params on a track that plays only other channels, and the voice pickers without a channel, such as the
+    // melodic sound, on a track that plays only their channels.
+    const bool channelSwitchOn = std::ranges::any_of(params, [&](const engine::PluginParam& param) {
+        return paramChannel(param).has_value() && isSwitch(param) && valueOf(param) >= kSwitchOn;
+    });
+    const bool playsOnlyParamChannels = channelSwitchOn || (!played.empty() && std::ranges::includes(channels, played));
+    const auto shown = [&](const engine::PluginParam& param) {
+        if (const auto channel = paramChannel(param)) {
+            return played.empty() || played.contains(*channel) || channelSwitchOn;
+        }
+        return !playsOnlyParamChannels || !param.enumerated || isSwitch(param);
+    };
     return {{"editor", instrument->hasEditor()},
             {"latency", instrument->latency()},
-            {"params", instrument->params() | std::views::transform([&](const engine::PluginParam& param) {
-                           const double value = instrument->paramValue(param.id).value_or(param.defaultValue);
+            {"params", params | std::views::transform([&](const engine::PluginParam& param) {
+                           const double value = valueOf(param);
                            Json described{{"id", param.id},           {"name", param.name},
                                           {"module", param.module},   {"min", param.min},
                                           {"max", param.max},         {"default", param.defaultValue},
                                           {"stepped", param.stepped}, {"enum", param.enumerated},
                                           {"value", value},           {"text", instrument->paramText(param.id, value)},
-                                          {"choices", param.choices}};
+                                          {"choices", param.choices}, {"shown", shown(param)}};
                            if (const auto channel = paramChannel(param)) {
                                described["channel"] = *channel;
                                described["description"] = std::format("Sets what MIDI channel {} plays", *channel);

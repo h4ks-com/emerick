@@ -78,3 +78,41 @@ TEST_CASE("the highlighted sound shows a preview button that auditions it withou
     QTest::keyClick(main->window, Qt::Key_Escape);
     MainWindow::settle();
 }
+
+TEST_CASE("the inspector shows the General MIDI drum params only on a drum track and the Sound only on a melodic one") {
+    const QTemporaryDir cache;
+    PluginCatalog catalog(
+        {.cacheFolder = cache.path().toStdString(), .scanner = EMERICK_PLUGIN_SCANNER, .folders = {}});
+    auto* main = new MainWindow([&catalog](ProjectRig& rig) {
+        registerPluginActions(rig.registry, rig.nav, catalog);
+        registerInstrumentActions(rig.registry, *rig.controller, rig.nav, catalog);
+        rig.registry.setSetting(kClapFoldersSetting, Json::array({bundledClapFolder(EMERICK_GM_APP_FOLDER).string()}));
+    });
+    const auto shows = [&](const std::string& track, int param) {
+        return MainWindow::find(main->window->contentItem(),
+                                QString::fromStdString("instrument.setParam:" + track + ":" + std::to_string(param))) !=
+               nullptr;
+    };
+    constexpr int kSound = 0;
+    constexpr int kDrumKit = 1;
+    constexpr int kDrumsEverywhere = 4;
+    const std::string keys = main->rig.run("track.addInstrument", {{"plugin", kGeneralMidiPluginId}}).at("id");
+    main->rig.nav.setSelectedTrack(QString::fromStdString(keys));
+    REQUIRE(processUntil([&] { return shows(keys, kSound) && shows(keys, kDrumKit); }));
+
+    const std::string clip = main->rig.run("midi.addClip", {{"track", keys}, {"at", 0}}).at("id");
+    main->rig.run("midi.addNote", {{"clip", clip}, {"pitch", 60}, {"start", 0}});
+    CHECK(
+        processUntil([&] { return shows(keys, kSound) && !shows(keys, kDrumKit) && !shows(keys, kDrumsEverywhere); }));
+
+    main->rig.run("instrument.setParam", {{"track", keys}, {"param", kDrumsEverywhere}, {"value", 1}});
+    CHECK(processUntil([&] { return !shows(keys, kSound) && shows(keys, kDrumKit) && shows(keys, kDrumsEverywhere); }));
+
+    const std::string drums = main->rig.run("track.addInstrument", {{"plugin", kGeneralMidiPluginId}}).at("id");
+    const std::string beat = main->rig.run("midi.addClip", {{"track", drums}, {"at", 0}}).at("id");
+    main->rig.run("midi.addNote", {{"clip", beat}, {"pitch", 36}, {"start", 0}, {"channel", 10}});
+    main->rig.nav.setSelectedTrack(QString::fromStdString(drums));
+    CHECK(processUntil(
+        [&] { return !shows(drums, kSound) && shows(drums, kDrumKit) && shows(drums, kDrumsEverywhere); }));
+    MainWindow::settle();
+}

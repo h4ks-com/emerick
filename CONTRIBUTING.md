@@ -12,6 +12,14 @@ make test
 
 On Ubuntu 24.04 the CI job in `.github/workflows/ci.yml` lists the packages.
 
+On Windows, in an [MSYS2](https://www.msys2.org) UCRT64 shell:
+
+```
+pacman -S --needed mingw-w64-ucrt-x86_64-{gcc,cmake,ninja,ccache,pkgconf,libsndfile,fluidsynth,qt6-base,qt6-declarative,qt6-httpserver,qt6-websockets}
+cmake --preset release
+cmake --build --preset release
+```
+
 ## Make targets
 
 The Makefile is the single interface, and CI calls only these targets.

@@ -1,4 +1,4 @@
-<img src="app/icons/emerick.svg" width="96" alt="Emerick icon" align="right">
+<img src="app/icons/emerick.svg" width="80" alt="Emerick icon">
 
 # Emerick
 

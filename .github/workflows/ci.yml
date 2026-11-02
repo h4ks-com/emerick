@@ -80,7 +80,7 @@ jobs:
           key: deps-${{ matrix.os }}-${{ hashFiles('cmake/Dependencies.cmake') }}
 
       - name: Check format, lint and test
-        run: make quality
+        run: make quality-full
 
   service:
     runs-on: ubuntu-24.04

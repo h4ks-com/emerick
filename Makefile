@@ -1,16 +1,21 @@
-.PHONY: configure build test run run-release format format-check lint quality fix tidy-fix check-fast docker-build e2e \
+.PHONY: configure build test run run-release format format-check lint lint-changed quality quality-full fix tidy-fix check-fast docker-build e2e \
 	service-check service-run viewer-wasm clean
 
 SOURCES := $(shell git ls-files --cached --others --exclude-standard '*.cpp' '*.hpp')
-# The C++ files a branch changed since it left main, plus uncommitted and new ones.
-CHANGED := $(sort $(filter $(SOURCES),$(shell git diff --name-only $$(git merge-base HEAD main) 2>/dev/null; git ls-files --others --exclude-standard)))
-CHANGED_FILES := $(shell git diff --name-only $$(git merge-base HEAD main) 2>/dev/null; git ls-files --others --exclude-standard)
+# The files changed since the last push to main, including unpushed commits, uncommitted edits and new files.
+BASE := $(shell git merge-base HEAD origin/main 2>/dev/null || git merge-base HEAD main 2>/dev/null)
+CHANGED_FILES := $(shell git diff --name-only $(BASE) 2>/dev/null; git ls-files --others --exclude-standard)
+CHANGED := $(sort $(filter $(SOURCES),$(CHANGED_FILES)))
+# A changed header can break any file that includes it, so we lint those files too.
+CHANGED_HEADERS := $(notdir $(filter %.hpp,$(CHANGED)))
+INCLUDERS := $(if $(CHANGED_HEADERS),$(shell git grep -lF $(foreach header,$(CHANGED_HEADERS),-e '$(header)"') -- '*.cpp'))
+LINT_CHANGED := $(sort $(CHANGED) $(INCLUDERS))
 # The UI and app plugins sit on top of every other layer, so a change only there runs just their tests and the app's.
 LEAF_MODULES := src/ui $(wildcard plugins/*)
 LEAF_CHANGES := $(filter $(addsuffix /%,$(LEAF_MODULES)),$(CHANGED_FILES))
 OTHER_CHANGES := $(filter-out $(LEAF_CHANGES),$(CHANGED_FILES))
 FAST_TEST_DIRS := $(if $(and $(LEAF_CHANGES),$(if $(OTHER_CHANGES),,leaf)),app $(LEAF_MODULES))
-JOBS ?= 4
+JOBS ?= $(shell sysctl -n hw.ncpu 2>/dev/null || nproc)
 # We pin LLVM because every release adds clang-tidy checks and changes formatting.
 LLVM_VERSION := 22
 ifeq ($(shell uname),Darwin)
@@ -57,7 +62,12 @@ TIDY = printf '%s\n' $(call TIDY_FILES,$(1)) | xargs -P $(JOBS) -n 4 $(CLANG_TID
 lint: build
 	$(call TIDY,$(SOURCES))
 
-quality: format-check lint test
+lint-changed: build
+	$(if $(call TIDY_FILES,$(LINT_CHANGED)),$(call TIDY,$(LINT_CHANGED)))
+
+quality: format-check lint-changed test
+
+quality-full: format-check lint test
 
 # While working: fix what the tools can fix in the changed files, then check only those files.
 fix: build
@@ -71,7 +81,7 @@ tidy-fix:
 
 check-fast: build
 	$(if $(CHANGED),$(CLANG_FORMAT) --dry-run --Werror $(CHANGED))
-	$(if $(call TIDY_FILES,$(CHANGED)),$(call TIDY,$(CHANGED)))
+	$(if $(call TIDY_FILES,$(LINT_CHANGED)),$(call TIDY,$(LINT_CHANGED)))
 	$(if $(FAST_TEST_DIRS),$(foreach dir,$(FAST_TEST_DIRS),ctest --test-dir build/dev/$(dir) -j $(JOBS) --output-on-failure --stop-on-failure &&) true,ctest --preset dev -j $(JOBS) --stop-on-failure)
 
 viewer-wasm:

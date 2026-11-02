@@ -23,7 +23,8 @@ Emerick is a small native DAW in C++23 and Qt 6.11 QML. It records and plays aud
 - `make lint` clang-tidy, warnings are errors
 - `make fix` clang-format and clang-tidy --fix on the files the branch changed
 - `make check-fast` format-check and lint the changed files, build, run the tests in parallel (only the UI, plugin and app tests when only `src/ui` or `plugins` changed); use it while working
-- `make quality` the full gate: format-check, lint, test; run it once before a commit
+- `make quality` the gate: format-check everything, lint the files changed since `origin/main` and the files that include a changed header, run every test; run it once before a commit
+- `make quality-full` lints every file; CI runs it
 - `--headless` runs the app with no window, driven over MCP only, so it needs `--mcp-port` or the `mcp.port` setting; MCP then leaves out the `ui.*` tools and `screenshot`, and window only actions return an error
 - `--script <file> [-- args...]` runs one Lua script with no window and exits, 1 on a script error; the script reads `arg` and can call `emerick.wait`, and MCP runs only with `--mcp-port`; `docker run --rm emerick --script <file>` runs it in the image
 - `--agent-read-root`, `--agent-write-root`, `--no-lua-mcp`, `--lua-timeout-ms`, `--lua-memory-mb`, `--max-render-seconds` and `--bundled-plugins-only` limit what agents may do in a service run; `state.get` with `limits` lists the active ones and `--help` explains each

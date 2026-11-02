@@ -30,7 +30,8 @@ The Makefile is the single interface, and CI calls only these targets.
 | `make test` | build and run the unit tests |
 | `make check-fast` | format-check and lint the changed files, build, run the affected tests |
 | `make fix` | clang-format and clang-tidy --fix on the changed files |
-| `make quality` | format-check, lint and test everything |
+| `make quality` | format-check everything, lint the files changed since `origin/main`, test everything |
+| `make quality-full` | format-check, lint and test everything, as CI does |
 | `make run-release` | build the `release` preset and run it |
 | `make service-check` | ruff format check, ruff lint, pyright strict and pytest for `service/` |
 | `make service-run` | run the session service on the `dev` build, with data in `build/service` |

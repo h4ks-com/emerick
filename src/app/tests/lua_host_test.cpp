@@ -301,6 +301,28 @@ TEST_CASE("emerick.automate places points by bar and beat on the project's meter
     CHECK(project.lua.eval("emerick.automate('Vox', 'gain', {{1, 1}})").at("ok") == false);
 }
 
+TEST_CASE("emerick.automate also takes points as named tables, by bar and beat or by position") {
+    ProjectLua project;
+    const std::string vox = project.rig.run("track.addAudio", {{"name", "Vox"}}).at("id");
+    const Json points = project.eval(
+        "return emerick.automate('Vox', 'gain', {{bar = 2, value = -3}, {bar = 3, beat = 2.5, value = -1, curve = "
+        "'hold'}, {at = '4.1.0', value = 0}, {at = 480, value = -6}})");
+    CHECK(points.size() == 4);
+    const model::AutomationLane* lane = model::findLane(project.track(vox), "gain");
+    REQUIRE(lane != nullptr);
+    REQUIRE(lane->points.size() == 4);
+    CHECK(lane->points[0].tick == 480);
+    CHECK(lane->points[0].value == -6.0);
+    CHECK(lane->points[1].tick == 3840);
+    CHECK(lane->points[2].tick == (2 * 3840) + 960 + 480);
+    CHECK(lane->points[2].curve == core::AutomationCurve::hold);
+    CHECK(lane->points[3].tick == 3 * 3840);
+    for (const char* bad : {"{value = 0}", "{bar = 1}", "{at = 0, value = 'loud'}", "{bar = 'one', value = 0}"}) {
+        INFO(bad);
+        CHECK(project.lua.eval(std::string{"emerick.automate('Vox', 'gain', {"} + bad + "})").at("ok") == false);
+    }
+}
+
 TEST_CASE("emerick.automate with a bad bar, beat, value or curve leaves the project unchanged") {
     ProjectLua project;
     project.rig.run("track.addAudio", {{"name", "Vox"}});

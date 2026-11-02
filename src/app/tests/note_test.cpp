@@ -247,6 +247,18 @@ TEST_CASE("drawing controller values edits the clip's events as one undo step an
     CHECK_THROWS_AS(keys.run("midi.setControl", {{"lane", "velocity"}}), AppError);
 }
 
+TEST_CASE("controller points also take [at, value] pairs") {
+    NoteRig keys;
+    keys.add(60, 0);
+    keys.run("midi.setControl",
+             {{"lane", "cc11"}, {"points", Json::array({Json::array({0, 40}), {{"at", 20}, {"value", 80}}})}});
+    CHECK(keys.controls("cc11") == Json{{{"at", 0}, {"value", 40}}, {{"at", 20}, {"value", 80}}});
+    CHECK_THROWS_AS(keys.run("midi.setControl", {{"lane", "cc11"}, {"points", Json::array({Json::array({0})})}}),
+                    AppError);
+    CHECK_THROWS_AS(keys.run("midi.setControl", {{"lane", "cc11"}, {"points", Json::array({Json::array({0, 0.5})})}}),
+                    AppError);
+}
+
 TEST_CASE("dragging a controller point is one undo step that ends where the drag ends") {
     NoteRig keys;
     keys.run("midi.setControl", {{"lane", "cc11"}, {"points", {{{"at", 100}, {"value", 40}}}}});

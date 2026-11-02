@@ -272,8 +272,10 @@ constexpr std::array kLuaMembers{
               "Add a bus with an insert per {type = params} table of the inserts list, in order, such as "
               "emerick.bus('Verb', {{reverb = {mix = 1}}}), and return its id and the insert ids."},
     LuaMember{"automate", "automate(track, param, points)",
-              "Add a point to the lane of param on the track, by id or name, for each {bar, beat, value, curve?} in "
-              "points, where beat may be fractional and curve is linear, hold or smooth, and return the point ids."},
+              "Add a point to the lane of param on the track, by id or name, for each point in points, and return the "
+              "point ids. A point is {bar, beat, value, curve?}, {bar = b, beat = b, value = v, curve = c} or {at = "
+              "position, value = v, curve = c}, where beat may be fractional, at is ticks or a bar.beat.tick string "
+              "and curve is linear, hold or smooth."},
 };
 
 constexpr double kMaxWaitSeconds = 86'400;

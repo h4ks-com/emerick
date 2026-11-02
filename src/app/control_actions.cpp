@@ -90,7 +90,14 @@ Json changeLane(Registry& registry, const Json& params) {
 }
 
 model::ControlPoint checkedPoint(const Json& entry, model::Control control, const model::MidiClip& clip) {
-    const model::ControlPoint point{.at = param<core::Ticks>(entry, "at"), .value = param<int>(entry, "value")};
+    if (entry.is_array() &&
+        (entry.size() != 2 || !entry.at(0).is_number_integer() || !entry.at(1).is_number_integer())) {
+        throw AppError("give each point as {at, value} or [at, value], with whole numbers, got " + entry.dump());
+    }
+    const model::ControlPoint point =
+        entry.is_array()
+            ? model::ControlPoint{.at = entry.at(0).get<core::Ticks>(), .value = entry.at(1).get<int>()}
+            : model::ControlPoint{.at = param<core::Ticks>(entry, "at"), .value = param<int>(entry, "value")};
     if (point.at < 0 || point.at >= clip.length) {
         throw AppError("at must be inside the clip, from 0 to " + std::to_string(clip.length - 1) + " ticks");
     }
@@ -184,8 +191,9 @@ void registerControlActions(Registry& registry, ProjectController& controller, N
     registry.addAction(
         {.id = "midi.setControl",
          .title = "Edit controller values",
-         .description = "Replaces the lane's events from from to to, both included, with points of {at, value}. at is "
-                        "ticks from the clip start. Values go from 0 to 127, and from -8192 to 8191 for pitchBend. A "
+         .description = "Replaces the lane's events from from to to, both included, with points, each {at, value} or "
+                        "[at, value]. at is ticks from the clip start. Values go from 0 to 127, and from -8192 to 8191 "
+                        "for pitchBend. A "
                         "point that repeats the value before it is dropped, and no points deletes the range. "
                         "project.clipEvents lists each lane's points under controls.",
          .aliases = {"draw controller", "draw modulation", "draw pitch bend", "delete controller events"},
@@ -199,8 +207,7 @@ void registerControlActions(Registry& registry, ProjectController& controller, N
                       {"points",
                        {{"type", "array"},
                         {"items",
-                         {{"type", "object"},
-                          {"required", {"at", "value"}},
+                         {{"description", "{at, value} or [at, value]"},
                           {"properties", {{"at", {{"type", "integer"}}}, {"value", {{"type", "integer"}}}}}}}}}}}},
          .run = [&controller, &nav](const Json& params) { return setControl(controller, nav, params); }});
 }

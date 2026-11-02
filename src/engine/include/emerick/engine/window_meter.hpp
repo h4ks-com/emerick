@@ -27,6 +27,9 @@ struct WindowLevels {
     std::int64_t clipped = 0;
     // How often the level above 1 kHz rises from quiet to loud, as each hit of a beep does.
     int onsets = 0;
+    // How long a hit above 1 kHz lasts on average, from its onset until it goes quiet. A beep holds its tone, while a
+    // struck sound such as claves dies within a few tens of ms.
+    double hitSeconds = 0;
     // The mean sample value over every channel, which a DC offset moves away from 0.
     double mean = 0;
 };

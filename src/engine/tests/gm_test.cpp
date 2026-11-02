@@ -16,8 +16,11 @@
 #include <utility>
 #include <vector>
 
+#include "emerick/engine/audio_analysis.hpp"
+#include "emerick/engine/mix_issues.hpp"
 #include "emerick/engine/plugin.hpp"
 #include "emerick/engine/plugin_scan.hpp"
+#include "emerick/engine/window_meter.hpp"
 
 using namespace emerick::engine;
 
@@ -410,4 +413,45 @@ TEST_CASE("a drum map plays each drum channel note as its mapped note and drops 
     CHECK(loudest(play({{0x99, 30, 100}})) < 1e-4F);
     CHECK(differenceEnergy(play({{0x90, 29, 100}}), render({{0x90, 29, 100}})) < 1e-6);
     CHECK(loudest(render({{0x99, 30, 100}})) > 0.01F);
+}
+
+TEST_CASE("claves played on every beat are no beep to the mix inspection") {
+    constexpr std::uint8_t kClaves = 75;
+    constexpr std::size_t kBeatBlocks = 47;
+    constexpr std::size_t kBeats = 16;
+    const std::shared_ptr<Plugin> instrument = generalMidi();
+    REQUIRE(instrument->activate(kRate, kBlock));
+    std::vector<float> left;
+    std::vector<float> right;
+    for (std::size_t block = 0; block < kBeats * kBeatBlocks; ++block) {
+        if (block % kBeatBlocks == 0) {
+            instrument->queueMidi(Message{0x99, kClaves, 100}, 0);
+        } else if (block % kBeatBlocks == 4) {
+            instrument->queueMidi(Message{0x89, kClaves, 0}, 0);
+        }
+        std::vector<float> chunkLeft(kBlock);
+        std::vector<float> chunkRight(kBlock);
+        const std::array<float*, 2> mix{chunkLeft.data(), chunkRight.data()};
+        instrument->processBlock(mix, kBlock, 0, {});
+        left.insert(left.end(), chunkLeft.begin(), chunkLeft.end());
+        right.insert(right.end(), chunkRight.begin(), chunkRight.end());
+    }
+    REQUIRE(loudest(left) > 0.01F);
+
+    const std::size_t window = 2 * kBeatBlocks * kBlock;
+    std::vector<std::size_t> ends;
+    for (std::size_t end = window; end <= left.size(); end += window) {
+        ends.push_back(end);
+    }
+    WindowMeter windows(2, kRate, ends);
+    windows.add(std::vector{left, right});
+    TrackMeter meter(2, kRate);
+    meter.add(std::vector{left, right});
+    const std::vector<InspectedOutput> outputs{{.levels = meter.levels(), .windows = windows.windows()}};
+    const std::vector<double> beats(ends.size(), 2.0);
+    const std::vector<MixIssue> issues = inspectMix(outputs, beats);
+    for (const MixIssue& issue : issues) {
+        UNSCOPED_INFO(issue.detail);
+    }
+    CHECK_FALSE(std::ranges::contains(issues, IssueKind::beep, &MixIssue::kind));
 }

@@ -39,7 +39,7 @@ Render with `export.mix {path, targetLufs = -14, ceilingDbtp = -1}` for streamin
 Numbers find many problems, but not all of them, so review in layers:
 
 1. Read the export's warnings: a failed instrument, a missing file or a voice that decodes badly shows up there.
-2. Run `mix.inspect`. It renders the mix and every track and lists issues by severity with track and bar: whine (a steady narrow tone), beep (repeating high hits), clipping, DC, imbalance, silent tracks, harsh sections. Fix the source of each, not the symptom: a beep on a guitar part is usually notes the instrument should not play.
+2. Run `mix.inspect`. It renders the mix and every track and lists issues by severity with track and bar: whine (a steady narrow tone), beep (a high tone that repeats and holds for at least 40 ms per hit), clipping, DC, imbalance, silent tracks, harsh sections. Fix the source of each, not the symptom: a beep on a guitar part is usually notes the instrument should not play.
 3. Check each instrument on its own. A part can measure fine and still sound broken, robotic or wrong. Solo it, export a stem with `export.stems`, or audition its voice, and listen or at least look at its harmonic share and its note range. `mix.inspect` can miss broadband distorted hits, so check the note range of any part that plays sounds it was not written for.
 4. Listen to the transitions: intro into verse, every fill, the break before the chorus, the ending.
 5. After each fix, re-render and confirm you are reviewing the new file (its modification time, or a value the run printed) before claiming it is fixed.

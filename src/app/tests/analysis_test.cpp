@@ -44,10 +44,10 @@ std::vector<float> noise(double amplitude, double seconds) {
 }
 
 // A Hann shaped 20 ms blip of hz every interval seconds.
-std::vector<float> blips(double hz, double interval, double seconds) {
+std::vector<float> beeps(double hz, double interval, double seconds) {
     std::vector<float> samples = sine(hz, 0.5, seconds);
     const auto period = static_cast<std::size_t>(interval * kRate);
-    constexpr std::size_t kBlip = 960;
+    constexpr std::size_t kBlip = 5760;
     for (std::size_t frame = 0; frame < samples.size(); ++frame) {
         const std::size_t phase = frame % period;
         samples[frame] *=
@@ -415,10 +415,10 @@ TEST_CASE("inspecting a mix finds a steady whine on its track and bars") {
     CHECK(whines[0].at("severity") == "high");
 }
 
-TEST_CASE("inspecting a mix finds a high pitched blip every eighth note as a beep with its rate and pitch") {
+TEST_CASE("inspecting a mix finds a high pitched beep on every beat with its rate and pitch") {
     ProjectRig rig;
     addTrack(rig, "Room", noise(0.05, 16));
-    const std::string guitar = addTrack(rig, "Guitar", blips(3000, 0.25, 8), "5.1.0");
+    const std::string guitar = addTrack(rig, "Guitar", beeps(3000, 0.5, 8), "5.1.0");
 
     const Json inspection = rig.run("mix.inspect");
     INFO(inspection.dump(2));
@@ -426,7 +426,7 @@ TEST_CASE("inspecting a mix finds a high pitched blip every eighth note as a bee
     REQUIRE(beeps.size() == 1);
     CHECK(beeps[0].at("from").at("bbt") == "5.1.0");
     CHECK(beeps[0].at("evidence").at("hz").get<double>() == Approx(3000).epsilon(0.02));
-    CHECK(beeps[0].at("evidence").at("hitsPerBeat").get<double>() == Approx(2).margin(0.25));
+    CHECK(beeps[0].at("evidence").at("hitsPerBeat").get<double>() == Approx(1).margin(0.25));
     CHECK(issuesOf(inspection, "whine").empty());
 }
 

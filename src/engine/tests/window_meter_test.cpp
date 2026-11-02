@@ -49,6 +49,23 @@ std::vector<float> blips(double hz, std::size_t interval, std::size_t frames) {
     return samples;
 }
 
+// A 60 ms beep of hz every interval frames, with 5 ms ramps.
+std::vector<float> beeps(double hz, double amplitude, std::size_t interval, std::size_t frames) {
+    constexpr std::size_t kBeep = 2880;
+    constexpr std::size_t kRamp = 240;
+    std::vector<float> samples = sine(hz, amplitude, frames);
+    for (std::size_t frame = 0; frame < frames; ++frame) {
+        const std::size_t phase = frame % interval;
+        const std::size_t edge = std::min(phase, kBeep - std::min(phase, kBeep));
+        const double envelope = phase >= kBeep ? 0
+                                : edge < kRamp
+                                    ? 0.5 * (1 - std::cos(std::numbers::pi * static_cast<double>(edge) / kRamp))
+                                    : 1;
+        samples[frame] *= static_cast<float>(envelope);
+    }
+    return samples;
+}
+
 std::vector<WindowLevels> measure(const std::vector<float>& samples, std::size_t window) {
     std::vector<std::size_t> ends;
     for (std::size_t end = window; end <= samples.size(); end += window) {
@@ -101,8 +118,10 @@ TEST_CASE("a window meter counts each pitched blip, clipped samples and a cut sh
     const std::vector<WindowLevels> hits = measure(blips(3000, kSecond / 4, 2 * kSecond), kSecond);
     REQUIRE(hits.size() == 2);
     CHECK(hits[0].onsets == 4);
+    CHECK(hits[0].hitSeconds == Approx(0.02).margin(0.006));
     CHECK(hits[0].peakDb - hits[0].rmsDb > 10);
     CHECK(hits[0].tonality > 0.4);
+    CHECK(measure(beeps(3000, 0.5, kSecond / 2, kSecond), kSecond)[0].hitSeconds == Approx(0.06).margin(0.006));
 
     std::vector<float> loud = sine(100, 1.2, kSecond + (kSecond / 2));
     std::vector<WindowLevels> clipped = measure(loud, kSecond);
@@ -111,6 +130,17 @@ TEST_CASE("a window meter counts each pitched blip, clipped samples and a cut sh
     WindowMeter meter(1, kRate, {kSecond, 2 * kSecond});
     meter.add(std::vector<std::vector<float>>{loud});
     CHECK(meter.windows().size() == 2);
+}
+
+TEST_CASE("inspecting a mix finds a beep that holds its tone, and no beep in short pitched hits") {
+    const std::size_t frames = 8 * kSecond;
+    const std::vector<InspectedOutput> outputs{output(blips(3000, kSecond / 4, frames), kSecond),
+                                               output(beeps(3000, 0.5, kSecond / 2, frames), kSecond)};
+    const std::vector<MixIssue> issues = inspectMix(outputs, std::vector<double>(8, 2.0));
+    const auto beep = std::ranges::find(issues, IssueKind::beep, &MixIssue::kind);
+    REQUIRE(beep != issues.end());
+    CHECK(beep->output == 1);
+    CHECK(std::ranges::count(issues, IssueKind::beep, &MixIssue::kind) == 1);
 }
 
 TEST_CASE("inspecting a mix finds a whine, a beep, clipping, a DC offset, silence and an imbalance") {
@@ -122,7 +152,7 @@ TEST_CASE("inspecting a mix finds a whine, a beep, clipping, a DC offset, silenc
     std::vector<float> clipping = noise(0.05, frames);
     clipping[3 * kSecond] = 1.0F;
     const std::vector<InspectedOutput> outputs{output(sine(6000, 0.1, frames), kSecond),
-                                               output(blips(3000, kSecond / 4, frames), kSecond),
+                                               output(beeps(3000, 0.1, kSecond / 2, frames), kSecond),
                                                output(clipping, kSecond, OutputRole::mix),
                                                output(offset, kSecond),
                                                output(std::vector<float>(frames), kSecond, OutputRole::bus),
@@ -143,7 +173,7 @@ TEST_CASE("inspecting a mix finds a whine, a beep, clipping, a DC offset, silenc
     const MixIssue beep = issue(IssueKind::beep);
     CHECK(beep.output == 1);
     CHECK(beep.evidence[0].value == Approx(3000).epsilon(0.01));
-    CHECK(beep.evidence[1].value == Approx(2).margin(0.1));
+    CHECK(beep.evidence[1].value == Approx(1).margin(0.1));
     const MixIssue clipped = issue(IssueKind::clipping);
     CHECK(clipped.output == 2);
     CHECK(clipped.firstWindow == 3);

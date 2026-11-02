@@ -23,6 +23,7 @@ constexpr double kBeepMinHz = 2000;
 constexpr double kBeepMinCrestDb = 10;
 constexpr int kBeepMinOnsets = 2;
 constexpr std::size_t kBeepMinWindows = 2;
+constexpr double kBeepMinHitSeconds = 0.04;
 // A tone stays the same tone while its peak moves less than this share of its frequency.
 constexpr double kStableHzShare = 0.03;
 constexpr double kDcOffset = 0.01;
@@ -144,7 +145,8 @@ private:
         const auto& all = windows(output);
         const auto pitchedHits = [](const WindowLevels& window) {
             return active(window) && window.tonality >= kBeepTonality && window.tonalPeakHz >= kBeepMinHz &&
-                   window.crestDb >= kBeepMinCrestDb && window.onsets >= kBeepMinOnsets;
+                   window.crestDb >= kBeepMinCrestDb && window.onsets >= kBeepMinOnsets &&
+                   window.hitSeconds >= kBeepMinHitSeconds;
         };
         for (const Run& run : runsOf(all, pitchedHits, sameTone, kBeepMinWindows)) {
             const double hz =

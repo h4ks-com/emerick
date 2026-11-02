@@ -55,9 +55,16 @@ TonalPeak tonalPeak(std::span<const double> power, double sampleRate) {
     return {.hz = (static_cast<double>(peak) + offset) * binHz, .tonality = narrow / wide};
 }
 
-int onsetsOf(const std::vector<double>& envelope) {
+struct Hits {
+    int onsets = 0;
+    double seconds = 0;
+};
+
+// Each hit runs from its onset until the level goes quiet again.
+Hits hitsOf(const std::vector<double>& envelope) {
     const double loudest = envelope.empty() ? 0 : std::ranges::max(envelope);
     int onsets = 0;
+    std::size_t ringing = 0;
     bool quiet = true;
     for (const double power : envelope) {
         if (quiet && power > loudest * kOnsetLoudShare) {
@@ -66,8 +73,9 @@ int onsetsOf(const std::vector<double>& envelope) {
         } else if (power < loudest * kOnsetQuietShare) {
             quiet = true;
         }
+        ringing += quiet ? 0 : 1;
     }
-    return onsets;
+    return {.onsets = onsets, .seconds = onsets == 0 ? 0 : static_cast<double>(ringing) * kOnsetHopSeconds / onsets};
 }
 
 struct Window {
@@ -139,12 +147,14 @@ struct WindowMeter::State {
         const auto samples = static_cast<double>(window.frames * channels);
         const double rmsDb = powerDb(window.squares / samples);
         const double peakDb = amplitudeDb(window.peak);
+        const Hits hits = hitsOf(window.envelope);
         WindowLevels levels{.activeRmsDb = activeRmsDb(window.stepSquares, window.frames, stepFrames, channels),
                             .rmsDb = rmsDb,
                             .peakDb = peakDb,
                             .crestDb = peakDb - rmsDb,
                             .clipped = window.clipped,
-                            .onsets = onsetsOf(window.envelope),
+                            .onsets = hits.onsets,
+                            .hitSeconds = hits.seconds,
                             .mean = window.sum / samples};
         std::vector<double> channelPower((kToneFrame / 2) + 1);
         for (const SpectrumSum& spectrum : window.spectra) {

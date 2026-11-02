@@ -79,8 +79,7 @@ struct Insert {
     std::shared_ptr<Plugin> plugin;
 };
 
-// The parameter a lane moves. Gain and send levels are in dB, pan runs from -1 to 1 and mute is on from 0.5.
-enum class AutomationTarget : std::uint8_t { gain, pan, mute, send, insert };
+using core::AutomationTarget;
 
 struct AutomationPoint {
     Ticks tick = 0;

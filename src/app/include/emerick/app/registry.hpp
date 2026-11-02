@@ -24,6 +24,7 @@
 
 #include "emerick/app/enums.hpp"
 #include "emerick/app/path_access.hpp"
+#include "emerick/app/variant.hpp"
 #include "emerick/core/fuzzy.hpp"
 #include "emerick/core/time.hpp"
 #include "emerick/engine/session.hpp"
@@ -35,8 +36,6 @@ template <>
 struct QTypeTraits::has_ostream_operator<QDebug, nlohmann::json> : std::false_type {};
 
 namespace emerick::app {
-
-using Json = nlohmann::json;
 
 struct AppError : std::runtime_error {
     using std::runtime_error::runtime_error;
@@ -305,6 +304,8 @@ class Registry : public QObject {
     Q_PROPERTY(QVariantMap menus READ menus NOTIFY menusChanged)
     Q_PROPERTY(QStringList menuBar READ menuBar NOTIFY menusChanged)
     Q_PROPERTY(bool gesturing READ gesturing NOTIFY gesturingChanged)
+    // The views hide every edit while this is on, as the browser viewer's registry has it.
+    Q_PROPERTY(bool readOnly READ readOnly CONSTANT)
 
 public:
     // An empty path uses the platform's default QSettings store.
@@ -375,6 +376,7 @@ public:
     // The menu bar menus that hold any action, in kMenuBar order.
     [[nodiscard]] QStringList menuBar() const;
     [[nodiscard]] bool gesturing() const { return gesturing_; }
+    [[nodiscard]] static bool readOnly() { return false; }
     // Every action with its title, category and shortcut, for the key commands list.
     [[nodiscard]] QVariantList keyCommands() const;
     // The portable text of a key press, such as Ctrl+Shift+S, or empty for a modifier alone.
@@ -447,9 +449,5 @@ private:
     bool gesturing_ = false;
     QTimer gestureFrame_;
 };
-
-QString qs(const std::string& text);
-QVariant toVariant(const Json& value);
-Json toJson(const QVariant& value);
 
 }  // namespace emerick::app

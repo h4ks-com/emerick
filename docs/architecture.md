@@ -11,8 +11,10 @@ Each layer is one CMake target. A layer only depends on the layers above it in t
 | `emerick_core` | no | units and time (frames, ticks at 960 PPQ, tempo map, positions), strong ids, SPSC queues, fuzzy matcher |
 | `emerick_model` | no | the project document: tracks, clips, track I/O, plugin track data, undo commands, JSON load and save |
 | `emerick_engine` | no | audio and MIDI backends, transport, playback graph, recording to disk, MIDI capture, offline render and export |
+| `emerick_view_data` | yes | what the views read and draw from the document alone: track rows, automation params, peak files, waveforms, notes |
 | `emerick_app` | yes | the registry, document and engine controllers, QML models, navigation and reveal, introspection, MCP server, Lua host, settings |
 | `emerick_ui` | yes | the QML module `Emerick.Ui`: theme tokens and every view |
+| `emerick_viewer` | yes | the read-only viewer: the tracks view over a project.json, with the rendered mix moving its playhead |
 | `emerick_gm` | no | the General MIDI CLAP instrument the app ships, built on FluidSynth |
 | `emerick_voices` | no | the Expansion Voices CLAP instrument the app ships, a sampler for Yamaha expansion pack voices |
 | `emerick_arranger` | no | the Yamaha style arranger engine, and the Arranger CLAP device the app ships on it |

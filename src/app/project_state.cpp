@@ -92,7 +92,7 @@ Json timing(core::Ticks start, core::Ticks length, const core::TempoMap& tempo) 
     return {{"start", start},
             {"startBbt", tempo.toBarBeatTick(start).format()},
             {"length", length},
-            {"lengthBbt", durationText(length, tempo)},
+            {"lengthBbt", tempo.durationText(length)},
             {"endBbt", tempo.toBarBeatTick(start + length).format()}};
 }
 
@@ -129,11 +129,6 @@ std::string audioRouteText(const model::AudioRoute& route, std::span<const engin
         text += (index == 0 ? " " : "-") + std::to_string(route.channels[index]);
     }
     return text;
-}
-
-std::string durationText(core::Ticks ticks, const core::TempoMap& tempo) {
-    const core::BarBeatTick position = tempo.toBarBeatTick(ticks);
-    return core::BarBeatTick{position.bar - 1, position.beat - 1, position.tick}.format();
 }
 
 Json positionState(core::Ticks ticks, const core::TempoMap& tempo) {
@@ -251,22 +246,6 @@ Json trackState(const model::Track& track, const core::TempoMap& tempo,
 
 Json tempoState(const core::TempoMap& tempo) {
     return {{"bpm", tempo.bpm}, {"numerator", tempo.meter.numerator}, {"denominator", tempo.meter.denominator}};
-}
-
-Json markerState(const model::Marker& marker, int number, const core::TempoMap& tempo) {
-    return {{"id", marker.id.value},
-            {"name", marker.name},
-            {"number", number},
-            {"at", marker.at},
-            {"position", tempo.toBarBeatTick(marker.at).format()},
-            {"color", marker.color ? Json(*marker.color) : Json(nullptr)}};
-}
-
-Json markersState(const model::Document& document) {
-    return std::views::zip(std::views::iota(1), document.markers) | std::views::transform([&](const auto& entry) {
-               return markerState(std::get<1>(entry), std::get<0>(entry), document.tempo);
-           }) |
-           std::ranges::to<Json::array_t>();
 }
 
 Json projectState(ProjectController& controller) {

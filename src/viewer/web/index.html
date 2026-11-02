@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, height=device-height, user-scalable=0">
+  <title>Emerick Viewer</title>
+  <style>
+    html, body { margin: 0; height: 100%; overflow: hidden; background: #1B1C20; color: #9599A3; font: 12px sans-serif; }
+    body { display: flex; flex-direction: column; }
+    header { display: flex; align-items: center; gap: 12px; padding: 4px 8px; background: #25272D; }
+    audio { flex: 1; height: 32px; }
+    #screen { flex: 1; min-height: 0; }
+  </style>
+</head>
+<body>
+  <!-- ?project=, ?mix= and ?bundle= name project.json, the rendered mix and the bundle folder the peak files sit in. -->
+  <header>
+    <audio id="mix" controls preload="auto"></audio>
+    <span id="status">Wait for the viewer to load</span>
+  </header>
+  <div id="screen"></div>
+  <script src="emerick_viewer.js"></script>
+  <script src="qtloader.js"></script>
+  <script>
+    const query = new URLSearchParams(location.search);
+    const absolute = path => new URL(path, location.href).href;
+    const project = absolute(query.get("project") ?? "project.json");
+    const bundle = absolute(query.get("bundle") ?? new URL(".", project).href);
+    const mix = absolute(query.get("mix") ?? "mix");
+    const status = document.getElementById("status");
+    let viewerReady = false;
+    let mixState = "rendering";
+    const showStatus = () => {
+      status.textContent = !viewerReady ? "Wait for the viewer to load"
+        : mixState === "rendering" ? "Wait for the mix to render"
+        : mixState === "failed" ? "Reload the page to load the mix" : "";
+    };
+
+    // The service answers 202 with Retry-After while it renders the mix, so we ask again until it is there.
+    async function waitForMix() {
+      for (;;) {
+        const response = await fetch(mix, {headers: {Range: "bytes=0-0"}}).catch(() => null);
+        if (response && response.status !== 202) {
+          mixState = response.ok ? "ready" : "failed";
+          if (response.ok) {
+            document.getElementById("mix").src = mix;
+          }
+          return;
+        }
+        const seconds = Number(response?.headers.get("Retry-After")) || 2;
+        await new Promise(resolve => setTimeout(resolve, seconds * 1000));
+      }
+    }
+    waitForMix().then(showStatus);
+
+    qtLoad({
+      arguments: [project, "--bundle", bundle],
+      qt: {
+        entryFunction: window.emerick_viewer_entry,
+        containerElements: [document.getElementById("screen")],
+        onLoaded: () => { viewerReady = true; showStatus(); },
+        onExit: exit => status.textContent = "Reload the page to restart the viewer" + (exit.text ? ": " + exit.text : ""),
+      },
+    }).catch(error => status.textContent = String(error));
+  </script>
+</body>
+</html>

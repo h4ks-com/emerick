@@ -14,6 +14,8 @@ Ticks clipStart(const Clip& clip);
 Ticks clipLength(const Clip& clip);
 // Where the clip ends on the timeline, after its repeats when it loops.
 Ticks clipEnd(const Clip& clip);
+// The end of the last clip on any track.
+Ticks projectEnd(const Document& document);
 
 Clip moveClip(Clip clip, Ticks start);
 // The copy gets a new id.

@@ -24,9 +24,6 @@ class ProjectController;
 model::Document liveDocument(ProjectController& controller);
 PlaybackContext playbackContext(ProjectController& controller, const model::Document& document);
 
-// The end of the last clip on any track.
-core::Ticks projectEnd(const model::Document& document);
-
 // Where exports of the session stop: the project end, or the end of the bar of the last MIDI event a track plays, such
 // as a chord from a lane, when that event comes after the project end.
 core::Ticks exportEnd(const engine::Session& session, const model::Document& document);

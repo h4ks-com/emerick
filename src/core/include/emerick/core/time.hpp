@@ -40,6 +40,8 @@ struct TempoMap {
     [[nodiscard]] Ticks framesToTicks(Frames frames, double sampleRate) const;
     [[nodiscard]] BarBeatTick toBarBeatTick(Ticks ticks) const;
     [[nodiscard]] Ticks fromBarBeatTick(const BarBeatTick& position) const;
+    // A length counts whole bars and beats from zero, so two beats read "0.2.0".
+    [[nodiscard]] std::string durationText(Ticks ticks) const;
     bool operator==(const TempoMap&) const = default;
 };
 

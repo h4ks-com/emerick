@@ -10,6 +10,7 @@
 #include "emerick/app/plugin_actions.hpp"
 #include "emerick/app/project_files.hpp"
 #include "emerick/app/stem_export.hpp"
+#include "emerick/model/clip_edit.hpp"
 #include "emerick/model/json.hpp"
 #include "midi_file.hpp"
 #include "project_rig.hpp"

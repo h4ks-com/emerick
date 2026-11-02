@@ -27,6 +27,7 @@
 #include "emerick/app/stem_export.hpp"
 #include "emerick/app/track_analysis.hpp"
 #include "emerick/engine/audio_analysis.hpp"
+#include "emerick/model/clip_edit.hpp"
 
 namespace emerick::app {
 

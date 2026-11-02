@@ -2,14 +2,13 @@
 
 #include <algorithm>
 
+#include "emerick/core/lookup.hpp"
+
 namespace emerick::engine {
 
 const EffectSpec& effectSpec(EffectType type) { return kEffects.at(static_cast<std::size_t>(type)); }
 
-const EffectSpec* findEffect(std::string_view id) {
-    const auto* const found = std::ranges::find(kEffects, id, &EffectSpec::id);
-    return found == kEffects.end() ? nullptr : found;
-}
+const EffectSpec* findEffect(std::string_view id) { return core::findEntry(kEffects, id, &EffectSpec::id); }
 
 std::optional<std::size_t> paramIndex(const EffectSpec& spec, std::string_view id) {
     const auto found = std::ranges::find(spec.params, id, &EffectParam::id);

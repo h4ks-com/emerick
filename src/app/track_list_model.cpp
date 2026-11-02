@@ -6,7 +6,6 @@
 #include <algorithm>
 #include <array>
 #include <cstddef>
-#include <filesystem>
 #include <functional>
 #include <iterator>
 #include <ranges>
@@ -18,17 +17,14 @@
 #include "emerick/app/note_edit.hpp"
 #include "emerick/app/project_actions.hpp"
 #include "emerick/app/project_state.hpp"
-#include "emerick/core/overloaded.hpp"
+#include "emerick/app/track_rows.hpp"
 #include "emerick/model/automation.hpp"
-#include "emerick/model/clip_edit.hpp"
 #include "emerick/model/controls.hpp"
 #include "emerick/model/midi_notes.hpp"
 
 namespace emerick::app {
 
 namespace {
-
-constexpr std::array kLaneScaleNames{"linear", "logarithmic", "fader"};
 
 QVariantMap audioRoute(const model::AudioRoute& route) {
     QVariantList channels;
@@ -50,35 +46,6 @@ QVariantMap midiRoute(const model::MidiRoute& route) {
 const char* clipTypeName(ClipType type) {
     constexpr std::array kNames{"", "audio", "midi"};
     return kNames.at(static_cast<std::size_t>(type));
-}
-
-// We shift each note by from, which places a take chunk's notes within the take.
-QVariantList noteList(const model::MidiClip& clip, core::Ticks from = 0) {
-    return clip.notes | std::views::transform([from](const model::Note& note) {
-               return QVariant{QVariantMap{{"id", qs(note.id.value)},
-                                           {"pitch", note.pitch},
-                                           {"velocity", note.velocity},
-                                           {"start", QVariant::fromValue(from + note.start)},
-                                           {"length", QVariant::fromValue(note.length)},
-                                           {"channel", note.channel}}};
-           }) |
-           std::ranges::to<QVariantList>();
-}
-
-QVariant pointEntry(const model::AutomationPoint& point) {
-    return QVariantMap{{"id", qs(point.id.value)},
-                       {"tick", QVariant::fromValue(point.tick)},
-                       {"value", point.value},
-                       {"curve", qs(std::string{core::automationCurveId(point.curve)})}};
-}
-
-QVariantList laneList(const model::Track& track) {
-    return track.automation | std::views::transform([](const model::AutomationLane& lane) {
-               return QVariant{QVariantMap{
-                   {"param", qs(lane.param)},
-                   {"points", lane.points | std::views::transform(pointEntry) | std::ranges::to<QVariantList>()}}};
-           }) |
-           std::ranges::to<QVariantList>();
 }
 
 constexpr std::size_t kChunksPerSegment = 8;
@@ -148,53 +115,8 @@ QVariantMap TrackListModel::previewEntry(const model::TrackId& id, ClipType type
     return entry;
 }
 
-QVariantMap TrackListModel::clipEntry(const model::Clip& clip, int take) const {
-    const core::TempoMap& tempo = project_.document().tempo;
-    const double rate = controller_.sampleRate();
-    const core::Ticks start = model::clipStart(clip);
-    const core::Ticks end = model::clipEnd(clip);
-    QVariantMap entry{{"id", qs(model::clipId(clip).value)},
-                      {"take", take},
-                      {"muted", model::clipMuted(clip)},
-                      {"name", qs(model::clipName(clip))},
-                      {"start", QVariant::fromValue(start)},
-                      {"length", QVariant::fromValue(model::clipLength(clip))},
-                      {"end", QVariant::fromValue(end)},
-                      {"startText", qs(tempo.toBarBeatTick(start).format())},
-                      {"endText", qs(tempo.toBarBeatTick(end).format())},
-                      {"lengthText", qs(durationText(end - start, tempo))}};
-    std::visit(
-        core::Overloaded{
-            [&](const model::AudioClip& audio) {
-                const std::filesystem::path file{audio.file};
-                const core::Frames frames = tempo.ticksToFrames(end, rate) - tempo.ticksToFrames(start, rate);
-                entry.insert(
-                    QVariantMap{{"type", "audio"},
-                                {"fadeIn", QVariant::fromValue(audio.fadeIn)},
-                                {"fadeOut", QVariant::fromValue(audio.fadeOut)},
-                                {"fadeInShape", qs(std::string{core::fadeShapeId(audio.fadeInShape)})},
-                                {"fadeOutShape", qs(std::string{core::fadeShapeId(audio.fadeOutShape)})},
-                                {"fadeInCurve", audio.fadeInCurve},
-                                {"fadeOutCurve", audio.fadeOutCurve},
-                                {"gainDb", audio.gainDb},
-                                {"file", qs((file.is_absolute() ? file : controller_.folder() / file).string())},
-                                {"sourceOffset", QVariant::fromValue(audio.sourceOffset)},
-                                {"frames", QVariant::fromValue(frames)}});
-            },
-            [&](const model::MidiClip& midi) {
-                entry.insert(QVariantMap{{"type", "midi"}, {"notes", noteList(midi)}, {"looped", model::looped(midi)}});
-            }},
-        clip);
-    return entry;
-}
-
-QVariantList TrackListModel::clipList(const model::Track& track) const {
-    QVariantList clips;
-    int take = 0;
-    for (const model::Clip& clip : track.clips) {
-        clips.append(clipEntry(clip, ++take));
-    }
-    return clips;
+RowContext TrackListModel::rowContext() const {
+    return {.tempo = project_.document().tempo, .sampleRate = controller_.sampleRate(), .folder = controller_.folder()};
 }
 
 QVariantMap TrackListModel::clip(const QString& id) const {
@@ -204,7 +126,7 @@ QVariantMap TrackListModel::clip(const QString& id) const {
     }
     const auto& clips = found->track->clips;
     const auto take = std::ranges::find(clips, found->clip, [](const model::Clip& clip) { return &clip; });
-    QVariantMap entry = clipEntry(*found->clip, static_cast<int>(take - clips.begin()) + 1);
+    QVariantMap entry = clipEntry(*found->clip, static_cast<int>(take - clips.begin()) + 1, rowContext());
     entry.insert({{"trackId", qs(found->track->id.value)},
                   {"trackName", qs(found->track->name)},
                   {"colorIndex", found->track->color}});
@@ -261,21 +183,6 @@ QVariantList TrackListModel::sendList(const model::Track& track) const {
                         {"enabled", send.enabled}});
     }
     return sends;
-}
-
-QVariantList TrackListModel::paramList(const model::Track& track) const {
-    return automationParams(registry_, project_.document(), track, controller_.instruments().insertPlugins()) |
-           std::views::transform([](const AutomationParam& param) {
-               return QVariant{QVariantMap{{"id", qs(param.id)},
-                                           {"title", qs(param.title)},
-                                           {"minimum", param.minimum},
-                                           {"maximum", param.maximum},
-                                           {"value", param.value},
-                                           {"toggle", param.toggle},
-                                           {"unit", qs(param.unit)},
-                                           {"scale", kLaneScaleNames.at(std::to_underlying(param.scale))}}};
-           }) |
-           std::ranges::to<QVariantList>();
 }
 
 namespace {
@@ -416,7 +323,7 @@ QVariant TrackListModel::data(const QModelIndex& index, int role) const {
         case Role::outputBusName:
             return trackName(track.outputBus);
         case Role::clips:
-            return clipList(track);
+            return clipList(track, rowContext());
         case Role::trackData: {
             const TakePreview* preview = controller_.takePreview(track.id);
             return toVariant(preview != nullptr && preview->track ? preview->track->data : track.data);
@@ -432,7 +339,8 @@ QVariant TrackListModel::data(const QModelIndex& index, int role) const {
         case Role::automation:
             return laneList(track);
         case Role::automationParams:
-            return paramList(track);
+            return paramList(
+                automationParams(registry_, project_.document(), track, controller_.instruments().insertPlugins()));
         case Role::recordDelayMs:
             return track.recordDelayMs;
         case Role::takePreview:

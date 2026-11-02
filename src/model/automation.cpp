@@ -3,11 +3,13 @@
 #include <algorithm>
 #include <iterator>
 
+#include "emerick/core/lookup.hpp"
+
 namespace emerick::model {
 
 std::optional<AutomationMode> automationModeFromId(std::string_view id) {
-    const auto* found = std::ranges::find(kAutomationModes, id, &AutomationModeName::id);
-    return found == kAutomationModes.end() ? std::nullopt : std::optional{found->mode};
+    const auto* found = core::findEntry(kAutomationModes, id, &AutomationModeName::id);
+    return found == nullptr ? std::nullopt : std::optional{found->mode};
 }
 
 std::string_view automationModeId(AutomationMode mode) {

@@ -4,6 +4,7 @@
 #include <string>
 
 #include "emerick/app/project_controller.hpp"
+#include "emerick/app/project_view.hpp"
 #include "emerick/app/registry.hpp"
 #include "emerick/core/time.hpp"
 #include "emerick/model/document.hpp"
@@ -11,8 +12,7 @@
 namespace emerick::app {
 
 // Agents read these on every tool call, so MIDI clips carry note and event counts and only includeEvents adds the
-// notes and the event bytes. A length counts whole bars and beats from zero, so two beats read "0.2.0".
-std::string durationText(core::Ticks ticks, const core::TempoMap& tempo);
+// notes and the event bytes.
 Json positionState(core::Ticks ticks, const core::TempoMap& tempo);
 Json noteState(const model::Note& note);
 Json clipState(const model::Clip& clip, const core::TempoMap& tempo, bool includeEvents = false);
@@ -23,9 +23,6 @@ Json trackState(const model::Track& track, const core::TempoMap& tempo,
 // The device name and channels, such as "MOTU M2 1-2", or the id of a device that is gone.
 std::string audioRouteText(const model::AudioRoute& route, std::span<const engine::AudioDeviceInfo> devices);
 Json tempoState(const core::TempoMap& tempo);
-// Number counts the markers from 1 in position order, as the go to marker keys do.
-Json markerState(const model::Marker& marker, int number, const core::TempoMap& tempo);
-Json markersState(const model::Document& document);
 // Sends a pending edit to the engine first, so sessionError and skippedClips describe the current project.
 Json projectState(ProjectController& controller);
 Json cycleState(const model::Document& document);

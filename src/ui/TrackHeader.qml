@@ -55,6 +55,7 @@ Rectangle {
     MouseArea {
         id: grab
         objectName: "track.move:" + header.trackId
+        enabled: !Registry.readOnly
         anchors.fill: parent
         acceptedButtons: Qt.LeftButton | Qt.RightButton
         property real pressY
@@ -121,6 +122,7 @@ Rectangle {
             ChromeButton {
                 objectName: "track.select:" + header.trackId
                 actionId: "track.select"
+                enabled: !Registry.readOnly
                 params: ({track: header.trackId})
                 iconName: header.icon
                 iconColor: header.selected ? Theme.ink : Theme.inkDim
@@ -206,7 +208,7 @@ Rectangle {
                 params: ({track: header.trackId})
                 iconName: "sliders"
                 iconColor: Theme.inkDim
-                visible: header.instrument
+                visible: header.instrument && !Registry.readOnly
                 implicitWidth: Theme.headerButton
                 implicitHeight: Theme.headerButton
                 Layout.preferredWidth: Theme.headerButton
@@ -217,13 +219,14 @@ Rectangle {
                 params: ({track: header.trackId})
                 iconName: "dots-three"
                 iconColor: Theme.inkDim
-                visible: hover.hovered || Nav.trackMenu === header.trackId
+                visible: (hover.hovered || Nav.trackMenu === header.trackId) && !Registry.readOnly
                 implicitWidth: Theme.headerButton
                 implicitHeight: Theme.headerButton
                 Layout.preferredWidth: Theme.headerButton
             }
             FlagButton {
                 trackId: header.trackId
+                enabled: !Registry.readOnly
                 flag: "track.setMute"
                 value: header.mute
                 text: "M"
@@ -231,13 +234,14 @@ Rectangle {
             }
             FlagButton {
                 trackId: header.trackId
+                enabled: !Registry.readOnly
                 flag: "track.setSolo"
                 value: header.solo
                 text: "S"
             }
             FlagButton {
-                opacity: header.records ? 1 : 0
-                enabled: header.records
+                opacity: header.records && !Registry.readOnly ? 1 : 0
+                enabled: header.records && !Registry.readOnly
                 trackId: header.trackId
                 flag: "track.setArm"
                 value: header.armed
@@ -245,8 +249,8 @@ Rectangle {
                 activeColor: Theme.rec
             }
             FlagButton {
-                opacity: header.records ? 1 : 0
-                enabled: header.records
+                opacity: header.records && !Registry.readOnly ? 1 : 0
+                enabled: header.records && !Registry.readOnly
                 trackId: header.trackId
                 flag: "track.setMonitor"
                 value: header.monitor
@@ -262,6 +266,7 @@ Rectangle {
 
             AutomationPicker {
                 actionId: "automation.setMode"
+                enabled: !Registry.readOnly
                 trackId: header.trackId
                 current: header.automationModes.find(mode => mode.id === header.automationMode)?.title ?? ""
                 choices: header.automationModes
@@ -285,6 +290,7 @@ Rectangle {
             Layout.leftMargin: Theme.iconSize + Theme.space2
 
             GainSlider {
+                enabled: !Registry.readOnly
                 trackId: header.trackId
                 gainDb: header.gainDb
                 Layout.fillWidth: true
@@ -292,11 +298,13 @@ Rectangle {
             }
 
             GainReadout {
+                enabled: !Registry.readOnly
                 trackId: header.trackId
                 gainDb: header.gainDb
             }
 
             PanKnob {
+                enabled: !Registry.readOnly
                 trackId: header.trackId
                 pan: header.pan
             }

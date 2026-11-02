@@ -142,6 +142,7 @@ Rectangle {
 
     MouseArea {
         objectName: "tracks.empty"
+        enabled: !Registry.readOnly
         anchors.fill: parent
         anchors.topMargin: area.lanesTop
         acceptedButtons: Qt.LeftButton | Qt.RightButton
@@ -287,6 +288,7 @@ Rectangle {
 
                 MouseArea {
                     objectName: "selection.clear:" + row.trackId
+                    enabled: !Registry.readOnly
                     anchors.fill: parent
                     acceptedButtons: Qt.LeftButton | Qt.RightButton
                     onPressed: mouse => {
@@ -473,6 +475,7 @@ Rectangle {
     DropArea {
         id: fileDrop
         objectName: "tracks.fileDrop"
+        enabled: !Registry.readOnly
         anchors.fill: list
         property int row: -1
         property int files: 0
@@ -515,6 +518,7 @@ Rectangle {
         color: Theme.slate
         ChromeButton {
             objectName: "edit.toggleSnap"
+            visible: !Registry.readOnly
             y: (Theme.rulerHeight - height) / 2
             anchors.right: parent.right
             anchors.rightMargin: Theme.space2
@@ -553,8 +557,9 @@ Rectangle {
             anchors.right: parent.right
             anchors.rightMargin: Theme.space2
             Repeater {
-                model: [{id: "marker.previous", icon: "caret-left"}, {id: "marker.next", icon: "caret-right"},
-                    {id: "marker.toggleList", icon: "list"}, {id: "marker.add", icon: "plus"}]
+                model: [{id: "marker.previous", icon: "caret-left", moves: true},
+                    {id: "marker.next", icon: "caret-right", moves: true}, {id: "marker.toggleList", icon: "list"},
+                    {id: "marker.add", icon: "plus"}].filter(button => button.moves || !Registry.readOnly)
                 ChromeButton {
                     required property var modelData
                     objectName: modelData.id + ":lane"
@@ -604,6 +609,7 @@ Rectangle {
 
     // We keep the edge above the tracks, so the header meters and the clip edges at bar 1 keep their clicks.
     PaneEdge {
+        visible: !Registry.readOnly
         settingId: "view.headerWidth"
         x: area.headerWidth - width / 2
         height: area.lanesTop
@@ -659,7 +665,7 @@ Rectangle {
 
     Column {
         anchors.centerIn: parent
-        visible: list.count === 0
+        visible: list.count === 0 && !Registry.readOnly
         spacing: Theme.space3
         Label {
             anchors.horizontalCenter: parent.horizontalCenter

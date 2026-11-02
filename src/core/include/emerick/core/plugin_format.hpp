@@ -1,10 +1,11 @@
 #pragma once
 
-#include <algorithm>
 #include <array>
 #include <cstdint>
 #include <optional>
 #include <string_view>
+
+#include "emerick/core/lookup.hpp"
 
 namespace emerick::core {
 
@@ -28,13 +29,13 @@ constexpr const PluginFormatName& pluginFormatName(PluginFormat format) {
 }
 
 constexpr std::optional<PluginFormat> pluginFormatFromId(std::string_view id) {
-    const auto* const found = std::ranges::find(kPluginFormats, id, &PluginFormatName::id);
-    return found == kPluginFormats.end() ? std::nullopt : std::optional{found->format};
+    const auto* const found = findEntry(kPluginFormats, id, &PluginFormatName::id);
+    return found == nullptr ? std::nullopt : std::optional{found->format};
 }
 
 constexpr std::optional<PluginFormat> pluginFormatOfExtension(std::string_view extension) {
-    const auto* const found = std::ranges::find(kPluginFormats, extension, &PluginFormatName::extension);
-    return found == kPluginFormats.end() ? std::nullopt : std::optional{found->format};
+    const auto* const found = findEntry(kPluginFormats, extension, &PluginFormatName::extension);
+    return found == nullptr ? std::nullopt : std::optional{found->format};
 }
 
 }  // namespace emerick::core

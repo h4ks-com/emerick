@@ -64,4 +64,9 @@ Ticks TempoMap::fromBarBeatTick(const BarBeatTick& position) const {
     return (position.bar - 1) * ticksPerBar() + (position.beat - 1) * ticksPerBeat() + position.tick;
 }
 
+std::string TempoMap::durationText(Ticks ticks) const {
+    const BarBeatTick position = toBarBeatTick(ticks);
+    return BarBeatTick{position.bar - 1, position.beat - 1, position.tick}.format();
+}
+
 }  // namespace emerick::core

@@ -77,6 +77,16 @@ Ticks clipEnd(const Clip& clip) {
                                         clip);
 }
 
+Ticks projectEnd(const Document& document) {
+    Ticks end = 0;
+    for (const Track& track : document.tracks) {
+        for (const Clip& clip : track.clips) {
+            end = std::max(end, clipEnd(clip));
+        }
+    }
+    return end;
+}
+
 Clip moveClip(Clip clip, Ticks start) {
     std::visit([start](auto& value) { value.start = start; }, clip);
     return clip;

@@ -25,7 +25,7 @@ void Waveform::assign(T& field, const T& value) {
     }
 }
 
-void Waveform::setPeaks(PeakCache* value) {
+void Waveform::setPeaks(PeakSource* value) {
     if (peaks_ == value) {
         return;
     }
@@ -34,7 +34,7 @@ void Waveform::setPeaks(PeakCache* value) {
     }
     peaks_ = value;
     if (peaks_ != nullptr) {
-        connect(peaks_, &PeakCache::loaded, this, &QQuickItem::update);
+        connect(peaks_, &PeakSource::loaded, this, &QQuickItem::update);
     }
     emit changed();
     update();

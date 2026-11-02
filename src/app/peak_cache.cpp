@@ -2,14 +2,14 @@
 
 #include <sndfile.h>
 
-#include <QDataStream>
 #include <QFile>
-#include <QList>
 #include <QSaveFile>
 #include <algorithm>
+#include <optional>
 #include <span>
 #include <system_error>
 #include <utility>
+#include <vector>
 
 #include "emerick/engine/sound_file.hpp"
 
@@ -17,19 +17,9 @@ namespace emerick::app {
 
 namespace {
 
-constexpr quint32 kPeakFileMagic = 0x454d504b;
-constexpr quint32 kPeakFileVersion = 1;
-constexpr core::Frames kFold = 4;
 constexpr core::Frames kBlocksPerRead = 64;
 
 using engine::SndFile;
-
-// What identifies the audio a peak file was made from.
-struct AudioStamp {
-    quint64 size = 0;
-    qint64 modified = 0;
-    bool operator==(const AudioStamp&) const = default;
-};
 
 std::optional<AudioStamp> stampOf(const std::filesystem::path& audio) {
     std::error_code error;
@@ -68,109 +58,43 @@ Peaks readAudioPeaks(const std::filesystem::path& audio) {
     return peaks;
 }
 
-// libc++ has no std::views::chunk yet, so we step through the groups by hand.
-template <typename Pick>
-void foldValues(const std::vector<float>& finer, std::vector<float>& coarser, std::size_t from, Pick pick) {
-    const auto group = static_cast<std::size_t>(kFold);
-    coarser.resize(from);
-    for (std::size_t at = from * group; at < finer.size(); at += group) {
-        coarser.push_back(pick(std::span{finer}.subspan(at, std::min(group, finer.size() - at))));
-    }
-}
-
-// We refold each coarser level from the group holding the first changed finest peak, so a growing take costs its tail.
-void foldLevels(PeakLevels& peaks, std::size_t changed) {
-    for (std::size_t level = 1; level < peaks.levels.size(); ++level) {
-        const Peaks& finer = peaks.levels.at(level - 1);
-        Peaks& coarser = peaks.levels.at(level);
-        changed /= static_cast<std::size_t>(kFold);
-        foldValues(finer.minimum, coarser.minimum, changed, std::ranges::min);
-        foldValues(finer.maximum, coarser.maximum, changed, std::ranges::max);
-    }
-}
-
-std::optional<Peaks> readPeakFile(const std::filesystem::path& file, const AudioStamp& stamp) {
+std::optional<Peaks> storedPeaks(const std::filesystem::path& file, const AudioStamp& stamp) {
     QFile input{QString::fromStdString(file.string())};
     if (!input.open(QIODevice::ReadOnly)) {
         return std::nullopt;
     }
-    QDataStream stream{&input};
-    quint32 magic = 0;
-    quint32 version = 0;
-    AudioStamp stored;
-    QList<float> minimum;
-    QList<float> maximum;
-    stream >> magic >> version >> stored.size >> stored.modified;
-    if (magic != kPeakFileMagic || version != kPeakFileVersion || stored != stamp) {
+    auto stored = readPeakFile(input);
+    if (!stored || stored->stamp != stamp) {
         return std::nullopt;
     }
-    stream.setFloatingPointPrecision(QDataStream::SinglePrecision);
-    stream >> minimum >> maximum;
-    if (stream.status() != QDataStream::Ok || minimum.size() != maximum.size()) {
-        return std::nullopt;
-    }
-    return Peaks{{minimum.begin(), minimum.end()}, {maximum.begin(), maximum.end()}};
+    return std::move(stored->peaks);
 }
 
 // We drop the peak file when the folder is read-only, because the peaks still work from memory.
-void writePeakFile(const std::filesystem::path& file, const AudioStamp& stamp, const Peaks& peaks) {
+void storePeaks(const std::filesystem::path& file, const PeakFile& peaks) {
     std::error_code error;
     std::filesystem::create_directories(file.parent_path(), error);
     QSaveFile output{QString::fromStdString(file.string())};
     if (error || !output.open(QIODevice::WriteOnly)) {
         return;
     }
-    QDataStream stream{&output};
-    stream << kPeakFileMagic << kPeakFileVersion << stamp.size << stamp.modified;
-    stream.setFloatingPointPrecision(QDataStream::SinglePrecision);
-    stream << QList<float>{peaks.minimum.begin(), peaks.minimum.end()}
-           << QList<float>{peaks.maximum.begin(), peaks.maximum.end()};
+    writePeakFile(output, peaks);
     output.commit();
 }
 
 }  // namespace
-
-PeakLevels buildLevels(Peaks finest) {
-    PeakLevels peaks;
-    peaks.levels.front() = std::move(finest);
-    foldLevels(peaks, 0);
-    return peaks;
-}
-
-std::filesystem::path peakFile(const std::filesystem::path& audio) {
-    return audio.parent_path() / ".peaks" / (audio.filename().string() + ".peaks");
-}
 
 PeakLevels loadPeaks(const std::filesystem::path& audio) {
     const auto stamp = stampOf(audio);
     if (!stamp) {
         return {};
     }
-    if (auto stored = readPeakFile(peakFile(audio), *stamp)) {
+    if (auto stored = storedPeaks(peakFile(audio), *stamp)) {
         return buildLevels(*std::move(stored));
     }
-    Peaks finest = readAudioPeaks(audio);
-    writePeakFile(peakFile(audio), *stamp, finest);
-    return buildLevels(std::move(finest));
-}
-
-std::optional<PeakRange> peakRange(const PeakLevels& peaks, core::Frames from, core::Frames to) {
-    std::size_t level = 0;
-    while (level + 1 < kFramesPerPeak.size() && kFramesPerPeak.at(level + 1) <= to - from) {
-        ++level;
-    }
-    const Peaks& chosen = peaks.levels.at(level);
-    const core::Frames size = kFramesPerPeak.at(level);
-    const auto count = static_cast<core::Frames>(chosen.minimum.size());
-    const core::Frames first = std::max<core::Frames>(from / size, 0);
-    const core::Frames last = std::min(std::max(first + 1, (to + size - 1) / size), count);
-    if (first >= last) {
-        return std::nullopt;
-    }
-    const auto span = [&](const std::vector<float>& values) {
-        return std::span{values}.subspan(static_cast<std::size_t>(first), static_cast<std::size_t>(last - first));
-    };
-    return PeakRange{std::ranges::min(span(chosen.minimum)), std::ranges::max(span(chosen.maximum))};
+    PeakFile file{.stamp = *stamp, .peaks = readAudioPeaks(audio)};
+    storePeaks(peakFile(audio), file);
+    return buildLevels(std::move(file.peaks));
 }
 
 const PeakLevels* PeakCache::levels(const std::filesystem::path& file) {

@@ -90,6 +90,7 @@ Rectangle {
     MouseArea {
         id: cycleArea
         objectName: "cycle.set"
+        visible: !Registry.readOnly
         width: parent.width
         height: ruler.cycleHeight
         hoverEnabled: true
@@ -123,7 +124,7 @@ Rectangle {
     MouseArea {
         id: cycleBody
         objectName: "cycle.toggle"
-        visible: cycleBar.visible
+        visible: cycleBar.visible && !Registry.readOnly
         x: cycleBar.x
         width: cycleBar.width
         height: ruler.cycleHeight
@@ -170,7 +171,7 @@ Rectangle {
     component CycleEdge: MouseArea {
         id: edge
         required property bool isStart
-        visible: cycleBar.visible
+        visible: cycleBar.visible && !Registry.readOnly
         width: Theme.space2
         height: ruler.cycleHeight
         x: (isStart ? cycleBar.x : cycleBar.x + cycleBar.width) - width / 2
@@ -207,7 +208,7 @@ Rectangle {
 
     MouseArea {
         objectName: "transport.locate"
-        y: ruler.cycleHeight
+        y: Registry.readOnly ? 0 : ruler.cycleHeight
         width: parent.width
         height: parent.height - y
         function locate(mouse) {

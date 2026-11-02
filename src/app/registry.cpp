@@ -3,8 +3,6 @@
 #include <QCoreApplication>
 #include <QCursor>
 #include <QGuiApplication>
-#include <QJsonArray>
-#include <QJsonDocument>
 #include <QKeySequence>
 #include <QRegularExpression>
 #include <QtLogging>
@@ -218,17 +216,6 @@ private:
     bool shown_;
 };
 
-}  // namespace
-
-QString qs(const std::string& text) { return QString::fromStdString(text); }
-
-QVariant toVariant(const Json& value) {
-    const auto wrapped = QJsonDocument::fromJson(QByteArray::fromStdString(Json::array({value}).dump()));
-    return wrapped.array().at(0).toVariant();
-}
-
-namespace {
-
 QVariantList menuChoices(const Action& action) {
     QVariantList choices;
     for (const MenuChoice& choice : action.submenu()) {
@@ -242,11 +229,6 @@ QVariantList menuChoices(const Action& action) {
 }
 
 }  // namespace
-
-Json toJson(const QVariant& value) {
-    const QJsonDocument wrapped{QJsonArray{QJsonValue::fromVariant(value)}};
-    return Json::parse(wrapped.toJson(QJsonDocument::Compact).toStdString()).at(0);
-}
 
 Registry::Registry(const QString& settingsPath, QObject* parent)
     : QObject(parent),

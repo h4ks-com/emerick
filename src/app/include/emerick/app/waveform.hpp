@@ -6,7 +6,7 @@
 #include <QString>
 #include <vector>
 
-#include "emerick/app/peak_cache.hpp"
+#include "emerick/app/peak_levels.hpp"
 
 namespace emerick::app {
 
@@ -14,7 +14,7 @@ namespace emerick::app {
 // pixels on screen at any zoom. The item spans the whole clip; it holds no texture, so its width never matters.
 class Waveform : public QQuickItem {
     Q_OBJECT
-    Q_PROPERTY(emerick::app::PeakCache* peaks READ peaks WRITE setPeaks NOTIFY changed)
+    Q_PROPERTY(emerick::app::PeakSource* peaks READ peaks WRITE setPeaks NOTIFY changed)
     Q_PROPERTY(QString file READ file WRITE setFile NOTIFY changed)
     Q_PROPERTY(qint64 offset READ offset WRITE setOffset NOTIFY changed)
     Q_PROPERTY(qint64 frames READ frames WRITE setFrames NOTIFY changed)
@@ -26,7 +26,7 @@ class Waveform : public QQuickItem {
 public:
     explicit Waveform(QQuickItem* parent = nullptr);
 
-    [[nodiscard]] PeakCache* peaks() const { return peaks_; }
+    [[nodiscard]] PeakSource* peaks() const { return peaks_; }
     [[nodiscard]] QString file() const { return file_; }
     [[nodiscard]] qint64 offset() const { return offset_; }
     [[nodiscard]] qint64 frames() const { return frames_; }
@@ -36,7 +36,7 @@ public:
     // How many pixel columns the next frame draws.
     [[nodiscard]] int drawnColumns() const;
 
-    void setPeaks(PeakCache* value);
+    void setPeaks(PeakSource* value);
     void setFile(const QString& value);
     void setOffset(qint64 value);
     void setFrames(qint64 value);
@@ -64,7 +64,7 @@ private:
     QSGNode* geometryNode(QSGNode* old, const std::vector<Column>& columns) const;
     QSGNode* imageNode(QSGNode* old, const std::vector<Column>& columns) const;
 
-    QPointer<PeakCache> peaks_;
+    QPointer<PeakSource> peaks_;
     QString file_;
     qint64 offset_ = 0;
     qint64 frames_ = 0;

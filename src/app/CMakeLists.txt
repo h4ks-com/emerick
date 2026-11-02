@@ -1,3 +1,35 @@
+# What the views read and draw, built from the document alone, so the viewer shares it without the engine.
+qt_add_library(emerick_view_data STATIC
+    clip_notes.cpp
+    control_curve.cpp
+    peak_levels.cpp
+    project_view.cpp
+    track_params.cpp
+    track_rows.cpp
+    variant.cpp
+    waveform.cpp
+    include/emerick/app/clip_notes.hpp
+    include/emerick/app/control_curve.hpp
+    include/emerick/app/enums.hpp
+    include/emerick/app/nav.hpp
+    include/emerick/app/peak_levels.hpp
+    include/emerick/app/project_view.hpp
+    include/emerick/app/track_params.hpp
+    include/emerick/app/track_rows.hpp
+    include/emerick/app/variant.hpp
+    include/emerick/app/waveform.hpp)
+target_include_directories(emerick_view_data PUBLIC include)
+target_link_libraries(emerick_view_data
+    PUBLIC Qt6::Core Qt6::Gui Qt6::Quick emerick_core emerick_model emerick_effects nlohmann_json::nlohmann_json)
+emerick_target(emerick_view_data)
+if(EMERICK_BUILD_TESTS AND NOT EMSCRIPTEN)
+    emerick_test(emerick_view_data_tests tests/track_rows_test.cpp)
+    target_link_libraries(emerick_view_data_tests PRIVATE emerick_view_data)
+endif()
+if(EMERICK_VIEWER)
+    return()
+endif()
+
 qt_add_library(emerick_app STATIC
     action_params.cpp
     analysis_render.cpp
@@ -11,13 +43,11 @@ qt_add_library(emerick_app STATIC
     clip_actions.cpp
     clip_edit_actions.cpp
     clip_loop_actions.cpp
-    clip_notes.cpp
     code_highlighter.cpp
     console.cpp
     console_actions.cpp
     console_completion.cpp
     control_actions.cpp
-    control_curve.cpp
     core_actions.cpp
     effect_catalog.cpp
     fade_actions.cpp
@@ -29,14 +59,11 @@ qt_add_library(emerick_app STATIC
     include/emerick/app/automation_params.hpp
     include/emerick/app/background_render.hpp
     include/emerick/app/backends.hpp
-    include/emerick/app/clip_notes.hpp
     include/emerick/app/code_highlighter.hpp
     include/emerick/app/console.hpp
     include/emerick/app/console_completion.hpp
-    include/emerick/app/control_curve.hpp
     include/emerick/app/core_actions.hpp
     include/emerick/app/effect_catalog.hpp
-    include/emerick/app/enums.hpp
     include/emerick/app/event_wait.hpp
     include/emerick/app/instruments.hpp
     include/emerick/app/introspector.hpp
@@ -48,7 +75,6 @@ qt_add_library(emerick_app STATIC
     include/emerick/app/mcp_tools.hpp
     include/emerick/app/midi_export.hpp
     include/emerick/app/midi_import.hpp
-    include/emerick/app/nav.hpp
     include/emerick/app/note_edit.hpp
     include/emerick/app/params.hpp
     include/emerick/app/path_access.hpp
@@ -75,7 +101,6 @@ qt_add_library(emerick_app STATIC
     include/emerick/app/ui_api.hpp
     include/emerick/app/view_engine.hpp
     include/emerick/app/voice_audition.hpp
-    include/emerick/app/waveform.hpp
     insert_actions.cpp
     instrument_actions.cpp
     instruments.cpp
@@ -125,7 +150,7 @@ qt_add_library(emerick_app STATIC
     video_actions.cpp
     view_engine.cpp
     voice_audition.cpp
-    waveform.cpp)
+)
 target_include_directories(emerick_app PUBLIC include)
 qt_add_resources(emerick_app example_scripts
     PREFIX /
@@ -138,7 +163,7 @@ target_compile_definitions(emerick_app PRIVATE EMERICK_VERSION="${PROJECT_VERSIO
 target_link_libraries(emerick_app
     PRIVATE lua54 sol2::sol2 tree_sitter_lua PkgConfig::SNDFILE libremidi Qt6::GuiPrivate
     PUBLIC Qt6::Core Qt6::Gui Qt6::Quick Qt6::HttpServer emerick_core emerick_model emerick_engine
-        nlohmann_json::nlohmann_json)
+        emerick_view_data nlohmann_json::nlohmann_json)
 emerick_target(emerick_app)
 
 if(EMERICK_BUILD_TESTS)

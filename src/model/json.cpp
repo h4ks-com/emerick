@@ -11,6 +11,7 @@
 #include <variant>
 
 #include "emerick/core/base64.hpp"
+#include "emerick/core/lookup.hpp"
 #include "emerick/core/overloaded.hpp"
 #include "emerick/model/automation.hpp"
 #include "emerick/model/midi_notes.hpp"
@@ -227,8 +228,8 @@ nlohmann::json clipToJson(const Clip& clip) {
 
 Clip clipFromJson(const nlohmann::json& json) {
     const auto& type = json.at("type").get_ref<const std::string&>();
-    const auto* const found = std::ranges::find(kClipTypes, type, &ClipType::name);
-    if (found == kClipTypes.end()) {
+    const auto* const found = core::findEntry(kClipTypes, type, &ClipType::name);
+    if (found == nullptr) {
         throw std::runtime_error("unknown clip type: " + type);
     }
     return found->fromJson(json);

@@ -30,7 +30,7 @@ Item {
         color: Theme.ink
         border.color: Theme.graphite
         border.width: Theme.hairline
-        visible: clipItem.audio && (shown || pressed)
+        visible: clipItem.audio && (shown || pressed) && !Registry.readOnly
 
         MouseArea {
             id: grab
@@ -326,6 +326,7 @@ Item {
     MouseArea {
         id: move
         objectName: "clip.move:" + content.clipItem.clipId
+        enabled: !Registry.readOnly
         anchors.fill: parent
         anchors.leftMargin: Theme.clipGrip
         anchors.rightMargin: Theme.clipGrip
@@ -406,6 +407,7 @@ Item {
     MouseArea {
         id: startGrip
         objectName: "clip.resize:" + content.clipItem.clipId + ":left"
+        visible: !Registry.readOnly
         width: Theme.clipGrip
         height: parent.height
         cursorShape: Qt.SizeHorCursor
@@ -440,6 +442,7 @@ Item {
     MouseArea {
         id: endGrip
         objectName: "clip.resize:" + content.clipItem.clipId + ":right"
+        visible: !Registry.readOnly
         x: (content.clipItem.contentEnd - content.clipItem.start) * content.clipItem.pixelsPerTick - width
         y: content.clipItem.audio ? 0 : parent.height / 2
         width: Theme.clipGrip
@@ -472,7 +475,7 @@ Item {
     MouseArea {
         id: loopGrip
         objectName: "clip.setLoopLength:" + content.clipItem.clipId
-        visible: !content.clipItem.audio
+        visible: !content.clipItem.audio && !Registry.readOnly
         anchors.right: parent.right
         width: Theme.clipGrip
         height: parent.height / 2

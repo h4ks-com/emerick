@@ -2,7 +2,6 @@
 
 #include <QCoreApplication>
 #include <QGuiApplication>
-#include <QPointF>
 #include <QStringList>
 #include <QtLogging>
 #include <algorithm>
@@ -23,8 +22,7 @@
 #include "emerick/app/project_health.hpp"
 #include "emerick/app/project_state.hpp"
 #include "emerick/app/session_mapping.hpp"
-#include "emerick/app/stem_export.hpp"
-#include "emerick/core/fade.hpp"
+#include "emerick/model/clip_edit.hpp"
 #include "emerick/model/json.hpp"
 
 namespace emerick::app {
@@ -813,16 +811,12 @@ void ProjectController::setDisplayPosition(std::optional<core::Ticks> ticks) {
 }
 
 QString ProjectController::positionText() const {
-    const core::BarBeatTick position = project_.document().tempo.toBarBeatTick(positionTicks());
-    return QStringLiteral("%1 . %2 . %3").arg(position.bar).arg(position.beat).arg(position.tick, 3, 10, QChar('0'));
+    return app::positionText(project_.document().tempo, positionTicks());
 }
 
-QString ProjectController::tempoText() const {
-    const core::TempoMap& tempo = project_.document().tempo;
-    return QStringLiteral("%1   %2/%3").arg(tempo.bpm).arg(tempo.meter.numerator).arg(tempo.meter.denominator);
-}
+QString ProjectController::tempoText() const { return app::tempoText(project_.document().tempo); }
 
-qint64 ProjectController::endTicks() const { return projectEnd(project_.document()); }
+qint64 ProjectController::endTicks() const { return model::projectEnd(project_.document()); }
 
 qint64 ProjectController::snappedIf(bool snap, qint64 ticks, qint64 step) {
     return std::max<core::Ticks>(snap && step > 0 ? (ticks + step / 2) / step * step : ticks, 0);
@@ -866,16 +860,10 @@ QVariantList ProjectController::midiSources() const {
     return sources;
 }
 
-QVariantMap ProjectController::cycle() const {
-    const model::Cycle& cycle = project_.document().cycle;
-    return {{"enabled", cycle.enabled},
-            {"start", QVariant::fromValue<qint64>(cycle.start)},
-            {"end", QVariant::fromValue<qint64>(cycle.end)}};
-}
+QVariantMap ProjectController::cycle() const { return cycleEntry(project_.document().cycle); }
 
 QString ProjectController::ticksText(qint64 ticks, bool duration) const {
-    const core::TempoMap& tempo = project_.document().tempo;
-    return qs(duration ? durationText(ticks, tempo) : tempo.toBarBeatTick(ticks).format());
+    return app::ticksText(project_.document().tempo, ticks, duration);
 }
 
 qint64 ProjectController::parseTicks(const QString& text, bool duration) const {
@@ -895,20 +883,10 @@ qint64 ProjectController::parseTicks(const QString& text, bool duration) const {
     }
 }
 
-QVariantList ProjectController::fadeCurve(const QString& shape, double curve) {
-    constexpr int kSteps = 32;
-    const core::FadeCurve fade =
-        core::fadeCurve(core::fadeShapeFromId(shape.toStdString()).value_or(core::FadeShape::linear), curve);
-    return std::views::iota(0, kSteps + 1) | std::views::transform([&](int step) {
-               const float t = static_cast<float>(step) / kSteps;
-               return QVariant{QPointF{t, core::fadeCurveGain(fade, t)}};
-           }) |
-           std::ranges::to<QVariantList>();
-}
+QVariantList ProjectController::fadeCurve(const QString& shape, double curve) { return fadeCurvePoints(shape, curve); }
 
 double ProjectController::curveThroughMidpoint(const QString& shape, double gain) {
-    return core::curveThroughMidpoint(core::fadeShapeFromId(shape.toStdString()).value_or(core::FadeShape::linear),
-                                      gain);
+    return fadeCurveThroughMidpoint(shape, gain);
 }
 
 QVariantMap ProjectController::routeDevices() const {

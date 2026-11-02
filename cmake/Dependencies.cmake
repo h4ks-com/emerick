@@ -1,17 +1,39 @@
 include(FetchContent)
 set(FETCHCONTENT_QUIET ON)
 
-find_package(Qt6 6.11 REQUIRED COMPONENTS Core Gui GuiPrivate Qml Quick QuickControls2 HttpServer Test)
+if(EMERICK_VIEWER)
+    find_package(Qt6 6.11 REQUIRED COMPONENTS Core Gui Qml Quick QuickControls2 Network Test)
+else()
+    find_package(Qt6 6.11 REQUIRED COMPONENTS Core Gui GuiPrivate Qml Quick QuickControls2 HttpServer Network Test)
+endif()
 qt_standard_project_setup(REQUIRES 6.11)
+
+if(EMSCRIPTEN)
+    # nlohmann_json's serializer trips our sign conversion warning against emscripten's libc++.
+    set(nlohmann_json_system SYSTEM)
+endif()
+FetchContent_Declare(nlohmann_json
+    GIT_REPOSITORY https://github.com/nlohmann/json.git
+    GIT_TAG v3.12.0
+    GIT_SHALLOW TRUE
+    ${nlohmann_json_system})
+
+FetchContent_Declare(Catch2
+    GIT_REPOSITORY https://github.com/catchorg/Catch2.git
+    GIT_TAG v3.16.1
+    GIT_SHALLOW TRUE)
+
+if(EMERICK_VIEWER)
+    FetchContent_MakeAvailable(nlohmann_json)
+    if(EMERICK_BUILD_TESTS)
+        FetchContent_MakeAvailable(Catch2)
+    endif()
+    return()
+endif()
 
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(SNDFILE REQUIRED IMPORTED_TARGET sndfile)
 pkg_check_modules(FLUIDSYNTH REQUIRED IMPORTED_TARGET fluidsynth)
-
-FetchContent_Declare(nlohmann_json
-    GIT_REPOSITORY https://github.com/nlohmann/json.git
-    GIT_TAG v3.12.0
-    GIT_SHALLOW TRUE)
 
 FetchContent_Declare(readerwriterqueue
     GIT_REPOSITORY https://github.com/cameron314/readerwriterqueue.git
@@ -45,11 +67,6 @@ set(SOL2_LUA_VERSION "5.4" CACHE STRING "" FORCE)
 FetchContent_Declare(sol2
     GIT_REPOSITORY https://github.com/ThePhD/sol2.git
     GIT_TAG v3.5.0
-    GIT_SHALLOW TRUE)
-
-FetchContent_Declare(Catch2
-    GIT_REPOSITORY https://github.com/catchorg/Catch2.git
-    GIT_TAG v3.16.1
     GIT_SHALLOW TRUE)
 
 FetchContent_Declare(clap

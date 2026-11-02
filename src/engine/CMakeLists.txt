@@ -1,3 +1,12 @@
+# The built-in effects' param table, which the views read without the engine.
+add_library(emerick_effects src/effects.cpp)
+target_include_directories(emerick_effects PUBLIC include)
+target_link_libraries(emerick_effects PUBLIC emerick_core)
+emerick_target(emerick_effects)
+if(EMERICK_VIEWER)
+    return()
+endif()
+
 add_library(emerick_engine
     src/audio_analysis.cpp
     src/audio_backend.cpp
@@ -6,7 +15,6 @@ add_library(emerick_engine
     src/clap_params.cpp
     src/plugin_scan.cpp
     src/clip_stream.cpp
-    src/effects.cpp
     src/engine.cpp
     src/interleaved_io.cpp
     src/libremidi_backend.cpp
@@ -41,7 +49,7 @@ else()
 endif()
 target_include_directories(emerick_engine PUBLIC include)
 target_link_libraries(emerick_engine
-    PUBLIC emerick_core
+    PUBLIC emerick_core emerick_effects
     PRIVATE libremidi readerwriterqueue PkgConfig::SNDFILE clap-helpers vst3_sdk ${CMAKE_DL_LIBS})
 emerick_target(emerick_engine)
 

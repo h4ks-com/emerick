@@ -6,11 +6,16 @@
 #include <optional>
 #include <string_view>
 
+#include "emerick/core/lookup.hpp"
+
 namespace emerick::core {
 
 // The curve a point's segment takes to the next point: a straight line, the point's value held until the next point,
 // or an S-shaped ease.
 enum class AutomationCurve : std::uint8_t { linear, hold, smooth };
+
+// The parameter a lane moves. Gain and send levels are in dB, pan runs from -1 to 1 and mute is on from 0.5.
+enum class AutomationTarget : std::uint8_t { gain, pan, mute, send, insert };
 
 struct AutomationCurveName {
     AutomationCurve curve;
@@ -23,8 +28,8 @@ inline constexpr std::array kAutomationCurves{AutomationCurveName{AutomationCurv
                                               AutomationCurveName{AutomationCurve::smooth, "smooth", "Smooth"}};
 
 constexpr std::optional<AutomationCurve> automationCurveFromId(std::string_view id) {
-    const auto* found = std::ranges::find(kAutomationCurves, id, &AutomationCurveName::id);
-    return found == kAutomationCurves.end() ? std::nullopt : std::optional{found->curve};
+    const auto* found = findEntry(kAutomationCurves, id, &AutomationCurveName::id);
+    return found == nullptr ? std::nullopt : std::optional{found->curve};
 }
 
 constexpr std::string_view automationCurveId(AutomationCurve curve) {

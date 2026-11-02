@@ -110,7 +110,7 @@ qt_add_qml_module(emerick_ui
 
 target_link_libraries(emerick_ui PRIVATE Qt6::Quick Qt6::QuickControls2)
 
-if(EMERICK_BUILD_TESTS)
+if(EMERICK_BUILD_TESTS AND NOT EMERICK_VIEWER)
     # QML singletons register once per process, so each test that loads a view gets its own binary.
     foreach(name analysis automation console cycle editing effects file_menu instrument meter midi_source mixer picker piano_roll recording timeline tooltips transport_bar value_controls video)
         emerick_test(emerick_ui_${name}_tests tests/${name}_test.cpp)

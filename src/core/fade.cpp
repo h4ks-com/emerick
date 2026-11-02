@@ -4,6 +4,8 @@
 #include <cmath>
 #include <numbers>
 
+#include "emerick/core/lookup.hpp"
+
 namespace emerick::core {
 
 namespace {
@@ -29,8 +31,8 @@ float shapeGain(FadeShape shape, float t) {
 }  // namespace
 
 std::optional<FadeShape> fadeShapeFromId(std::string_view id) {
-    const auto* const found = std::ranges::find(kFadeShapes, id, &FadeShapeName::id);
-    return found == kFadeShapes.end() ? std::nullopt : std::optional{found->shape};
+    const auto* const found = findEntry(kFadeShapes, id, &FadeShapeName::id);
+    return found == nullptr ? std::nullopt : std::optional{found->shape};
 }
 
 std::string_view fadeShapeId(FadeShape shape) {

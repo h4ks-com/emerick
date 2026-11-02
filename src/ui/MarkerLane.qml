@@ -34,6 +34,7 @@ Rectangle {
 
     MouseArea {
         objectName: "marker.add"
+        enabled: !Registry.readOnly
         anchors.fill: parent
         acceptedButtons: Qt.LeftButton | Qt.RightButton
         onPressed: mouse => {
@@ -96,6 +97,7 @@ Rectangle {
             MouseArea {
                 id: grab
                 objectName: "marker.move:" + flag.marker.id
+                enabled: !Registry.readOnly
                 anchors.fill: parent
                 acceptedButtons: Qt.LeftButton | Qt.RightButton
                 hoverEnabled: true

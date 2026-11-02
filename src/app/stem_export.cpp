@@ -237,16 +237,6 @@ PlaybackContext playbackContext(ProjectController& controller, const model::Docu
     return {.tempo = document.tempo, .folder = controller.folder(), .document = &document};
 }
 
-core::Ticks projectEnd(const model::Document& document) {
-    core::Ticks end = 0;
-    for (const model::Track& track : document.tracks) {
-        for (const model::Clip& clip : track.clips) {
-            end = std::max(end, model::clipEnd(clip));
-        }
-    }
-    return end;
-}
-
 core::Ticks exportEnd(const engine::Session& session, const model::Document& document) {
     core::Ticks last = -1;
     for (const engine::Track& track : session.tracks) {

@@ -184,9 +184,10 @@ Item {
         id: edit
         objectName: "automation.addPoint:" + lane.trackId
         anchors.fill: parent
+        acceptedButtons: Registry.readOnly ? Qt.NoButton : Qt.LeftButton
         hoverEnabled: true
         readonly property var hovered: containsMouse ? lane.pointAt(mouseX, mouseY) : null
-        ToolTip.visible: containsMouse
+        ToolTip.visible: containsMouse && (hovered !== null || !Registry.readOnly)
         ToolTip.delay: hovered || pressed ? 0 : Theme.tooltipDelay
         ToolTip.text: hovered ? lane.param.title + "   " + lane.valueText(hovered.value) + "   "
                                 + Project.ticksText(hovered.tick, false)

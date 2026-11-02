@@ -189,6 +189,11 @@ public:
         assign(trackHeight_, std::clamp(value, kMinTrackHeight, kMaxTrackHeight), &Nav::viewChanged);
     }
     void setScrollTicks(double value) { assign(scrollTicks_, std::max(0.0, value), &Nav::scrollChanged); }
+    void zoomAround(double factor, double anchorTicks) {
+        const double x = (anchorTicks - scrollTicks_) * pixelsPerTick_;
+        setPixelsPerTick(pixelsPerTick_ * factor);
+        setScrollTicks(anchorTicks - x / pixelsPerTick_);
+    }
     void setLaneWidth(double value) { assign(laneWidth_, value, &Nav::scrollChanged); }
 
     [[nodiscard]] nlohmann::json toJson() const {

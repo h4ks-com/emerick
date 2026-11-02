@@ -5,7 +5,6 @@
 #include <algorithm>
 #include <array>
 #include <memory>
-#include <numbers>
 #include <string>
 
 #include "emerick/app/action_params.hpp"
@@ -19,24 +18,19 @@ constexpr int kMaxRecordingDelay = 8192;
 
 Json revealChain(Registry& registry, const std::string& id) { return Json{{"chain", registry.reveal(id).chain}}; }
 
-struct ViewStep {
+struct HeightStep {
     const char* id;
     const char* title;
     const char* alias;
     const char* shortcut;
-    const char* extraShortcut;
-    double zoom;
     int height;
 };
 
-constexpr double kZoomStep = std::numbers::sqrt2;
 constexpr int kTrackHeightStep = 12;
 
-constexpr std::array kViewSteps{
-    ViewStep{"view.zoomIn", "Zoom in", "wider timeline", "Ctrl+Right", "Ctrl+=", kZoomStep, 0},
-    ViewStep{"view.zoomOut", "Zoom out", "narrower timeline", "Ctrl+Left", "Ctrl+-", 1 / kZoomStep, 0},
-    ViewStep{"view.trackTaller", "Make tracks taller", "vertical zoom in", "Ctrl+Down", nullptr, 1, kTrackHeightStep},
-    ViewStep{"view.trackShorter", "Make tracks shorter", "vertical zoom out", "Ctrl+Up", nullptr, 1, -kTrackHeightStep},
+constexpr std::array kHeightSteps{
+    HeightStep{"view.trackTaller", "Make tracks taller", "vertical zoom in", "Ctrl+Down", kTrackHeightStep},
+    HeightStep{"view.trackShorter", "Make tracks shorter", "vertical zoom out", "Ctrl+Up", -kTrackHeightStep},
 };
 
 struct PaneWidth {
@@ -76,22 +70,18 @@ void registerPaneWidths(Registry& registry) {
 
 void registerViewActions(Registry& registry, Nav& nav) {
     registerPaneWidths(registry);
-    for (const ViewStep& step : kViewSteps) {
-        registry.addAction(
-            {.id = step.id,
-             .title = step.title,
-             .aliases = {step.alias},
-             .category = "View",
-             .shortcut = step.shortcut,
-             .extraShortcuts = step.extraShortcut != nullptr ? std::vector<std::string>{step.extraShortcut}
-                                                             : std::vector<std::string>{},
-             .run =
-                 [&nav, step](const Json&) {
-                     nav.setPixelsPerTick(nav.pixelsPerTick() * step.zoom);
-                     nav.setTrackHeight(nav.trackHeight() + step.height);
-                     return Json{{"pixelsPerTick", nav.pixelsPerTick()}, {"trackHeight", nav.trackHeight()}};
-                 },
-             .menus = {kViewMenu}});
+    for (const HeightStep& step : kHeightSteps) {
+        registry.addAction({.id = step.id,
+                            .title = step.title,
+                            .aliases = {step.alias},
+                            .category = "View",
+                            .shortcut = step.shortcut,
+                            .run =
+                                [&nav, step](const Json&) {
+                                    nav.setTrackHeight(nav.trackHeight() + step.height);
+                                    return Json{{"trackHeight", nav.trackHeight()}};
+                                },
+                            .menus = {kViewMenu}});
     }
     registry.addAction({.id = "view.toggleInspector",
                         .title = "Show or hide inspector",

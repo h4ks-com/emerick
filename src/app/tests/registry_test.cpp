@@ -204,24 +204,18 @@ TEST_CASE("core actions drive Nav") {
     CHECK(registry.state("app").at("audio") == "null");
 }
 
-TEST_CASE("view actions zoom and resize tracks within their limits") {
+TEST_CASE("view actions resize tracks within their limits") {
     QTemporaryDir dir;
     Registry registry{dir.filePath("settings.ini")};
     Nav nav;
     registerCoreActions(registry, nav, {});
 
-    const double before = nav.pixelsPerTick();
-    registry.run("view.zoomIn");
-    registry.run("view.zoomOut");
-    CHECK(nav.pixelsPerTick() == Catch::Approx(before));
     const int height = registry.run("view.trackTaller").at("trackHeight");
     CHECK(height > kDefaultTrackHeight);
     for (int step = 0; step < 40; ++step) {
         registry.run("view.trackShorter");
-        registry.run("view.zoomOut");
     }
     CHECK(nav.trackHeight() == kMinTrackHeight);
-    CHECK(registry.state("nav").at("pixelsPerTick") == kMinPixelsPerTick);
     CHECK(registry.run("view.toggleInspector").at("inspectorOpen") == false);
     CHECK(registry.state("nav").at("inspectorOpen") == false);
 }

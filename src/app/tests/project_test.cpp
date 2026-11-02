@@ -359,6 +359,35 @@ TEST_CASE("copy and paste put clips at the playhead on the selected track, and b
     CHECK_THROWS_AS(rig.run("clip.paste", {{"track", keys}}), AppError);
 }
 
+TEST_CASE("zoom keeps the playhead in place while it shows, else the middle of the lane, within the zoom limits") {
+    ProjectRig rig;
+    rig.nav.setLaneWidth(1000);
+    rig.nav.setScrollTicks(0);
+    const auto screenX = [&](double ticks) { return (ticks - rig.nav.scrollTicks()) * rig.nav.pixelsPerTick(); };
+
+    rig.run("transport.locate", {{"at", 4000}});
+    const double playheadX = screenX(4000);
+    REQUIRE(playheadX < 1000);
+    const double before = rig.nav.pixelsPerTick();
+    rig.run("view.zoomIn");
+    CHECK(rig.nav.pixelsPerTick() == Approx(before * std::numbers::sqrt2));
+    CHECK(screenX(4000) == Approx(playheadX));
+    rig.run("view.zoomOut");
+    CHECK(rig.nav.pixelsPerTick() == Approx(before));
+    CHECK(screenX(4000) == Approx(playheadX));
+
+    rig.run("transport.locate", {{"at", 400000}});
+    rig.nav.setScrollTicks(0);
+    const double middle = 500 / rig.nav.pixelsPerTick();
+    rig.run("view.zoomIn");
+    CHECK(screenX(middle) == Approx(500));
+
+    for (int step = 0; step < 40; ++step) {
+        rig.run("view.zoomOut");
+    }
+    CHECK(rig.nav.pixelsPerTick() == kMinPixelsPerTick);
+}
+
 TEST_CASE("export stems renders each audio track from bar 1 to the project end") {
     ProjectRig rig;
     rig.registry.setSetting(kPanLawSetting, "-3 dB constant power");

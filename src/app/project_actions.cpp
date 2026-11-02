@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <numbers>
 #include <ranges>
 #include <string>
 #include <utility>
@@ -236,6 +237,44 @@ void registerTransportActions(Registry& registry, ProjectController& controller)
                         }});
 }
 
+struct ZoomStep {
+    const char* id;
+    const char* title;
+    const char* alias;
+    const char* shortcut;
+    const char* extraShortcut;
+    double factor;
+};
+
+constexpr std::array kZoomSteps{
+    ZoomStep{"view.zoomIn", "Zoom in", "wider timeline", "Ctrl+Right", "Ctrl+=", std::numbers::sqrt2},
+    ZoomStep{"view.zoomOut", "Zoom out", "narrower timeline", "Ctrl+Left", "Ctrl+-", 1 / std::numbers::sqrt2},
+};
+
+double zoomAnchor(const ProjectController& controller, const Nav& nav) {
+    const auto playhead = static_cast<double>(controller.positionTicks());
+    const double x = (playhead - nav.scrollTicks()) * nav.pixelsPerTick();
+    return x >= 0 && x <= nav.laneWidth() ? playhead : nav.scrollTicks() + nav.laneWidth() / 2 / nav.pixelsPerTick();
+}
+
+void registerZoomActions(Registry& registry, ProjectController& controller, Nav& nav) {
+    for (const ZoomStep& step : kZoomSteps) {
+        registry.addAction({.id = step.id,
+                            .title = step.title,
+                            .aliases = {step.alias},
+                            .category = "View",
+                            .shortcut = step.shortcut,
+                            .extraShortcuts = {step.extraShortcut},
+                            .run =
+                                [&controller, &nav, step](const Json&) {
+                                    nav.zoomAround(step.factor, zoomAnchor(controller, nav));
+                                    return Json{{"pixelsPerTick", nav.pixelsPerTick()},
+                                                {"scrollTicks", nav.scrollTicks()}};
+                                },
+                            .menus = {kViewMenu}});
+    }
+}
+
 }  // namespace
 
 core::TempoMap tempoFromParams(const Json& params, core::TempoMap tempo) {
@@ -313,6 +352,7 @@ void registerProjectActions(Registry& registry, ProjectController& controller, N
     registerProjectFileActions(registry, controller);
     registerProjectEditActions(registry, controller);
     registerTransportActions(registry, controller);
+    registerZoomActions(registry, controller, nav);
     registerTrackActions(registry, controller, nav);
     registerAutomationActions(registry, controller, nav);
     registerClipActions(registry, controller, nav);

@@ -53,9 +53,16 @@ Rectangle {
             required property int index
             readonly property var marker: Project.markers[index] ?? {id: "", name: "", at: 0, color: null}
             readonly property bool selected: Nav.selectedMarker === marker.id
+            readonly property real fullWidth: label.implicitWidth + 2 * Theme.space1
+            readonly property real roomToNext: index + 1 < Project.markers.length
+                                               ? (Project.markers[index + 1].at - marker.at) * lane.pixelsPerTick
+                                               : fullWidth
+            readonly property bool raised: grab.containsMouse || selected || rename.visible
             objectName: "marker:" + marker.id
             x: (marker.at - lane.scrollTicks) * lane.pixelsPerTick
-            width: Math.max(label.implicitWidth + 2 * Theme.space1, rename.visible ? Theme.labelWidth : 0)
+            z: raised ? 1 : 0
+            width: Math.max(raised ? fullWidth : Math.max(2 * Theme.space1, Math.min(fullWidth, roomToNext)),
+                            rename.visible ? Theme.labelWidth : 0)
             height: lane.height
 
             Rectangle {
@@ -74,10 +81,13 @@ Rectangle {
             }
             Text {
                 id: label
+                objectName: "marker.name:" + flag.marker.id
                 anchors.verticalCenter: parent.verticalCenter
                 x: Theme.space1
+                width: flag.width - 2 * Theme.space1
                 visible: !rename.visible
                 text: flag.marker.name
+                elide: Text.ElideRight
                 color: Theme.ink
                 font.pixelSize: Theme.textSmall
                 font.weight: Font.Medium

@@ -395,6 +395,30 @@ TEST_CASE("dragging a marker moves it live on the grid as one undo step, and Ctr
     CHECK(markerOf(timeline, id).at == 1000);
 }
 
+TEST_CASE("a marker flag shortens its name to end at the next marker, and shows it whole when selected") {
+    Timeline& timeline = Timeline::instance();
+    Nav& nav = timeline.rig.nav;
+    constexpr core::Ticks kFar = 400 * 3840;
+    nav.setScrollTicks(kFar);
+    nav.setPixelsPerTick(kDefaultPixelsPerTick);
+    const std::string breakdown = timeline.rig.run("marker.add", {{"at", kFar}, {"name", "Breakdown"}}).at("id");
+    const std::string drop = timeline.rig.run("marker.add", {{"at", kFar + 240}, {"name", "Drop"}}).at("id");
+    nav.setSelectedMarker({});
+    Timeline::settle();
+
+    const auto flag = [&](const std::string& id) { return timeline.item(QString::fromStdString("marker:" + id)); };
+    const auto name = [&](const std::string& id) { return timeline.item(QString::fromStdString("marker.name:" + id)); };
+    CHECK(flag(breakdown)->width() == Catch::Approx(240 * kDefaultPixelsPerTick));
+    CHECK(name(breakdown)->property("truncated").toBool());
+    CHECK_FALSE(name(drop)->property("truncated").toBool());
+
+    nav.setSelectedMarker(QString::fromStdString(breakdown));
+    Timeline::settle();
+    CHECK(flag(breakdown)->width() > 240 * kDefaultPixelsPerTick);
+    CHECK_FALSE(name(breakdown)->property("truncated").toBool());
+    CHECK(flag(breakdown)->z() > flag(drop)->z());
+}
+
 TEST_CASE("dragging over empty lanes selects the clips the band touches, and Shift adds to the selection") {
     Timeline& timeline = Timeline::instance();
     while (!timeline.rig.controller->project().document().tracks.empty()) {

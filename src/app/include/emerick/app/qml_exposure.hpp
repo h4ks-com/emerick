@@ -3,6 +3,7 @@
 #include <QQmlEngine>
 
 #include "emerick/app/console.hpp"
+#include "emerick/app/monitor_actions.hpp"
 #include "emerick/app/nav.hpp"
 #include "emerick/app/peak_cache.hpp"
 #include "emerick/app/project_controller.hpp"
@@ -12,8 +13,8 @@
 namespace emerick::app {
 
 // Publishes the Emerick.App singletons and types, and serves waveforms to the engine. Call it once per process. The
-// console panel loads only when opened, so a view test can leave the console out.
+// console panel and the monitor windows load only when opened, so a view test can leave them out.
 void exposeToQml(QQmlEngine& engine, Registry& registry, Nav& nav, ProjectController& controller,
-                 TrackListModel& tracks, PeakCache& peaks, Console* console = nullptr);
+                 TrackListModel& tracks, PeakCache& peaks, Console* console = nullptr, Monitors* monitors = nullptr);
 
 }  // namespace emerick::app

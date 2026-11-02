@@ -7,6 +7,7 @@
 #include "emerick/app/control_curve.hpp"
 #include "emerick/app/effect_catalog.hpp"
 #include "emerick/app/enums.hpp"
+#include "emerick/app/spectrogram_view.hpp"
 #include "emerick/app/track_analysis.hpp"
 #include "emerick/app/transport_clock.hpp"
 #include "emerick/app/voice_audition.hpp"
@@ -15,7 +16,7 @@
 namespace emerick::app {
 
 void exposeToQml(QQmlEngine& engine, Registry& registry, Nav& nav, ProjectController& controller,
-                 TrackListModel& tracks, PeakCache& peaks, Console* console) {
+                 TrackListModel& tracks, PeakCache& peaks, Console* console, Monitors* monitors) {
     qmlRegisterUncreatableMetaObject(emerick::app::staticMetaObject, "Emerick.App", 1, 0, "App",
                                      "App only holds enums");
     qmlRegisterSingletonInstance("Emerick.App", 1, 0, "Registry", &registry);
@@ -43,6 +44,11 @@ void exposeToQml(QQmlEngine& engine, Registry& registry, Nav& nav, ProjectContro
     if (console != nullptr) {
         qmlRegisterSingletonInstance("Emerick.App", 1, 0, "Console", console);
     }
+    if (monitors != nullptr) {
+        qmlRegisterSingletonInstance("Emerick.App", 1, 0, "Tuner", &monitors->tuner);
+        qmlRegisterSingletonInstance("Emerick.App", 1, 0, "Spectrogram", &monitors->spectrogram);
+    }
+    qmlRegisterType<SpectrogramView>("Emerick.App", 1, 0, "SpectrogramView");
     qmlRegisterType<ClipNotes>("Emerick.App", 1, 0, "ClipNotes");
     qmlRegisterType<CodeHighlighter>("Emerick.App", 1, 0, "CodeHighlighter");
     qmlRegisterType<ControlCurve>("Emerick.App", 1, 0, "ControlCurve");

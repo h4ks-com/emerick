@@ -158,7 +158,8 @@ engine::Session toSession(const model::Document& document, const Registry& regis
                             .clockPorts = document.clockPorts,
                             .takeFolder = folder / "audio",
                             .metronome = {},
-                            .panLaw = panLawFromSettings(registry)};
+                            .panLaw = panLawFromSettings(registry),
+                            .taps = {}};
     if (cache.tempo != document.tempo || cache.folder != folder) {
         cache = {.tempo = document.tempo, .folder = folder, .tracks = {}};
     }

@@ -79,6 +79,8 @@ qt_add_library(emerick_app STATIC
     include/emerick/app/lua_text.hpp
     include/emerick/app/mcp_server.hpp
     include/emerick/app/mcp_tools.hpp
+    include/emerick/app/monitor_actions.hpp
+    include/emerick/app/monitor_source.hpp
     include/emerick/app/midi_export.hpp
     include/emerick/app/midi_import.hpp
     include/emerick/app/note_edit.hpp
@@ -98,10 +100,13 @@ qt_add_library(emerick_app STATIC
     include/emerick/app/registry.hpp
     include/emerick/app/script_library.hpp
     include/emerick/app/session_mapping.hpp
+    include/emerick/app/spectrogram.hpp
+    include/emerick/app/spectrogram_view.hpp
     include/emerick/app/stem_export.hpp
     include/emerick/app/track_analysis.hpp
     include/emerick/app/track_list_model.hpp
     include/emerick/app/track_meters.hpp
+    include/emerick/app/tuner.hpp
     include/emerick/app/timeline_video.hpp
     include/emerick/app/ui_api.hpp
     include/emerick/app/view_engine.hpp
@@ -118,6 +123,8 @@ qt_add_library(emerick_app STATIC
     marker_actions.cpp
     mcp_server.cpp
     mcp_tools.cpp
+    monitor_actions.cpp
+    monitor_source.cpp
     note_actions.cpp
     note_edit.cpp
     metronome_actions.cpp
@@ -141,6 +148,8 @@ qt_add_library(emerick_app STATIC
     script_library.cpp
     send_actions.cpp
     session_mapping.cpp
+    spectrogram.cpp
+    spectrogram_view.cpp
     stem_export.cpp
     summary_actions.cpp
     take_preview.cpp
@@ -149,6 +158,7 @@ qt_add_library(emerick_app STATIC
     track_edit_actions.cpp
     track_list_model.cpp
     track_meters.cpp
+    tuner.cpp
     timeline_video.cpp
     ui_api.cpp
     video_actions.cpp
@@ -196,6 +206,7 @@ if(EMERICK_BUILD_TESTS)
         tests/metronome_test.cpp
         tests/midi_import_test.cpp
         tests/midi_source_test.cpp
+        tests/monitor_test.cpp
         tests/path_access_test.cpp
         tests/peak_cache_test.cpp
         tests/plugin_catalog_test.cpp

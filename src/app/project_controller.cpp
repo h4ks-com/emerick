@@ -603,6 +603,15 @@ void ProjectController::setMetronome(const engine::Metronome& metronome) {
     }
 }
 
+void ProjectController::setTap(const std::string& owner, std::shared_ptr<engine::SignalTap> tap) {
+    if (tap) {
+        taps_[owner] = std::move(tap);
+    } else if (taps_.erase(owner) == 0) {
+        return;
+    }
+    publish();
+}
+
 void ProjectController::publish() {
     instruments_.sync(project_.document());
     engine::Session session = toSession(project_.document(), registry_, folder_, engineTracks_);
@@ -611,6 +620,7 @@ void ProjectController::publish() {
     session.chaseMidi = chaseMidi_;
     session.clockWhileStopped = clockWhileStopped_;
     session.cycle = engineCycle();
+    session.taps = taps_ | std::views::values | std::ranges::to<std::vector>();
     applyPasses(session);
     routeErrors_ = dropUnusableDevices(session, engine_.audioDevices(), options_.sampleRate);
     registeredWarnings_ = registeredWarnings(project_.document(), registry_);

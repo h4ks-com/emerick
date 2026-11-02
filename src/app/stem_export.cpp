@@ -74,7 +74,8 @@ engine::Session renderSession(const engine::Session& session, std::vector<engine
             .clockPorts = {},
             .takeFolder = {},
             .metronome = {},
-            .panLaw = session.panLaw};
+            .panLaw = session.panLaw,
+            .taps = {}};
 }
 
 // A bus stem plays the bus alone with every track and bus feeding it, so only the bus reaches the render output.

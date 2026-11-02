@@ -35,6 +35,8 @@ class Nav : public QObject {
     Q_PROPERTY(QString trackMenu READ trackMenu WRITE setTrackMenu NOTIFY changed)
     Q_PROPERTY(bool paletteOpen READ paletteOpen WRITE setPaletteOpen NOTIFY changed)
     Q_PROPERTY(bool aboutOpen READ aboutOpen WRITE setAboutOpen NOTIFY changed)
+    Q_PROPERTY(bool tunerOpen READ tunerOpen WRITE setTunerOpen NOTIFY changed)
+    Q_PROPERTY(bool spectrogramOpen READ spectrogramOpen WRITE setSpectrogramOpen NOTIFY changed)
     Q_PROPERTY(bool healthOpen READ healthOpen WRITE setHealthOpen NOTIFY changed)
     Q_PROPERTY(bool inspectorOpen READ inspectorOpen WRITE setInspectorOpen NOTIFY changed)
     Q_PROPERTY(bool markerListOpen READ markerListOpen WRITE setMarkerListOpen NOTIFY changed)
@@ -78,6 +80,8 @@ public:
     [[nodiscard]] QString trackMenu() const { return trackMenu_; }
     [[nodiscard]] bool paletteOpen() const { return paletteOpen_; }
     [[nodiscard]] bool aboutOpen() const { return aboutOpen_; }
+    [[nodiscard]] bool tunerOpen() const { return tunerOpen_; }
+    [[nodiscard]] bool spectrogramOpen() const { return spectrogramOpen_; }
     [[nodiscard]] bool healthOpen() const { return healthOpen_; }
     [[nodiscard]] bool inspectorOpen() const { return inspectorOpen_; }
     // Whether the inspector lists the markers.
@@ -139,6 +143,8 @@ public:
     void setTrackMenu(const QString& value) { assign(trackMenu_, value, &Nav::changed); }
     void setPaletteOpen(bool value) { assign(paletteOpen_, value, &Nav::changed); }
     void setAboutOpen(bool value) { assign(aboutOpen_, value, &Nav::changed); }
+    void setTunerOpen(bool value) { assign(tunerOpen_, value, &Nav::changed); }
+    void setSpectrogramOpen(bool value) { assign(spectrogramOpen_, value, &Nav::changed); }
     void setHealthOpen(bool value) { assign(healthOpen_, value, &Nav::changed); }
     void setInspectorOpen(bool value) { assign(inspectorOpen_, value, &Nav::changed); }
     void setMarkerListOpen(bool value) { assign(markerListOpen_, value, &Nav::changed); }
@@ -219,6 +225,8 @@ public:
             {"scrollTicks", scrollTicks_},
             {"paletteOpen", paletteOpen_},
             {"aboutOpen", aboutOpen_},
+            {"tunerOpen", tunerOpen_},
+            {"spectrogramOpen", spectrogramOpen_},
             {"healthOpen", healthOpen_},
             {"inspectorOpen", inspectorOpen_},
             {"markerListOpen", markerListOpen_},
@@ -279,6 +287,8 @@ private:
     QString trackMenu_;
     bool paletteOpen_ = false;
     bool aboutOpen_ = false;
+    bool tunerOpen_ = false;
+    bool spectrogramOpen_ = false;
     bool healthOpen_ = false;
     bool inspectorOpen_ = true;
     bool markerListOpen_ = true;

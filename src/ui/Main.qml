@@ -246,6 +246,18 @@ ApplicationWindow {
                 iconName: "piano-keys"
             }
             ChromeButton {
+                objectName: "view.toggleTuner"
+                iconName: "gauge"
+                active: Nav.tunerOpen
+                activeColor: Theme.ink
+            }
+            ChromeButton {
+                objectName: "view.toggleSpectrogram"
+                iconName: "equalizer"
+                active: Nav.spectrogramOpen
+                activeColor: Theme.ink
+            }
+            ChromeButton {
                 objectName: "palette.open"
                 iconName: "magnifying-glass"
             }
@@ -387,6 +399,15 @@ ApplicationWindow {
     }
 
     InsertEditor {}
+
+    Loader {
+        active: Nav.tunerOpen
+        sourceComponent: TunerWindow {}
+    }
+    Loader {
+        active: Nav.spectrogramOpen
+        sourceComponent: SpectrogramWindow {}
+    }
 
     Popup {
         anchors.centerIn: parent

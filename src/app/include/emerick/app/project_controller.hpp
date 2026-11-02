@@ -152,6 +152,8 @@ public:
 
     // The metronome plays from these settings once the next flush publishes them.
     void setMetronome(const engine::Metronome& metronome);
+    // A monitor taps the signal it shows under its own name, from the session this publishes; a null tap removes it.
+    void setTap(const std::string& owner, std::shared_ptr<engine::SignalTap> tap);
     // Playback and exports read the pan law from the registry; a new law reaches playback at the next flush.
     void panLawChanged(engine::PanLaw law);
     // MIDI chase and clock while stopped reach the engine at the next flush.
@@ -305,6 +307,7 @@ private:
     std::vector<engine::SessionError> routeErrors_;
     std::vector<engine::SessionError> registeredWarnings_;
     engine::Metronome metronome_;
+    std::map<std::string, std::shared_ptr<engine::SignalTap>, std::less<>> taps_;
     engine::PanLaw panLaw_ = engine::PanLaw::compensated;
     bool chaseMidi_ = true;
     bool clockWhileStopped_ = false;

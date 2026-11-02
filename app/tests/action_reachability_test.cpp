@@ -12,6 +12,7 @@
 #include "emerick/app/console.hpp"
 #include "emerick/app/core_actions.hpp"
 #include "emerick/app/lua_host.hpp"
+#include "emerick/app/monitor_actions.hpp"
 #include "emerick/app/plugin_actions.hpp"
 #include "emerick/app/script_library.hpp"
 #include "emerick/app/ui_api.hpp"
@@ -78,6 +79,7 @@ void withEveryAction(const std::function<void(const Registry&)>& check) {
     registerPluginActions(rig.registry, rig.nav, plugins);
     registerInstrumentActions(rig.registry, *rig.controller, rig.nav, plugins);
     const auto yamaha = emerick::yamaha::registerWith(rig.registry, *rig.controller, rig.nav);
+    const auto monitors = registerMonitors(rig.registry, *rig.controller, rig.nav);
     check(rig.registry);
 }
 

@@ -191,6 +191,29 @@ QtObject {
     readonly property color blackKeyRow: Qt.rgba(0, 0, 0, 0.22)
     readonly property color outsideClip: Qt.rgba(0, 0, 0, 0.35)
     readonly property color bandFill: Qt.rgba(1, 1, 1, 0.08)
+
+    readonly property int tunerWidth: 420
+    readonly property int tunerHeight: 440
+    readonly property int tunerGauge: 300
+    readonly property int tunerArc: 6
+    readonly property int tunerTick: 10
+    readonly property int tunerNeedle: 3
+    readonly property int tunerNote: 64
+    readonly property real tunerRangeCents: 50
+    readonly property real tunerSweep: 120
+    readonly property real tunerInTuneCents: 3
+    readonly property real tunerCloseCents: 10
+    readonly property real referenceMinHz: 430
+    readonly property real referenceMaxHz: 450
+    readonly property int spectrogramWidth: 960
+    readonly property int spectrogramHeight: 600
+    readonly property int spectrumHeight: 140
+    readonly property int axisWidth: 44
+    readonly property int axisHeight: 20
+    readonly property color spectrumLine: "#E6E7EA"
+    readonly property color spectrumPeak: "#F2B544"
+    readonly property color spectrumBand: "#141519"
+    readonly property color axisShade: Qt.rgba(0, 0, 0, 0.55)
     // Notes run from blue at the softest velocity through green and amber to red at the loudest, as in Logic.
     function velocityColor(velocity) {
         return Qt.hsla(0.62 * (1 - Math.max(0, velocity - 1) / 126), 0.55, 0.55, 1)
@@ -208,7 +231,7 @@ QtObject {
     }
 
     // Track icons are Phosphor names and fade icons are our own; an icon we do not bundle shows as a note.
-    readonly property var icons: ["arrows-merge", "automation", "broom", "caret-left", "caret-right", "chart-bar", "circle", "copy", "dots-three", "fade-equalPower", "fade-exponential", "fade-linear", "fade-logarithmic", "fade-sCurve", "file", "gear-six", "guitar", "list", "magnet", "magnifying-glass", "metronome", "music-note", "music-notes", "pause", "pencil-simple", "piano-keys", "play", "plus", "repeat", "sidebar-simple", "skip-back", "sliders", "speaker-slash", "squares-four", "stop", "warning-octagon", "waveform", "x"]
+    readonly property var icons: ["arrows-merge", "automation", "broom", "caret-left", "caret-right", "chart-bar", "circle", "copy", "dots-three", "equalizer", "fade-equalPower", "fade-exponential", "fade-linear", "fade-logarithmic", "fade-sCurve", "file", "gauge", "gear-six", "guitar", "list", "magnet", "magnifying-glass", "metronome", "music-note", "music-notes", "pause", "pencil-simple", "piano-keys", "play", "plus", "repeat", "sidebar-simple", "skip-back", "sliders", "speaker-slash", "squares-four", "stop", "warning-octagon", "waveform", "x"]
     function iconSource(name) {
         return "icons/" + (icons.indexOf(name) >= 0 ? name : "music-note") + ".svg"
     }

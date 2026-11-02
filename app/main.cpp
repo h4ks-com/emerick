@@ -32,6 +32,7 @@
 #include "emerick/app/lua_host.hpp"
 #include "emerick/app/mcp_server.hpp"
 #include "emerick/app/mcp_tools.hpp"
+#include "emerick/app/monitor_actions.hpp"
 #include "emerick/app/nav.hpp"
 #include "emerick/app/peak_cache.hpp"
 #include "emerick/app/plugin_actions.hpp"
@@ -100,7 +101,8 @@ std::optional<double> positiveOption(const QCommandLineParser& parser, const QCo
     return value;
 }
 
-int runWindow(Registry& registry, Nav& nav, ProjectController& controller, Console& console, ViewEngine& views) {
+int runWindow(Registry& registry, Nav& nav, ProjectController& controller, Console& console, ViewEngine& views,
+              Monitors& monitors) {
     TrackListModel tracks(controller, registry);
     FileOpenFilter fileOpen(registry);
     QGuiApplication::instance()->installEventFilter(&fileOpen);
@@ -108,7 +110,7 @@ int runWindow(Registry& registry, Nav& nav, ProjectController& controller, Conso
     QGuiApplication::instance()->installEventFilter(&keyFocus);
     PeakCache peaks;
     QQmlApplicationEngine engine;
-    exposeToQml(engine, registry, nav, controller, tracks, peaks, &console);
+    exposeToQml(engine, registry, nav, controller, tracks, peaks, &console, &monitors);
     views.adopt(engine, peaks);
     QObject::connect(
         &engine, &QQmlApplicationEngine::objectCreationFailed, QGuiApplication::instance(),
@@ -211,6 +213,7 @@ int run(int argc, char** argv) {
     registerPluginActions(registry, nav, plugins);
     registerInstrumentActions(registry, controller, nav, plugins);
     const auto yamaha = emerick::yamaha::registerWith(registry, controller, nav);
+    const auto monitors = registerMonitors(registry, controller, nav);
     bool validPort = true;
     quint16 port = script ? 0 : registry.settingValue("mcp.port").get<quint16>();
     if (parser.isSet(mcpPort)) {
@@ -254,7 +257,7 @@ int run(int argc, char** argv) {
                 runCommandLineScript(lua, parser.value(scriptOption).toStdString(), args, std::cout, std::cerr));
         });
     }
-    return headless ? QGuiApplication::exec() : runWindow(registry, nav, controller, console, views);
+    return headless ? QGuiApplication::exec() : runWindow(registry, nav, controller, console, views, *monitors);
 }
 
 }  // namespace

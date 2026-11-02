@@ -43,6 +43,9 @@ Environment variables. Set a limit to `none` to leave its flag off.
 | `EMERICK_LUA_MEMORY_MB` | `256` | `--lua-memory-mb` |
 | `EMERICK_MAX_RENDER_SECONDS` | `900` | `--max-render-seconds` |
 | `EMERICK_BUNDLED_PLUGINS_ONLY` | `true` | `--bundled-plugins-only` |
+| `EMERICK_VIEWER_DIR` | `/opt/emerick/viewer` | the Emerick Viewer build (`index.html`, `*.wasm`, `*.js`) |
+| `EMERICK_MAX_RENDERS` | `1` | mix renders at once; more wait in a queue |
+| `EMERICK_RENDER_TIMEOUT_SECONDS` | `1800` | stop a mix render after this long |
 
 At startup the service reads `emerick --help` and exits naming any flag the binary lacks.
 
@@ -55,7 +58,9 @@ At startup the service reads `emerick --help` and exits naming any flag the bina
 | `GET /projects`, `GET /projects/{id}` | lists or reads projects |
 | `DELETE /projects/{id}` | deletes a project and its files, 409 while it has a live session |
 | `GET /projects/{id}/files` | lists the project's files |
-| `GET /projects/{id}/files/{path}` | downloads one file |
+| `GET /projects/{id}/files/{path}` | downloads one file, or a byte range of it with a `Range` header |
+| `GET /projects/{id}/mix?bundle=&path=` | streams the bundle's mix with `Range` support, 202 with `Retry-After` while we render it |
+| `GET /projects/{id}/viewer/?bundle=` | opens Emerick Viewer on the bundle, 404 when the image has no viewer |
 | `PUT /projects/{id}/files/{path}` | uploads one file (the body), 413 past `EMERICK_PROJECT_MAX_MB`; a live session sees it at once |
 | `GET /projects/{id}/bundle?path=song.erk` | downloads a zip of the bundle folder, to open in Emerick |
 | `POST /sessions` `{"project_id"}` | starts a session, 429 when the pool is full, 409 when the project has one |
@@ -84,6 +89,10 @@ session.close {session_id: S}
 - An agent that can add MCP servers while it runs can use the session's `mcp_url` directly, with the same tools `session.tools` lists.
 
 A live session's `project_dir` is the folder its Emerick works in, with the bundle at `project.erk`. Emerick reads and writes only inside that folder, so an agent exports there, such as `export.mix` with `{"path": "<project_dir>/mix.wav"}`.
+
+## Viewer
+
+Without `?bundle=`, the viewer and the mix use the `.erk` bundle whose `project.json` changed last. The mix is the newest audio file at the project root or in the bundle, or `?path=`. When there is none, we render `<bundle>/viewer-mix.mp3` with a one-shot `emerick --script` run on a copy of the stored project, outside the session pool, and write the peak files of the bundle's audio clips in the same run. We render again only when `project.json` changes.
 
 The `skills/` folder holds song production skills for the agent that drives a session; the agent loads them, and the image leaves them out.
 

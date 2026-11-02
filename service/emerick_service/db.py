@@ -24,6 +24,12 @@ CREATE TABLE IF NOT EXISTS sessions (
 );
 CREATE UNIQUE INDEX IF NOT EXISTS one_live_session_per_project
     ON sessions(project_id) WHERE status IN ('starting', 'running');
+CREATE TABLE IF NOT EXISTS renders (
+    project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    bundle TEXT NOT NULL,
+    project_hash TEXT NOT NULL,
+    PRIMARY KEY (project_id, bundle)
+);
 """
 
 
@@ -109,6 +115,15 @@ class Database:
             "UPDATE sessions SET status = ?, reason = ?, closed_at = ? WHERE id = ?",
             (status, reason, now().isoformat(), session_id),
         )
+
+    def rendered_hash(self, project_id: str, bundle: str) -> str | None:
+        rows = self._execute(
+            "SELECT project_hash FROM renders WHERE project_id = ? AND bundle = ?", (project_id, bundle)
+        )
+        return str(rows[0]["project_hash"]) if rows else None
+
+    def set_rendered_hash(self, project_id: str, bundle: str, project_hash: str) -> None:
+        self._execute("INSERT OR REPLACE INTO renders VALUES (?, ?, ?)", (project_id, bundle, project_hash))
 
     def fail_live_sessions(self, reason: str) -> None:
         for session in self.list_sessions(live_only=True):

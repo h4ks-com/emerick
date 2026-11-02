@@ -83,3 +83,12 @@ def test_s3_checkout_commit_round_trip(s3: S3Client, tmp_path: Path) -> None:
     storage.delete("p1")
     assert storage.files("p1") == []
     assert [file.path for file in storage.files("p2")] == ["other.wav"]
+
+
+def test_s3_reads_a_byte_range_and_a_size(s3: S3Client) -> None:
+    storage = S3Storage(s3, "songs", "projects/")
+    s3.put_object(Bucket="songs", Key="projects/p1/mix.ogg", Body=b"0123456789")
+    assert storage.size("p1", "mix.ogg") == 10
+    assert b"".join(storage.read("p1", "mix.ogg", (2, 5))) == b"2345"
+    with pytest.raises(FileNotFoundError):
+        storage.size("p1", "none.ogg")

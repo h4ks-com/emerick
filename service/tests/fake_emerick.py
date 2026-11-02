@@ -1,6 +1,7 @@
 import json
 import os
 import sys
+import time
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 
@@ -44,8 +45,28 @@ class Handler(BaseHTTPRequestHandler):
         pass
 
 
+def render() -> None:
+    bundle, mix, peaks = (Path(arg) if arg else None for arg in sys.argv[sys.argv.index("--") + 1 :])
+    root = Path(option("agent-write-root"))
+    assert bundle is not None
+    assert "--headless" not in sys.argv
+    assert all(path is None or path.is_relative_to(root) for path in (bundle, mix, peaks))
+    time.sleep(0.5)
+    if "fail" in (bundle / "project.json").read_text():
+        sys.exit(1)
+    if mix:
+        mix.write_bytes(b"ID3 rendered")
+    if peaks:
+        for audio in (bundle / "audio").glob("*.wav"):
+            (audio.parent / ".peaks").mkdir(exist_ok=True)
+            (audio.parent / ".peaks" / f"{audio.name}.peaks").write_bytes(b"peaks")
+
+
 if __name__ == "__main__":
     if "--help" in sys.argv:
         sys.stdout.write(HELP)
+        sys.exit(0)
+    if any(arg.startswith("--script") for arg in sys.argv):
+        render()
         sys.exit(0)
     HTTPServer(("127.0.0.1", int(option("mcp-port"))), Handler).serve_forever()

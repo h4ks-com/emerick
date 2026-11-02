@@ -43,6 +43,10 @@ class Settings(BaseSettings):
     max_render_seconds: int | None = 900
     bundled_plugins_only: bool = True
 
+    viewer_dir: Path = Path("/opt/emerick/viewer")
+    max_renders: int = Field(default=1, ge=1)
+    render_timeout_seconds: float = 1800
+
     @property
     def projects_dir(self) -> Path:
         return self.data_dir / "projects"

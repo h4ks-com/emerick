@@ -1,15 +1,18 @@
 import asyncio
 import contextlib
+import functools
+import gzip
 import mimetypes
+import re
 from collections.abc import AsyncGenerator, Callable
 from contextlib import asynccontextmanager
-from pathlib import PurePosixPath
-from urllib.parse import quote
+from pathlib import Path, PurePosixPath
+from urllib.parse import quote, urlencode
 
 import boto3
 import httpx
 from fastapi import FastAPI, Request, Response
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, StreamingResponse
 from mcp.server.transport_security import TransportSecuritySettings
 from mypy_boto3_s3 import S3Client
 from starlette.background import BackgroundTask
@@ -37,7 +40,11 @@ from emerick_service.sessions import (
     UnknownProjectError,
     UnknownSessionError,
 )
-from emerick_service.storage import LocalStorage, PathEscapeError, S3Storage, Storage, file_chunks
+from emerick_service.storage import LocalStorage, PathEscapeError, S3Storage, Storage, contained, file_chunks
+from emerick_service.viewer import Renderer, choose_bundle
+
+mimetypes.add_type("application/wasm", ".wasm")
+BYTE_RANGE = re.compile(r"bytes=(\d*)-(\d*)")
 
 FORWARDED_REQUEST_HEADERS = ("content-type", "accept", "mcp-session-id", "mcp-protocol-version", "last-event-id")
 FORWARDED_RESPONSE_HEADERS = ("content-type", "mcp-session-id", "cache-control")
@@ -53,6 +60,43 @@ ERROR_STATUS: dict[type[Exception], int] = {
     ChildError: 502,
     httpx.HTTPError: 502,
 }
+
+
+class RangeNotSatisfiableError(ValueError):
+    pass
+
+
+def byte_span(header: str | None, size: int) -> tuple[int, int] | None:
+    """Return the first and last byte a single-range Range header asks for, or None to send the whole file.
+
+    :raises RangeNotSatisfiableError: when the range starts past the end of the file.
+    """
+    match = BYTE_RANGE.fullmatch(header or "")
+    if match is None or match.groups() == ("", ""):
+        return None
+    first, last = match.groups()
+    if first:
+        span = int(first), min(int(last), size - 1) if last else size - 1
+    else:
+        span = max(size - int(last), 0), size - 1
+    if span[0] > span[1]:
+        raise RangeNotSatisfiableError(header)
+    return span
+
+
+def viewer_file(viewer_dir: Path, name: str) -> Path:
+    """:raises FileNotFoundError: when the viewer is not installed or lacks the file."""
+    if not (viewer_dir / "index.html").is_file():
+        raise FileNotFoundError(f"the viewer is not installed, {viewer_dir} has no index.html")
+    file = contained(viewer_dir, name)
+    if not file.is_file():
+        raise FileNotFoundError(f"the viewer has no file {name}")
+    return file
+
+
+@functools.lru_cache(maxsize=16)
+def gzipped(file: Path, modified_ns: int) -> bytes:
+    return gzip.compress(file.read_bytes(), compresslevel=6)
 
 
 def make_storage(settings: Settings) -> Storage:
@@ -78,6 +122,7 @@ def create_app(settings: Settings, storage: Storage | None = None) -> FastAPI:
     db = Database(settings.db_path)
     client = httpx.AsyncClient(timeout=httpx.Timeout(10, read=None))
     manager = SessionManager(settings, db, storage or make_storage(settings), client)
+    renderer = Renderer(settings, db, manager.storage)
     mcp = build_mcp(manager, db)
     mcp_app = mcp.streamable_http_app(
         json_response=True,
@@ -95,6 +140,7 @@ def create_app(settings: Settings, storage: Storage | None = None) -> FastAPI:
         reaper.cancel()
         with contextlib.suppress(asyncio.CancelledError):
             await reaper
+        await renderer.close()
         await manager.close_all("the service stopped")
         await client.aclose()
         db.close()
@@ -144,16 +190,84 @@ def create_app(settings: Settings, storage: Storage | None = None) -> FastAPI:
         project_or_404(project_id)
         return await asyncio.to_thread(manager.storage.files, project_id)
 
-    @app.get("/projects/{project_id}/files/{path:path}")
-    async def download_file(project_id: str, path: str) -> StreamingResponse:
-        project_or_404(project_id)
-        chunks = await asyncio.to_thread(manager.storage.read, project_id, path)
-        name = PurePosixPath(path).name
+    async def stored_file(request: Request, project_id: str, path: str, headers: dict[str, str]) -> Response:
+        size = await asyncio.to_thread(manager.storage.size, project_id, path)
+        try:
+            span = byte_span(request.headers.get("range"), size)
+        except RangeNotSatisfiableError:
+            return Response(status_code=416, headers={"Content-Range": f"bytes */{size}"})
+        chunks = await asyncio.to_thread(manager.storage.read, project_id, path, span)
+        headers = {**headers, "Accept-Ranges": "bytes", "Content-Length": str(size)}
+        if span:
+            headers |= {
+                "Content-Range": f"bytes {span[0]}-{span[1]}/{size}",
+                "Content-Length": str(span[1] - span[0] + 1),
+            }
         return StreamingResponse(
             chunks,
-            media_type=mimetypes.guess_type(name)[0] or "application/octet-stream",
-            headers={"Content-Disposition": f"attachment; filename*=utf-8''{quote(name)}"},
+            status_code=206 if span else 200,
+            media_type=mimetypes.guess_type(PurePosixPath(path).name)[0] or "application/octet-stream",
+            headers=headers,
         )
+
+    @app.get("/projects/{project_id}/files/{path:path}")
+    async def download_file(request: Request, project_id: str, path: str) -> Response:
+        project_or_404(project_id)
+        name = quote(PurePosixPath(path).name)
+        return await stored_file(
+            request, project_id, path, {"Content-Disposition": f"attachment; filename*=utf-8''{name}"}
+        )
+
+    @app.get("/projects/{project_id}/mix")
+    async def mix(request: Request, project_id: str, bundle: str | None = None, path: str | None = None) -> Response:
+        project_or_404(project_id)
+        if path is None:
+            state = await renderer.mix(project_id, bundle)
+            if state.path is None:
+                if state.error is not None:
+                    raise FileNotFoundError(f"the project has no mix and rendering one failed: {state.error}")
+                return JSONResponse(
+                    {"detail": "rendering the mix, retry soon"}, status_code=202, headers={"Retry-After": "5"}
+                )
+            path = state.path
+        return await stored_file(request, project_id, path, {"Cache-Control": "no-cache"})
+
+    @app.get("/projects/{project_id}/viewer/")
+    async def viewer_page(
+        request: Request, project_id: str, bundle: str | None = None, project: str | None = None
+    ) -> Response:
+        project_or_404(project_id)
+        index = viewer_file(settings.viewer_dir, "index.html")
+        if project is not None:
+            return FileResponse(index, headers={"Cache-Control": "no-cache"})
+        files = await asyncio.to_thread(manager.storage.files, project_id)
+        folder = f"{base_url(settings.public_url, request)}/projects/{project_id}"
+        chosen = quote(choose_bundle(files, bundle))
+        query = urlencode(
+            {
+                "project": f"{folder}/files/{chosen}/project.json",
+                "mix": f"{folder}/mix?bundle={chosen}",
+                "bundle": f"{folder}/files/{chosen}",
+            }
+        )
+        return RedirectResponse(f"{request.url.path}?{query}", status_code=307)
+
+    @app.get("/projects/{project_id}/viewer/{name}")
+    def viewer_asset(request: Request, name: str) -> Response:
+        file = viewer_file(settings.viewer_dir, name)
+        stat = file.stat()
+        headers = {
+            "ETag": f'"{stat.st_mtime_ns:x}-{stat.st_size:x}"',
+            "Cache-Control": "no-cache",
+            "Vary": "Accept-Encoding",
+        }
+        if request.headers.get("if-none-match") == headers["ETag"]:
+            return Response(status_code=304, headers=headers)
+        media_type = mimetypes.guess_type(name)[0] or "application/octet-stream"
+        if "gzip" not in request.headers.get("accept-encoding", ""):
+            return FileResponse(file, media_type=media_type, headers=headers)
+        headers["Content-Encoding"] = "gzip"
+        return Response(gzipped(file, stat.st_mtime_ns), media_type=media_type, headers=headers)
 
     @app.get("/projects/{project_id}/bundle")
     async def download_bundle(project_id: str, path: str) -> StreamingResponse:

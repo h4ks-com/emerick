@@ -5,6 +5,7 @@ from datetime import UTC, datetime
 from pathlib import Path, PurePosixPath
 from typing import IO, Protocol
 
+from botocore.exceptions import ClientError
 from mypy_boto3_s3 import S3Client
 
 from emerick_service.models import ProjectFile
@@ -65,9 +66,17 @@ def file_chunks(file: IO[bytes]) -> Iterator[bytes]:
         yield chunk
 
 
-def read_chunks(path: Path) -> Iterator[bytes]:
+def read_chunks(path: Path, span: tuple[int, int] | None = None) -> Iterator[bytes]:
     with path.open("rb") as file:
-        yield from file_chunks(file)
+        if span is None:
+            yield from file_chunks(file)
+            return
+        first, last = span
+        file.seek(first)
+        remaining = last - first + 1
+        while remaining > 0 and (chunk := file.read(min(CHUNK_BYTES, remaining))):
+            remaining -= len(chunk)
+            yield chunk
 
 
 class Storage(Protocol):
@@ -85,8 +94,16 @@ class Storage(Protocol):
 
     def files(self, project_id: str) -> list[ProjectFile]: ...
 
-    def read(self, project_id: str, path: str) -> Iterator[bytes]:
-        """Stream one file of the project.
+    def read(self, project_id: str, path: str, span: tuple[int, int] | None = None) -> Iterator[bytes]:
+        """Stream one file of the project, or its bytes first to last of span.
+
+        :raises PathEscapeError: when path leaves the project.
+        :raises FileNotFoundError: when the project holds no such file.
+        """
+        ...
+
+    def size(self, project_id: str, path: str) -> int:
+        """Return the bytes of one file of the project.
 
         :raises PathEscapeError: when path leaves the project.
         :raises FileNotFoundError: when the project holds no such file.
@@ -135,11 +152,17 @@ class LocalStorage:
             key=lambda file: file.path,
         )
 
-    def read(self, project_id: str, path: str) -> Iterator[bytes]:
+    def _file(self, project_id: str, path: str) -> Path:
         file = contained(self._dir(project_id), path)
         if not file.is_file():
             raise FileNotFoundError(path)
-        return read_chunks(file)
+        return file
+
+    def read(self, project_id: str, path: str, span: tuple[int, int] | None = None) -> Iterator[bytes]:
+        return read_chunks(self._file(project_id, path), span)
+
+    def size(self, project_id: str, path: str) -> int:
+        return self._file(project_id, path).stat().st_size
 
     def write(self, project_id: str, path: str, data: bytes) -> None:
         write_contained(self._dir(project_id), path, data)
@@ -208,13 +231,25 @@ class S3Storage:
             key=lambda file: file.path,
         )
 
-    def read(self, project_id: str, path: str) -> Iterator[bytes]:
+    def read(self, project_id: str, path: str, span: tuple[int, int] | None = None) -> Iterator[bytes]:
         key = self._prefix(project_id) + relative_path(path).as_posix()
         try:
-            body = self.client.get_object(Bucket=self.bucket, Key=key)["Body"]
+            if span:
+                body = self.client.get_object(Bucket=self.bucket, Key=key, Range=f"bytes={span[0]}-{span[1]}")["Body"]
+            else:
+                body = self.client.get_object(Bucket=self.bucket, Key=key)["Body"]
         except self.client.exceptions.NoSuchKey as error:
             raise FileNotFoundError(path) from error
         return body.iter_chunks(CHUNK_BYTES)
+
+    def size(self, project_id: str, path: str) -> int:
+        key = self._prefix(project_id) + relative_path(path).as_posix()
+        try:
+            return self.client.head_object(Bucket=self.bucket, Key=key)["ContentLength"]
+        except ClientError as error:
+            if error.response.get("Error", {}).get("Code") in {"404", "NoSuchKey"}:
+                raise FileNotFoundError(path) from error
+            raise
 
     def write(self, project_id: str, path: str, data: bytes) -> None:
         key = self._prefix(project_id) + relative_path(path).as_posix()

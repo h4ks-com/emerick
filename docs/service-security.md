@@ -12,6 +12,7 @@ What can go wrong when untrusted agents drive Emerick through the service, and t
 | Disk filling with exports and recordings | RLIMIT_FSIZE per file, per-project quota the reaper checks (`EMERICK_PROJECT_MAX_MB`), RLIMIT_CORE 0 | service |
 | Path escape | `--agent-read-root` and `--agent-write-root` set to the project folder; the app resolves symlinks and `..`. File downloads resolve every path and refuse one that leaves the project | app, service |
 | Plugin loading | `--bundled-plugins-only`, an empty environment and a session `HOME`, so no `CLAP_PATH` or user plugin folder reaches the app | app, service |
+| Viewer mix renders | each render runs `emerick --script` with the session's rlimits, roots, `--lua-memory-mb`, `--max-render-seconds` and `--bundled-plugins-only`, on a copy of the stored project in its own folder; `EMERICK_RENDER_TIMEOUT_SECONDS` caps its wall time in place of `--lua-timeout-ms`, since a long export runs inside the script, `EMERICK_MAX_RENDERS` caps how many run, and only the mix and peak files go back into the project | service |
 | Too many sessions | `EMERICK_MAX_SESSIONS` and one session per project | service |
 | Exposed session MCP | each session binds 127.0.0.1 on a port from `EMERICK_PORT_MIN` to `EMERICK_PORT_MAX`; only `/sessions/{id}/mcp` reaches it | service |
 | Network egress | the app needs none; the example NetworkPolicy denies all egress, and with `s3` storage one more rule allows the S3 endpoint | orchestrator |
@@ -29,6 +30,7 @@ The sum of `EMERICK_SESSION_MEMORY_MB` over `EMERICK_MAX_SESSIONS` plus about 20
 - Any authenticated caller can list, open and delete every project; the service knows no owners.
 - A crash in the app or a library it links runs as the service user and sees the other sessions' files under `/data`.
 - With `s3` storage the pod's credentials reach the whole bucket prefix.
+- With `s3` storage, closing a session that started before a viewer render deletes the rendered mix and peak files, so the next viewer visit renders the mix again.
 
 ## Example deployment
 

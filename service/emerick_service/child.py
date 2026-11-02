@@ -15,7 +15,16 @@ from pydantic import BaseModel, JsonValue, TypeAdapter, ValidationError
 from emerick_service.config import Settings
 
 REQUIRED_FLAGS = frozenset(
-    {"--headless", "--audio", "--midi", "--mcp-port", "--profile", "--agent-read-root", "--agent-write-root"}
+    {
+        "--headless",
+        "--script",
+        "--audio",
+        "--midi",
+        "--mcp-port",
+        "--profile",
+        "--agent-read-root",
+        "--agent-write-root",
+    }
 )
 MEGABYTE = 1 << 20
 
@@ -60,25 +69,26 @@ def child_env(home: Path) -> dict[str, str]:
     }
 
 
-def child_args(settings: Settings, port: int, profile: Path, project_dir: Path) -> list[str]:
+def sandbox_args(settings: Settings, profile: Path, project_dir: Path) -> list[str]:
+    """Return the flags that keep an Emerick run inside project_dir, leaving out the Lua timeout."""
     args = [
-        str(settings.bin),
-        "--headless",
         "--audio=null",
         "--midi=virtual",
-        f"--mcp-port={port}",
         f"--profile={profile}",
         f"--agent-read-root={project_dir}",
         f"--agent-write-root={project_dir}",
     ]
-    limits = {
-        "--lua-timeout-ms": settings.lua_timeout_ms,
-        "--lua-memory-mb": settings.lua_memory_mb,
-        "--max-render-seconds": settings.max_render_seconds,
-    }
+    limits = {"--lua-memory-mb": settings.lua_memory_mb, "--max-render-seconds": settings.max_render_seconds}
     args += [f"{flag}={value}" for flag, value in limits.items() if value is not None]
     if settings.bundled_plugins_only:
         args.append("--bundled-plugins-only")
+    return args
+
+
+def child_args(settings: Settings, port: int, profile: Path, project_dir: Path) -> list[str]:
+    args = [str(settings.bin), "--headless", f"--mcp-port={port}", *sandbox_args(settings, profile, project_dir)]
+    if settings.lua_timeout_ms is not None:
+        args.append(f"--lua-timeout-ms={settings.lua_timeout_ms}")
     return args
 
 
@@ -179,16 +189,20 @@ class Child:
         raise ChildError(f"emerick exited with code {self.process.returncode} while starting")
 
     async def stop(self, timeout: float) -> None:
-        for sig in (signal.SIGTERM, signal.SIGKILL):
-            try:
-                os.killpg(self.process.pid, sig)
-            except ProcessLookupError:
-                return
-            try:
-                await asyncio.wait_for(self.process.wait(), timeout)
-            except TimeoutError:
-                continue
+        await stop_process(self.process, timeout)
+
+
+async def stop_process(process: asyncio.subprocess.Process, timeout: float) -> None:
+    for sig in (signal.SIGTERM, signal.SIGKILL):
+        try:
+            os.killpg(process.pid, sig)
+        except ProcessLookupError:
             return
+        try:
+            await asyncio.wait_for(process.wait(), timeout)
+        except TimeoutError:
+            continue
+        return
 
 
 async def start_child(settings: Settings, port: int, project_dir: Path, work_dir: Path) -> Child:

@@ -5,6 +5,7 @@
 #include <string>
 #include <vector>
 
+#include "emerick/engine/sound_file.hpp"
 #include "project_rig.hpp"
 
 using namespace emerick;
@@ -19,7 +20,7 @@ bool anySound(const std::vector<float>& samples) {
 
 std::vector<float> readSamples(const std::filesystem::path& path) {
     SF_INFO info{};
-    SNDFILE* file = sf_open(path.c_str(), SFM_READ, &info);
+    SNDFILE* file = engine::openSoundFile(path, SFM_READ, &info);
     REQUIRE(file != nullptr);
     std::vector<float> samples(static_cast<std::size_t>(info.frames * info.channels));
     sf_readf_float(file, samples.data(), info.frames);
@@ -58,7 +59,7 @@ TEST_CASE("the metronome menu offers the toggle, the preview, every sound, every
     const auto item = [&items](const char* id) {
         const auto found =
             std::ranges::find_if(items, [id](const QVariant& entry) { return entry.toMap().value("id") == id; });
-        REQUIRE(found != items.end());
+        REQUIRE((found != items.end()));
         return found->toMap();
     };
     item("metronome.toggle");

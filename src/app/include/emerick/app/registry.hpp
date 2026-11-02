@@ -1,5 +1,6 @@
 #pragma once
 
+#include <QDebug>
 #include <QObject>
 #include <QSettings>
 #include <QString>
@@ -18,6 +19,7 @@
 #include <optional>
 #include <stdexcept>
 #include <string>
+#include <type_traits>
 #include <vector>
 
 #include "emerick/app/enums.hpp"
@@ -26,6 +28,11 @@
 #include "emerick/core/time.hpp"
 #include "emerick/engine/session.hpp"
 #include "emerick/model/document.hpp"
+
+// Signals carry json, so Qt asks whether QDebug can print it. On Windows that probes json's implicit conversion to
+// MSG, an incomplete type there, which fails to compile, so we answer the question before Qt asks it.
+template <>
+struct QTypeTraits::has_ostream_operator<QDebug, nlohmann::json> : std::false_type {};
 
 namespace emerick::app {
 

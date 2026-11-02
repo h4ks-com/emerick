@@ -144,7 +144,7 @@ TEST_CASE("the Style lane dims the sections the style lacks and marks a block th
     const auto dim = [&](const QString& name) {
         const auto found = std::ranges::find_if(
             matches, [&](const QVariant& entry) { return entry.toMap().value("id").toString() == name; });
-        REQUIRE(found != matches.end());
+        REQUIRE((found != matches.end()));
         return found->toMap().value("dim").toBool();
     };
     CHECK_FALSE(dim("Main A"));

@@ -11,6 +11,8 @@
 #include <system_error>
 #include <utility>
 
+#include "emerick/engine/sound_file.hpp"
+
 namespace emerick::app {
 
 namespace {
@@ -20,10 +22,7 @@ constexpr quint32 kPeakFileVersion = 1;
 constexpr core::Frames kFold = 4;
 constexpr core::Frames kBlocksPerRead = 64;
 
-struct SndFileCloser {
-    void operator()(SNDFILE* file) const { sf_close(file); }
-};
-using SndFile = std::unique_ptr<SNDFILE, SndFileCloser>;
+using engine::SndFile;
 
 // What identifies the audio a peak file was made from.
 struct AudioStamp {
@@ -44,7 +43,7 @@ std::optional<AudioStamp> stampOf(const std::filesystem::path& audio) {
 
 Peaks readAudioPeaks(const std::filesystem::path& audio) {
     SF_INFO info{};
-    const SndFile sound{sf_open(audio.c_str(), SFM_READ, &info)};
+    const SndFile sound{engine::openSoundFile(audio, SFM_READ, &info)};
     if (!sound || info.channels <= 0) {
         return {};
     }

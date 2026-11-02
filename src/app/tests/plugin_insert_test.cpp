@@ -11,6 +11,7 @@
 #include "emerick/app/plugin_actions.hpp"
 #include "emerick/app/plugin_catalog.hpp"
 #include "emerick/app/session_mapping.hpp"
+#include "emerick/engine/sound_file.hpp"
 #include "project_rig.hpp"
 
 using namespace emerick;
@@ -48,7 +49,7 @@ struct PluginInsertRig : ProjectRig {
         const std::filesystem::path mix = path("mix.wav");
         run("export.mix", {{"path", mix.string()}});
         SF_INFO info{};
-        SNDFILE* file = sf_open(mix.c_str(), SFM_READ, &info);
+        SNDFILE* file = engine::openSoundFile(mix, SFM_READ, &info);
         REQUIRE(file != nullptr);
         std::vector<float> samples(static_cast<std::size_t>(info.channels));
         sf_seek(file, frame, SEEK_SET);
@@ -204,7 +205,7 @@ float mixPeak(PluginInsertRig& rig) {
     const std::filesystem::path mix = rig.path("synth.wav");
     rig.run("export.mix", {{"path", mix.string()}});
     SF_INFO info{};
-    SNDFILE* file = sf_open(mix.c_str(), SFM_READ, &info);
+    SNDFILE* file = engine::openSoundFile(mix, SFM_READ, &info);
     REQUIRE(file != nullptr);
     std::vector<float> samples(static_cast<std::size_t>(info.frames * info.channels));
     sf_readf_float(file, samples.data(), info.frames);
@@ -287,7 +288,7 @@ TEST_CASE("a plugin insert's latency delays the other tracks, and the stream sta
                  .format = SF_FORMAT_WAV | SF_FORMAT_FLOAT,
                  .sections = 0,
                  .seekable = 0};
-    SNDFILE* file = sf_open(clip.c_str(), SFM_WRITE, &info);
+    SNDFILE* file = engine::openSoundFile(clip, SFM_WRITE, &info);
     REQUIRE(file != nullptr);
     sf_writef_float(file, click.data(), static_cast<sf_count_t>(click.size()));
     sf_close(file);
@@ -303,7 +304,7 @@ TEST_CASE("a plugin insert's latency delays the other tracks, and the stream sta
     rig.run("export.stems", {{"folder", rig.path("stems").string()}});
     const auto peakFrame = [&](const std::string& stem) {
         SF_INFO read{};
-        SNDFILE* stemFile = sf_open((rig.path("stems") / stem).c_str(), SFM_READ, &read);
+        SNDFILE* stemFile = engine::openSoundFile((rig.path("stems") / stem), SFM_READ, &read);
         REQUIRE(stemFile != nullptr);
         std::vector<float> samples(static_cast<std::size_t>(read.frames * read.channels));
         sf_readf_float(stemFile, samples.data(), read.frames);

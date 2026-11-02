@@ -31,6 +31,11 @@ set(LIBREMIDI_NO_BOOST ON CACHE BOOL "" FORCE)
 if(APPLE)
     set(LIBREMIDI_NO_JACK ON CACHE BOOL "" FORCE)
 endif()
+# Windows reaches MIDI devices through WinMM; the WinRT back-ends need C++/WinRT headers that MinGW lacks.
+if(WIN32)
+    set(LIBREMIDI_NO_WINUWP ON CACHE BOOL "" FORCE)
+    set(LIBREMIDI_NO_WINMIDI ON CACHE BOOL "" FORCE)
+endif()
 FetchContent_Declare(libremidi
     GIT_REPOSITORY https://github.com/celtera/libremidi.git
     GIT_TAG v5.4.3

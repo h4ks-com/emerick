@@ -10,15 +10,13 @@
 #include <string>
 
 #include "emerick/app/registry.hpp"
+#include "emerick/engine/sound_file.hpp"
 
 namespace emerick::app {
 
 namespace {
 
-struct SndFileCloser {
-    void operator()(SNDFILE* file) const { sf_close(file); }
-};
-using SndFile = std::unique_ptr<SNDFILE, SndFileCloser>;
+using engine::SndFile;
 
 std::filesystem::path copyIntoProject(const std::filesystem::path& source, const std::filesystem::path& folder) {
     const std::filesystem::path audio = folder / "audio";
@@ -39,7 +37,7 @@ std::filesystem::path copyIntoProject(const std::filesystem::path& source, const
 
 std::optional<AudioFileInfo> readAudioInfo(const std::filesystem::path& path) {
     SF_INFO info{};
-    const SndFile file{sf_open(path.c_str(), SFM_READ, &info)};
+    const SndFile file{engine::openSoundFile(path, SFM_READ, &info)};
     if (!file) {
         return std::nullopt;
     }
@@ -48,7 +46,7 @@ std::optional<AudioFileInfo> readAudioInfo(const std::filesystem::path& path) {
 
 AudioData readAudio(const std::filesystem::path& path) {
     SF_INFO info{};
-    const SndFile file{sf_open(path.c_str(), SFM_READ, &info)};
+    const SndFile file{engine::openSoundFile(path, SFM_READ, &info)};
     if (!file) {
         throw AppError("cannot open " + path.filename().string() + " as audio: " + sf_strerror(nullptr));
     }
@@ -143,7 +141,7 @@ AudioWriter::AudioWriter(const std::filesystem::path& path, std::size_t channels
         throw AppError(std::format("this build's libsndfile has no {} encoder for {} channels at {} Hz",
                                    audioFormatName(encoding.format), info.channels, info.samplerate));
     }
-    file_ = std::make_unique<File>(File{.path = path, .file = SndFile{sf_open(path.c_str(), SFM_WRITE, &info)}});
+    file_ = std::make_unique<File>(File{.path = path, .file = SndFile{engine::openSoundFile(path, SFM_WRITE, &info)}});
     if (!file_->file) {
         throw AppError("cannot write " + path.string() + ": " + sf_strerror(nullptr));
     }

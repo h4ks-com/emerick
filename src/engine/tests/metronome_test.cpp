@@ -8,6 +8,7 @@
 #include <ranges>
 
 #include "emerick/engine/engine.hpp"
+#include "emerick/engine/sound_file.hpp"
 #include "rig.hpp"
 
 using namespace emerick;
@@ -22,7 +23,7 @@ constexpr float kBeatLevel = 0.25F;
 void writeImpulse(const std::filesystem::path& path, float level) {
     const std::vector<float> samples{level, 0.0F, 0.0F, 0.0F};
     SF_INFO info{.samplerate = static_cast<int>(kRate), .channels = 1, .format = SF_FORMAT_WAV | SF_FORMAT_FLOAT};
-    SNDFILE* file = sf_open(path.c_str(), SFM_WRITE, &info);
+    SNDFILE* file = openSoundFile(path, SFM_WRITE, &info);
     REQUIRE(file != nullptr);
     sf_writef_float(file, samples.data(), static_cast<sf_count_t>(samples.size()));
     sf_close(file);
@@ -196,7 +197,7 @@ TEST_CASE("a count-in clicks its bars, then the take starts at the record positi
     REQUIRE(takes.size() == 1);
     CHECK(takes[0].startTick == recordAt);
     SF_INFO info{};
-    SNDFILE* file = sf_open(takes[0].audioFile.c_str(), SFM_READ, &info);
+    SNDFILE* file = openSoundFile(takes[0].audioFile, SFM_READ, &info);
     REQUIRE(file != nullptr);
     std::vector<float> recorded(static_cast<std::size_t>(info.frames));
     sf_readf_float(file, recorded.data(), info.frames);
@@ -329,7 +330,7 @@ TEST_CASE("a recorded take holds only the input, never the metronome") {
         return !takes.empty();
     }));
     SF_INFO info{};
-    SNDFILE* file = sf_open(takes[0].audioFile.c_str(), SFM_READ, &info);
+    SNDFILE* file = openSoundFile(takes[0].audioFile, SFM_READ, &info);
     REQUIRE(file != nullptr);
     std::vector<float> recorded(static_cast<std::size_t>(info.frames));
     sf_readf_float(file, recorded.data(), info.frames);

@@ -8,6 +8,7 @@
 #include <variant>
 #include <vector>
 
+#include "emerick/engine/sound_file.hpp"
 #include "project_rig.hpp"
 
 using namespace emerick;
@@ -19,7 +20,7 @@ namespace {
 // The frame where the file first holds a sound on any channel.
 core::Frames firstSound(const std::filesystem::path& path) {
     SF_INFO info{};
-    SNDFILE* file = sf_open(path.c_str(), SFM_READ, &info);
+    SNDFILE* file = engine::openSoundFile(path, SFM_READ, &info);
     REQUIRE(file != nullptr);
     std::vector<float> samples(static_cast<std::size_t>(info.frames * info.channels));
     sf_readf_float(file, samples.data(), info.frames);

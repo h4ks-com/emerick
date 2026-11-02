@@ -20,6 +20,7 @@
 #include "emerick/app/plugin_catalog.hpp"
 #include "emerick/app/session_mapping.hpp"
 #include "emerick/core/base64.hpp"
+#include "emerick/engine/sound_file.hpp"
 #include "registration.hpp"
 #include "style_builder.hpp"
 #include "style_library.hpp"
@@ -125,7 +126,7 @@ std::filesystem::path otherBassStyle(const ArrangerRig& rig) {
 
 float loudest(const std::filesystem::path& file) {
     SF_INFO info{};
-    SNDFILE* opened = sf_open(file.c_str(), SFM_READ, &info);
+    SNDFILE* opened = engine::openSoundFile(file, SFM_READ, &info);
     REQUIRE(opened != nullptr);
     std::vector<float> samples(static_cast<std::size_t>(info.frames * info.channels));
     sf_readf_float(opened, samples.data(), info.frames);

@@ -113,7 +113,7 @@ ProjectController::ProjectController(const Registry& registry, std::unique_ptr<e
         try {
             leave();
         } catch (const AppError& error) {
-            qWarning("cannot save %s: %s", folder_.c_str(), error.what());
+            qWarning("cannot save %s: %s", folder_.string().c_str(), error.what());
         }
     });
     connect(&registry, &Registry::gesturingChanged, this, [this] {
@@ -198,7 +198,7 @@ bool ProjectController::autosaves() const {
 // Someone else may have saved the file since we read it, so we leave their save in place.
 void ProjectController::autosave() {
     if (changedOnDisk()) {
-        qWarning("not autosaving %s: it changed on disk, save it to overwrite", folder_.c_str());
+        qWarning("not autosaving %s: it changed on disk, save it to overwrite", folder_.string().c_str());
         return;
     }
     try {

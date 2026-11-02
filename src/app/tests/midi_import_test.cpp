@@ -11,6 +11,7 @@
 #include <variant>
 #include <vector>
 
+#include "emerick/engine/sound_file.hpp"
 #include "project_rig.hpp"
 
 using namespace emerick;
@@ -136,7 +137,7 @@ TEST_CASE("clip.import opens Ogg Vorbis, Opus and MP3, makes a new track on requ
                                                            {"tone.mp3", SF_FORMAT_MPEG | SF_FORMAT_MPEG_LAYER_III}};
     for (const auto& [name, format] : formats) {
         SF_INFO info{.frames = 0, .samplerate = 48000, .channels = 1, .format = format, .sections = 0, .seekable = 0};
-        SNDFILE* file = sf_open(rig.path(name).c_str(), SFM_WRITE, &info);
+        SNDFILE* file = engine::openSoundFile(rig.path(name), SFM_WRITE, &info);
         REQUIRE(file != nullptr);
         const std::vector<float> samples(48000, 0.25F);
         sf_writef_float(file, samples.data(), static_cast<sf_count_t>(samples.size()));

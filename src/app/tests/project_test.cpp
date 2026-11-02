@@ -15,6 +15,7 @@
 #include "emerick/app/session_mapping.hpp"
 #include "emerick/app/stem_export.hpp"
 #include "emerick/app/track_list_model.hpp"
+#include "emerick/engine/sound_file.hpp"
 #include "emerick/model/json.hpp"
 #include "project_rig.hpp"
 
@@ -27,7 +28,7 @@ namespace {
 
 std::vector<float> readChannel(const std::filesystem::path& path, int channel) {
     SF_INFO info{};
-    SNDFILE* file = sf_open(path.c_str(), SFM_READ, &info);
+    SNDFILE* file = engine::openSoundFile(path, SFM_READ, &info);
     REQUIRE(file != nullptr);
     std::vector<float> interleaved(static_cast<std::size_t>(info.frames * info.channels));
     sf_readf_float(file, interleaved.data(), info.frames);

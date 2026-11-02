@@ -13,6 +13,7 @@
 #include <vector>
 
 #include "emerick/engine/engine.hpp"
+#include "emerick/engine/sound_file.hpp"
 
 namespace emerick::engine::test {
 
@@ -59,7 +60,7 @@ inline Frames frameOf(const SentMidi& message) {
 
 inline void writeWav(const std::filesystem::path& path, const std::vector<float>& samples, double rate = kRate) {
     SF_INFO info{.samplerate = static_cast<int>(rate), .channels = 1, .format = SF_FORMAT_WAV | SF_FORMAT_FLOAT};
-    SNDFILE* file = sf_open(path.c_str(), SFM_WRITE, &info);
+    SNDFILE* file = openSoundFile(path, SFM_WRITE, &info);
     REQUIRE(file != nullptr);
     sf_writef_float(file, samples.data(), static_cast<sf_count_t>(samples.size()));
     sf_close(file);

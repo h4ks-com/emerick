@@ -13,7 +13,7 @@
 #include <vector>
 
 #include "emerick/core/time.hpp"
-#include "snd_file.hpp"
+#include "emerick/engine/sound_file.hpp"
 #include "spsc_ring.hpp"
 
 namespace emerick::engine {

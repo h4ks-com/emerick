@@ -6,7 +6,7 @@
 #include <limits>
 #include <numbers>
 
-#include "snd_file.hpp"
+#include "emerick/engine/sound_file.hpp"
 
 namespace emerick::engine {
 
@@ -96,7 +96,7 @@ DrumSounds synthesizeDrums(double sampleRate) {
 
 std::expected<std::vector<float>, std::string> loadOneShot(const std::filesystem::path& path, double sampleRate) {
     SF_INFO info{};
-    const SndFile file{sf_open(path.c_str(), SFM_READ, &info)};
+    const SndFile file{openSoundFile(path, SFM_READ, &info)};
     if (!file) {
         return std::unexpected("cannot open metronome sample " + path.string());
     }

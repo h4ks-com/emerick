@@ -6,6 +6,7 @@
 #include <limits>
 
 #include "emerick/engine/engine.hpp"
+#include "emerick/engine/sound_file.hpp"
 #include "rig.hpp"
 #include "take_recorder.hpp"
 
@@ -18,7 +19,7 @@ const emerick::core::TempoMap kTempo{120.0, {4, 4}};
 
 std::vector<float> readWav(const std::filesystem::path& path) {
     SF_INFO info{};
-    SNDFILE* file = sf_open(path.c_str(), SFM_READ, &info);
+    SNDFILE* file = openSoundFile(path, SFM_READ, &info);
     REQUIRE(file != nullptr);
     std::vector<float> samples(static_cast<std::size_t>(info.frames * info.channels));
     sf_readf_float(file, samples.data(), info.frames);

@@ -15,7 +15,7 @@ constexpr double kReadAheadSeconds = 2.0;
 
 std::expected<ClipFile, std::string> openClipFile(const std::filesystem::path& path, double sampleRate) {
     ClipFile opened;
-    opened.file.reset(sf_open(path.c_str(), SFM_READ, &opened.info));
+    opened.file.reset(openSoundFile(path, SFM_READ, &opened.info));
     if (!opened.file) {
         return std::unexpected("cannot open audio clip " + path.string());
     }

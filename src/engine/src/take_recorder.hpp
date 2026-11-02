@@ -9,7 +9,7 @@
 #include <vector>
 
 #include "emerick/engine/session.hpp"
-#include "snd_file.hpp"
+#include "emerick/engine/sound_file.hpp"
 #include "spsc_ring.hpp"
 
 namespace emerick::engine {

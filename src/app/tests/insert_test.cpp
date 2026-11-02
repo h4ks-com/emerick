@@ -7,6 +7,7 @@
 
 #include "emerick/app/automation_params.hpp"
 #include "emerick/app/session_mapping.hpp"
+#include "emerick/engine/sound_file.hpp"
 #include "project_rig.hpp"
 
 using namespace emerick;
@@ -22,7 +23,7 @@ const model::Track& trackOf(const ProjectRig& rig, const std::string& id) {
 
 float sampleAt(const std::filesystem::path& path, core::Frames frame) {
     SF_INFO info{};
-    SNDFILE* file = sf_open(path.c_str(), SFM_READ, &info);
+    SNDFILE* file = engine::openSoundFile(path, SFM_READ, &info);
     REQUIRE(file != nullptr);
     std::vector<float> samples(static_cast<std::size_t>(info.channels));
     sf_seek(file, frame, SEEK_SET);

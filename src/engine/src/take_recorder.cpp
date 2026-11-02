@@ -157,7 +157,7 @@ void TakeRecorder::start(Ticks startTick) {
         info.samplerate = static_cast<int>(sampleRate_);
         info.channels = channels_;
         info.format = SF_FORMAT_WAV | SF_FORMAT_FLOAT;
-        file_.reset(sf_open(path.c_str(), SFM_WRITE, &info));
+        file_.reset(openSoundFile(path, SFM_WRITE, &info));
         if (file_) {
             audioFile = path;
             take_->audioFile = path;

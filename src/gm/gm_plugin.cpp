@@ -43,7 +43,10 @@ bool activate(const clap_plugin* plugin, double sampleRate, std::uint32_t /*unus
         // Only the host's audio thread plays the synth, and the main thread touches it only while it is inactive.
         fluid_settings_setint(gm.settings.get(), "synth.threadsafe-api", 0);
         gm.synth.reset(new_fluid_synth(gm.settings.get()));
-        if (!gm.synth || fluid_synth_sfload(gm.synth.get(), soundFont.string().c_str(), 1) == FLUID_FAILED) {
+        // FluidSynth reads file names as UTF-8 on every platform.
+        const std::u8string soundFontName = soundFont.u8string();
+        if (!gm.synth || fluid_synth_sfload(gm.synth.get(), reinterpret_cast<const char*>(soundFontName.c_str()), 1) ==
+                             FLUID_FAILED) {
             gm.synth.reset();
             gm.loadedSoundFont.clear();
             return false;

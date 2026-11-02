@@ -9,6 +9,7 @@
 #include <vector>
 
 #include "emerick/app/session_mapping.hpp"
+#include "emerick/engine/sound_file.hpp"
 #include "project_rig.hpp"
 
 using namespace emerick;
@@ -32,7 +33,7 @@ QVariantList gesture(const std::string& action, const std::string& track, const 
 
 float sampleAt(const std::filesystem::path& path, core::Frames frame) {
     SF_INFO info{};
-    SNDFILE* file = sf_open(path.c_str(), SFM_READ, &info);
+    SNDFILE* file = engine::openSoundFile(path, SFM_READ, &info);
     REQUIRE(file != nullptr);
     std::vector<float> samples(static_cast<std::size_t>(info.channels));
     sf_seek(file, frame, SEEK_SET);

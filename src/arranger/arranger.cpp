@@ -44,10 +44,8 @@ void Arranger::setChord(const yamaha::Chord& chord, Ticks at) {
     // We copy no note names, so a chord change never allocates.
     chord_.root.pitchClass = chord.root.pitchClass;
     chord_.type = chord.type;
-    chord_.bass.reset();
-    if (chord.bass) {
-        chord_.bass = yamaha::Note{.pitchClass = chord.bass->pitchClass, .name = {}};
-    }
+    chord_.bass = chord.bass.transform(
+        [](const yamaha::Note& bass) { return yamaha::Note{.pitchClass = bass.pitchClass, .name = {}}; });
     if (current_ == nullptr) {
         return;
     }

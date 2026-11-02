@@ -47,6 +47,10 @@ emerick_target(emerick_engine)
 
 add_executable(emerick-plugin-scanner scanner/plugin_scanner.cpp)
 target_link_libraries(emerick-plugin-scanner PRIVATE emerick_engine nlohmann_json::nlohmann_json)
+# MinGW's libstdc++ keeps std::print's Windows console support in a separate library.
+if(MINGW)
+    target_link_libraries(emerick-plugin-scanner PRIVATE stdc++exp)
+endif()
 emerick_target(emerick-plugin-scanner)
 
 if(EMERICK_BUILD_TESTS)
@@ -111,6 +115,9 @@ if(EMERICK_BUILD_TESTS)
         if(APPLE)
             set_target_properties(${name} PROPERTIES BUNDLE TRUE BUNDLE_EXTENSION vst3
                 LIBRARY_OUTPUT_DIRECTORY ${test_vst3_folder})
+        elseif(WIN32)
+            set_target_properties(${name} PROPERTIES SUFFIX ".vst3"
+                LIBRARY_OUTPUT_DIRECTORY "${bundle}/Contents/x86_64-win")
         else()
             set_target_properties(${name} PROPERTIES SUFFIX ".so"
                 LIBRARY_OUTPUT_DIRECTORY "${bundle}/Contents/${CMAKE_SYSTEM_PROCESSOR}-linux")

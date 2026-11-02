@@ -3,7 +3,7 @@
 #include <QObject>
 #include <QString>
 
-#include "emerick/app/project_controller.hpp"
+#include "emerick/core/time.hpp"
 
 namespace emerick::app {
 
@@ -20,22 +20,25 @@ class TransportClock : public QObject {
     Q_PROPERTY(QString meter READ meter NOTIFY changed)
 
 public:
-    explicit TransportClock(const ProjectController& controller, QObject* parent = nullptr);
+    using QObject::QObject;
+
+    void show(const core::TempoMap& tempo, core::Ticks position);
 
     [[nodiscard]] int bar() const { return position().bar; }
     [[nodiscard]] int beat() const { return position().beat; }
     [[nodiscard]] int division() const { return static_cast<int>(position().tick / kTicksPerDivision) + 1; }
     [[nodiscard]] int tick() const { return static_cast<int>(position().tick % kTicksPerDivision) + 1; }
-    [[nodiscard]] double bpm() const { return controller_.project().document().tempo.bpm; }
+    [[nodiscard]] double bpm() const { return tempo_.bpm; }
     [[nodiscard]] QString meter() const;
 
 signals:
     void changed();
 
 private:
-    [[nodiscard]] core::BarBeatTick position() const;
+    [[nodiscard]] core::BarBeatTick position() const { return tempo_.toBarBeatTick(position_); }
 
-    const ProjectController& controller_;
+    core::TempoMap tempo_;
+    core::Ticks position_ = 0;
 };
 
 }  // namespace emerick::app

@@ -15,6 +15,9 @@ namespace emerick::viewer {
 Viewer::Viewer() {
     QObject::connect(&registry, &ViewerRegistry::seekRequested, &project,
                      [this](double seconds) { project.setPositionSeconds(seconds); });
+    const auto showPosition = [this] { clock.show(project.document().tempo, project.positionTicks()); };
+    QObject::connect(&project, &ViewerProject::transportChanged, &clock, showPosition);
+    QObject::connect(&project, &ViewerProject::projectChanged, &clock, showPosition);
 }
 
 void Viewer::exposeToQml() {
@@ -25,6 +28,7 @@ void Viewer::exposeToQml() {
     qmlRegisterSingletonInstance("Emerick.App", 1, 0, "Tracks", &tracks);
     qmlRegisterSingletonInstance("Emerick.App", 1, 0, "Meters", &meters);
     qmlRegisterSingletonInstance("Emerick.App", 1, 0, "Peaks", &peaks);
+    qmlRegisterSingletonInstance("Emerick.App", 1, 0, "Clock", &clock);
     qmlRegisterType<app::ClipNotes>("Emerick.App", 1, 0, "ClipNotes");
     qmlRegisterType<app::ControlCurve>("Emerick.App", 1, 0, "ControlCurve");
     qmlRegisterType<app::Waveform>("Emerick.App", 1, 0, "Waveform");

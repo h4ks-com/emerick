@@ -11,6 +11,7 @@
 #include "emerick/app/automation_params.hpp"
 #include "emerick/app/project_actions.hpp"
 #include "emerick/app/project_state.hpp"
+#include "emerick/app/view_actions.hpp"
 #include "emerick/core/join.hpp"
 #include "emerick/model/automation.hpp"
 
@@ -388,11 +389,11 @@ void registerModeActions(Registry& registry, ProjectController& controller, Nav&
                         }) |
                         std::ranges::to<std::vector>();
              }});
-    registry.addAction({.id = "view.toggleAutomation",
-                        .title = "Show or hide automation",
+    registry.addAction({.id = kToggleAutomationKeys.id,
+                        .title = kToggleAutomationKeys.title,
                         .aliases = {"automation view", "track automation"},
                         .category = "View",
-                        .shortcut = "A",
+                        .shortcut = kToggleAutomationKeys.shortcut,
                         .run =
                             [&nav](const Json&) {
                                 nav.setAutomationOpen(!nav.automationOpen());

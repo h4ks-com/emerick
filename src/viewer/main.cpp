@@ -50,8 +50,20 @@ void followMix(Viewer& viewer, QObject* owner) {
             mix.call<void>(mix["paused"].as<bool>() ? "play" : "pause");
         }
     });
+    QObject::connect(&viewer.registry, &emerick::viewer::ViewerRegistry::pauseRequested, owner, [] {
+        if (emscripten::val mix = mixElement(); !mix.isNull()) {
+            mix.call<void>("pause");
+        }
+    });
 }
 #endif
+
+void reportLoadError(const QString& error) {
+    qWarning().noquote() << error;
+#ifdef Q_OS_WASM
+    emscripten::val::global().call<void>("emerickLoadError", error.toStdString());
+#endif
+}
 
 void loadProject(Viewer& viewer, QNetworkAccessManager& network, const QUrl& url) {
     QNetworkReply* reply = network.get(QNetworkRequest{url});
@@ -62,7 +74,7 @@ void loadProject(Viewer& viewer, QNetworkAccessManager& network, const QUrl& url
                               reply->url().adjusted(QUrl::RemoveFilename | QUrl::StripTrailingSlash).fileName())
                 : reply->errorString();
         if (!error.isEmpty()) {
-            qWarning().noquote() << error;
+            reportLoadError(error);
         }
         reply->deleteLater();
     });
@@ -94,7 +106,13 @@ int run(int argc, char** argv) {
 #endif
     QNetworkAccessManager network;
     loadProject(viewer, network, project);
+#ifdef Q_OS_WASM
+    // A full screen window fills the page's container without a title bar, and taking focus gives it the keys.
+    view.showFullScreen();
+    view.requestActivate();
+#else
     view.show();
+#endif
     return QGuiApplication::exec();
 }
 

@@ -6,7 +6,9 @@ qt_add_library(emerick_view_data STATIC
     project_view.cpp
     track_params.cpp
     track_rows.cpp
+    transport_clock.cpp
     variant.cpp
+    view_actions.cpp
     waveform.cpp
     include/emerick/app/clip_notes.hpp
     include/emerick/app/control_curve.hpp
@@ -16,7 +18,9 @@ qt_add_library(emerick_view_data STATIC
     include/emerick/app/project_view.hpp
     include/emerick/app/track_params.hpp
     include/emerick/app/track_rows.hpp
+    include/emerick/app/transport_clock.hpp
     include/emerick/app/variant.hpp
+    include/emerick/app/view_actions.hpp
     include/emerick/app/waveform.hpp)
 target_include_directories(emerick_view_data PUBLIC include)
 target_link_libraries(emerick_view_data
@@ -97,7 +101,6 @@ qt_add_library(emerick_app STATIC
     include/emerick/app/track_list_model.hpp
     include/emerick/app/track_meters.hpp
     include/emerick/app/timeline_video.hpp
-    include/emerick/app/transport_clock.hpp
     include/emerick/app/ui_api.hpp
     include/emerick/app/view_engine.hpp
     include/emerick/app/voice_audition.hpp
@@ -145,7 +148,6 @@ qt_add_library(emerick_app STATIC
     track_list_model.cpp
     track_meters.cpp
     timeline_video.cpp
-    transport_clock.cpp
     ui_api.cpp
     video_actions.cpp
     view_engine.cpp

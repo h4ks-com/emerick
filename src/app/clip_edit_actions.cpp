@@ -9,6 +9,7 @@
 #include "emerick/app/action_params.hpp"
 #include "emerick/app/project_actions.hpp"
 #include "emerick/app/project_state.hpp"
+#include "emerick/app/view_actions.hpp"
 #include "emerick/model/clip_edit.hpp"
 
 namespace emerick::app {
@@ -137,8 +138,6 @@ Json renameClips(ProjectController& controller, Nav& nav, const Json& params) {
     return clipResults(controller, ids);
 }
 
-constexpr double kFitMargin = 0.05;
-
 // Fits the selected clips, or the whole project, into the lanes with a small margin on each side.
 Json zoomToFit(const ProjectController& controller, Nav& nav) {
     const auto ids = selectedClips(controller, nav);
@@ -148,11 +147,7 @@ Json zoomToFit(const ProjectController& controller, Nav& nav) {
     const core::Ticks from = clips.empty() ? 0 : std::ranges::min(clips | std::views::transform(model::clipStart));
     const core::Ticks to =
         clips.empty() ? controller.endTicks() : std::ranges::max(clips | std::views::transform(model::clipEnd));
-    const auto span = static_cast<double>(std::max(to - from, controller.project().document().tempo.ticksPerBar()));
-    if (nav.laneWidth() > 0) {
-        nav.setPixelsPerTick(nav.laneWidth() / (span * (1 + 2 * kFitMargin)));
-    }
-    nav.setScrollTicks(static_cast<double>(from) - span * kFitMargin);
+    fitSpan(nav, from, to, controller.project().document().tempo.ticksPerBar());
     return Json{{"pixelsPerTick", nav.pixelsPerTick()}, {"scrollTicks", nav.scrollTicks()}};
 }
 
@@ -266,11 +261,11 @@ void registerClipEditActions(Registry& registry, ProjectController& controller, 
          .schema = {{"properties", {{"track", {{"type", "string"}}}}}},
          .run = [&controller, &nav](const Json& params) { return selectNeighborClip(controller, nav, params, 1); },
          .menus = {kEditMenu}});
-    registry.addAction({.id = "view.zoomToFit",
-                        .title = "Zoom to fit",
+    registry.addAction({.id = kZoomToFitKeys.id,
+                        .title = kZoomToFitKeys.title,
                         .aliases = {"fit selection", "show whole project"},
                         .category = "View",
-                        .shortcut = "Z",
+                        .shortcut = kZoomToFitKeys.shortcut,
                         .run = [&controller, &nav](const Json&) { return zoomToFit(controller, nav); },
                         .menus = {kViewMenu}});
     registry.addAction({.id = "edit.delete",

@@ -28,7 +28,7 @@ TEST_CASE("a MIDI clip row lists its notes, times and loop") {
     CHECK(note["pitch"] == 64);
     CHECK(note["velocity"] == 90);
     CHECK(note["start"] == 240);
-    CHECK(app::noteList(clip, kBar).front().toMap()["start"] == kBar + 240);
+    CHECK(app::noteList(clip, kBar).front().toMap()["start"].toLongLong() == kBar + 240);
 }
 
 TEST_CASE("an audio clip row counts its frames at the context's rate and finds its file from the bundle") {
@@ -75,6 +75,6 @@ TEST_CASE("a track's lanes list each point with its curve") {
     CHECK(lane["param"] == "pan");
     const QVariantList points = lane["points"].toList();
     REQUIRE(points.size() == 2);
-    CHECK(points.at(1).toMap()["tick"] == kBar);
+    CHECK(points.at(1).toMap()["tick"].toLongLong() == kBar);
     CHECK(points.at(1).toMap()["curve"] == "hold");
 }

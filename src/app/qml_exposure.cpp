@@ -23,8 +23,14 @@ void exposeToQml(QQmlEngine& engine, Registry& registry, Nav& nav, ProjectContro
     qmlRegisterSingletonInstance("Emerick.App", 1, 0, "Project", &controller);
     qmlRegisterSingletonInstance("Emerick.App", 1, 0, "Tracks", &tracks);
     // The engine owns the clock as its Qt parent.
-    qmlRegisterSingletonInstance("Emerick.App", 1, 0, "Clock",
-                                 std::make_unique<TransportClock>(controller, &engine).release());
+    auto* clock = std::make_unique<TransportClock>(&engine).release();
+    const auto showPosition = [clock, &controller] {
+        clock->show(controller.project().document().tempo, controller.positionTicks());
+    };
+    QObject::connect(&controller, &ProjectController::transportChanged, clock, showPosition);
+    QObject::connect(&controller, &ProjectController::projectChanged, clock, showPosition);
+    showPosition();
+    qmlRegisterSingletonInstance("Emerick.App", 1, 0, "Clock", clock);
     qmlRegisterSingletonInstance("Emerick.App", 1, 0, "Effects", std::make_unique<EffectCatalog>(&engine).release());
     qmlRegisterSingletonInstance("Emerick.App", 1, 0, "Analysis",
                                  std::make_unique<TrackAnalysis>(registry, controller, &engine).release());

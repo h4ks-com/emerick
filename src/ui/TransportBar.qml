@@ -26,6 +26,7 @@ GlassPanel {
         }
         TransportButton {
             objectName: "transport.record"
+            visible: !Registry.readOnly
             iconName: "circle"
             iconColor: Theme.rec
             active: Project.recording
@@ -37,16 +38,19 @@ GlassPanel {
         }
         TransportButton {
             objectName: "cycle.toggle"
+            visible: !Registry.readOnly
             iconName: "repeat"
             active: Project.cycle.enabled
         }
         TransportButton {
             objectName: "transport.panic"
+            visible: !Registry.readOnly
             iconName: "warning-octagon"
         }
         TransportButton {
             id: metronomeButton
             objectName: "metronome.toggle"
+            visible: !Registry.readOnly
             iconName: "metronome"
             active: Registry.settings["metronome.enabled"]
             MouseArea {

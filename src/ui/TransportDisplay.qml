@@ -96,6 +96,7 @@ Rectangle {
                 objectName: "project.setTempo.bpm"
                 anchors.fill: parent
                 actionId: "project.setTempo"
+                enabled: !Registry.readOnly
                 framed: false
                 dragsVertically: true
                 stepArrows: false

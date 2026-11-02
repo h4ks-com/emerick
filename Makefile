@@ -1,5 +1,5 @@
 .PHONY: configure build test run run-release format format-check lint quality fix tidy-fix check-fast docker-build e2e \
-	service-check service-run clean
+	service-check service-run viewer-wasm clean
 
 SOURCES := $(shell git ls-files --cached --others --exclude-standard '*.cpp' '*.hpp')
 # The C++ files a branch changed since it left main, plus uncommitted and new ones.
@@ -73,6 +73,9 @@ check-fast: build
 	$(if $(CHANGED),$(CLANG_FORMAT) --dry-run --Werror $(CHANGED))
 	$(if $(call TIDY_FILES,$(CHANGED)),$(call TIDY,$(CHANGED)))
 	$(if $(FAST_TEST_DIRS),$(foreach dir,$(FAST_TEST_DIRS),ctest --test-dir build/dev/$(dir) -j $(JOBS) --output-on-failure --stop-on-failure &&) true,ctest --preset dev -j $(JOBS) --stop-on-failure)
+
+viewer-wasm:
+	JOBS=$(JOBS) ./scripts/viewer-wasm.sh build/viewer-wasm
 
 docker-build:
 	docker buildx build --load --build-arg JOBS=$(JOBS) $(DOCKER_BUILD_ARGS) -t emerick -f docker/Dockerfile .

@@ -112,6 +112,10 @@ The console (Cmd+\`) runs Lua in the same sandboxed host on the UI thread. `Regi
 
 `service/` is a Python service (FastAPI, SQLite) that turns the single-user headless app into one MCP server per session. It keeps projects and sessions in SQLite, starts one `--headless` app per session on a loopback port with its agent roots set to the project folder and resource limits on the process, proxies `/sessions/{id}/mcp` to it, and saves and stops sessions that idle, run too long or outgrow their disk quota. Projects live in a local folder or in S3, which a session checks out into its work folder and stores back on save and close. `docs/service-security.md` lists the limits it applies.
 
+## Viewer
+
+`src/viewer` builds a read-only viewer from the app's own QML views. `ViewerProject`, `ViewerTracks` and `ViewerRegistry` take the place of the Project, Tracks and Registry singletons and fill them from a project.json through the row builders in `emerick_view_data`, which `TrackListModel` uses too. The registry reports `readOnly`, so the views hide every edit, and it runs only the actions that look around a project (play, pause, stop, move the playhead, zoom, show automation lanes) with the titles and keys the app gives them in `view_actions.hpp`. The viewer shows the app's transport bar and display above the tracks. Waveforms come from the bundle's `.peaks` files, which `project.writePeaks` writes and the viewer fetches over HTTP. `make viewer-wasm` builds it with Qt for WebAssembly 6.11.3 and emsdk 4.0.7 into `build/viewer-wasm/site`, and the image ships those files in `/opt/emerick/viewer`. The page reads `project`, `mix` and `bundle` URLs from its query, waits while the service answers 202 for the mix, plays the mix in a hidden `<audio>` element and moves the playhead with it.
+
 ## Libraries
 
 | Use | Library |

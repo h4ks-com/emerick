@@ -8,6 +8,7 @@
 #include <string>
 
 #include "emerick/app/action_params.hpp"
+#include "emerick/app/view_actions.hpp"
 
 namespace emerick::app {
 
@@ -17,21 +18,6 @@ constexpr int kMaxPort = 65535;
 constexpr int kMaxRecordingDelay = 8192;
 
 Json revealChain(Registry& registry, const std::string& id) { return Json{{"chain", registry.reveal(id).chain}}; }
-
-struct HeightStep {
-    const char* id;
-    const char* title;
-    const char* alias;
-    const char* shortcut;
-    int height;
-};
-
-constexpr int kTrackHeightStep = 12;
-
-constexpr std::array kHeightSteps{
-    HeightStep{"view.trackTaller", "Make tracks taller", "vertical zoom in", "Ctrl+Down", kTrackHeightStep},
-    HeightStep{"view.trackShorter", "Make tracks shorter", "vertical zoom out", "Ctrl+Up", -kTrackHeightStep},
-};
 
 struct PaneWidth {
     const char* id;

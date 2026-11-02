@@ -12,13 +12,13 @@ qt_add_library(emerick_viewer_lib STATIC
     viewer_tracks.cpp
     viewer_tracks.hpp)
 target_include_directories(emerick_viewer_lib PUBLIC .)
+qt_add_qml_module(emerick_viewer_lib URI Emerick.Viewer VERSION 1.0 QML_FILES Viewer.qml)
 target_link_libraries(emerick_viewer_lib PUBLIC Qt6::Qml Qt6::Network emerick_view_data)
 emerick_target(emerick_viewer_lib)
 
 qt_add_executable(emerick_viewer main.cpp)
-# The executable's own module lets a static Qt's import scanner find and link the QML plugins the shared views import.
-qt_add_qml_module(emerick_viewer URI Emerick.Viewer VERSION 1.0 QML_FILES Viewer.qml)
-target_link_libraries(emerick_viewer PRIVATE emerick_viewer_lib emerick_uiplugin Qt6::QuickControls2)
+target_link_libraries(emerick_viewer PRIVATE emerick_viewer_lib emerick_viewer_libplugin emerick_uiplugin
+    Qt6::QuickControls2)
 emerick_target(emerick_viewer)
 if(EMSCRIPTEN)
     configure_file(web/index.html index.html COPYONLY)
@@ -34,5 +34,6 @@ endif()
 if(EMERICK_BUILD_TESTS AND NOT EMSCRIPTEN)
     emerick_test(emerick_viewer_tests tests/viewer_test.cpp)
     target_include_directories(emerick_viewer_tests PRIVATE ${PROJECT_SOURCE_DIR}/src/app/tests)
-    target_link_libraries(emerick_viewer_tests PRIVATE emerick_viewer_lib emerick_uiplugin Qt6::QuickControls2 Qt6::Test)
+    target_link_libraries(emerick_viewer_tests
+        PRIVATE emerick_viewer_lib emerick_viewer_libplugin emerick_uiplugin Qt6::QuickControls2 Qt6::Test)
 endif()

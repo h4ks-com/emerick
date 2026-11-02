@@ -106,16 +106,7 @@ ApplicationWindow {
         }
     }
 
-    Instantiator {
-        model: Registry.shortcuts
-        delegate: Shortcut {
-            required property var modelData
-            sequence: modelData.shortcut
-            context: Qt.ApplicationShortcut
-            enabled: !(window.activeFocusItem instanceof TextInput)
-            onActivated: Registry.activate(modelData.id)
-        }
-    }
+    ActionShortcuts {}
 
     Shortcut {
         sequence: "Escape"

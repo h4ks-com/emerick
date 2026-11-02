@@ -7,6 +7,7 @@
 #include <QQuickView>
 #include <QTemporaryDir>
 #include <QTest>
+#include <algorithm>
 #include <catch2/catch_test_macros.hpp>
 #include <cstddef>
 #include <vector>
@@ -80,7 +81,7 @@ TEST_CASE("the viewer draws a project with the app's tracks view and nothing in 
     viewer->nav.setAutomationOpen(true);
     auto* view = new QQuickView;
     view->setResizeMode(QQuickView::SizeRootObjectToView);
-    view->loadFromModule("Emerick.Ui", "TrackList");
+    view->loadFromModule("Emerick.Viewer", "Viewer");
     REQUIRE(view->status() == QQuickView::Ready);
     view->resize(kWidth, kHeight);
     view->show();
@@ -117,11 +118,27 @@ TEST_CASE("the viewer draws a project with the app's tracks view and nothing in 
     CHECK_FALSE(find(view->rootObject(), "clip.move:" + phrase)->property("enabled").toBool());
     CHECK_FALSE(find(view->rootObject(), "track.setMute:" + voiceTrack)->isEnabled());
     CHECK(find(view->rootObject(), "track.setArm:" + voiceTrack)->opacity() == 0);
+    CHECK(find(view->rootObject(), "transport.togglePlay")->isVisible());
+    CHECK_FALSE(find(view->rootObject(), "transport.record")->isVisible());
 
     viewer->registry.runAction("transport.locate", {{"at", 2 * kBar}});
     CHECK(viewer->project.positionTicks() == 2 * kBar);
+    CHECK(viewer->clock.bar() == 3);
+    viewer->registry.activate("transport.gotoStart");
+    CHECK(viewer->project.positionTicks() == 0);
+    viewer->registry.runAction("transport.locate", {{"at", 2 * kBar}});
     viewer->registry.runAction("marker.previous", {});
     CHECK(viewer->project.positionTicks() == kBar);
     viewer->registry.activate("view.toggleAutomation");
     CHECK_FALSE(viewer->nav.automationOpen());
+    viewer->registry.activate("transport.barForward");
+    CHECK(viewer->project.positionTicks() == 2 * kBar);
+
+    const double zoom = viewer->nav.pixelsPerTick();
+    QTest::keyClick(view, Qt::Key_Right, Qt::ControlModifier);
+    CHECK(viewer->nav.pixelsPerTick() > zoom);
+    QTest::keyClick(view, Qt::Key_Return);
+    CHECK(viewer->project.positionTicks() == 0);
+    const QVariantList shortcuts = viewer->registry.shortcuts();
+    CHECK(std::ranges::any_of(shortcuts, [](const QVariant& entry) { return entry.toMap()["shortcut"] == "Home"; }));
 }

@@ -1,95 +1,134 @@
 #include "viewer_registry.hpp"
 
+#include <QStringList>
 #include <algorithm>
-#include <array>
 #include <iterator>
 #include <ranges>
-#include <string_view>
+#include <utility>
 
-#include "emerick/core/lookup.hpp"
+#include "emerick/app/view_actions.hpp"
 #include "emerick/model/automation.hpp"
+#include "emerick/model/clip_edit.hpp"
 
 namespace emerick::viewer {
 
 namespace {
 
-struct ViewerAction {
-    std::string_view id;
-    std::string_view title;
-    std::string_view shortcut;
-    void (ViewerRegistry::*run)(const QVariantMap&);
-};
+QStringList keys(const char* shortcut, const char* extra = "") {
+    return {QString::fromUtf8(shortcut), QString::fromUtf8(extra)};
+}
 
-constexpr std::array kActions{
-    ViewerAction{"transport.locate", "Move playhead", "", &ViewerRegistry::locate},
-    ViewerAction{"transport.togglePlay", "Play or pause", "Space", &ViewerRegistry::togglePlay},
-    ViewerAction{"view.toggleAutomation", "Show or hide automation", "A", &ViewerRegistry::toggleAutomation},
-    ViewerAction{"automation.showLane", "Show automation lane", "", &ViewerRegistry::showLane},
-    ViewerAction{"marker.previous", "Go to previous marker", "Alt+,", &ViewerRegistry::previousMarker},
-    ViewerAction{"marker.next", "Go to next marker", "Alt+.", &ViewerRegistry::nextMarker},
-};
-
-QString text(std::string_view value) { return QString::fromUtf8(value.data(), static_cast<qsizetype>(value.size())); }
-
-const ViewerAction* findAction(const QString& id) {
-    return core::findEntry(kActions, std::string_view{id.toStdString()}, &ViewerAction::id);
+QVariantList automationModes() {
+    return model::kAutomationModes | std::views::transform([](const model::AutomationModeName& mode) {
+               return QVariant{QVariantMap{
+                   {"id", QString::fromUtf8(mode.id.data(), static_cast<qsizetype>(mode.id.size()))},
+                   {"title", QString::fromUtf8(mode.title.data(), static_cast<qsizetype>(mode.title.size()))}}};
+           }) |
+           std::ranges::to<QVariantList>();
 }
 
 }  // namespace
 
 ViewerRegistry::ViewerRegistry(const ViewerProject& project, app::Nav& nav, QObject* parent)
-    : QObject(parent), project_(project), nav_(nav) {}
+    : QObject(parent), project_(project), nav_(nav) {
+    using app::kGotoEndKeys, app::kGotoStartKeys, app::kStopKeys, app::kToggleAutomationKeys, app::kTogglePlayKeys,
+        app::kZoomToFitKeys;
+    addAction(kTogglePlayKeys.id, kTogglePlayKeys.title, keys(kTogglePlayKeys.shortcut),
+              [this](const QVariantMap&) { emit playToggled(); });
+    addAction(kStopKeys.id, kStopKeys.title, {}, [this](const QVariantMap&) {
+        if (project_.playing()) {
+            emit pauseRequested();
+        } else {
+            seekToTicks(0);
+        }
+    });
+    addAction(kGotoStartKeys.id, kGotoStartKeys.title, keys(kGotoStartKeys.shortcut, kGotoStartKeys.extraShortcut),
+              [this](const QVariantMap&) { seekToTicks(0); });
+    addAction(kGotoEndKeys.id, kGotoEndKeys.title, keys(kGotoEndKeys.shortcut),
+              [this](const QVariantMap&) { seekToTicks(model::projectEnd(project_.document())); });
+    addAction("transport.locate", "Go to position", {},
+              [this](const QVariantMap& params) { seekToTicks(params.value("at").toLongLong()); });
+    for (const app::BarStep& step : app::kBarSteps) {
+        addAction(step.id, step.title, keys(step.shortcut, step.extraShortcut), [this, step](const QVariantMap&) {
+            seekToTicks(app::barStep(project_.positionTicks(), project_.ticksPerBar(), step.bars));
+        });
+    }
+    for (const app::MarkerStep& step : app::kMarkerSteps) {
+        addAction(step.id, step.title, keys(step.shortcut),
+                  [this, step](const QVariantMap&) { stepToMarker(step.step); });
+    }
+    for (const app::ZoomStep& step : app::kZoomSteps) {
+        addAction(step.id, step.title, keys(step.shortcut, step.extraShortcut), [this, step](const QVariantMap&) {
+            nav_.zoomAround(step.factor, app::zoomAnchor(project_.positionTicks(), nav_));
+        });
+    }
+    addAction(kZoomToFitKeys.id, kZoomToFitKeys.title, keys(kZoomToFitKeys.shortcut), [this](const QVariantMap&) {
+        app::fitSpan(nav_, 0, model::projectEnd(project_.document()), project_.ticksPerBar());
+    });
+    for (const app::HeightStep& step : app::kHeightSteps) {
+        addAction(step.id, step.title, keys(step.shortcut),
+                  [this, step](const QVariantMap&) { nav_.setTrackHeight(nav_.trackHeight() + step.height); });
+    }
+    addAction(kToggleAutomationKeys.id, kToggleAutomationKeys.title, keys(kToggleAutomationKeys.shortcut),
+              [this](const QVariantMap&) { nav_.setAutomationOpen(!nav_.automationOpen()); });
+    addAction("automation.showLane", "Show automation lane", {}, [this](const QVariantMap& params) {
+        QVariantMap lanes = nav_.automationLanes();
+        lanes.insert(params.value("track").toString(), params.value("param"));
+        nav_.setAutomationLanes(lanes);
+        nav_.setAutomationOpen(true);
+    });
+}
 
-QVariantMap ViewerRegistry::actionInfo(const QString& id) {
-    const ViewerAction* action = findAction(id);
-    return {{"title", action != nullptr ? text(action->title) : QString{}},
-            {"shortcut", action != nullptr ? text(action->shortcut) : QString{}},
-            {"enabled", action != nullptr},
-            {"choices", model::kAutomationModes | std::views::transform([](const model::AutomationModeName& mode) {
-                            return QVariant{QVariantMap{{"id", text(mode.id)}, {"title", text(mode.title)}}};
-                        }) | std::ranges::to<QVariantList>()}};
+void ViewerRegistry::addAction(const char* id, const char* title, QStringList shortcuts,
+                               std::function<void(const QVariantMap&)> run) {
+    shortcuts.removeAll(QString{});
+    actions_.push_back({QString::fromUtf8(id), QString::fromUtf8(title), std::move(shortcuts), std::move(run)});
+}
+
+const ViewerRegistry::Action* ViewerRegistry::action(const QString& id) const {
+    const auto found = std::ranges::find(actions_, id, &Action::id);
+    return found == actions_.end() ? nullptr : &*found;
+}
+
+QVariantList ViewerRegistry::shortcuts() const {
+    QVariantList list;
+    for (const Action& entry : actions_) {
+        for (const QString& shortcut : entry.shortcuts) {
+            list.append(QVariantMap{{"id", entry.id}, {"shortcut", shortcut}});
+        }
+    }
+    return list;
+}
+
+QVariantMap ViewerRegistry::actionInfo(const QString& id) const {
+    const Action* found = action(id);
+    return {{"title", found != nullptr ? found->title : QString{}},
+            {"shortcut", found != nullptr ? found->shortcuts.value(0) : QString{}},
+            {"enabled", found != nullptr},
+            {"choices", automationModes()}};
 }
 
 void ViewerRegistry::activate(const QString& id) { runAction(id, {}); }
 
 QVariant ViewerRegistry::runAction(const QString& id, const QVariantMap& params) {
-    if (const ViewerAction* action = findAction(id)) {
-        (this->*action->run)(params);
+    if (const Action* found = action(id)) {
+        found->run(params);
     }
     return {};
 }
 
-void ViewerRegistry::locate(const QVariantMap& params) { seekToTicks(params.value("at").toLongLong()); }
-
-void ViewerRegistry::togglePlay(const QVariantMap& /*params*/) { emit playToggled(); }
-
-void ViewerRegistry::toggleAutomation(const QVariantMap& /*params*/) { nav_.setAutomationOpen(!nav_.automationOpen()); }
-
-void ViewerRegistry::showLane(const QVariantMap& params) {
-    QVariantMap lanes = nav_.automationLanes();
-    lanes.insert(params.value("track").toString(), params.value("param"));
-    nav_.setAutomationLanes(lanes);
-    nav_.setAutomationOpen(true);
-}
-
-void ViewerRegistry::previousMarker(const QVariantMap& /*params*/) {
-    const std::vector<core::Ticks> ats = markerTicks();
-    const auto later = std::ranges::lower_bound(ats, project_.positionTicks());
-    seekToTicks(later == ats.begin() ? 0 : *std::prev(later));
-}
-
-void ViewerRegistry::nextMarker(const QVariantMap& /*params*/) {
-    const std::vector<core::Ticks> ats = markerTicks();
-    if (const auto next = std::ranges::upper_bound(ats, project_.positionTicks()); next != ats.end()) {
-        seekToTicks(*next);
-    }
-}
-
-std::vector<core::Ticks> ViewerRegistry::markerTicks() const {
+void ViewerRegistry::stepToMarker(int step) {
     std::vector<core::Ticks> ats =
         project_.document().markers | std::views::transform(&model::Marker::at) | std::ranges::to<std::vector>();
     std::ranges::sort(ats);
-    return ats;
+    const core::Ticks now = project_.positionTicks();
+    if (step > 0) {
+        if (const auto next = std::ranges::upper_bound(ats, now); next != ats.end()) {
+            seekToTicks(*next);
+        }
+    } else if (const auto later = std::ranges::lower_bound(ats, now); later != ats.begin()) {
+        seekToTicks(*std::prev(later));
+    }
 }
 
 void ViewerRegistry::seekToTicks(qint64 ticks) { emit seekRequested(project_.document().tempo.ticksToSeconds(ticks)); }

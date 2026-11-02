@@ -10,6 +10,7 @@
 #include "emerick/app/action_params.hpp"
 #include "emerick/app/project_actions.hpp"
 #include "emerick/app/project_state.hpp"
+#include "emerick/app/view_actions.hpp"
 
 namespace emerick::app {
 
@@ -107,19 +108,6 @@ Json gotoNumber(ProjectController& controller, int number) {
     }
     return locateTo(controller, markers[static_cast<std::size_t>(number - 1)]);
 }
-
-struct MarkerStep {
-    const char* id;
-    const char* title;
-    const char* alias;
-    const char* shortcut;
-    int step;
-};
-
-constexpr std::array kMarkerSteps{
-    MarkerStep{"marker.next", "Go to next marker", "next section", "Alt+.", 1},
-    MarkerStep{"marker.previous", "Go to previous marker", "previous section", "Alt+,", -1},
-};
 
 void registerMarkerNavigation(Registry& registry, ProjectController& controller, Nav& nav) {
     for (const MarkerStep& step : kMarkerSteps) {

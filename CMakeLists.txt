@@ -25,6 +25,12 @@ add_subdirectory(src/engine)
 if(EMERICK_VIEWER)
     # A static Qt's QML import scanner finds a module's imports only under a folder laid out by its URI.
     set(QT_QML_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/qml)
+    if(EMSCRIPTEN)
+        # Qt for WebAssembly builds without exceptions, so we turn on emscripten's, which a project.json that fails to
+        # parse throws.
+        add_compile_options(-fexceptions)
+        add_link_options(-fexceptions)
+    endif()
     add_subdirectory(src/app)
     add_subdirectory(src/ui)
     add_subdirectory(src/viewer)

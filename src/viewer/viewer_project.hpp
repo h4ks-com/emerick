@@ -16,6 +16,7 @@ class ViewerProject : public QObject {
     Q_PROPERTY(qint64 positionTicks READ positionTicks NOTIFY transportChanged)
     Q_PROPERTY(QString positionText READ positionText NOTIFY transportChanged)
     Q_PROPERTY(bool playing READ playing NOTIFY transportChanged)
+    Q_PROPERTY(bool recording READ recording CONSTANT)
     Q_PROPERTY(QString tempoText READ tempoText NOTIFY projectChanged)
     Q_PROPERTY(qint64 ticksPerBeat READ ticksPerBeat NOTIFY projectChanged)
     Q_PROPERTY(qint64 ticksPerBar READ ticksPerBar NOTIFY projectChanged)
@@ -37,6 +38,7 @@ public:
     [[nodiscard]] QString positionText() const;
     [[nodiscard]] bool playing() const { return playing_; }
     void setPlaying(bool playing);
+    [[nodiscard]] static bool recording() { return false; }
     [[nodiscard]] QString tempoText() const;
     [[nodiscard]] qint64 ticksPerBeat() const { return document_.tempo.ticksPerBeat(); }
     [[nodiscard]] qint64 ticksPerBar() const { return document_.tempo.ticksPerBar(); }

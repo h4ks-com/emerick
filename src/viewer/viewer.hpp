@@ -4,6 +4,7 @@
 #include <QString>
 
 #include "emerick/app/nav.hpp"
+#include "emerick/app/transport_clock.hpp"
 #include "remote_peaks.hpp"
 #include "silent_meters.hpp"
 #include "viewer_project.hpp"
@@ -22,6 +23,7 @@ struct Viewer {
     ViewerRegistry registry{project, nav};
     SilentMeters meters;
     RemotePeaks peaks;
+    app::TransportClock clock;
 
     // Call it once per process, before loading a view.
     void exposeToQml();

@@ -9,7 +9,7 @@ Emerick is a small native DAW in C++23 and Qt 6.11 QML. It records and plays aud
 - How code is written (types at the boundary, realtime rules, QML rules, names): `docs/CODE_STYLE.md`
 - Architecture and layer rules: `docs/architecture.md`
 - Visual design tokens and layout: `docs/design.md`
-- Layers: `src/core`, `src/model`, `src/engine` (no Qt), `src/app` (Qt glue, registry, MCP, Lua), `src/ui` (QML), `src/viewer` (the read-only viewer), `src/gm` (the bundled General MIDI CLAP instrument), `src/voices` (the bundled Expansion Voices CLAP instrument), `src/arranger` (the Yamaha style arranger engine and the bundled Arranger CLAP device, no Qt), `plugins/<name>`, `app/` (executable)
+- Layers: `src/core`, `src/model`, `src/engine` (no Qt), `src/app` (Qt glue, registry, MCP, Lua), `src/ui` (QML), `src/viewer` (the read-only viewer, built for WebAssembly), `src/gm` (the bundled General MIDI CLAP instrument), `src/voices` (the bundled Expansion Voices CLAP instrument), `src/arranger` (the Yamaha style arranger engine and the bundled Arranger CLAP device, no Qt), `plugins/<name>`, `app/` (executable)
 - Tests sit next to their module in `tests/`, one Catch2 binary per module
 
 ## Commands (the Makefile is the single interface)
@@ -28,6 +28,7 @@ Emerick is a small native DAW in C++23 and Qt 6.11 QML. It records and plays aud
 - `--script <file> [-- args...]` runs one Lua script with no window and exits, 1 on a script error; the script reads `arg` and can call `emerick.wait`, and MCP runs only with `--mcp-port`; `docker run --rm emerick --script <file>` runs it in the image
 - `--agent-read-root`, `--agent-write-root`, `--no-lua-mcp`, `--lua-timeout-ms`, `--lua-memory-mb`, `--max-render-seconds` and `--bundled-plugins-only` limit what agents may do in a service run; `state.get` with `limits` lists the active ones and `--help` explains each
 - `video.render` needs `ffmpeg` beside the app or on PATH (Homebrew's on macOS); the image ships a minimal static one in `/opt/emerick`
+- `make viewer-wasm` build the read-only viewer for WebAssembly into `build/viewer-wasm/site`; it installs Qt for WebAssembly and emsdk into `~/.cache/emerick/wasm-toolchain` once
 - `make docker-build` build the image (Qt 6.11, builds the `release` preset with its tests, runs ctest, then a slim runtime with the service)
 - `make e2e` build the Docker image and drive the headless app and the service over MCP
 - `make service-check` ruff, pyright strict and pytest for the session service in `service/`

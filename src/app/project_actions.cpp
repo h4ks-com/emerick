@@ -3,7 +3,6 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
-#include <numbers>
 #include <ranges>
 #include <string>
 #include <utility>
@@ -12,6 +11,7 @@
 #include "emerick/app/action_params.hpp"
 #include "emerick/app/project_state.hpp"
 #include "emerick/app/session_mapping.hpp"
+#include "emerick/app/view_actions.hpp"
 
 namespace emerick::app {
 
@@ -61,30 +61,6 @@ void registerProjectEditActions(Registry& registry, ProjectController& controlle
                         }});
 }
 
-struct BarStep {
-    const char* id;
-    const char* title;
-    const char* alias;
-    const char* shortcut;
-    const char* extraShortcut;
-    int bars;
-};
-
-constexpr std::array kBarSteps{
-    BarStep{"transport.barBack", "Go back one bar", "rewind one bar", "Left", ",", -1},
-    BarStep{"transport.barForward", "Go forward one bar", "forward one bar", "Right", ".", 1},
-    BarStep{"transport.eightBarsBack", "Go back eight bars", "rewind eight bars", "Shift+Left", "Shift+,", -8},
-    BarStep{"transport.eightBarsForward", "Go forward eight bars", "forward eight bars", "Shift+Right", "Shift+.", 8},
-};
-
-// Steps land on bar lines, so going back from inside a bar first returns to that bar's start, as in Logic.
-core::Ticks barStep(core::Ticks position, core::Ticks ticksPerBar, int bars) {
-    const core::Ticks bar = position / ticksPerBar;
-    const bool onLine = position % ticksPerBar == 0;
-    const core::Ticks target = bars < 0 && !onLine ? bar + bars + 1 : bar + bars;
-    return std::max<core::Ticks>(0, target * ticksPerBar);
-}
-
 void registerTransportActions(Registry& registry, ProjectController& controller) {
     registry.addAction({.id = "transport.play",
                         .title = "Play",
@@ -96,11 +72,11 @@ void registerTransportActions(Registry& registry, ProjectController& controller)
                                 return transportState(controller);
                             },
                         .menus = {kTransportMenu}});
-    registry.addAction({.id = "transport.togglePlay",
-                        .title = "Play or pause",
+    registry.addAction({.id = kTogglePlayKeys.id,
+                        .title = kTogglePlayKeys.title,
                         .aliases = {"pause", "resume"},
                         .category = "Transport",
-                        .shortcut = "Space",
+                        .shortcut = kTogglePlayKeys.shortcut,
                         .run =
                             [&controller](const Json&) {
                                 if (controller.playing()) {
@@ -112,8 +88,8 @@ void registerTransportActions(Registry& registry, ProjectController& controller)
                             },
                         .menus = {kTransportMenu}});
     // We return to the start on a stop while stopped, as Logic's stop button does.
-    registry.addAction({.id = "transport.stop",
-                        .title = "Stop",
+    registry.addAction({.id = kStopKeys.id,
+                        .title = kStopKeys.title,
                         .aliases = {"stop recording"},
                         .category = "Transport",
                         .run =
@@ -126,12 +102,12 @@ void registerTransportActions(Registry& registry, ProjectController& controller)
                                 return transportState(controller);
                             },
                         .menus = {kTransportMenu}});
-    registry.addAction({.id = "transport.gotoStart",
-                        .title = "Go to beginning",
+    registry.addAction({.id = kGotoStartKeys.id,
+                        .title = kGotoStartKeys.title,
                         .aliases = {"rewind", "return to zero"},
                         .category = "Transport",
-                        .shortcut = "Return",
-                        .extraShortcuts = {"Home"},
+                        .shortcut = kGotoStartKeys.shortcut,
+                        .extraShortcuts = {kGotoStartKeys.extraShortcut},
                         .run =
                             [&controller](const Json&) {
                                 controller.locate(0);
@@ -150,11 +126,11 @@ void registerTransportActions(Registry& registry, ProjectController& controller)
                                 return transportState(controller);
                             },
                         .menus = {kTransportMenu}});
-    registry.addAction({.id = "transport.gotoEnd",
-                        .title = "Go to end",
+    registry.addAction({.id = kGotoEndKeys.id,
+                        .title = kGotoEndKeys.title,
                         .aliases = {"project end", "fast forward to end"},
                         .category = "Transport",
-                        .shortcut = "End",
+                        .shortcut = kGotoEndKeys.shortcut,
                         .run =
                             [&controller](const Json&) {
                                 controller.locate(controller.endTicks());
@@ -240,26 +216,6 @@ void registerTransportActions(Registry& registry, ProjectController& controller)
                         }});
 }
 
-struct ZoomStep {
-    const char* id;
-    const char* title;
-    const char* alias;
-    const char* shortcut;
-    const char* extraShortcut;
-    double factor;
-};
-
-constexpr std::array kZoomSteps{
-    ZoomStep{"view.zoomIn", "Zoom in", "wider timeline", "Ctrl+Right", "Ctrl+=", std::numbers::sqrt2},
-    ZoomStep{"view.zoomOut", "Zoom out", "narrower timeline", "Ctrl+Left", "Ctrl+-", 1 / std::numbers::sqrt2},
-};
-
-double zoomAnchor(const ProjectController& controller, const Nav& nav) {
-    const auto playhead = static_cast<double>(controller.positionTicks());
-    const double x = (playhead - nav.scrollTicks()) * nav.pixelsPerTick();
-    return x >= 0 && x <= nav.laneWidth() ? playhead : nav.scrollTicks() + nav.laneWidth() / 2 / nav.pixelsPerTick();
-}
-
 void registerZoomActions(Registry& registry, ProjectController& controller, Nav& nav) {
     for (const ZoomStep& step : kZoomSteps) {
         registry.addAction({.id = step.id,
@@ -270,7 +226,7 @@ void registerZoomActions(Registry& registry, ProjectController& controller, Nav&
                             .extraShortcuts = {step.extraShortcut},
                             .run =
                                 [&controller, &nav, step](const Json&) {
-                                    nav.zoomAround(step.factor, zoomAnchor(controller, nav));
+                                    nav.zoomAround(step.factor, zoomAnchor(controller.positionTicks(), nav));
                                     return Json{{"pixelsPerTick", nav.pixelsPerTick()},
                                                 {"scrollTicks", nav.scrollTicks()}};
                                 },

@@ -52,6 +52,17 @@ RUN --mount=type=cache,target=/ccache \
     && cmake --build --preset release -j "$JOBS" \
     && ctest --test-dir build/release -j "$JOBS" --output-on-failure
 
+# The browser viewer, built with Qt for WebAssembly of the same Qt version, which the service serves as static files.
+FROM qt AS viewer
+ARG JOBS=4
+RUN apt-get update && apt-get install -y --no-install-recommends xz-utils && rm -rf /var/lib/apt/lists/*
+WORKDIR /src
+COPY --exclude=service --exclude=e2e --exclude=docs --exclude=deploy --exclude=.github --exclude=skills \
+    --exclude=.claude-plugin --exclude=*.md . .
+RUN --mount=type=cache,target=/root/.cache/emerick \
+    QT_HOST_PATH=/opt/qt/current EMERICK_WASM_TOOLCHAIN=/root/.cache/emerick/wasm-toolchain JOBS="$JOBS" \
+    scripts/viewer-wasm.sh /src/build/viewer-wasm
+
 # We copy the app with only the Qt libraries and plugins it links, and keep Qt's folder layout so Qt finds its plugins.
 # video.render loads the views, so we also copy the QML modules they import, without the other Controls styles.
 FROM build AS bundle
@@ -94,6 +105,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/* \
     && useradd --uid 10001 --create-home --home-dir /data emerick
 COPY --from=bundle /out/ /
+COPY --from=viewer /src/build/viewer-wasm/site/ /opt/emerick/viewer/
 COPY --from=service /opt/service /opt/service
 COPY docker/entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN ! find /opt/emerick /opt/qt -type f \( -name 'emerick*' -o -name '*.clap' -o -name '*.so*' \) -exec ldd {} + \

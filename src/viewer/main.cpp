@@ -30,13 +30,17 @@ emscripten::val mixElement() {
     return emscripten::val::global("document").call<emscripten::val>("getElementById", std::string{"mix"});
 }
 
-// The page's <audio id="mix"> plays the mix the service renders; its time moves the playhead.
+// The page's <audio id="mix"> plays the mix the service renders; its time moves the playhead while it plays.
+// A paused or missing mix keeps its time at 0, so we leave the playhead where the person put it.
 void followMix(Viewer& viewer, QObject* owner) {
     auto* timer = new QTimer(owner);
     QObject::connect(timer, &QTimer::timeout, owner, [&viewer] {
         if (const emscripten::val mix = mixElement(); !mix.isNull()) {
-            viewer.project.setPlaying(!mix["paused"].as<bool>());
-            viewer.project.setPositionSeconds(mix["currentTime"].as<double>());
+            const bool playing = !mix["paused"].as<bool>();
+            viewer.project.setPlaying(playing);
+            if (playing) {
+                viewer.project.setPositionSeconds(mix["currentTime"].as<double>());
+            }
         }
     });
     timer->start(kAudioPollMs);
@@ -45,9 +49,14 @@ void followMix(Viewer& viewer, QObject* owner) {
             mix.set("currentTime", at);
         }
     });
-    QObject::connect(&viewer.registry, &emerick::viewer::ViewerRegistry::playToggled, owner, [] {
+    QObject::connect(&viewer.registry, &emerick::viewer::ViewerRegistry::playToggled, owner, [&viewer] {
         if (emscripten::val mix = mixElement(); !mix.isNull()) {
-            mix.call<void>(mix["paused"].as<bool>() ? "play" : "pause");
+            if (mix["paused"].as<bool>()) {
+                mix.set("currentTime", viewer.project.positionSeconds());
+                mix.call<void>("play");
+            } else {
+                mix.call<void>("pause");
+            }
         }
     });
     QObject::connect(&viewer.registry, &emerick::viewer::ViewerRegistry::pauseRequested, owner, [] {

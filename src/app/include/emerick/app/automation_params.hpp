@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <optional>
@@ -15,6 +16,8 @@ namespace emerick::app {
 
 inline constexpr double kAutomationGainMinDb = -60.0;
 inline constexpr double kAutomationGainMaxDb = 6.0;
+
+enum class LaneScale : std::uint8_t { linear, logarithmic, fader };
 
 // The live plugin of a plugin insert, or null.
 using PluginLookup = std::function<std::shared_ptr<engine::Plugin>(const model::InsertId&)>;
@@ -35,6 +38,8 @@ struct AutomationParam {
     std::string insert;
     std::size_t insertParam = 0;
     bool plugin = false;
+    // How a lane spreads the range over its height: a frequency by ratios, a gain on a fader taper.
+    LaneScale scale = LaneScale::linear;
 };
 
 std::string sendParamId(const model::TrackId& bus);

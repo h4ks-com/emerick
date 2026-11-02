@@ -112,6 +112,26 @@ TEST_CASE("dragging a point moves it live in time and value as one undo step") {
     CHECK(lanes.main.rig.controller->project().undoName() == "add automation point");
 }
 
+TEST_CASE("a gain lane gives the dB near 0 more room than the floor, and a cutoff lane spreads octaves evenly") {
+    Lanes lanes;
+    const auto rise = [&](double low, double high) { return lanes.call("yOf", low) - lanes.call("yOf", high); };
+    CHECK(rise(-6, 0) > 2 * rise(-60, -54));
+    CHECK(lanes.call("yOf", lanes.call("valueAt", lanes.call("yOf", -3))) == Approx(lanes.call("yOf", -3)));
+    lanes.click(lanes.at(1000, -3.0));
+    REQUIRE(lanes.gain() != nullptr);
+    CHECK(lanes.gain()->points.back().value == Approx(-3.0).margin(0.5));
+
+    const std::string filter = lanes.main.rig.run("insert.add", {{"track", lanes.track}, {"type", "filter"}}).at("id");
+    lanes.main.rig.nav.setEditingInsert({});
+    lanes.main.rig.run("automation.showLane", {{"track", lanes.track}, {"param", filter + ".cutoff"}});
+    REQUIRE(processUntil([&] {
+        return lanes.main.item("automation.showLane:" + qid(lanes.track))->property("text") == "Filter Cutoff";
+    }));
+    CHECK(rise(200, 400) == Approx(rise(2000, 4000)).margin(0.5));
+    CHECK(lanes.call("valueAt", lanes.call("yOf", 1000)) == Approx(1000).epsilon(0.01));
+    MainWindow::settle();
+}
+
 TEST_CASE("Alt-click deletes a point and Delete removes the selected points") {
     Lanes lanes;
     lanes.main.rig.run("automation.addPoint", {{"track", lanes.track}, {"tick", 0}, {"value", 0.0}});

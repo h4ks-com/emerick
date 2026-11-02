@@ -8,7 +8,7 @@ Item {
     id: lane
     required property string trackId
     required property color trackColor
-    // The parameter as the track list describes it: {id, title, minimum, maximum, value, toggle}.
+    // The parameter as the track list describes it: {id, title, minimum, maximum, value, toggle, unit, scale}.
     required property var param
     required property var points
     required property real scrollTicks
@@ -25,11 +25,37 @@ Item {
     function ticksAt(x) {
         return scrollTicks + x / pixelsPerTick
     }
+    // A fader taper spreads gain as the square root of its amplitude, so the few dB around 0 get room to show.
+    function faderLevel(db) {
+        return Math.pow(10, db / 40)
+    }
+    function positionOf(value) {
+        const clamped = Math.max(param.minimum, Math.min(param.maximum, value))
+        if (param.scale === "logarithmic") {
+            return Math.log(clamped / param.minimum) / Math.log(param.maximum / param.minimum)
+        }
+        if (param.scale === "fader") {
+            const low = faderLevel(param.minimum)
+            return (faderLevel(clamped) - low) / (faderLevel(param.maximum) - low)
+        }
+        return (clamped - param.minimum) / span
+    }
+    function valueAtPosition(position) {
+        if (param.scale === "logarithmic") {
+            return param.minimum * Math.pow(param.maximum / param.minimum, position)
+        }
+        if (param.scale === "fader") {
+            const low = faderLevel(param.minimum)
+            return 40 * Math.log10(Math.max(Number.MIN_VALUE, low + position * (faderLevel(param.maximum) - low)))
+        }
+        return param.minimum + position * span
+    }
     function yOf(value) {
-        return inset + (1 - (value - param.minimum) / span) * (height - 2 * inset)
+        return inset + (1 - positionOf(value)) * (height - 2 * inset)
     }
     function valueAt(y) {
-        const value = param.minimum + (1 - (y - inset) / (height - 2 * inset)) * span
+        const position = Math.max(0, Math.min(1, 1 - (y - inset) / (height - 2 * inset)))
+        const value = valueAtPosition(position)
         return Math.max(param.minimum, Math.min(param.maximum, param.toggle ? Math.round(value) : value))
     }
     function valueText(value) {
@@ -113,11 +139,11 @@ Item {
                 }
                 if (point.curve === "hold") {
                     context.lineTo(lane.xOf(next.tick), lane.yOf(point.value))
-                } else if (point.curve === "smooth") {
+                } else if (point.curve === "smooth" || lane.param.scale !== "linear") {
                     const steps = 16
                     for (let step = 1; step < steps; ++step) {
                         const t = step / steps
-                        const eased = t * t * (3 - 2 * t)
+                        const eased = point.curve === "smooth" ? t * t * (3 - 2 * t) : t
                         context.lineTo(lane.xOf(point.tick + (next.tick - point.tick) * t),
                                        lane.yOf(point.value + (next.value - point.value) * eased))
                     }

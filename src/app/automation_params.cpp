@@ -33,7 +33,9 @@ void addInsertParams(std::vector<AutomationParam>& params, const model::Insert& 
                           .bus = {},
                           .unit = std::string{described.unit},
                           .insert = insert.id.value,
-                          .insertParam = index});
+                          .insertParam = index,
+                          .plugin = false,
+                          .scale = described.logarithmic ? LaneScale::logarithmic : LaneScale::linear});
     }
 }
 
@@ -143,7 +145,9 @@ std::vector<AutomationParam> trackParams(const Registry& registry, const model::
                                          .bus = {},
                                          .unit = "dB",
                                          .insert = {},
-                                         .insertParam = 0},
+                                         .insertParam = 0,
+                                         .plugin = false,
+                                         .scale = LaneScale::fader},
                                         {.id = "pan",
                                          .title = "Pan",
                                          .minimum = -1.0,
@@ -178,7 +182,9 @@ std::vector<AutomationParam> trackParams(const Registry& registry, const model::
                           .bus = send.bus.value,
                           .unit = "dB",
                           .insert = {},
-                          .insertParam = 0});
+                          .insertParam = 0,
+                          .plugin = false,
+                          .scale = LaneScale::fader});
     }
     for (const model::Insert& insert : track.inserts) {
         addInsertParams(params, insert);

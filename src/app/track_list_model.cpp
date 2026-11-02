@@ -28,6 +28,8 @@ namespace emerick::app {
 
 namespace {
 
+constexpr std::array kLaneScaleNames{"linear", "logarithmic", "fader"};
+
 QVariantMap audioRoute(const model::AudioRoute& route) {
     QVariantList channels;
     std::ranges::copy(route.channels, std::back_inserter(channels));
@@ -269,7 +271,8 @@ QVariantList TrackListModel::paramList(const model::Track& track) const {
                                            {"maximum", param.maximum},
                                            {"value", param.value},
                                            {"toggle", param.toggle},
-                                           {"unit", qs(param.unit)}}};
+                                           {"unit", qs(param.unit)},
+                                           {"scale", kLaneScaleNames.at(std::to_underlying(param.scale))}}};
            }) |
            std::ranges::to<QVariantList>();
 }

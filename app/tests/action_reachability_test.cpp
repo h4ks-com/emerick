@@ -2,6 +2,7 @@
 #include <catch2/catch_test_macros.hpp>
 #include <filesystem>
 #include <fstream>
+#include <functional>
 #include <iterator>
 #include <ranges>
 #include <set>
@@ -64,9 +65,7 @@ bool reachable(const Action& action, const std::string& qml, const Registry& reg
            namedInQml(action.id, qml) || std::ranges::contains(registry.allSettings(), action.id, &Setting::action);
 }
 
-}  // namespace
-
-TEST_CASE("every action has a menu entry, a shortcut or a control") {
+void withEveryAction(const std::function<void(const Registry&)>& check) {
     test::ProjectRig rig;
     registerCoreActions(rig.registry, rig.nav, {});
     const UiApi ui(rig.registry);
@@ -79,18 +78,37 @@ TEST_CASE("every action has a menu entry, a shortcut or a control") {
     registerPluginActions(rig.registry, rig.nav, plugins);
     registerInstrumentActions(rig.registry, *rig.controller, rig.nav, plugins);
     const auto yamaha = emerick::yamaha::registerWith(rig.registry, *rig.controller, rig.nav);
+    check(rig.registry);
+}
 
-    const std::string qml = qmlSource();
-    const auto ids = [&](bool wanted) {
-        return rig.registry.actions() | std::views::filter([&](const Action& action) {
-                   return reachable(action, qml, rig.registry) == wanted;
-               }) |
-               std::views::transform(&Action::id) | std::ranges::to<std::set>();
-    };
-    std::set<std::string> unreached;
-    std::ranges::set_difference(ids(false), kUnreachable, std::inserter(unreached, unreached.end()));
-    std::set<std::string> stale;
-    std::ranges::set_intersection(ids(true), kUnreachable, std::inserter(stale, stale.end()));
-    CHECK(unreached == std::set<std::string>{});
-    CHECK(stale == std::set<std::string>{});
+}  // namespace
+
+TEST_CASE("every action has a menu entry, a shortcut or a control") {
+    withEveryAction([](const Registry& registry) {
+        const std::string qml = qmlSource();
+        const auto ids = [&](bool wanted) {
+            return registry.actions() | std::views::filter([&](const Action& action) {
+                       return reachable(action, qml, registry) == wanted;
+                   }) |
+                   std::views::transform(&Action::id) | std::ranges::to<std::set>();
+        };
+        std::set<std::string> unreached;
+        std::ranges::set_difference(ids(false), kUnreachable, std::inserter(unreached, unreached.end()));
+        std::set<std::string> stale;
+        std::ranges::set_intersection(ids(true), kUnreachable, std::inserter(stale, stale.end()));
+        CHECK(unreached == std::set<std::string>{});
+        CHECK(stale == std::set<std::string>{});
+    });
+}
+
+TEST_CASE("the palette lists equal matches in menu order, so add lists Add audio track and Add MIDI track first") {
+    withEveryAction([](const Registry& registry) {
+        const auto ids =
+            registry.search("add", 20) | std::views::transform(&SearchHit::id) | std::ranges::to<std::vector>();
+        REQUIRE(ids.size() == 20);
+        CHECK(ids[0] == "track.addAudio");
+        CHECK(ids[1] == "track.addMidi");
+        const auto position = [&](const std::string& id) { return std::ranges::find(ids, id) - ids.begin(); };
+        CHECK(position("midi.import") < position("yamaha.chord.set"));
+    });
 }

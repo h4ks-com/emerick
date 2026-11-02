@@ -567,12 +567,8 @@ std::vector<SearchHit> Registry::search(const std::string& query, std::size_t li
     for (const Setting& entry : settings_) {
         consider(EntryKind::Setting, entry, {}, {});
     }
-    std::ranges::sort(hits, [](const SearchHit& a, const SearchHit& b) {
-        if (a.match.score != b.match.score) {
-            return a.match.score > b.match.score;
-        }
-        return a.title.size() != b.title.size() ? a.title.size() < b.title.size() : a.id < b.id;
-    });
+    // Equal scores keep the order actions register in, which follows the menus, so a menu's main entries come first.
+    std::ranges::stable_sort(hits, std::ranges::greater{}, [](const SearchHit& hit) { return hit.match.score; });
     hits.resize(std::min(hits.size(), limit));
     return hits;
 }

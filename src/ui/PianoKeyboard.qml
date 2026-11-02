@@ -112,7 +112,7 @@ Rectangle {
         objectName: "midi.audition"
         anchors.fill: parent
         hoverEnabled: true
-        enabled: keyboard.roll.hasClip
+        enabled: keyboard.roll.hasClip && !Registry.readOnly
         ToolTip.visible: containsMouse && !pressed
         ToolTip.delay: Theme.tooltipDelay
         ToolTip.text: "Play " + keyboard.roll.noteName(keyboard.keyAt(mouseX, mouseY))

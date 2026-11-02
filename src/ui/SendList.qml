@@ -43,6 +43,7 @@ ColumnLayout {
                 ChromeButton {
                     objectName: "send.setPre:" + list.trackId + ":" + send.modelData.bus
                     actionId: "send.setPre"
+                    enabled: !Registry.readOnly
                     params: Object.assign({value: !send.modelData.pre}, send.target)
                     active: send.modelData.pre
                     text: "P"
@@ -52,7 +53,7 @@ ColumnLayout {
                 }
                 ChromeButton {
                     objectName: "send.setEnabled:" + list.trackId + ":" + send.modelData.bus
-                    visible: !list.compact
+                    visible: !list.compact && !Registry.readOnly
                     actionId: "send.setEnabled"
                     params: Object.assign({value: !send.modelData.enabled}, send.target)
                     active: send.modelData.enabled
@@ -61,7 +62,7 @@ ColumnLayout {
                 }
                 ChromeButton {
                     objectName: "send.remove:" + list.trackId + ":" + send.modelData.bus
-                    visible: !list.compact
+                    visible: !list.compact && !Registry.readOnly
                     actionId: "send.remove"
                     params: send.target
                     iconName: "x"
@@ -74,6 +75,7 @@ ColumnLayout {
             DragNumber {
                 objectName: "send.setLevel:" + list.trackId + ":" + send.modelData.bus
                 actionId: "send.setLevel"
+                enabled: !Registry.readOnly
                 value: send.modelData.db
                 from: Theme.gainMinDb
                 to: Theme.gainMaxDb
@@ -92,6 +94,7 @@ ColumnLayout {
 
     ChromeButton {
         objectName: "send.add:" + list.trackId
+        visible: !Registry.readOnly
         actionId: "send.add"
         iconName: "plus"
         iconColor: Theme.inkDim

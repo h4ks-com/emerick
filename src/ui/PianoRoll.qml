@@ -146,7 +146,7 @@ DockPanel {
         [Qt.Key_A]: () => ({id: "midi.selectNotes", params: {all: true}})
     })
     function keyAction(event) {
-        if (!hasClip) {
+        if (!hasClip || Registry.readOnly) {
             return null
         }
         const table = event.modifiers & Qt.ControlModifier ? commandActions : keyActions
@@ -243,7 +243,7 @@ DockPanel {
             id: edit
             objectName: "midi.addNote"
             anchors.fill: parent
-            enabled: roll.hasClip
+            enabled: roll.hasClip && !Registry.readOnly
             property string mode: ""
             property point pressAt
             property var pressNote: null
@@ -402,6 +402,7 @@ DockPanel {
             spacing: Theme.space1
             ChromeButton {
                 objectName: "midi.togglePencil"
+                visible: !Registry.readOnly
                 implicitWidth: Theme.headerButton
                 implicitHeight: Theme.headerButton
                 iconName: "pencil-simple"

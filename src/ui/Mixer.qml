@@ -23,7 +23,7 @@ DockPanel {
         objectName: "mixer.strips"
         anchors.fill: parent
         anchors.topMargin: Theme.hairline
-        anchors.rightMargin: analyzeAll.width + 2 * Theme.space1
+        anchors.rightMargin: analyzeAll.visible ? analyzeAll.width + 2 * Theme.space1 : 0
         contentWidth: row.width
         contentHeight: row.height
         interactive: false
@@ -43,6 +43,7 @@ DockPanel {
     ChromeButton {
         id: analyzeAll
         objectName: "tracks.analyze"
+        visible: !Registry.readOnly
         anchors.top: parent.top
         anchors.right: parent.right
         anchors.margins: Theme.space1

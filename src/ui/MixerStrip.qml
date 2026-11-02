@@ -25,6 +25,8 @@ Rectangle {
     required property var sends
     required property var inserts
     required property string outputBusName
+    // The track's instrument as {name, format, sound}, empty on a track without one.
+    required property var instrument
     readonly property bool selected: Nav.selectedTrack === trackId
     readonly property string outputText: {
         if (outputBusName !== "") {
@@ -63,6 +65,7 @@ Rectangle {
     }
 
     PaneEdge {
+        visible: !Registry.readOnly
         settingId: "view.stripWidth"
         objectName: settingId + ":" + strip.trackId
         anchors.right: parent.right
@@ -94,6 +97,29 @@ Rectangle {
             background: Rectangle {
                 radius: Theme.radiusClip
                 color: Theme.graphite
+            }
+        }
+
+        Label {
+            objectName: "mixer.instrument:" + strip.trackId
+            visible: strip.instrument.name !== undefined
+            text: strip.instrument.sound ? strip.instrument.sound : strip.instrument.name ?? ""
+            color: Theme.ink
+            font.pixelSize: Theme.textSmall
+            elide: Text.ElideRight
+            horizontalAlignment: Text.AlignHCenter
+            padding: Theme.space1
+            Layout.fillWidth: true
+            ToolTip.text: (strip.instrument.name ?? "") + " (" + (strip.instrument.format ?? "") + ")"
+                          + (strip.instrument.sound ? "\n" + strip.instrument.sound : "")
+            ToolTip.visible: instrumentHover.hovered
+            ToolTip.delay: Theme.tooltipDelay
+            HoverHandler {
+                id: instrumentHover
+            }
+            background: Rectangle {
+                radius: Theme.radiusClip
+                color: Theme.lift
             }
         }
 
@@ -142,11 +168,12 @@ Rectangle {
             Layout.alignment: Qt.AlignHCenter
             TrimKnob {
                 opacity: strip.playsAudio ? 1 : 0
-                enabled: strip.playsAudio
+                enabled: strip.playsAudio && !Registry.readOnly
                 trackId: strip.trackId
                 trimDb: strip.trimDb
             }
             PanKnob {
+                enabled: !Registry.readOnly
                 trackId: strip.trackId
                 pan: strip.pan
             }
@@ -159,6 +186,7 @@ Rectangle {
             Layout.minimumHeight: Theme.faderMinHeight
             Layout.alignment: Qt.AlignHCenter
             GainSlider {
+                enabled: !Registry.readOnly
                 orientation: Qt.Vertical
                 trackId: strip.trackId
                 gainDb: strip.gainDb
@@ -175,6 +203,7 @@ Rectangle {
         }
 
         GainReadout {
+            enabled: !Registry.readOnly
             trackId: strip.trackId
             gainDb: strip.gainDb
             Layout.fillWidth: true
@@ -198,6 +227,7 @@ Rectangle {
             spacing: Theme.space1
             Layout.alignment: Qt.AlignHCenter
             FlagButton {
+                enabled: !Registry.readOnly
                 trackId: strip.trackId
                 flag: "track.setMute"
                 value: strip.mute
@@ -205,14 +235,15 @@ Rectangle {
                 activeColor: Theme.mute
             }
             FlagButton {
+                enabled: !Registry.readOnly
                 trackId: strip.trackId
                 flag: "track.setSolo"
                 value: strip.solo
                 text: "S"
             }
             FlagButton {
-                opacity: strip.busRoutes ? 0 : 1
-                enabled: !strip.busRoutes
+                opacity: strip.busRoutes || Registry.readOnly ? 0 : 1
+                enabled: !strip.busRoutes && !Registry.readOnly
                 trackId: strip.trackId
                 flag: "track.setArm"
                 value: strip.armed

@@ -32,7 +32,7 @@ Item {
         MouseArea {
             objectName: "midi.setVelocity"
             anchors.fill: parent
-            enabled: lane.roll.hasClip
+            enabled: lane.roll.hasClip && !Registry.readOnly
             property var pressNote: null
             property var targets: []
             property real pressY

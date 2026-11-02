@@ -25,6 +25,7 @@ class ViewerProject : public QObject {
     Q_PROPERTY(QVariantList markers READ markers NOTIFY projectChanged)
     Q_PROPERTY(QVariantMap cycle READ cycle NOTIFY projectChanged)
     Q_PROPERTY(QVariantMap trackErrors READ trackErrors CONSTANT)
+    Q_PROPERTY(QVariantMap routeDevices READ routeDevices CONSTANT)
     Q_PROPERTY(int trackColorCount READ trackColorCount CONSTANT)
     Q_PROPERTY(QString name READ name NOTIFY projectChanged)
 
@@ -47,6 +48,10 @@ public:
     [[nodiscard]] QVariantList markers() const;
     [[nodiscard]] QVariantMap cycle() const;
     [[nodiscard]] static QVariantMap trackErrors() { return {}; }
+    // The viewer opens no devices, so routes show the device ids project.json names.
+    [[nodiscard]] static QVariantMap routeDevices() {
+        return {{"audioOut", QVariantList{}}, {"midiOut", QVariantList{}}};
+    }
     [[nodiscard]] static int trackColorCount() { return kTrackColors; }
     [[nodiscard]] QString name() const { return name_; }
 

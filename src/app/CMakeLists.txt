@@ -5,6 +5,7 @@ qt_add_library(emerick_view_data STATIC
     peak_levels.cpp
     project_view.cpp
     track_params.cpp
+    track_routes.cpp
     track_rows.cpp
     transport_clock.cpp
     variant.cpp
@@ -17,12 +18,13 @@ qt_add_library(emerick_view_data STATIC
     include/emerick/app/peak_levels.hpp
     include/emerick/app/project_view.hpp
     include/emerick/app/track_params.hpp
+    include/emerick/app/track_routes.hpp
     include/emerick/app/track_rows.hpp
     include/emerick/app/transport_clock.hpp
     include/emerick/app/variant.hpp
     include/emerick/app/view_actions.hpp
     include/emerick/app/waveform.hpp)
-target_include_directories(emerick_view_data PUBLIC include)
+target_include_directories(emerick_view_data PUBLIC include PRIVATE ${PROJECT_SOURCE_DIR}/src/gm)
 target_link_libraries(emerick_view_data
     PUBLIC Qt6::Core Qt6::Gui Qt6::Quick emerick_core emerick_model emerick_effects nlohmann_json::nlohmann_json)
 emerick_target(emerick_view_data)

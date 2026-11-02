@@ -21,7 +21,8 @@ ColumnLayout {
             actionId: "insert.edit"
             params: ({insert: modelData.id})
             text: modelData.title
-            hint: "Right-click to bypass, move or remove it"
+            hint: !Registry.readOnly ? "Right-click to bypass, move or remove it"
+                  : modelData.plugin ? modelData.plugin.format.toUpperCase() + " plugin" : "Built-in effect"
             active: Nav.editingInsert === modelData.id
             activeColor: Theme.inkDim
             opacity: modelData.bypass ? Theme.mutedOpacity * 1.5 : 1
@@ -32,6 +33,7 @@ ColumnLayout {
 
             TapHandler {
                 acceptedButtons: Qt.RightButton
+                enabled: !Registry.readOnly
                 onTapped: actions.popup()
             }
 
@@ -91,6 +93,7 @@ ColumnLayout {
 
     ChromeButton {
         objectName: "insert.add:" + list.trackId
+        visible: !Registry.readOnly
         actionId: "insert.add"
         textSize: Theme.textSmall
         padding: Theme.space1

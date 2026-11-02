@@ -41,4 +41,17 @@ private:
     SilentMeter silent_;
 };
 
+// The app's Analysis singleton for a viewer that renders nothing, so no strip shows a reading.
+class SilentAnalysis : public QObject {
+    Q_OBJECT
+    Q_PROPERTY(QVariantMap results READ results CONSTANT)
+    Q_PROPERTY(QString busyTrack READ busyTrack CONSTANT)
+
+public:
+    using QObject::QObject;
+    [[nodiscard]] static QVariantMap results() { return {}; }
+    [[nodiscard]] static QString busyTrack() { return {}; }
+    Q_INVOKABLE static void analyzeAll() {}
+};
+
 }  // namespace emerick::viewer

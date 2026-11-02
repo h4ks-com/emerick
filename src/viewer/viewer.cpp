@@ -12,6 +12,23 @@
 
 namespace emerick::viewer {
 
+namespace {
+
+// The document keeps no view state, so we open the automation of a project that has any, on each track's first lane.
+void showAutomation(const model::Document& document, app::Nav& nav) {
+    QVariantMap lanes;
+    for (const model::Track& track : document.tracks) {
+        if (!track.automation.empty()) {
+            lanes.insert(QString::fromStdString(track.id.value),
+                         QString::fromStdString(track.automation.front().param));
+        }
+    }
+    nav.setAutomationLanes(lanes);
+    nav.setAutomationOpen(!lanes.isEmpty());
+}
+
+}  // namespace
+
 Viewer::Viewer() {
     QObject::connect(&registry, &ViewerRegistry::seekRequested, &project,
                      [this](double seconds) { project.setPositionSeconds(seconds); });
@@ -27,6 +44,7 @@ void Viewer::exposeToQml() {
     qmlRegisterSingletonInstance("Emerick.App", 1, 0, "Project", &project);
     qmlRegisterSingletonInstance("Emerick.App", 1, 0, "Tracks", &tracks);
     qmlRegisterSingletonInstance("Emerick.App", 1, 0, "Meters", &meters);
+    qmlRegisterSingletonInstance("Emerick.App", 1, 0, "Analysis", &analysis);
     qmlRegisterSingletonInstance("Emerick.App", 1, 0, "Peaks", &peaks);
     qmlRegisterSingletonInstance("Emerick.App", 1, 0, "Clock", &clock);
     qmlRegisterType<app::ClipNotes>("Emerick.App", 1, 0, "ClipNotes");
@@ -42,6 +60,7 @@ QString Viewer::load(const QByteArray& json, const QString& name) {
     } catch (const std::runtime_error& error) {
         return QString::fromUtf8(error.what());
     }
+    showAutomation(project.document(), nav);
     return {};
 }
 

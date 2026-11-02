@@ -405,6 +405,13 @@ Item {
     }
 
     MouseArea {
+        objectName: "midi.editClip:" + content.clipItem.clipId
+        visible: Registry.readOnly && !content.clipItem.audio
+        anchors.fill: parent
+        onDoubleClicked: Registry.runAction("midi.editClip", {clip: content.clipItem.clipId})
+    }
+
+    MouseArea {
         id: startGrip
         objectName: "clip.resize:" + content.clipItem.clipId + ":left"
         visible: !Registry.readOnly

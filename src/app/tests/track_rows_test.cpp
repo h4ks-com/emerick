@@ -78,3 +78,38 @@ TEST_CASE("a track's lanes list each point with its curve") {
     CHECK(points.at(1).toMap()["tick"].toLongLong() == kBar);
     CHECK(points.at(1).toMap()["curve"] == "hold");
 }
+
+TEST_CASE("a track's mixer rows name its instrument's sound, its inserts and its sends") {
+    model::Document document;
+    model::Track bus{.name = "Room", .kind = "bus"};
+    const std::string gm = R"({"sound": 33})";
+    const std::string voices = R"({"voice": {"pack": "Jazz", "name": "Upright"}})";
+    model::Track keys{.name = "Keys", .kind = "midi"};
+    keys.instrument = model::PluginSlot{
+        .pluginId = app::kGeneralMidiPluginId, .name = "General MIDI", .state = {gm.begin(), gm.end()}};
+    keys.inserts.push_back(model::Insert{.type = "reverb"});
+    keys.inserts.push_back(model::Insert{
+        .type = model::kPluginInsertType,
+        .plugin =
+            model::PluginSlot{.pluginId = "com.example.verb", .name = "Big Verb", .format = core::PluginFormat::vst3}});
+    keys.sends.push_back(model::Send{.bus = bus.id, .levelDb = -9.0});
+    document.tracks = {keys, bus};
+
+    const QVariantMap instrument = app::instrumentEntry(keys);
+    CHECK(instrument["name"] == "General MIDI");
+    CHECK(instrument["format"] == "CLAP");
+    CHECK(instrument["sound"] == "Electric Bass (finger)");
+    model::Track upright{.name = "Upright", .kind = "midi"};
+    upright.instrument = model::PluginSlot{
+        .pluginId = app::kVoicesPluginId, .name = "Expansion Voices", .state = {voices.begin(), voices.end()}};
+    CHECK(app::instrumentEntry(upright)["sound"] == "Jazz / Upright");
+    CHECK(app::instrumentEntry(bus).isEmpty());
+
+    const QVariantList inserts = app::insertList(keys);
+    CHECK(inserts.at(0).toMap()["title"] == "Reverb");
+    CHECK(inserts.at(1).toMap()["title"] == "Big Verb");
+    CHECK(inserts.at(1).toMap()["plugin"].toMap()["format"] == "vst3");
+    const QVariantMap send = app::sendList(keys, document, &model::Send::levelDb).front().toMap();
+    CHECK(send["busName"] == "Room");
+    CHECK(send["db"] == -9.0);
+}

@@ -24,6 +24,7 @@
 
 #include "emerick/app/enums.hpp"
 #include "emerick/app/path_access.hpp"
+#include "emerick/app/track_routes.hpp"
 #include "emerick/app/variant.hpp"
 #include "emerick/core/fuzzy.hpp"
 #include "emerick/core/time.hpp"
@@ -171,14 +172,6 @@ struct UndoSteps {
     std::function<void(const std::function<void()>& edits)> atomic = {};
 };
 
-// Audio routes an input and an output and holds audio clips; bus routes only an output, holds no clips and takes
-// sends. MIDI holds MIDI clips and plays them to a MIDI output, and through the track's instrument when it has one.
-struct RouteSections {
-    bool audio = false;
-    bool midi = false;
-    bool bus = false;
-};
-
 struct FileDrop {
     std::vector<std::string> extensions = {};
     std::string action = {};
@@ -247,10 +240,8 @@ struct TrackType {
         alignStart = {};
 };
 
-// Tracks that play audio have a fader, pan, inserts, sends and an audio output: audio tracks, buses, and MIDI tracks
-// while they hold an instrument.
 [[nodiscard]] inline bool playsAudio(const TrackType& type, const model::Track& track) {
-    return type.routes.audio || type.routes.bus || (type.routes.midi && track.instrument.has_value());
+    return playsAudio(type.routes, track);
 }
 
 // Why a track plays no audio, naming the fix: an instrument on a MIDI track, otherwise otherFix.

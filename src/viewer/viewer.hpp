@@ -22,6 +22,7 @@ struct Viewer {
     app::Nav nav;
     ViewerRegistry registry{project, nav};
     SilentMeters meters;
+    SilentAnalysis analysis;
     RemotePeaks peaks;
     app::TransportClock clock;
 

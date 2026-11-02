@@ -1,13 +1,11 @@
 #include <algorithm>
-#include <array>
 #include <ranges>
 #include <string>
-#include <string_view>
 #include <vector>
 
 #include "emerick/app/note_edit.hpp"
 #include "emerick/app/params.hpp"
-#include "emerick/core/midi.hpp"
+#include "emerick/app/project_view.hpp"
 #include "emerick/model/controls.hpp"
 #include "emerick/model/midi_notes.hpp"
 
@@ -16,18 +14,6 @@ namespace emerick::app {
 namespace {
 
 constexpr const char* kLanesSetting = "midi.lanes";
-constexpr std::string_view kVelocityLane = "velocity";
-constexpr model::Control kSustain{.kind = model::ControlKind::controller, .number = core::midi::kSustainCc};
-
-struct LaneName {
-    std::string_view id;
-    std::string_view title;
-};
-
-constexpr std::array kStandardLanes{
-    LaneName{kVelocityLane, "Velocity"}, LaneName{"cc1", "Modulation"},  LaneName{"pitchBend", "Pitch bend"},
-    LaneName{"cc64", "Sustain"},         LaneName{"cc11", "Expression"}, LaneName{"pressure", "Aftertouch"},
-};
 
 std::string checkedLane(const std::string& lane) {
     if (lane != kVelocityLane && !model::parseControl(lane)) {
@@ -126,38 +112,6 @@ Json setControl(ProjectController& controller, const Nav& nav, const Json& param
 }
 
 }  // namespace
-
-Json laneChoices(const model::MidiClip& clip) {
-    const std::vector<model::Control> present = model::controlsIn(clip);
-    const auto choice = [&](std::string_view id, const std::string& title) {
-        const auto control = model::parseControl(id);
-        if (!control) {
-            return Json{{"id", id},
-                        {"title", title},
-                        {"hasData", !clip.notes.empty()},
-                        {"minimum", 1},
-                        {"maximum", model::kMaxVelocity},
-                        {"switched", false}};
-        }
-        return Json{{"id", id},
-                    {"title", title},
-                    {"hasData", std::ranges::contains(present, *control)},
-                    {"minimum", model::controlMinimum(*control)},
-                    {"maximum", model::controlMaximum(*control)},
-                    {"switched", *control == kSustain}};
-    };
-    Json choices = Json::array();
-    for (const LaneName& name : kStandardLanes) {
-        choices.push_back(choice(name.id, std::string{name.title}));
-    }
-    for (const model::Control control : present) {
-        const std::string id = model::controlId(control);
-        if (!std::ranges::contains(kStandardLanes, std::string_view{id}, &LaneName::id)) {
-            choices.push_back(choice(id, "CC " + std::to_string(control.number)));
-        }
-    }
-    return choices;
-}
 
 void registerControlActions(Registry& registry, ProjectController& controller, Nav& nav) {
     registry.addSetting(

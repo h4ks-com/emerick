@@ -21,7 +21,7 @@ using namespace emerick;
 namespace {
 
 constexpr int kWidth = 1000;
-constexpr int kHeight = 400;
+constexpr int kHeight = 700;
 constexpr core::Ticks kBar = 4 * core::kTicksPerQuarter;
 constexpr std::size_t kPeaks = 750;
 constexpr float kPeak = 0.5F;
@@ -34,13 +34,21 @@ model::Document sampleDocument() {
         phrase.notes.push_back(
             model::Note{.pitch = 60 + step, .start = step * core::kTicksPerQuarter, .length = core::kTicksPerQuarter});
     }
+    phrase.events.push_back(model::MidiEvent{.at = core::kTicksPerQuarter, .bytes = {0xE0, 0x00, 0x50}});
     keys.clips.emplace_back(phrase);
+    const std::string gmState = R"({"sound": 0})";
+    keys.instrument = model::PluginSlot{
+        .pluginId = "org.emerick.gm", .name = "General MIDI", .state = {gmState.begin(), gmState.end()}};
     document.tracks.push_back(keys);
+    model::Track room{.name = "Room", .kind = "bus", .color = 6};
     model::Track voice{.name = "Voice", .kind = "audio", .color = 4};
     voice.clips.emplace_back(model::AudioClip{.start = 0, .length = 2 * kBar, .file = "audio/voice.wav"});
     voice.automation.push_back(model::AutomationLane{
         .param = "gain", .points = {{.tick = 0, .value = -12.0}, {.tick = 3 * kBar, .value = 0.0}}});
+    voice.inserts.push_back(model::Insert{.type = "compressor"});
+    voice.sends.push_back(model::Send{.bus = room.id, .levelDb = -6.0});
     document.tracks.push_back(voice);
+    document.tracks.push_back(room);
     document.markers.push_back(model::Marker{.name = "Verse", .at = kBar});
     return document;
 }
@@ -121,12 +129,12 @@ TEST_CASE("the viewer draws a project with the app's tracks view and nothing in 
     CHECK(find(view->rootObject(), "transport.togglePlay")->isVisible());
     CHECK_FALSE(find(view->rootObject(), "transport.record")->isVisible());
 
-    viewer->registry.runAction("transport.locate", {{"at", 2 * kBar}});
+    viewer->registry.runAction("transport.locate", {{"at", QVariant::fromValue(2 * kBar)}});
     CHECK(viewer->project.positionTicks() == 2 * kBar);
     CHECK(viewer->clock.bar() == 3);
     viewer->registry.activate("transport.gotoStart");
     CHECK(viewer->project.positionTicks() == 0);
-    viewer->registry.runAction("transport.locate", {{"at", 2 * kBar}});
+    viewer->registry.runAction("transport.locate", {{"at", QVariant::fromValue(2 * kBar)}});
     viewer->registry.runAction("marker.previous", {});
     CHECK(viewer->project.positionTicks() == kBar);
     viewer->registry.activate("view.toggleAutomation");
@@ -141,4 +149,27 @@ TEST_CASE("the viewer draws a project with the app's tracks view and nothing in 
     CHECK(viewer->project.positionTicks() == 0);
     const QVariantList shortcuts = viewer->registry.shortcuts();
     CHECK(std::ranges::any_of(shortcuts, [](const QVariant& entry) { return entry.toMap()["shortcut"] == "Home"; }));
+
+    viewer->registry.runAction("midi.editClip", {{"clip", phrase}});
+    CHECK(viewer->nav.pianoRollOpen());
+    CHECK(viewer->registry.settings()["midi.lanes"].toStringList().contains("pitchBend"));
+    const QString firstNote =
+        QString::fromStdString(std::get<model::MidiClip>(document.tracks[0].clips[0]).notes[0].id.value);
+    REQUIRE(processUntil([&] { return find(view->rootObject(), "note:" + firstNote) != nullptr; }));
+    CHECK_FALSE(find(view->rootObject(), "midi.addNote")->property("enabled").toBool());
+
+    QTest::keyClick(view, Qt::Key_X);
+    QQuickItem* instrument = nullptr;
+    REQUIRE(processUntil([&] {
+        instrument =
+            find(view->rootObject(), "mixer.instrument:" + QString::fromStdString(document.tracks[0].id.value));
+        return instrument != nullptr;
+    }));
+    CHECK(instrument->property("text").toString() == "Acoustic Grand Piano");
+    CHECK(find(view->rootObject(), "insert.edit:" + QString::fromStdString(document.tracks[1].inserts[0].id.value)) !=
+          nullptr);
+    CHECK_FALSE(find(view->rootObject(), "insert.add:" + voiceTrack)->isVisible());
+    if (const QByteArray path = qgetenv("EMERICK_VIEWER_GRAB_DOCKS"); !path.isEmpty()) {
+        view->grabWindow().save(QString::fromUtf8(path));
+    }
 }

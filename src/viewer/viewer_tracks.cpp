@@ -7,9 +7,12 @@
 #include <ranges>
 #include <string>
 #include <utility>
+#include <variant>
 #include <vector>
 
+#include "emerick/app/project_view.hpp"
 #include "emerick/app/track_params.hpp"
+#include "emerick/app/track_routes.hpp"
 #include "emerick/app/track_rows.hpp"
 #include "emerick/app/variant.hpp"
 #include "emerick/model/automation.hpp"
@@ -55,6 +58,15 @@ std::vector<app::AutomationParam> laneParams(const model::Document& document, co
     return params;
 }
 
+// The viewer reads track types from the app's own kinds; a plugin's kind plays audio once it holds an instrument.
+app::RouteSections routesOf(const model::Track& track) {
+    return app::coreRoutes(track.kind).value_or(app::RouteSections{.midi = track.instrument.has_value()});
+}
+
+app::RowContext rowContext(const model::Document& document) {
+    return {.tempo = document.tempo, .sampleRate = kSampleRate, .folder = {}};
+}
+
 }  // namespace
 
 ViewerTracks::ViewerTracks(const ViewerProject& project, QObject* parent)
@@ -62,6 +74,8 @@ ViewerTracks::ViewerTracks(const ViewerProject& project, QObject* parent)
     connect(&project_, &ViewerProject::projectChanged, this, [this] {
         beginResetModel();
         endResetModel();
+        ++revision_;
+        emit revisionChanged();
     });
 }
 
@@ -75,6 +89,7 @@ QVariant ViewerTracks::data(const QModelIndex& index, int role) const {
         return {};
     }
     const model::Track& track = document.tracks[static_cast<std::size_t>(index.row())];
+    const app::RouteSections routes = routesOf(track);
     switch (static_cast<Role>(role)) {
         case Role::id:
             return app::qs(track.id.value);
@@ -90,16 +105,41 @@ QVariant ViewerTracks::data(const QModelIndex& index, int role) const {
             return track.solo;
         case Role::armed:
         case Role::monitor:
-        case Role::busRoutes:
             return false;
         case Role::gainDb:
             return track.gainDb;
+        case Role::trimDb:
+            return track.trimDb;
         case Role::pan:
             return track.pan;
+        case Role::audioOut:
+            return app::audioRouteEntry(track.audioOut);
+        case Role::midiOut:
+            return app::midiRouteEntry(track.midiOut);
+        case Role::audioRoutes:
+            return routes.audio;
+        case Role::midiRoutes:
+            return routes.midi;
+        case Role::busRoutes:
+            return routes.bus;
+        case Role::playsAudio:
+            return app::playsAudio(routes, track);
         case Role::instrumentId:
             return app::qs(track.instrument ? track.instrument->pluginId : std::string{});
+        case Role::instrumentName:
+            return app::qs(track.instrument ? track.instrument->name : std::string{});
+        case Role::instrument:
+            return app::instrumentEntry(track);
+        case Role::sends:
+            return app::sendList(track, document, &model::Send::levelDb);
+        case Role::inserts:
+            return app::insertList(track);
+        case Role::outputBusName: {
+            const model::Track* bus = model::findTrack(document, track.outputBus);
+            return bus != nullptr ? app::qs(bus->name) : QString{};
+        }
         case Role::clips:
-            return app::clipList(track, {.tempo = document.tempo, .sampleRate = kSampleRate, .folder = {}});
+            return app::clipList(track, rowContext(document));
         case Role::trackData:
         case Role::takePreview:
             return QVariantMap{};
@@ -120,7 +160,7 @@ QVariant ViewerTracks::data(const QModelIndex& index, int role) const {
 }
 
 QHash<int, QByteArray> ViewerTracks::roleNames() const {
-    static constexpr std::array<std::pair<Role, const char*>, 22> kNames{{{Role::id, "trackId"},
+    static constexpr std::array<std::pair<Role, const char*>, 33> kNames{{{Role::id, "trackId"},
                                                                           {Role::name, "name"},
                                                                           {Role::icon, "icon"},
                                                                           {Role::colorIndex, "colorIndex"},
@@ -129,9 +169,20 @@ QHash<int, QByteArray> ViewerTracks::roleNames() const {
                                                                           {Role::armed, "armed"},
                                                                           {Role::monitor, "monitor"},
                                                                           {Role::gainDb, "gainDb"},
+                                                                          {Role::trimDb, "trimDb"},
                                                                           {Role::pan, "pan"},
+                                                                          {Role::audioOut, "audioOut"},
+                                                                          {Role::midiOut, "midiOut"},
+                                                                          {Role::audioRoutes, "audioRoutes"},
+                                                                          {Role::midiRoutes, "midiRoutes"},
                                                                           {Role::busRoutes, "busRoutes"},
+                                                                          {Role::playsAudio, "playsAudio"},
                                                                           {Role::instrumentId, "instrumentId"},
+                                                                          {Role::instrumentName, "instrumentName"},
+                                                                          {Role::instrument, "instrument"},
+                                                                          {Role::sends, "sends"},
+                                                                          {Role::inserts, "inserts"},
+                                                                          {Role::outputBusName, "outputBusName"},
                                                                           {Role::clips, "clips"},
                                                                           {Role::trackData, "trackData"},
                                                                           {Role::laneComponent, "laneComponent"},
@@ -147,6 +198,36 @@ QHash<int, QByteArray> ViewerTracks::roleNames() const {
         names.insert(static_cast<int>(role), name);
     }
     return names;
+}
+
+QVariantMap ViewerTracks::clip(const QString& id) const {
+    const model::Document& document = project_.document();
+    const auto found = model::findClip(document, model::ClipId{id.toStdString()});
+    if (!found) {
+        return {};
+    }
+    const auto& clips = found->track->clips;
+    const auto take = std::ranges::find(clips, found->clip, [](const model::Clip& clip) { return &clip; });
+    QVariantMap entry = app::clipEntry(*found->clip, static_cast<int>(take - clips.begin()) + 1, rowContext(document));
+    entry.insert({{"trackId", app::qs(found->track->id.value)},
+                  {"trackName", app::qs(found->track->name)},
+                  {"colorIndex", found->track->color}});
+    return entry;
+}
+
+const model::MidiClip* ViewerTracks::midiClip(const QString& id) const {
+    const auto found = model::findClip(project_.document(), model::ClipId{id.toStdString()});
+    return found ? std::get_if<model::MidiClip>(found->clip) : nullptr;
+}
+
+QList<double> ViewerTracks::controlPoints(const QString& clip, const QString& lane) const {
+    const model::MidiClip* midi = midiClip(clip);
+    return midi == nullptr ? QList<double>{} : app::controlPointList(*midi, lane);
+}
+
+QVariantList ViewerTracks::laneChoices(const QString& clip) const {
+    const model::MidiClip* midi = midiClip(clip);
+    return midi == nullptr ? QVariantList{} : app::toVariant(app::laneChoices(*midi)).toList();
 }
 
 }  // namespace emerick::viewer

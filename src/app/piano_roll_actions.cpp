@@ -15,6 +15,7 @@
 #include "emerick/app/action_params.hpp"
 #include "emerick/app/note_edit.hpp"
 #include "emerick/app/project_actions.hpp"
+#include "emerick/app/view_actions.hpp"
 #include "emerick/core/midi.hpp"
 #include "emerick/core/overloaded.hpp"
 #include "emerick/model/midi_notes.hpp"
@@ -169,12 +170,12 @@ void registerSettings(Registry& registry) {
 
 void registerPianoRollActions(Registry& registry, ProjectController& controller, Nav& nav) {
     registerSettings(registry);
-    registry.addAction({.id = "view.togglePianoRoll",
-                        .title = "Show or hide piano roll",
+    registry.addAction({.id = kTogglePianoRollKeys.id,
+                        .title = kTogglePianoRollKeys.title,
                         .aliases = {"piano roll", "editor", "note editor", "edit notes"},
                         .category = "View",
-                        .shortcut = "P",
-                        .extraShortcuts = {"E"},
+                        .shortcut = kTogglePianoRollKeys.shortcut,
+                        .extraShortcuts = {kTogglePianoRollKeys.extraShortcut},
                         .run =
                             [&controller, &nav](const Json&) {
                                 if (nav.pianoRollOpen()) {
@@ -188,8 +189,8 @@ void registerPianoRollActions(Registry& registry, ProjectController& controller,
                             },
                         .menus = {kViewMenu},
                         .windowOnly = true});
-    registry.addAction({.id = "midi.editClip",
-                        .title = "Open in piano roll",
+    registry.addAction({.id = kEditClipKeys.id,
+                        .title = kEditClipKeys.title,
                         .aliases = {"edit MIDI clip", "show notes"},
                         .category = "MIDI",
                         .schema = {{"properties", {{"clip", {{"type", "string"}}}}}},

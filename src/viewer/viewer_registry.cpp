@@ -3,9 +3,13 @@
 #include <QStringList>
 #include <algorithm>
 #include <iterator>
+#include <optional>
 #include <ranges>
+#include <string>
 #include <utility>
+#include <variant>
 
+#include "emerick/app/project_view.hpp"
 #include "emerick/app/view_actions.hpp"
 #include "emerick/model/automation.hpp"
 #include "emerick/model/clip_edit.hpp"
@@ -25,6 +29,17 @@ QVariantList automationModes() {
                    {"title", QString::fromUtf8(mode.title.data(), static_cast<qsizetype>(mode.title.size()))}}};
            }) |
            std::ranges::to<QVariantList>();
+}
+
+std::optional<model::ClipRef> firstMidiClip(const model::Document& document) {
+    for (const model::Track& track : document.tracks) {
+        for (const model::Clip& clip : track.clips) {
+            if (std::holds_alternative<model::MidiClip>(clip)) {
+                return model::ClipRef{.track = &track, .clip = &clip};
+            }
+        }
+    }
+    return std::nullopt;
 }
 
 }  // namespace
@@ -71,6 +86,19 @@ ViewerRegistry::ViewerRegistry(const ViewerProject& project, app::Nav& nav, QObj
     }
     addAction(kToggleAutomationKeys.id, kToggleAutomationKeys.title, keys(kToggleAutomationKeys.shortcut),
               [this](const QVariantMap&) { nav_.setAutomationOpen(!nav_.automationOpen()); });
+    using app::kEditClipKeys, app::kToggleMixerKeys, app::kTogglePianoRollKeys;
+    addAction(kToggleMixerKeys.id, kToggleMixerKeys.title, keys(kToggleMixerKeys.shortcut),
+              [this](const QVariantMap&) { nav_.setMixerOpen(!nav_.mixerOpen()); });
+    addAction(kTogglePianoRollKeys.id, kTogglePianoRollKeys.title,
+              keys(kTogglePianoRollKeys.shortcut, kTogglePianoRollKeys.extraShortcut), [this](const QVariantMap&) {
+                  if (nav_.pianoRollOpen()) {
+                      nav_.setPianoRollOpen(false);
+                  } else {
+                      openInPianoRoll(nav_.pianoRollClip());
+                  }
+              });
+    addAction(kEditClipKeys.id, kEditClipKeys.title, {},
+              [this](const QVariantMap& params) { openInPianoRoll(params.value("clip").toString()); });
     addAction("automation.showLane", "Show automation lane", {}, [this](const QVariantMap& params) {
         QVariantMap lanes = nav_.automationLanes();
         lanes.insert(params.value("track").toString(), params.value("param"));
@@ -129,6 +157,29 @@ void ViewerRegistry::stepToMarker(int step) {
     } else if (const auto later = std::ranges::lower_bound(ats, now); later != ats.begin()) {
         seekToTicks(*std::prev(later));
     }
+}
+
+// The piano roll shows the velocity lane and every controller lane the clip holds data on. Without a clip it opens on
+// the project's first MIDI clip.
+void ViewerRegistry::openInPianoRoll(const QString& clip) {
+    const model::Document& document = project_.document();
+    const auto found =
+        model::findClip(document, model::ClipId{clip.toStdString()}).or_else([&] { return firstMidiClip(document); });
+    const auto* midi = found ? std::get_if<model::MidiClip>(found->clip) : nullptr;
+    if (midi == nullptr) {
+        return;
+    }
+    QStringList lanes{QString::fromUtf8(app::kVelocityLane.data(), static_cast<qsizetype>(app::kVelocityLane.size()))};
+    for (const app::Json& choice : app::laneChoices(*midi)) {
+        const QString lane = QString::fromStdString(choice.at("id").get<std::string>());
+        if (choice.at("hasData").get<bool>() && !lanes.contains(lane)) {
+            lanes.append(lane);
+        }
+    }
+    settings_.insert("midi.lanes", lanes);
+    emit settingsChanged();
+    nav_.setPianoRollClip(QString::fromStdString(midi->id.value));
+    nav_.setPianoRollOpen(true);
 }
 
 void ViewerRegistry::seekToTicks(qint64 ticks) { emit seekRequested(project_.document().tempo.ticksToSeconds(ticks)); }

@@ -81,11 +81,11 @@ void registerViewActions(Registry& registry, Nav& nav) {
                             },
                         .menus = {kViewMenu},
                         .windowOnly = true});
-    registry.addAction({.id = "view.toggleMixer",
-                        .title = "Show or hide mixer",
+    registry.addAction({.id = kToggleMixerKeys.id,
+                        .title = kToggleMixerKeys.title,
                         .aliases = {"mixer", "mixing console", "channel strips"},
                         .category = "View",
-                        .shortcut = "X",
+                        .shortcut = kToggleMixerKeys.shortcut,
                         .run =
                             [&nav](const Json&) {
                                 nav.setMixerOpen(!nav.mixerOpen());

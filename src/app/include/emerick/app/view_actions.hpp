@@ -23,6 +23,9 @@ inline constexpr ActionKeys kGotoStartKeys{"transport.gotoStart", "Go to beginni
 inline constexpr ActionKeys kGotoEndKeys{"transport.gotoEnd", "Go to end", "End", ""};
 inline constexpr ActionKeys kToggleAutomationKeys{"view.toggleAutomation", "Show or hide automation", "A", ""};
 inline constexpr ActionKeys kZoomToFitKeys{"view.zoomToFit", "Zoom to fit", "Z", ""};
+inline constexpr ActionKeys kToggleMixerKeys{"view.toggleMixer", "Show or hide mixer", "X", ""};
+inline constexpr ActionKeys kTogglePianoRollKeys{"view.togglePianoRoll", "Show or hide piano roll", "P", "E"};
+inline constexpr ActionKeys kEditClipKeys{"midi.editClip", "Open in piano roll", "", ""};
 
 struct BarStep {
     const char* id;

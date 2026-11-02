@@ -7,7 +7,6 @@
 #include <array>
 #include <cstddef>
 #include <functional>
-#include <iterator>
 #include <ranges>
 #include <span>
 #include <utility>
@@ -25,22 +24,6 @@
 namespace emerick::app {
 
 namespace {
-
-QVariantMap audioRoute(const model::AudioRoute& route) {
-    QVariantList channels;
-    std::ranges::copy(route.channels, std::back_inserter(channels));
-    return {{"device", qs(route.deviceId)}, {"channels", channels}};
-}
-
-// The source names the route's entry in the MIDI input picker: its source track's id, or else its port's.
-QVariantMap midiRoute(const model::MidiRoute& route) {
-    return {{"port", qs(route.portId)},
-            {"sourceTrack", qs(route.sourceTrack.value)},
-            {"source", qs(route.sourceTrack.empty() ? route.portId : route.sourceTrack.value)},
-            {"channel", route.channel},
-            {"thru", route.thru},
-            {"sysex", route.sysex}};
-}
 
 // QML compares this with a clip's type.
 const char* clipTypeName(ClipType type) {
@@ -140,15 +123,7 @@ const model::MidiClip* TrackListModel::midiClipWithId(const QString& id) const {
 
 QList<double> TrackListModel::controlPoints(const QString& clip, const QString& lane) const {
     const model::MidiClip* midi = midiClipWithId(clip);
-    const auto control = model::parseControl(lane.toStdString());
-    if (midi == nullptr || !control) {
-        return {};
-    }
-    QList<double> flat;
-    for (const model::ControlPoint& point : model::controlPoints(*midi, *control)) {
-        flat << static_cast<double>(point.at) << point.value;
-    }
-    return flat;
+    return midi == nullptr ? QList<double>{} : controlPointList(*midi, lane);
 }
 
 QVariantList TrackListModel::laneChoices(const QString& clip) const {
@@ -165,24 +140,6 @@ bool TrackListModel::sameAcross(const QStringList& ids, const QString& role) con
         }) |
         std::ranges::to<std::vector>();
     return std::ranges::adjacent_find(values, std::ranges::not_equal_to{}) == values.end();
-}
-
-QString TrackListModel::trackName(const model::TrackId& id) const {
-    const model::Track* track = project_.track(id);
-    return track != nullptr ? qs(track->name) : QString{};
-}
-
-QVariantList TrackListModel::sendList(const model::Track& track) const {
-    QVariantList sends;
-    for (const model::Send& send : track.sends) {
-        sends.append(
-            QVariantMap{{"bus", qs(send.bus.value)},
-                        {"busName", trackName(send.bus)},
-                        {"db", controller_.automatedValue(track, sendParamId(send.bus)).value_or(send.levelDb)},
-                        {"pre", send.pre},
-                        {"enabled", send.enabled}});
-    }
-    return sends;
 }
 
 namespace {
@@ -297,13 +254,13 @@ QVariant TrackListModel::data(const QModelIndex& index, int role) const {
         case Role::pan:
             return controller_.automatedValue(track, "pan").value_or(track.pan);
         case Role::audioIn:
-            return audioRoute(track.audioIn);
+            return audioRouteEntry(track.audioIn);
         case Role::audioOut:
-            return audioRoute(track.audioOut);
+            return audioRouteEntry(track.audioOut);
         case Role::midiIn:
-            return midiRoute(track.midiIn);
+            return midiRouteEntry(track.midiIn);
         case Role::midiOut:
-            return midiRoute(track.midiOut);
+            return midiRouteEntry(track.midiOut);
         case Role::audioRoutes:
             return routes.audio;
         case Role::midiRoutes:
@@ -316,12 +273,18 @@ QVariant TrackListModel::data(const QModelIndex& index, int role) const {
             return qs(track.instrument ? track.instrument->pluginId : std::string{});
         case Role::instrumentName:
             return qs(track.instrument ? track.instrument->name : std::string{});
+        case Role::instrument:
+            return instrumentEntry(track);
         case Role::sends:
-            return sendList(track);
+            return sendList(track, project_.document(), [&](const model::Send& send) {
+                return controller_.automatedValue(track, sendParamId(send.bus)).value_or(send.levelDb);
+            });
         case Role::inserts:
-            return toVariant(track.inserts | std::views::transform(insertState) | std::ranges::to<Json::array_t>());
-        case Role::outputBusName:
-            return trackName(track.outputBus);
+            return insertList(track);
+        case Role::outputBusName: {
+            const model::Track* bus = project_.track(track.outputBus);
+            return bus != nullptr ? qs(bus->name) : QString{};
+        }
         case Role::clips:
             return clipList(track, rowContext());
         case Role::trackData: {
@@ -357,7 +320,7 @@ QVariant TrackListModel::data(const QModelIndex& index, int role) const {
 }
 
 QHash<int, QByteArray> TrackListModel::roleNames() const {
-    static constexpr std::array<std::pair<Role, const char*>, 37> kNames{
+    static constexpr std::array<std::pair<Role, const char*>, 38> kNames{
         {{Role::id, "trackId"},
          {Role::name, "name"},
          {Role::kind, "kind"},
@@ -380,6 +343,7 @@ QHash<int, QByteArray> TrackListModel::roleNames() const {
          {Role::playsAudio, "playsAudio"},
          {Role::instrumentId, "instrumentId"},
          {Role::instrumentName, "instrumentName"},
+         {Role::instrument, "instrument"},
          {Role::sends, "sends"},
          {Role::inserts, "inserts"},
          {Role::outputBusName, "outputBusName"},

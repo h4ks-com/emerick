@@ -19,7 +19,7 @@ namespace emerick::viewer {
 // Every edit is off.
 class ViewerRegistry : public QObject {
     Q_OBJECT
-    Q_PROPERTY(QVariantMap settings MEMBER settings_ CONSTANT)
+    Q_PROPERTY(QVariantMap settings READ settings NOTIFY settingsChanged)
     Q_PROPERTY(QVariantMap menus READ menus CONSTANT)
     Q_PROPERTY(QVariantList shortcuts READ shortcuts CONSTANT)
     Q_PROPERTY(bool gesturing READ gesturing CONSTANT)
@@ -28,6 +28,7 @@ class ViewerRegistry : public QObject {
 public:
     ViewerRegistry(const ViewerProject& project, app::Nav& nav, QObject* parent = nullptr);
 
+    [[nodiscard]] QVariantMap settings() const { return settings_; }
     [[nodiscard]] static QVariantMap menus() { return {}; }
     [[nodiscard]] QVariantList shortcuts() const;
     [[nodiscard]] static bool gesturing() { return false; }
@@ -49,6 +50,7 @@ signals:
     void seekRequested(double seconds);
     void playToggled();
     void pauseRequested();
+    void settingsChanged();
 
 private:
     struct Action {
@@ -63,11 +65,19 @@ private:
     [[nodiscard]] const Action* action(const QString& id) const;
     void seekToTicks(qint64 ticks);
     void stepToMarker(int step);
+    void openInPianoRoll(const QString& clip);
 
     const ViewerProject& project_;
     app::Nav& nav_;
     std::vector<Action> actions_;
-    QVariantMap settings_{{"view.headerWidth", 240}, {"edit.snap", true}, {"metronome.enabled", false}};
+    QVariantMap settings_{{"view.headerWidth", 240},
+                          {"view.stripWidth", 84},
+                          {"view.inspectorWidth", 260},
+                          {"edit.snap", true},
+                          {"midi.grid", 16},
+                          {"midi.pencil", false},
+                          {"metronome.enabled", false},
+                          {"midi.lanes", QStringList{"velocity"}}};
 };
 
 }  // namespace emerick::viewer

@@ -1,6 +1,5 @@
 #pragma once
 
-#include <algorithm>
 #include <array>
 #include <cstddef>
 #include <cstdint>
@@ -200,8 +199,12 @@ inline constexpr std::array<DrumKit, 9> kDrumKits{{{"Standard", 0},
 
 // The kit General MIDI plays for a drum program, or nullptr when it holds no such kit.
 constexpr const DrumKit* drumKitOf(int program) {
-    const auto* const kit = std::ranges::find(kDrumKits, program, &DrumKit::program);
-    return kit == kDrumKits.end() ? nullptr : kit;
+    for (const DrumKit& kit : kDrumKits) {
+        if (kit.program == program) {
+            return &kit;
+        }
+    }
+    return nullptr;
 }
 
 // A range of 1-based General MIDI programs and the one that stands for the whole family.

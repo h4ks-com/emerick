@@ -1,17 +1,24 @@
 #include "emerick/app/track_rows.hpp"
 
+#include <algorithm>
 #include <array>
+#include <cstddef>
+#include <iterator>
 #include <ranges>
 #include <string>
 #include <utility>
 #include <variant>
 
+#include "emerick/app/project_view.hpp"
 #include "emerick/app/variant.hpp"
 #include "emerick/core/automation.hpp"
 #include "emerick/core/fade.hpp"
 #include "emerick/core/overloaded.hpp"
+#include "emerick/core/plugin_format.hpp"
 #include "emerick/model/clip_edit.hpp"
+#include "emerick/model/controls.hpp"
 #include "emerick/model/midi_notes.hpp"
+#include "gm_sounds.hpp"
 
 namespace emerick::app {
 
@@ -95,6 +102,83 @@ QVariantList laneList(const model::Track& track) {
                    {"points", lane.points | std::views::transform(pointEntry) | std::ranges::to<QVariantList>()}}};
            }) |
            std::ranges::to<QVariantList>();
+}
+
+QVariantMap audioRouteEntry(const model::AudioRoute& route) {
+    QVariantList channels;
+    std::ranges::copy(route.channels, std::back_inserter(channels));
+    return {{"device", qs(route.deviceId)}, {"channels", channels}};
+}
+
+// The source names the route's entry in the MIDI input picker: its source track's id, or else its port's.
+QVariantMap midiRouteEntry(const model::MidiRoute& route) {
+    return {{"port", qs(route.portId)},
+            {"sourceTrack", qs(route.sourceTrack.value)},
+            {"source", qs(route.sourceTrack.empty() ? route.portId : route.sourceTrack.value)},
+            {"channel", route.channel},
+            {"thru", route.thru},
+            {"sysex", route.sysex}};
+}
+
+QVariantList sendList(const model::Track& track, const model::Document& document,
+                      const std::function<double(const model::Send&)>& level) {
+    return track.sends | std::views::transform([&](const model::Send& send) {
+               const model::Track* bus = model::findTrack(document, send.bus);
+               return QVariant{QVariantMap{{"bus", qs(send.bus.value)},
+                                           {"busName", bus != nullptr ? qs(bus->name) : QString{}},
+                                           {"db", level(send)},
+                                           {"pre", send.pre},
+                                           {"enabled", send.enabled}}};
+           }) |
+           std::ranges::to<QVariantList>();
+}
+
+QVariantList insertList(const model::Track& track) {
+    return toVariant(track.inserts | std::views::transform(insertState) | std::ranges::to<Json::array_t>()).toList();
+}
+
+QList<double> controlPointList(const model::MidiClip& clip, const QString& lane) {
+    const auto control = model::parseControl(lane.toStdString());
+    if (!control) {
+        return {};
+    }
+    QList<double> flat;
+    for (const model::ControlPoint& point : model::controlPoints(clip, *control)) {
+        flat << static_cast<double>(point.at) << point.value;
+    }
+    return flat;
+}
+
+namespace {
+
+std::string bundledSound(const model::PluginSlot& slot) {
+    const Json state = Json::parse(slot.state.begin(), slot.state.end(), nullptr, false);
+    if (!state.is_object()) {
+        return {};
+    }
+    if (slot.pluginId == kGeneralMidiPluginId) {
+        const auto sound = state.value("sound", -1);
+        return sound >= 0 && std::cmp_less(sound, gm::kSounds.size())
+                   ? std::string{gm::kSounds.at(static_cast<std::size_t>(sound))}
+                   : std::string{};
+    }
+    if (slot.pluginId == kVoicesPluginId && state.contains("voice") && state.at("voice").is_object()) {
+        const Json& voice = state.at("voice");
+        return voice.value("pack", std::string{}) + " / " + voice.value("name", std::string{});
+    }
+    return {};
+}
+
+}  // namespace
+
+QVariantMap instrumentEntry(const model::Track& track) {
+    if (!track.instrument) {
+        return {};
+    }
+    const model::PluginSlot& slot = *track.instrument;
+    return {{"name", qs(slot.name)},
+            {"format", qs(std::string{core::pluginFormatName(slot.format).title})},
+            {"sound", qs(bundledSound(slot))}};
 }
 
 QVariantList paramList(std::span<const AutomationParam> params) {

@@ -30,6 +30,7 @@ Rectangle {
         ChromeButton {
             objectName: "midi.changeLane:" + laneItem.lane
             actionId: "midi.changeLane"
+            enabled: !Registry.readOnly
             width: Math.min(implicitWidth, parent.width - 2 * (Theme.headerButton + parent.spacing))
             text: laneItem.choice.title
             textSize: Theme.textSmall
@@ -60,7 +61,7 @@ Rectangle {
         ChromeButton {
             objectName: "midi.removeLane:" + laneItem.lane
             actionId: "midi.removeLane"
-            visible: laneItem.roll.lanes.length > 1
+            visible: laneItem.roll.lanes.length > 1 && !Registry.readOnly
             implicitWidth: Theme.headerButton
             implicitHeight: Theme.headerButton
             iconName: "x"
@@ -69,7 +70,7 @@ Rectangle {
         }
         ChromeButton {
             objectName: "midi.addLane"
-            visible: laneItem.last
+            visible: laneItem.last && !Registry.readOnly
             implicitWidth: Theme.headerButton
             implicitHeight: Theme.headerButton
             iconName: "plus"

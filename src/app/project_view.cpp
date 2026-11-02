@@ -1,10 +1,18 @@
 #include "emerick/app/project_view.hpp"
 
 #include <QPointF>
+#include <algorithm>
 #include <ranges>
+#include <string>
 #include <tuple>
+#include <vector>
 
 #include "emerick/core/fade.hpp"
+#include "emerick/core/midi.hpp"
+#include "emerick/core/plugin_format.hpp"
+#include "emerick/engine/effects.hpp"
+#include "emerick/model/controls.hpp"
+#include "emerick/model/midi_notes.hpp"
 
 namespace emerick::app {
 
@@ -63,6 +71,61 @@ Json markersState(const model::Document& document) {
                return markerState(std::get<1>(entry), std::get<0>(entry), document.tempo);
            }) |
            std::ranges::to<Json::array_t>();
+}
+
+Json insertState(const model::Insert& insert) {
+    const engine::EffectSpec* spec = engine::findEffect(insert.type);
+    Json state{{"id", insert.id.value},
+               {"type", insert.type},
+               {"title", spec != nullptr ? std::string{spec->title} : insert.type},
+               {"bypass", insert.bypass},
+               {"params", insert.params}};
+    if (insert.plugin) {
+        state["title"] = insert.plugin->name;
+        state["plugin"] = {{"id", insert.plugin->pluginId},
+                           {"format", core::pluginFormatName(insert.plugin->format).id},
+                           {"name", insert.plugin->name},
+                           {"bundle", insert.plugin->bundle}};
+    }
+    return state;
+}
+
+namespace {
+
+constexpr model::Control kSustain{.kind = model::ControlKind::controller, .number = core::midi::kSustainCc};
+
+}  // namespace
+
+Json laneChoices(const model::MidiClip& clip) {
+    const std::vector<model::Control> present = model::controlsIn(clip);
+    const auto choice = [&](std::string_view id, const std::string& title) {
+        const auto control = model::parseControl(id);
+        if (!control) {
+            return Json{{"id", id},
+                        {"title", title},
+                        {"hasData", !clip.notes.empty()},
+                        {"minimum", 1},
+                        {"maximum", model::kMaxVelocity},
+                        {"switched", false}};
+        }
+        return Json{{"id", id},
+                    {"title", title},
+                    {"hasData", std::ranges::contains(present, *control)},
+                    {"minimum", model::controlMinimum(*control)},
+                    {"maximum", model::controlMaximum(*control)},
+                    {"switched", *control == kSustain}};
+    };
+    Json choices = Json::array();
+    for (const LaneName& name : kStandardLanes) {
+        choices.push_back(choice(name.id, std::string{name.title}));
+    }
+    for (const model::Control control : present) {
+        const std::string id = model::controlId(control);
+        if (!std::ranges::contains(kStandardLanes, std::string_view{id}, &LaneName::id)) {
+            choices.push_back(choice(id, "CC " + std::to_string(control.number)));
+        }
+    }
+    return choices;
 }
 
 }  // namespace emerick::app

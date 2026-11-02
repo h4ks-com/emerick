@@ -266,7 +266,7 @@ void registerAudioKind(Registry& registry, ProjectController& controller, Nav& n
         {.kind = "audio",
          .title = "Audio",
          .icon = "waveform",
-         .routes = {.audio = true},
+         .routes = kAudioRoutes,
          .toEngine = [](const model::Track& track,
                         const PlaybackContext& context) { return audioEngineTrack(track, context.folder); },
          .fromTake =
@@ -292,7 +292,7 @@ void registerBusKind(Registry& registry, ProjectController& controller, Nav& nav
         {.kind = "bus",
          .title = "Bus",
          .icon = "arrows-merge",
-         .routes = {.bus = true},
+         .routes = kBusRoutes,
          .toEngine = [](const model::Track& track, const PlaybackContext&) { return busEngineTrack(track); }});
     registry.addAction(
         {.id = "track.addBus",
@@ -329,7 +329,7 @@ void registerMidiKind(Registry& registry, ProjectController& controller, Nav& na
         {.kind = "midi",
          .title = "MIDI",
          .icon = "piano-keys",
-         .routes = {.midi = true},
+         .routes = kMidiRoutes,
          .toEngine = [](const model::Track& track, const PlaybackContext&) { return midiEngineTrack(track); },
          .fromTake =
              [](model::Track& track, const engine::RecordedTake& take, const TakeContext& context) {

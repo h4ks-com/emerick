@@ -47,6 +47,7 @@ public:
         playsAudio,
         instrumentId,
         instrumentName,
+        instrument,
         sends,
         inserts,
         outputBusName,
@@ -102,8 +103,6 @@ private:
     [[nodiscard]] const model::MidiClip* midiClipWithId(const QString& id) const;
     [[nodiscard]] QVariantMap previewEntry(const model::TrackId& id, ClipType type) const;
     [[nodiscard]] RowContext rowContext() const;
-    [[nodiscard]] QVariantList sendList(const model::Track& track) const;
-    [[nodiscard]] QString trackName(const model::TrackId& id) const;
     [[nodiscard]] bool isBus(const model::TrackId& id) const;
 
     ProjectController& controller_;

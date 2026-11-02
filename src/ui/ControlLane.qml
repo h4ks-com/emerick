@@ -49,7 +49,7 @@ Item {
         id: edit
         objectName: "midi.setControl:" + values.choice.id
         anchors.fill: parent
-        enabled: values.roll.hasClip
+        enabled: values.roll.hasClip && !Registry.readOnly
         hoverEnabled: true
         property string mode: ""
         property point pressAt

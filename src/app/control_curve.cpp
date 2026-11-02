@@ -4,6 +4,8 @@
 #include <QPolygonF>
 #include <algorithm>
 #include <cmath>
+#include <span>
+#include <vector>
 
 namespace emerick::app {
 
@@ -12,11 +14,22 @@ namespace {
 constexpr double kFillAlpha = 0.3;
 constexpr double kLineWidth = 1.5;
 constexpr double kDotRadius = 2.5;
-// We draw a point's dot only where it stands this far from the last dot, so dense recordings read as a line.
-constexpr double kDotSpacing = 8.0;
+constexpr double kHoveredDotRadius = 3.5;
 constexpr int kSwitchedOn = 64;
 
 }  // namespace
+
+std::vector<QPointF> spacedDots(std::span<const QPointF> points) {
+    std::vector<QPointF> dots;
+    for (std::size_t index = 0; index < points.size(); ++index) {
+        const bool farFromPrevious = index == 0 || points[index].x() - points[index - 1].x() >= kDotSpacing;
+        const bool farFromNext = index + 1 == points.size() || points[index + 1].x() - points[index].x() >= kDotSpacing;
+        if (farFromPrevious && farFromNext) {
+            dots.push_back(points[index]);
+        }
+    }
+    return dots;
+}
 
 ControlCurve::ControlCurve(QQuickItem* parent) : QQuickPaintedItem(parent) { setAntialiasing(true); }
 
@@ -103,7 +116,7 @@ void ControlCurve::paintBlocks(QPainter* painter) const {
 void ControlCurve::paintSteps(QPainter* painter) const {
     const double right = width() + 1;
     QPolygonF line;
-    QList<QPointF> dots;
+    std::vector<QPointF> columns;
     double column = 0;
     double top = 0;
     double bottom = 0;
@@ -124,9 +137,7 @@ void ControlCurve::paintSteps(QPainter* painter) const {
             line << QPointF{column, last} << QPointF{x, last};
         }
         line << QPointF{x, y};
-        if (dots.isEmpty() || x - dots.back().x() >= kDotSpacing) {
-            dots << QPointF{x, y};
-        }
+        columns.emplace_back(x, y);
         column = x;
         top = y;
         bottom = y;
@@ -150,8 +161,12 @@ void ControlCurve::paintSteps(QPainter* painter) const {
     painter->drawPolyline(line);
     painter->setPen(Qt::NoPen);
     painter->setBrush(color_);
-    for (const QPointF& dot : dots) {
+    for (const QPointF& dot : spacedDots(columns)) {
         painter->drawEllipse(dot, kDotRadius, kDotRadius);
+    }
+    if (hovered_ >= 0 && hovered_ < count()) {
+        const Step& step = steps_[static_cast<std::size_t>(hovered_)];
+        painter->drawEllipse(QPointF{xOf(step.at), yOf(step.value)}, kHoveredDotRadius, kHoveredDotRadius);
     }
 }
 

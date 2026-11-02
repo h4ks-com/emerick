@@ -64,7 +64,11 @@ DockPanel {
     function scrollKeys(dy) {
         middleRow = (clampedScroll(scrollY + dy) + gridHeight / 2) / keyHeight
     }
-    function showNotes() {
+    function frameClip() {
+        if (hasClip && gridWidth > 0 && clipLength > 0) {
+            Nav.pixelsPerTick = gridWidth / clipLength
+            Nav.scrollTicks = clipStart
+        }
         const pitches = notes.length > 0 ? notes.map(note => note.pitch) : [60]
         const low = Math.min(...pitches)
         const high = Math.max(...pitches)
@@ -120,9 +124,9 @@ DockPanel {
     readonly property string clipId: Nav.pianoRollClip
     onClipIdChanged: {
         controlRange = null
-        Qt.callLater(showNotes)
+        Qt.callLater(frameClip)
     }
-    Component.onCompleted: Qt.callLater(showNotes)
+    Component.onCompleted: Qt.callLater(frameClip)
 
     readonly property var keyActions: ({
         [Qt.Key_Up]: event => ({id: "midi.moveNotes", params: {pitch: event.modifiers & Qt.ShiftModifier ? 12 : 1}}),

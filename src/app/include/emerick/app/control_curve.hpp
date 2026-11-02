@@ -2,14 +2,23 @@
 
 #include <QColor>
 #include <QList>
+#include <QPointF>
 #include <QQuickPaintedItem>
+#include <span>
 #include <vector>
 
 namespace emerick::app {
 
+// Dense data reads as a line, so a point gets a dot only where both neighbours stand this many pixels away.
+inline constexpr double kDotSpacing = 16.0;
+
+// The points, in x order, that stand at least kDotSpacing from both neighbours.
+std::vector<QPointF> spacedDots(std::span<const QPointF> points);
+
 // Draws a controller lane's values as steps that hold until the next point, filled from the bottom or, when the
 // minimum is below zero, from the center. A switched lane, such as sustain, draws each on stretch as a block. Points
-// arrive flat as at, value, at, value in time order, with at in ticks from the clip start.
+// arrive flat as at, value, at, value in time order, with at in ticks from the clip start. A point gets a dot where it
+// stands apart from its neighbours and while it is the hovered point.
 class ControlCurve : public QQuickPaintedItem {
     Q_OBJECT
     Q_PROPERTY(QList<double> points READ points WRITE setPoints NOTIFY curveChanged)
@@ -20,6 +29,7 @@ class ControlCurve : public QQuickPaintedItem {
     Q_PROPERTY(double pixelsPerTick MEMBER pixelsPerTick_ WRITE setPixelsPerTick NOTIFY curveChanged)
     Q_PROPERTY(double length MEMBER length_ WRITE setLength NOTIFY curveChanged)
     Q_PROPERTY(QColor color MEMBER color_ WRITE setColor NOTIFY curveChanged)
+    Q_PROPERTY(int hovered MEMBER hovered_ WRITE setHovered NOTIFY curveChanged)
     Q_PROPERTY(int count READ count NOTIFY curveChanged)
 
 public:
@@ -35,6 +45,7 @@ public:
     void setPixelsPerTick(double value) { assign(pixelsPerTick_, value); }
     void setLength(double value) { assign(length_, value); }
     void setColor(const QColor& value) { assign(color_, value); }
+    void setHovered(int value) { assign(hovered_, value); }
 
     // The index of the point nearest x within slack pixels, or -1.
     Q_INVOKABLE int indexNear(double x, double slack) const;
@@ -76,6 +87,7 @@ private:
     double pixelsPerTick_ = 1;
     double length_ = 0;
     QColor color_;
+    int hovered_ = -1;
 };
 
 }  // namespace emerick::app

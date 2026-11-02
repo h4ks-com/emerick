@@ -2,7 +2,7 @@ import QtQuick
 import QtQuick.Controls.Basic
 import Emerick.App
 
-// One controller's values as steps. With the pencil, or with Command held, a drag draws values; otherwise a drag on
+// One controller's values as a line that holds each value until the next point. With the pencil, or with Command held, a drag draws values; otherwise a drag on
 // a point moves it, a drag on empty space selects a range for Delete, and Alt-click removes a point.
 Item {
     id: values
@@ -22,6 +22,8 @@ Item {
         pixelsPerTick: values.roll.pixelsPerTick
         length: values.roll.clipLength
         color: Theme.trackColors[(values.roll.clip.colorIndex ?? 0) % Theme.trackColors.length]
+        hovered: edit.containsMouse && (edit.mode === "" || edit.mode === "move")
+                 ? indexNear(edit.mouseX, Theme.controlPointSlack) : -1
     }
 
     Rectangle {
@@ -48,6 +50,7 @@ Item {
         objectName: "midi.setControl:" + values.choice.id
         anchors.fill: parent
         enabled: values.roll.hasClip
+        hoverEnabled: true
         property string mode: ""
         property point pressAt
         property real pressTick

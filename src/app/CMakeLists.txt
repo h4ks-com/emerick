@@ -141,6 +141,7 @@ if(EMERICK_BUILD_TESTS)
         tests/clip_loop_test.cpp
         tests/clip_mute_test.cpp
         tests/code_highlighter_test.cpp
+        tests/control_curve_test.cpp
         tests/console_test.cpp
         tests/cycle_test.cpp
         tests/devices_test.cpp

@@ -212,6 +212,20 @@ TEST_CASE("the piano roll fits and centers its keys on the notes of the clip it 
     empty.main.rig.nav.setKeyHeight(kDefaultKeyHeight);
 }
 
+TEST_CASE("the piano roll opens framed on its clip, its ruler starting at the clip and the clip filling its width") {
+    Roll roll;
+    const auto ticksPerBar = roll.main.rig.controller->ticksPerBar();
+    const std::string clip =
+        roll.main.rig.run("midi.addClip", {{"track", roll.track}, {"at", 4 * ticksPerBar}, {"length", 2 * ticksPerBar}})
+            .at("id");
+    roll.main.rig.run("midi.editClip", {{"clip", clip}});
+    MainWindow::settle();
+    CHECK(roll.main.rig.nav.scrollTicks() == Catch::Approx(static_cast<double>(4 * ticksPerBar)));
+    CHECK(roll.call("xOf", 0) == Catch::Approx(0).margin(0.5));
+    CHECK(roll.call("xOf", static_cast<double>(2 * ticksPerBar)) ==
+          Catch::Approx(roll.main.item("pianoRoll.grid")->width()).margin(1));
+}
+
 TEST_CASE("the piano keys are shaped like a keyboard and a press plays the key under the pointer") {
     const Roll roll;
     QQuickItem* keyboard = roll.main.item("midi.audition")->parentItem();

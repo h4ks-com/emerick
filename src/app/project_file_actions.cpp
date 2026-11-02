@@ -153,23 +153,24 @@ void registerProjectFileActions(Registry& registry, ProjectController& controlle
                         .shortcut = "Ctrl+W",
                         .run = startNew,
                         .menus = {kFileMenu}});
-    registry.addAction({.id = "project.save",
-                        .title = "Save project",
-                        .description = "Saves the project, and with collect first copies the files it names from "
-                                       "outside its bundle into it.",
-                        .category = "Project",
-                        .shortcut = "Ctrl+S",
-                        .schema = {{"properties", {{"collect", {{"type", "boolean"}}}}}},
-                        .run =
-                            [&registry, &controller](const Json& params) {
-                                const std::optional<CollectedFiles> collected =
-                                    optionalParam<bool>(params, "collect").value_or(false)
-                                        ? std::optional{collectFiles(registry, controller)}
-                                        : std::nullopt;
-                                controller.save();
-                                return collected ? collectedState(controller, *collected) : projectState(controller);
-                            },
-                        .menus = {kFileMenu}});
+    registry.addAction(
+        {.id = "project.save",
+         .title = "Save project",
+         .description = "Saves the project. A self-contained project, or a save with collect, first "
+                        "copies the files it names from outside its bundle into it.",
+         .category = "Project",
+         .shortcut = "Ctrl+S",
+         .schema = {{"properties", {{"collect", {{"type", "boolean"}}}}}},
+         .run =
+             [&registry, &controller](const Json& params) {
+                 const bool collect =
+                     optionalParam<bool>(params, "collect").value_or(controller.project().document().selfContained);
+                 const std::optional<CollectedFiles> collected =
+                     collect ? std::optional{collectFiles(registry, controller)} : std::nullopt;
+                 controller.save();
+                 return collected ? collectedState(controller, *collected) : projectState(controller);
+             },
+         .menus = {kFileMenu}});
     registry.addAction(
         {.id = "project.collectFiles",
          .title = "Collect project files",
@@ -180,6 +181,23 @@ void registerProjectFileActions(Registry& registry, ProjectController& controlle
          .category = "Project",
          .run = [&registry,
                  &controller](const Json&) { return collectedState(controller, collectFiles(registry, controller)); },
+         .menus = {kFileMenu}});
+    registry.addAction(
+        {.id = "project.setSelfContained",
+         .title = "Turn self-contained project on or off",
+         .description = "A self-contained project copies the files it names into its bundle on every save and keeps "
+                        "the loaded style inside project.json, so the bundle, or project.json alone, opens anywhere. "
+                        "Off, saves store paths relative to the bundle.",
+         .aliases = {"keep files in project", "embed files", "portable project"},
+         .category = "Project",
+         .schema = {{"properties", {{"on", {{"type", "boolean"}}}}}},
+         .run =
+             [&controller](const Json& params) {
+                 const bool on =
+                     optionalParam<bool>(params, "on").value_or(!controller.project().document().selfContained);
+                 controller.project().setSelfContained(on, on ? "make project self-contained" : "store files by path");
+                 return Json{{"selfContained", controller.project().document().selfContained}};
+             },
          .menus = {kFileMenu}});
     registry.addAction({.id = "project.saveAs",
                         .title = "Save project as",

@@ -700,7 +700,7 @@ TEST_CASE("a style inside the bundle or beside it is saved relative to the bundl
     }
 }
 
-TEST_CASE("project.json alone plays its style after the style file is gone, since the Arranger state holds its bytes") {
+TEST_CASE("a self-contained project.json alone plays its style after the style file is gone") {
     ArrangerRig rig;
     const std::filesystem::path bundle = rig.path("Work/Song.erk");
     rig.run("project.saveAs", {{"path", bundle.string()}});
@@ -708,6 +708,10 @@ TEST_CASE("project.json alone plays its style after the style file is gone, sinc
     const std::string style = rig.trackOfKind("yamaha.style");
     rig.run("arranger.style.load", {{"track", style}, {"path", rig.demo.string()}});
     playMainA(rig, style);
+    rig.run("project.save");
+    CHECK_FALSE(savedArrangerState(bundle, style).contains("data"));
+
+    CHECK(rig.run("project.setSelfContained", {{"on", true}}).at("selfContained") == true);
     rig.run("project.save");
     CHECK(savedArrangerState(bundle, style).at("data") == core::toBase64(fileBytes(rig.demo.string())));
 

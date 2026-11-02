@@ -273,6 +273,7 @@ Json projectState(ProjectController& controller) {
     const model::Document& document = project.document();
     Json result{{"path", controller.folder().string()},
                 {"untitled", controller.untitled()},
+                {"selfContained", document.selfContained},
                 {"tempo", tempoState(document.tempo)},
                 {"clockOut", document.clockPorts},
                 {"markers", markersState(document)},

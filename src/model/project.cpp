@@ -73,6 +73,12 @@ void Project::setCycle(const Cycle& cycle, std::string name) {
     }
 }
 
+void Project::setSelfContained(bool selfContained, std::string name) {
+    if (selfContained != document_.selfContained) {
+        execute({std::move(name), SetSelfContained{document_.selfContained, selfContained}});
+    }
+}
+
 void Project::group(std::string name, const std::function<void()>& edits) {
     leaveGesture();
     const std::size_t first = next_;

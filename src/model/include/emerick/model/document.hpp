@@ -230,6 +230,8 @@ struct Document {
     std::vector<std::string> clockPorts;                   // MIDI outputs that get clock, Start and Stop
     nlohmann::json pluginData = nlohmann::json::object();  // one plugin-owned value per plugin id
     Cycle cycle = {};
+    // Saves copy the files the project names into its bundle and keep the loaded style inside project.json.
+    bool selfContained = false;
 
     bool operator==(const Document&) const = default;
 };

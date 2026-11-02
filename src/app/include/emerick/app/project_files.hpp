@@ -11,7 +11,8 @@
 namespace emerick::app {
 
 // The document holds absolute paths in our bundled plugins' state, and project.json holds the ones inside the folder
-// the bundle sits in relative to the bundle, so a project moved with its files still finds them.
+// the bundle sits in relative to the bundle, so a project moved with its files still finds them. Only a self-contained
+// project keeps the Arranger's embedded style in project.json.
 model::Document withRelativePluginPaths(model::Document document, const std::filesystem::path& bundle);
 model::Document withAbsolutePluginPaths(model::Document document, const std::filesystem::path& bundle);
 

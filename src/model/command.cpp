@@ -61,6 +61,7 @@ void apply(Document& document, const Command& command) {
                           [&](const SetPluginData& op) { setPluginData(document, op.plugin, op.after); },
                           [&](const SetMarkers& op) { document.markers = op.after; },
                           [&](const SetCycle& op) { document.cycle = op.after; },
+                          [&](const SetSelfContained& op) { document.selfContained = op.after; },
                           [&](const Group& op) {
                               for (const Command& step : op.commands) {
                                   apply(document, step);
@@ -79,6 +80,7 @@ void revert(Document& document, const Command& command) {
                           [&](const SetPluginData& op) { setPluginData(document, op.plugin, op.before); },
                           [&](const SetMarkers& op) { document.markers = op.before; },
                           [&](const SetCycle& op) { document.cycle = op.before; },
+                          [&](const SetSelfContained& op) { document.selfContained = op.before; },
                           [&](const Group& op) {
                               for (const Command& step : op.commands | std::views::reverse) {
                                   revert(document, step);
@@ -93,7 +95,7 @@ Change changeOf(const Command& command) {
                    [](const RemoveTrack&) { return Change{}; }, [](const MoveTrack&) { return Change{}; },
                    [](const SetTempo&) { return Change{}; }, [](const SetClockPorts&) { return Change{}; },
                    [](const SetPluginData&) { return Change{}; }, [](const SetMarkers&) { return Change{}; },
-                   [](const SetCycle&) { return Change{}; },
+                   [](const SetCycle&) { return Change{}; }, [](const SetSelfContained&) { return Change{}; },
                    [](const Group& op) {
                        const auto changes = op.commands | std::views::transform(changeOf);
                        return changes.empty() ? Change{} : std::ranges::fold_left(changes, changes.front(), merged);

@@ -91,7 +91,34 @@ std::filesystem::path copyInto(const std::filesystem::path& source, const std::f
 
 }  // namespace
 
+void dropEmbeddedStyle(model::PluginSlot& slot) {
+    nlohmann::json state = nlohmann::json::parse(slot.state.begin(), slot.state.end(), nullptr, false);
+    if (slot.pluginId != kArrangerPluginId || !state.is_object() || !state.contains("data")) {
+        return;
+    }
+    state.erase("data");
+    const std::string text = state.dump();
+    slot.state.assign(text.begin(), text.end());
+}
+
+model::Document withoutEmbeddedStyles(model::Document document) {
+    for (model::Track& track : document.tracks) {
+        if (track.instrument) {
+            dropEmbeddedStyle(*track.instrument);
+        }
+        for (model::Insert& insert : track.inserts) {
+            if (insert.plugin) {
+                dropEmbeddedStyle(*insert.plugin);
+            }
+        }
+    }
+    return document;
+}
+
 model::Document withRelativePluginPaths(model::Document document, const std::filesystem::path& bundle) {
+    if (!document.selfContained) {
+        document = withoutEmbeddedStyles(std::move(document));
+    }
     return withPluginPaths(std::move(document), [&](const std::string& path) {
         if (!std::filesystem::path{path}.is_absolute() || !inside(path, bundle.parent_path())) {
             return path;

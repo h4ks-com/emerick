@@ -218,6 +218,26 @@ TEST_CASE("marker keys add and visit markers, the list locates, a double click r
     MainWindow::settle();
 }
 
+TEST_CASE("a clip header shows its track and take until the clip is renamed in place") {
+    MainWindow& main = MainWindow::instance();
+    main.rig.nav.setScrollTicks(0);
+    const std::string keys = main.rig.run("track.addMidi", {{"name", "Keys"}}).at("id");
+    const std::string clip = main.rig.run("midi.addClip", {{"track", keys}, {"at", 0}}).at("id");
+    MainWindow::settle();
+    QQuickItem* name = main.item("clip.name:" + qid(clip));
+    CHECK(name->property("text").toString() == "Keys   Take 1");
+
+    main.rig.run("clip.beginRename", {{"clip", clip}});
+    REQUIRE(processUntil([&] { return main.item("clip.rename:" + qid(clip))->hasActiveFocus(); }));
+    typeText(main, "Intro");
+    QTest::keyClick(main.window, Qt::Key_Return);
+    CHECK(processUntil([&] { return name->property("text").toString() == "Intro"; }));
+    CHECK(main.rig.nav.renamingClip().isEmpty());
+    main.rig.run("project.undo");
+    CHECK(processUntil([&] { return name->property("text").toString() == "Keys   Take 1"; }));
+    MainWindow::settle();
+}
+
 TEST_CASE("the settings close button and Escape close settings") {
     MainWindow& main = MainWindow::instance();
     main.rig.run("settings.open");

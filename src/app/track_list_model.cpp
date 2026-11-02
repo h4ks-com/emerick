@@ -156,6 +156,7 @@ QVariantMap TrackListModel::clipEntry(const model::Clip& clip, int take) const {
     QVariantMap entry{{"id", qs(model::clipId(clip).value)},
                       {"take", take},
                       {"muted", model::clipMuted(clip)},
+                      {"name", qs(model::clipName(clip))},
                       {"start", QVariant::fromValue(start)},
                       {"length", QVariant::fromValue(model::clipLength(clip))},
                       {"end", QVariant::fromValue(end)},

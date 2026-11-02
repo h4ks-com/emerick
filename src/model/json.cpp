@@ -151,7 +151,8 @@ MidiClip midiClipFromJson(const nlohmann::json& json) {
                   json.at("events"),
                   {},
                   json.value("muted", false),
-                  json.value("loopLength", Ticks{0})};
+                  json.value("loopLength", Ticks{0}),
+                  json.value("name", std::string{})};
     const auto notes = json.find("notes");
     if (notes == json.end()) {
         gatherNotes(clip);
@@ -182,7 +183,8 @@ constexpr std::array kClipTypes{
                                   fadeShapeFromJson(json, "fadeOutShape"),
                                   json.value("fadeInCurve", 0.0),
                                   json.value("fadeOutCurve", 0.0),
-                                  json.value("muted", false)};
+                                  json.value("muted", false),
+                                  json.value("name", std::string{})};
              }},
     ClipType{"midi", [](const nlohmann::json& json) -> Clip { return midiClipFromJson(json); }},
 };
@@ -217,6 +219,9 @@ nlohmann::json clipToJson(const Clip& clip) {
                                     }},
                    clip);
     json["type"] = kClipTypes.at(clip.index()).name;
+    if (!clipName(clip).empty()) {
+        json["name"] = clipName(clip);
+    }
     return json;
 }
 

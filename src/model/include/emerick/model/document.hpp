@@ -65,6 +65,7 @@ struct AudioClip {
     double fadeInCurve = 0.0;
     double fadeOutCurve = 0.0;
     bool muted = false;
+    std::string name;
 
     bool operator==(const AudioClip&) const = default;
 };
@@ -99,6 +100,7 @@ struct MidiClip {
     // How far the clip runs on the timeline repeating its content, as a looped region in Logic. The content keeps its
     // own length, and the clip loops only while loopLength is longer.
     Ticks loopLength = 0;
+    std::string name;
 
     bool operator==(const MidiClip&) const = default;
 };
@@ -244,6 +246,8 @@ struct ClipRef {
 const ClipId& clipId(const Clip& clip);
 bool clipMuted(const Clip& clip);
 void setClipMuted(Clip& clip, bool muted);
+const std::string& clipName(const Clip& clip);
+void setClipName(Clip& clip, std::string name);
 
 Track* findTrack(Document& document, const TrackId& id);
 const Track* findTrack(const Document& document, const TrackId& id);

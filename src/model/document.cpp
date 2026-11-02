@@ -4,6 +4,8 @@
 #include <iterator>
 #include <ranges>
 #include <set>
+#include <string>
+#include <utility>
 
 namespace emerick::model {
 
@@ -17,6 +19,14 @@ bool clipMuted(const Clip& clip) {
 
 void setClipMuted(Clip& clip, bool muted) {
     std::visit([muted](auto& value) { value.muted = muted; }, clip);
+}
+
+const std::string& clipName(const Clip& clip) {
+    return std::visit([](const auto& value) -> const std::string& { return value.name; }, clip);
+}
+
+void setClipName(Clip& clip, std::string name) {
+    std::visit([&name](auto& value) { value.name = std::move(name); }, clip);
 }
 
 Track* findTrack(Document& document, const TrackId& id) {

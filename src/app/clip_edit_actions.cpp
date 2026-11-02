@@ -121,6 +121,22 @@ Json setClipsMuted(ProjectController& controller, const Nav& nav, const Json& pa
     return clipResults(controller, ids);
 }
 
+Json renameClips(ProjectController& controller, Nav& nav, const Json& params) {
+    const auto ids = targetClips(controller, nav, params);
+    const auto name = param<std::string>(params, "name");
+    nav.setRenamingClip({});
+    const std::string undoName = name.empty() ? "clear clip name" : "rename clip to " + name;
+    controller.project().group(undoName, [&] {
+        for (const model::ClipId& id : ids) {
+            controller.project().editTrack(
+                controller.project().findClip(id)->track->id, undoName, [&](model::Track& track) {
+                    model::setClipName(*std::ranges::find(track.clips, id, model::clipId), name);
+                });
+        }
+    });
+    return clipResults(controller, ids);
+}
+
 constexpr double kFitMargin = 0.05;
 
 // Fits the selected clips, or the whole project, into the lanes with a small margin on each side.
@@ -211,6 +227,29 @@ void registerClipEditActions(Registry& registry, ProjectController& controller, 
                {{"clip", {{"type", "string"}}}, {"clips", {{"type", "array"}}}, {"value", {{"type", "boolean"}}}}}},
          .run = [&controller, &nav](const Json& params) { return setClipsMuted(controller, nav, params); },
          .menus = {kEditMenu, kClipContextMenu}});
+    registry.addAction({.id = "clip.beginRename",
+                        .title = "Rename clip",
+                        .aliases = {"name clip", "rename region"},
+                        .category = "Clips",
+                        .schema = {{"properties", {{"clip", {{"type", "string"}}}}}},
+                        .run =
+                            [&controller, &nav](const Json& params) {
+                                const model::ClipId id = targetClips(controller, nav, params).front();
+                                nav.setSelectedClips({qs(id.value)});
+                                nav.setRenamingClip(qs(id.value));
+                                return clipResult(controller, id);
+                            },
+                        .menus = {kEditMenu, kClipContextMenu},
+                        .windowOnly = true});
+    registry.addAction(
+        {.id = "clip.rename",
+         .title = "Set clip name",
+         .description = "Names the clips, or the selected clips. The clip header shows the name, and an empty name "
+                        "shows the track name and take number again.",
+         .category = "Clips",
+         .schema = {{"required", {"name"}},
+                    {"properties", {{"clip", {{"type", "string"}}}, {"name", {{"type", "string"}}}}}},
+         .run = [&controller, &nav](const Json& params) { return renameClips(controller, nav, params); }});
     registry.addAction(
         {.id = "clip.selectPrevious",
          .title = "Select previous clip",

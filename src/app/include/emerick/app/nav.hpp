@@ -31,6 +31,7 @@ class Nav : public QObject {
     Q_PROPERTY(QString renamingTrack READ renamingTrack WRITE setRenamingTrack NOTIFY changed)
     Q_PROPERTY(QString selectedMarker READ selectedMarker WRITE setSelectedMarker NOTIFY selectionChanged)
     Q_PROPERTY(QString renamingMarker READ renamingMarker WRITE setRenamingMarker NOTIFY changed)
+    Q_PROPERTY(QString renamingClip READ renamingClip WRITE setRenamingClip NOTIFY changed)
     Q_PROPERTY(QString trackMenu READ trackMenu WRITE setTrackMenu NOTIFY changed)
     Q_PROPERTY(bool paletteOpen READ paletteOpen WRITE setPaletteOpen NOTIFY changed)
     Q_PROPERTY(bool aboutOpen READ aboutOpen WRITE setAboutOpen NOTIFY changed)
@@ -72,6 +73,7 @@ public:
     [[nodiscard]] QString selectedMarker() const { return selectedMarker_; }
     // The marker whose flag shows its name field.
     [[nodiscard]] QString renamingMarker() const { return renamingMarker_; }
+    [[nodiscard]] QString renamingClip() const { return renamingClip_; }
     // The track whose context menu is open.
     [[nodiscard]] QString trackMenu() const { return trackMenu_; }
     [[nodiscard]] bool paletteOpen() const { return paletteOpen_; }
@@ -133,6 +135,7 @@ public:
         assign(selectedMarker_, value, &Nav::selectionChanged);
     }
     void setRenamingMarker(const QString& value) { assign(renamingMarker_, value, &Nav::changed); }
+    void setRenamingClip(const QString& value) { assign(renamingClip_, value, &Nav::changed); }
     void setTrackMenu(const QString& value) { assign(trackMenu_, value, &Nav::changed); }
     void setPaletteOpen(bool value) { assign(paletteOpen_, value, &Nav::changed); }
     void setAboutOpen(bool value) { assign(aboutOpen_, value, &Nav::changed); }
@@ -272,6 +275,7 @@ private:
     QString renamingTrack_;
     QString selectedMarker_;
     QString renamingMarker_;
+    QString renamingClip_;
     QString trackMenu_;
     bool paletteOpen_ = false;
     bool aboutOpen_ = false;

@@ -691,3 +691,31 @@ TEST_CASE("the arrow keys step the playhead by one bar and Shift steps eight, an
     rig.run("project.setTempo", {{"bpm", 60}});
     CHECK(processUntil([&] { return rig.controller->positionTicks() == 9 * bar; }));
 }
+
+TEST_CASE("renaming clips names them in one undo step, and an empty name clears it") {
+    ProjectRig rig;
+    const std::string keys = rig.run("track.addMidi", {{"name", "Keys"}}).at("id");
+    const std::string first = rig.run("midi.addClip", {{"track", keys}, {"at", 0}}).at("id");
+    const std::string second = rig.run("midi.addClip", {{"track", keys}, {"at", 3840}}).at("id");
+    const auto nameOf = [&](const std::string& id) {
+        return model::clipName(*rig.controller->project().findClip(model::ClipId{id})->clip);
+    };
+
+    const Json renamed = rig.run("clip.rename", {{"clip", first}, {"name", "Intro"}});
+    CHECK(renamed.at("clips").at(0).at("name") == "Intro");
+    CHECK(nameOf(first) == "Intro");
+    CHECK(rig.controller->project().undoName() == "rename clip to Intro");
+    CHECK(projectState(*rig.controller).at("tracks").at(0).at("clips").at(0).at("name") == "Intro");
+
+    rig.nav.setSelectedClips({QString::fromStdString(first), QString::fromStdString(second)});
+    rig.run("clip.rename", {{"name", "Verse"}});
+    CHECK(nameOf(first) == "Verse");
+    CHECK(nameOf(second) == "Verse");
+    rig.run("project.undo");
+    CHECK(nameOf(first) == "Intro");
+    CHECK(nameOf(second).empty());
+
+    rig.run("clip.rename", {{"clip", first}, {"name", ""}});
+    CHECK(nameOf(first).empty());
+    CHECK_THROWS_AS(rig.run("clip.rename", {{"clip", first}}), AppError);
+}

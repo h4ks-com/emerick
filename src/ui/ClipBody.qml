@@ -151,7 +151,9 @@ Item {
                 anchors.leftMargin: label.leftEdge + (mutedIcon.visible ? mutedIcon.width + Theme.space1 : 0)
                 anchors.rightMargin: Theme.space1
                 verticalAlignment: Text.AlignVCenter
-                text: content.clipItem.trackName + "   Take " + content.clipItem.clip.take
+                objectName: "clip.name:" + content.clipItem.clipId
+                visible: !rename.visible
+                text: content.clipItem.clip.name || content.clipItem.trackName + "   Take " + content.clipItem.clip.take
                 color: Theme.ink
                 font.pixelSize: Theme.textSmall
                 font.weight: Font.Medium
@@ -278,6 +280,47 @@ Item {
         border.width: Theme.selectionWidth
         border.color: Theme.tape
         visible: content.clipItem.selected
+    }
+
+    TextField {
+        id: rename
+        objectName: "clip.rename:" + content.clipItem.clipId
+        z: 1
+        x: label.leftEdge
+        y: Theme.clipInset
+        width: Math.max(Theme.labelWidth, parent.width - x - Theme.space1)
+        height: Theme.clipLabelHeight
+        visible: Nav.renamingClip !== "" && Nav.renamingClip === content.clipItem.clipId
+        ToolTip.text: Registry.actionInfo("clip.rename").title
+        ToolTip.visible: hovered && !activeFocus
+        ToolTip.delay: Theme.tooltipDelay
+        padding: 0
+        leftPadding: Theme.space1
+        color: Theme.ink
+        font.pixelSize: Theme.textSmall
+        background: Rectangle {
+            color: Theme.graphite
+            radius: Theme.radiusClip / 2
+            border.color: Theme.rule
+        }
+        // A hidden field keeps the focus it had, which would turn the window's shortcuts off.
+        onVisibleChanged: {
+            if (visible) {
+                text = content.clipItem.clip.name
+                forceActiveFocus()
+                selectAll()
+            } else {
+                focus = false
+            }
+        }
+        onAccepted: {
+            if (text !== content.clipItem.clip.name) {
+                Registry.runAction("clip.rename", {clip: content.clipItem.clipId, name: text})
+            }
+            Nav.renamingClip = ""
+        }
+        onActiveFocusChanged: if (!activeFocus && visible) Nav.renamingClip = ""
+        Keys.onEscapePressed: Nav.renamingClip = ""
     }
 
     MouseArea {

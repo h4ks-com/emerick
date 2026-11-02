@@ -38,13 +38,28 @@ Document sampleDocument() {
     track.audioIn = {"genos", {1, 2}};
     track.midiIn = {"Digital Keyboard Port 1", 3, true, true, {}};
     track.data = {{"voices", {1, 2, 3}}};
-    track.clips.emplace_back(AudioClip{ClipId::make(), 960, 3840, 44100, "audio/take1.wav", -3.5, 10, 20,
-                                       FadeShape::sCurve, FadeShape::equalPower, 0.25, -0.5});
+    track.clips.emplace_back(AudioClip{ClipId::make(),
+                                       960,
+                                       3840,
+                                       44100,
+                                       "audio/take1.wav",
+                                       -3.5,
+                                       10,
+                                       20,
+                                       FadeShape::sCurve,
+                                       FadeShape::equalPower,
+                                       0.25,
+                                       -0.5,
+                                       false,
+                                       {}});
     track.clips.emplace_back(MidiClip{ClipId::make(),
                                       0,
                                       1920,
                                       {{480, {0xF0, 0x43, 0xF7}}},
-                                      {{.pitch = 60, .velocity = 90, .start = 0, .length = 480, .channel = 3}}});
+                                      {{.pitch = 60, .velocity = 90, .start = 0, .length = 480, .channel = 3}},
+                                      false,
+                                      0,
+                                      {}});
     document.tracks.push_back(track);
     document.tracks.push_back(named("Bass"));
     document.markers = {{.name = "Intro", .at = 0}, {.name = "Chorus", .at = 7680, .color = 3}};
@@ -185,6 +200,17 @@ TEST_CASE("clip mute and record delay round trip, and a format 7 project loads w
     CHECK(old.tracks[0].recordDelayMs == 0.0);
     CHECK_FALSE(clipMuted(old.tracks[0].clips[0]));
     CHECK_FALSE(clipMuted(old.tracks[0].clips[1]));
+}
+
+TEST_CASE("a clip name round trips, and a clip saved without one loads unnamed") {
+    Document document = sampleDocument();
+    setClipName(document.tracks[0].clips[0], "Verse vocal");
+    const auto json = toJson(document);
+    CHECK(json["tracks"][0]["clips"][0]["name"] == "Verse vocal");
+    CHECK_FALSE(json["tracks"][0]["clips"][1].contains("name"));
+    const Document loaded = documentFromJson(json);
+    CHECK(clipName(loaded.tracks[0].clips[0]) == "Verse vocal");
+    CHECK(clipName(loaded.tracks[0].clips[1]).empty());
 }
 
 TEST_CASE("reaches follows sends and output buses through a chain of buses") {
@@ -528,8 +554,8 @@ TEST_CASE("overlapping clips stack and survive edits, undo and json") {
     Project project;
     const Track track = named("takes");
     project.addTrack(track);
-    const AudioClip take1{ClipId::make(), 0, 3840, 0, "audio/a.wav"};
-    const AudioClip take2{ClipId::make(), 960, 3840, 0, "audio/b.wav"};
+    const AudioClip take1{.id = ClipId::make(), .start = 0, .length = 3840, .file = "audio/a.wav", .name = {}};
+    const AudioClip take2{.id = ClipId::make(), .start = 960, .length = 3840, .file = "audio/b.wav", .name = {}};
     project.editTrack(track.id, "add clip", [&](Track& edited) { edited.clips.emplace_back(take1); });
     project.editTrack(track.id, "add clip", [&](Track& edited) { edited.clips.emplace_back(take2); });
 

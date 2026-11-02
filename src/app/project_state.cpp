@@ -159,13 +159,15 @@ Json clipState(const model::Clip& clip, const core::TempoMap& tempo, bool includ
                                             {"fadeOutShape", core::fadeShapeId(audio.fadeOutShape)},
                                             {"fadeInCurve", audio.fadeInCurve},
                                             {"fadeOutCurve", audio.fadeOutCurve},
-                                            {"muted", audio.muted}});
+                                            {"muted", audio.muted},
+                                            {"name", audio.name}});
                              return result;
                          },
                          [&](const model::MidiClip& midi) {
                              Json result{{"id", midi.id.value}, {"type", "midi"}};
                              result.update(timing(midi.start, midi.length, tempo));
                              result["muted"] = midi.muted;
+                             result["name"] = midi.name;
                              result["loopLength"] = model::looped(midi) ? midi.loopLength : 0;
                              result["loopEndBbt"] = tempo.toBarBeatTick(midi.start + model::clipSpan(midi)).format();
                              result["noteCount"] = midi.notes.size();

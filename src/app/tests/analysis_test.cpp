@@ -10,6 +10,7 @@
 #include <format>
 #include <numbers>
 #include <random>
+#include <span>
 #include <string>
 #include <utility>
 #include <vector>
@@ -274,6 +275,45 @@ TEST_CASE("export mix with a loudness target lands a quiet mix on it under the c
     CHECK(rig.run("export.mix", {{"path", mix}}).at("integratedLufs").get<double>() == Approx(-20).margin(0.5));
     CHECK_FALSE(rig.run("export.mix", {{"path", mix}, {"normalize", false}}).contains("integratedLufs"));
     CHECK_THROWS_AS(rig.run("export.mix", {{"path", mix}, {"ceilingDbtp", 3}}), AppError);
+}
+
+TEST_CASE("export mix streams the plain mix and matches its loudness as it would on the whole mix at once") {
+    ProjectRig rig;
+    const std::string vox = rig.run("track.addAudio", {{"name", "Vox"}}).at("id");
+    std::vector<float> loud = sine(330, 0.3, 3);
+    for (std::size_t frame = 0; frame < loud.size(); frame += 9000) {
+        loud[frame] = 0.95F;
+    }
+    writeWav(rig.path("loud.wav"), {loud}, kRate);
+    rig.run("clip.import", {{"track", vox}, {"path", rig.path("loud.wav").string()}});
+    const std::string plainPath = rig.path("plain.wav").string();
+    const std::string matchedPath = rig.path("matched.wav").string();
+    rig.run("export.mix", {{"path", plainPath}});
+    rig.run("export.stems", {{"folder", rig.path("stems").string()}});
+    const Json result = rig.run("export.mix", {{"path", matchedPath}, {"targetLufs", -9}, {"ceilingDbtp", -1}});
+
+    const std::vector<std::vector<float>> plain = readAudio(plainPath).channels;
+    CHECK(plain == readAudio(rig.path("stems") / "Vox.wav").channels);
+    const emerick::engine::SignalReplay whole = [&plain](const emerick::engine::ChunkSink& sink) { sink(plain); };
+    const auto match = emerick::engine::matchLoudness(whole, 2, kRate, -9, -1);
+    REQUIRE(match.gainDb);
+    std::vector<std::vector<float>> expected(2);
+    emerick::engine::limitSignal(
+        whole, 2, kRate, *match.gainDb, -1, [&expected](std::span<const std::vector<float>> chunk) {
+            for (std::size_t channel = 0; channel < 2; ++channel) {
+                expected[channel].insert(expected[channel].end(), chunk[channel].begin(), chunk[channel].end());
+            }
+        });
+    const std::vector<std::vector<float>> matched = readAudio(matchedPath).channels;
+    REQUIRE(matched.size() == 2);
+    REQUIRE(matched.front().size() == expected.front().size());
+    for (std::size_t channel = 0; channel < 2; ++channel) {
+        for (std::size_t frame = 0; frame < matched[channel].size(); ++frame) {
+            REQUIRE(matched[channel][frame] == Approx(expected[channel][frame]).margin(1e-6));
+        }
+    }
+    CHECK(result.at("integratedLufs").get<double>() == Approx(match.integratedLufs).margin(0.051));
+    CHECK(result.at("truePeakDbtp").get<double>() == Approx(emerick::engine::truePeakDbtp(expected)).margin(0.051));
 }
 
 TEST_CASE("track analyze measures one track as its stem with its five bands in order, and checks its params") {

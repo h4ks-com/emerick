@@ -3,6 +3,7 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <limits>
 #include <memory>
 #include <optional>
@@ -112,9 +113,26 @@ AudioAnalysis analyzeAudio(const std::vector<std::vector<float>>& channels, cons
 double integratedLufs(const std::vector<std::vector<float>>& channels, double sampleRate);
 double truePeakDbtp(const std::vector<std::vector<float>>& channels);
 
-// Turns the channels by one gain to targetLufs and keeps their true peak at or below ceilingDbtp with the limiter
-// insert's algorithm, and returns the integrated loudness they end at. Leaves digital silence as it is.
-double matchLoudness(std::vector<std::vector<float>>& channels, double sampleRate, double targetLufs,
-                     double ceilingDbtp);
+// Takes one chunk of a signal, one vector per channel, all of one length.
+using ChunkSink = std::function<void(std::span<const std::vector<float>>)>;
+// Hands the same signal to the sink chunk by chunk each time it runs.
+using SignalReplay = std::function<void(const ChunkSink&)>;
+
+// Plays the signal turned by gainDb through the limiter insert's algorithm with its latency dropped, so the sink gets
+// as many frames as the signal has, lined up with it.
+void limitSignal(const SignalReplay& signal, std::size_t channels, double sampleRate, double gainDb, double ceilingDbtp,
+                 const ChunkSink& sink);
+
+struct LoudnessMatch {
+    // Missing for digital silence, which stays as it is.
+    std::optional<double> gainDb;
+    // The integrated loudness the signal ends at.
+    double integratedLufs = 0;
+};
+
+// Finds the gain that turns the signal to targetLufs once limitSignal keeps its true peak at or below ceilingDbtp. It
+// replays the signal once to measure it and once per correction.
+LoudnessMatch matchLoudness(const SignalReplay& signal, std::size_t channels, double sampleRate, double targetLufs,
+                            double ceilingDbtp);
 
 }  // namespace emerick::engine

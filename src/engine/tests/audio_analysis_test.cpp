@@ -6,6 +6,9 @@
 #include <catch2/catch_test_macros.hpp>
 #include <cmath>
 #include <numbers>
+#include <ranges>
+#include <span>
+#include <utility>
 #include <vector>
 
 using Catch::Approx;
@@ -24,6 +27,31 @@ std::vector<float> sine(double hz, double amplitude, double seconds, double phas
             amplitude * std::sin((2 * std::numbers::pi * hz * static_cast<double>(frame) / kRate) + phase));
     }
     return samples;
+}
+
+emerick::engine::SignalReplay replayInChunks(std::vector<std::vector<float>> channels, std::size_t chunkFrames) {
+    return [channels = std::move(channels), chunkFrames](const emerick::engine::ChunkSink& sink) {
+        for (std::size_t first = 0; first < channels.front().size(); first += chunkFrames) {
+            const std::size_t last = std::min(first + chunkFrames, channels.front().size());
+            sink(channels | std::views::transform([&](const std::vector<float>& channel) {
+                     return std::vector<float>(channel.begin() + static_cast<std::ptrdiff_t>(first),
+                                               channel.begin() + static_cast<std::ptrdiff_t>(last));
+                 }) |
+                 std::ranges::to<std::vector>());
+        }
+    };
+}
+
+std::vector<std::vector<float>> limitedSignal(const emerick::engine::SignalReplay& signal, double gainDb,
+                                              double ceilingDbtp) {
+    std::vector<std::vector<float>> out(2);
+    emerick::engine::limitSignal(
+        signal, 2, kRate, gainDb, ceilingDbtp, [&out](std::span<const std::vector<float>> chunk) {
+            for (std::size_t channel = 0; channel < out.size(); ++channel) {
+                out[channel].insert(out[channel].end(), chunk[channel].begin(), chunk[channel].end());
+            }
+        });
+    return out;
 }
 
 }  // namespace
@@ -143,16 +171,42 @@ TEST_CASE("matching loudness lifts a quiet mix to the target and keeps its true 
     for (std::size_t frame = 0; frame < quiet.size(); frame += 12000) {
         quiet[frame] = 0.2F;
     }
-    std::vector<std::vector<float>> channels{quiet, quiet};
-    const double reached = emerick::engine::matchLoudness(channels, kRate, -14, -1);
-    CHECK(reached == Approx(-14).margin(0.5));
-    CHECK(emerick::engine::integratedLufs(channels, kRate) == Approx(reached));
-    CHECK(emerick::engine::truePeakDbtp(channels) <= -1.0);
-    CHECK(channels.front().size() == quiet.size());
+    const std::vector<std::vector<float>> channels{quiet, quiet};
+    const auto signal = replayInChunks(channels, 24000);
+    const auto match = emerick::engine::matchLoudness(signal, 2, kRate, -14, -1);
+    REQUIRE(match.gainDb);
+    CHECK(match.integratedLufs == Approx(-14).margin(0.5));
+    const auto limited = limitedSignal(signal, *match.gainDb, -1);
+    CHECK(emerick::engine::integratedLufs(limited, kRate) == Approx(match.integratedLufs));
+    CHECK(emerick::engine::truePeakDbtp(limited) <= -1.0);
+    CHECK(limited.front().size() == quiet.size());
+}
+
+TEST_CASE("matching loudness in chunks gives what it gives on the whole signal") {
+    std::vector<float> left = sine(220, 0.3, 3);
+    std::vector<float> right = sine(330, 0.5, 3);
+    for (std::size_t frame = 0; frame < left.size(); frame += 7000) {
+        left[frame] = 0.9F;
+    }
+    const std::vector<std::vector<float>> channels{left, right};
+    const auto whole = emerick::engine::matchLoudness(replayInChunks(channels, left.size()), 2, kRate, -9, -1);
+    const auto chunked = emerick::engine::matchLoudness(replayInChunks(channels, 1000), 2, kRate, -9, -1);
+    REQUIRE((whole.gainDb && chunked.gainDb));
+    CHECK(*chunked.gainDb == Approx(*whole.gainDb).margin(1e-6));
+    CHECK(chunked.integratedLufs == Approx(whole.integratedLufs).margin(1e-6));
+    const auto wholeOut = limitedSignal(replayInChunks(channels, left.size()), *whole.gainDb, -1);
+    const auto chunkedOut = limitedSignal(replayInChunks(channels, 1000), *chunked.gainDb, -1);
+    REQUIRE(chunkedOut.front().size() == left.size());
+    for (std::size_t channel = 0; channel < 2; ++channel) {
+        for (std::size_t frame = 0; frame < left.size(); ++frame) {
+            REQUIRE(chunkedOut[channel][frame] == Approx(wholeOut[channel][frame]).margin(1e-6));
+        }
+    }
 }
 
 TEST_CASE("matching loudness leaves digital silence alone") {
-    std::vector<std::vector<float>> silence{std::vector<float>(48000)};
-    CHECK(std::isinf(emerick::engine::matchLoudness(silence, kRate, -14, -1)));
-    CHECK(silence.front() == std::vector<float>(48000));
+    const auto match =
+        emerick::engine::matchLoudness(replayInChunks({std::vector<float>(48000)}, 24000), 1, kRate, -14, -1);
+    CHECK(!match.gainDb);
+    CHECK(std::isinf(match.integratedLufs));
 }

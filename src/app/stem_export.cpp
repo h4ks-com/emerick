@@ -2,13 +2,16 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cstdio>
 #include <format>
 #include <memory>
 #include <ranges>
 #include <set>
+#include <span>
 #include <string>
 #include <thread>
 #include <utility>
+#include <vector>
 
 #include "emerick/app/audio_file.hpp"
 #include "emerick/app/project_controller.hpp"
@@ -218,6 +221,46 @@ void waitForReadAhead(const engine::Engine& engine) {
     }
 }
 
+// Keeps a render in a temporary file, so loudness matching can play it several times while memory stays flat.
+class SpilledAudio {
+public:
+    explicit SpilledAudio(std::size_t channels) : channels_(channels), file_(std::tmpfile(), &std::fclose) {
+        if (!file_) {
+            throw AppError("cannot render: no temporary file to hold the mix");
+        }
+    }
+
+    void append(std::span<const std::vector<float>> chunk) {
+        for (const std::vector<float>& channel : chunk) {
+            if (std::fwrite(channel.data(), sizeof(float), channel.size(), file_.get()) != channel.size()) {
+                throw AppError("cannot render: the disk has no room for the temporary mix");
+            }
+        }
+        chunkFrames_.push_back(chunk.front().size());
+    }
+
+    void replay(const engine::ChunkSink& sink) const {
+        if (std::fseek(file_.get(), 0, SEEK_SET) != 0) {
+            throw AppError("cannot render: the temporary mix did not read back");
+        }
+        std::vector<std::vector<float>> chunk(channels_);
+        for (const std::size_t frames : chunkFrames_) {
+            for (std::vector<float>& channel : chunk) {
+                channel.resize(frames);
+                if (std::fread(channel.data(), sizeof(float), frames, file_.get()) != frames) {
+                    throw AppError("cannot render: the temporary mix did not read back");
+                }
+            }
+            sink(chunk);
+        }
+    }
+
+private:
+    std::size_t channels_;
+    std::unique_ptr<std::FILE, decltype(&std::fclose)> file_;
+    std::vector<std::size_t> chunkFrames_;
+};
+
 engine::Frames renderFrames(const engine::Session& session, const model::Document& document, const Registry& registry,
                             double sampleRate) {
     const core::Ticks end = exportEnd(session, document);
@@ -307,18 +350,31 @@ std::optional<MixLevels> exportMix(const engine::Session& session, const Registr
         std::filesystem::create_directories(file.parent_path());
     }
     AudioWriter writer(file, 2, sampleRate, encoding);
-    std::vector<std::vector<float>> mix(2);
     OfflineRender render(mixSession(session, *context.document), registry, context, sampleRate);
-    render.process(
-        frames, [&mix](const std::vector<std::vector<float>>& chunk) { appendStereo(mix, chunk); },
-        [&render] { render.idleInstruments(); });
-    std::optional<MixLevels> levels;
-    if (target) {
-        const double lufs = engine::matchLoudness(mix, sampleRate, target->lufs, target->ceilingDbtp);
-        levels = MixLevels{.integratedLufs = lufs, .truePeakDbtp = engine::truePeakDbtp(mix)};
+    const auto renderMix = [&](const engine::ChunkSink& sink) {
+        render.process(
+            frames, [&sink](const std::vector<std::vector<float>>& chunk) { sink(std::span{chunk}.first(2)); },
+            [&render] { render.idleInstruments(); });
+    };
+    if (!target) {
+        renderMix([&writer](std::span<const std::vector<float>> chunk) { writer.write(chunk); });
+        return std::nullopt;
     }
-    writer.write(mix);
-    return levels;
+    SpilledAudio mix(2);
+    renderMix([&mix](std::span<const std::vector<float>> chunk) { mix.append(chunk); });
+    const engine::SignalReplay replay = [&mix](const engine::ChunkSink& sink) { mix.replay(sink); };
+    const engine::LoudnessMatch match = engine::matchLoudness(replay, 2, sampleRate, target->lufs, target->ceilingDbtp);
+    engine::TrackMeter meter(2, sampleRate);
+    const auto write = [&](std::span<const std::vector<float>> chunk) {
+        meter.add(chunk);
+        writer.write(chunk);
+    };
+    if (match.gainDb) {
+        engine::limitSignal(replay, 2, sampleRate, *match.gainDb, target->ceilingDbtp, write);
+    } else {
+        replay(write);
+    }
+    return MixLevels{.integratedLufs = match.integratedLufs, .truePeakDbtp = meter.levels().truePeakDbtp};
 }
 
 OfflineRender::OfflineRender(engine::Session session, const Registry& registry, const PlaybackContext& context,

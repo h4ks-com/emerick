@@ -42,6 +42,7 @@ TEST_CASE("a mixer strip adds a Channel EQ from its empty slot, and dragging a b
     CHECK(main.rig.nav.editingInsert().toStdString() == eq);
     MainWindow::settle();
     CHECK(main.item("insert.edit:" + qid(eq))->property("text").toString() == "Channel EQ");
+    CHECK(main.item("eqGraph.level:0")->property("text").toString() == "0");
 
     const auto undoBefore = main.rig.controller->project().undoName();
     QQuickItem* point = main.item("insert.setParam:" + qid(eq) + ":peak2");

@@ -111,9 +111,10 @@ Item {
         }
     }
     Repeater {
-        model: graph.levels.filter(level => level !== 0)
+        model: graph.levels
         Text {
             required property real modelData
+            objectName: "eqGraph.level:" + modelData
             x: Theme.space1
             y: graph.yOf(modelData) - height / 2
             text: (modelData > 0 ? "+" : "") + modelData

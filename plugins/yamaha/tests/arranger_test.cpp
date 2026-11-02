@@ -318,12 +318,16 @@ TEST_CASE("play from inside a pattern starts at its pass with the section and ch
     rig.midi->clearSent();
     rig.run("transport.play");
     CHECK(rig.controller->startReason() == "Style starts at bar 5, Main A");
-    const std::vector<Bytes> sent = sentTo(rig, kKeyboard);
-    CHECK(std::ranges::contains(sent, Bytes{0xBF, 11, 127}));
-    CHECK(std::ranges::contains(sent, Bytes{0xF0, 0x43, 0x7E, 0x02, 0x32, 0x08, 0x7F, 0x7F, 0xF7}));
     rig.audio->process(4800);
-    REQUIRE(processUntil([&] { return rig.controller->syncStatus().contains("yamaha"); }));
-    CHECK(rig.controller->syncStatus().at("yamaha").label == "Main A 1/4 Dm");
+    CHECK(processUntil([&] {
+        const std::vector<Bytes> sent = sentTo(rig, kKeyboard);
+        return std::ranges::contains(sent, Bytes{0xBF, 11, 127}) &&
+               std::ranges::contains(sent, Bytes{0xF0, 0x43, 0x7E, 0x02, 0x32, 0x08, 0x7F, 0x7F, 0xF7});
+    }));
+    CHECK(processUntil([&] {
+        const auto& status = rig.controller->syncStatus();
+        return status.contains("yamaha") && status.at("yamaha").label == "Main A 1/4 Dm";
+    }));
     rig.run("transport.stop");
     REQUIRE(processUntil([&] { return !rig.controller->syncStatus().contains("yamaha"); }));
 

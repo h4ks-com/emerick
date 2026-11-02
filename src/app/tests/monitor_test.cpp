@@ -79,9 +79,9 @@ TEST_CASE("the tuner settles on a tone at the reference pitch and reads its cent
     monitors.playTone(110.0 * std::pow(2.0, 12.0 / 1200));
     CHECK(processUntil([&] {
         const Json tuner = monitors.rig.registry.state("tuner");
-        return tuner.at("note") == "A2" && std::abs(tuner.at("cents").get<double>() - 12.0) < 1.0;
+        return tuner.at("note") == "A2" && std::abs(tuner.at("cents").get<double>() - 12.0) < 1.0 &&
+               tuner.at("confidence").get<double>() > 0.9;
     }));
-    CHECK(monitors.rig.registry.state("tuner").at("confidence").get<double>() > 0.9);
 
     monitors.rig.registry.setSetting("tuner.referencePitch", 442.0);
     CHECK(processUntil(

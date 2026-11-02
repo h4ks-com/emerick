@@ -95,6 +95,7 @@ TEST_CASE("a MIDI track sends MIDI out until it loads an instrument, which plays
 
     rig.controller->play();
     rig.audio->process(kBlock * 64);
+    REQUIRE(processUntil([&] { return rig.controller->engine().midiFlushed(); }));
     CHECK(std::ranges::any_of(rig.midi->sent(kMidiPort), [](const engine::SentMidi& message) {
         return message.bytes.size() == 3 && message.bytes[0] == 0x90 && message.bytes[1] == 69;
     }));

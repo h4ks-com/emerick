@@ -80,7 +80,7 @@ Agents connect to `http://127.0.0.1:8080/mcp`. Open `http://127.0.0.1:8080/proje
 
 ## Status
 
-Emerick is in early development. Each release publishes the desktop packages and the Docker image `ghcr.io/h4ks-com/emerick`. macOS is the main platform; the Linux and Windows packages build in CI and get less testing.
+Emerick is in early development. Get the [latest release](https://github.com/h4ks-com/emerick/releases/latest), and [open an issue](https://github.com/h4ks-com/emerick/issues) for bugs and ideas.
 
 ## License
 

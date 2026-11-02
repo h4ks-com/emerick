@@ -110,6 +110,7 @@ void registerProjectFileActions(Registry& registry, ProjectController& controlle
         }
         return projectState(controller);
     };
+    const Json pathSchema{{"required", {"path"}}, {"properties", {{"path", {{"type", "string"}}}}}};
     const auto openPath = [&registry, &controller](const Json& params) {
         controller.open(registry.checkedPath(param<std::string>(params, "path"), PathAccess::Read));
         return projectState(controller);
@@ -134,7 +135,7 @@ void registerProjectFileActions(Registry& registry, ProjectController& controlle
          .aliases = {"load project"},
          .category = "Project",
          .shortcut = "Ctrl+O",
-         .schema = {{"required", {"path"}}},
+         .schema = pathSchema,
          .run = openPath,
          .menus = {kFileMenu, kProjectMenu},
          .dialog = FileDialog{
@@ -143,7 +144,7 @@ void registerProjectFileActions(Registry& registry, ProjectController& controlle
                         .title = "Open recent project",
                         .aliases = {"recent projects"},
                         .category = "Project",
-                        .schema = {{"required", {"path"}}},
+                        .schema = pathSchema,
                         .run = openPath,
                         .menus = {kFileMenu, kProjectMenu},
                         .submenu = [&registry] { return recentChoices(registry); }});
@@ -204,7 +205,7 @@ void registerProjectFileActions(Registry& registry, ProjectController& controlle
                         .aliases = {"save to folder", "rename project"},
                         .category = "Project",
                         .shortcut = "Ctrl+Shift+S",
-                        .schema = {{"required", {"path"}}},
+                        .schema = pathSchema,
                         .run =
                             [&registry, &controller](const Json& params) {
                                 controller.saveAs(

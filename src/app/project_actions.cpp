@@ -177,37 +177,40 @@ void registerTransportActions(Registry& registry, ProjectController& controller)
                                 },
                             .menus = {kTransportMenu}});
     }
-    registry.addAction({.id = "transport.locate",
-                        .title = "Go to position",
-                        .aliases = {"locate", "move playhead"},
-                        .category = "Transport",
-                        .schema = {{"required", {"at"}}},
-                        .run = [&controller](const Json& params) {
-                            controller.locate(positionParam(params, "at", controller.project().document().tempo));
-                            return transportState(controller);
-                        }});
-    registry.addAction({.id = "transport.setClockOut",
-                        .title = "Send MIDI clock to port",
-                        .aliases = {"midi clock", "sync out"},
-                        .category = "Transport",
-                        .schema = {{"required", {"port", "enabled"}}},
-                        .run = [&controller](const Json& params) {
-                            const auto port = param<std::string>(params, "port");
-                            const auto enabled = param<bool>(params, "enabled");
-                            const auto& ports = controller.engine().midiPorts();
-                            if (std::ranges::none_of(ports, [&](const engine::MidiPortInfo& info) {
-                                    return info.id == port && !info.isInput;
-                                })) {
-                                throw AppError("no MIDI output port " + port + ", run devices.list for port ids");
-                            }
-                            std::vector<std::string> clockPorts = controller.project().document().clockPorts;
-                            std::erase(clockPorts, port);
-                            if (enabled) {
-                                clockPorts.push_back(port);
-                            }
-                            controller.project().setClockPorts(std::move(clockPorts));
-                            return Json{{"clockOut", controller.project().document().clockPorts}};
-                        }});
+    registry.addAction(
+        {.id = "transport.locate",
+         .title = "Go to position",
+         .aliases = {"locate", "move playhead"},
+         .category = "Transport",
+         .schema = {{"required", {"at"}},
+                    {"properties", {{"at", {{"description", "ticks, or a bar.beat.tick string such as \"5.1.0\""}}}}}},
+         .run = [&controller](const Json& params) {
+             controller.locate(positionParam(params, "at", controller.project().document().tempo));
+             return transportState(controller);
+         }});
+    registry.addAction(
+        {.id = "transport.setClockOut",
+         .title = "Send MIDI clock to port",
+         .aliases = {"midi clock", "sync out"},
+         .category = "Transport",
+         .schema = {{"required", {"port", "enabled"}},
+                    {"properties", {{"port", {{"type", "string"}}}, {"enabled", {{"type", "boolean"}}}}}},
+         .run = [&controller](const Json& params) {
+             const auto port = param<std::string>(params, "port");
+             const auto enabled = param<bool>(params, "enabled");
+             const auto& ports = controller.engine().midiPorts();
+             if (std::ranges::none_of(
+                     ports, [&](const engine::MidiPortInfo& info) { return info.id == port && !info.isInput; })) {
+                 throw AppError("no MIDI output port " + port + ", run devices.list for port ids");
+             }
+             std::vector<std::string> clockPorts = controller.project().document().clockPorts;
+             std::erase(clockPorts, port);
+             if (enabled) {
+                 clockPorts.push_back(port);
+             }
+             controller.project().setClockPorts(std::move(clockPorts));
+             return Json{{"clockOut", controller.project().document().clockPorts}};
+         }});
     registry.addAction({.id = "transport.panic",
                         .title = "Send MIDI panic",
                         .description = "Stops clock ports and sends sustain off, all sound off and all notes off on "

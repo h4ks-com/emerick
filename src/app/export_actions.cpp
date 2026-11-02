@@ -286,6 +286,12 @@ void registerExportActions(Registry& registry, ProjectController& controller) {
     Json stemsSchema = tracksSchema;
     stemsSchema["format"] = formatSchema;
     stemsSchema["quality"] = qualitySchema;
+    const Json textSchema{{"type", "string"}};
+    stemsSchema["folder"] = textSchema;
+    Json logicSchema = tracksSchema;
+    logicSchema["folder"] = textSchema;
+    Json midiSchema = tracksSchema;
+    midiSchema["path"] = textSchema;
     registry.addAction(
         {.id = "export.stems",
          .title = "Export stems",
@@ -359,7 +365,7 @@ void registerExportActions(Registry& registry, ProjectController& controller) {
                         .aliases = {"logic pro", "send to logic"},
                         .keywords = {"stems", "midi file", "markers"},
                         .category = "Export",
-                        .schema = {{"required", {"folder"}}, {"properties", tracksSchema}},
+                        .schema = {{"required", {"folder"}}, {"properties", logicSchema}},
                         .run =
                             [&controller, &registry](const Json& params) {
                                 const std::filesystem::path folder =
@@ -380,7 +386,7 @@ void registerExportActions(Registry& registry, ProjectController& controller) {
          .title = "Export MIDI file",
          .aliases = {"save midi", "standard midi file"},
          .category = "Export",
-         .schema = {{"required", {"path"}}, {"properties", tracksSchema}},
+         .schema = {{"required", {"path"}}, {"properties", midiSchema}},
          .run =
              [&controller, &registry](const Json& params) {
                  const std::filesystem::path file =

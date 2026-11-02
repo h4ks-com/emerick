@@ -197,7 +197,8 @@ void registerMarkerEdits(Registry& registry, ProjectController& controller, Nav&
     registry.addAction({.id = "marker.rename",
                         .title = "Set marker name",
                         .category = "Markers",
-                        .schema = {{"required", {"name"}}, {"properties", {{"marker", {{"type", "string"}}}}}},
+                        .schema = {{"required", {"name"}},
+                                   {"properties", {{"marker", {{"type", "string"}}}, {"name", {{"type", "string"}}}}}},
                         .run = [&controller, &nav](const Json& params) {
                             const model::MarkerId id = targetMarker(controller, nav, params);
                             const auto name = param<std::string>(params, "name");
@@ -205,20 +206,20 @@ void registerMarkerEdits(Registry& registry, ProjectController& controller, Nav&
                             return editMarker(controller, id, "rename marker to " + name,
                                               [&](model::Marker& marker) { marker.name = name; });
                         }});
-    registry.addAction({.id = "marker.move",
-                        .title = "Move marker",
-                        .aliases = {"drag marker"},
-                        .category = "Markers",
-                        .schema = {{"required", {"at"}}, {"properties", {{"marker", {{"type", "string"}}}}}},
-                        .run = [&controller, &nav](const Json& params) {
-                            const model::MarkerId id = targetMarker(controller, nav, params);
-                            const core::Ticks at = positionParam(params, "at", controller.project().document().tempo);
-                            if (at < 0) {
-                                throw AppError("at must be at or after bar 1");
-                            }
-                            return editMarker(controller, id, "move marker",
-                                              [&](model::Marker& marker) { marker.at = at; });
-                        }});
+    registry.addAction(
+        {.id = "marker.move",
+         .title = "Move marker",
+         .aliases = {"drag marker"},
+         .category = "Markers",
+         .schema = {{"required", {"at"}}, {"properties", {{"marker", {{"type", "string"}}}, {"at", Json::object()}}}},
+         .run = [&controller, &nav](const Json& params) {
+             const model::MarkerId id = targetMarker(controller, nav, params);
+             const core::Ticks at = positionParam(params, "at", controller.project().document().tempo);
+             if (at < 0) {
+                 throw AppError("at must be at or after bar 1");
+             }
+             return editMarker(controller, id, "move marker", [&](model::Marker& marker) { marker.at = at; });
+         }});
     registry.addAction(
         {.id = "marker.setColor",
          .title = "Set marker color",
@@ -253,7 +254,7 @@ void registerMarkerEdits(Registry& registry, ProjectController& controller, Nav&
     registry.addAction({.id = "marker.select",
                         .title = "Select marker",
                         .category = "Markers",
-                        .schema = {{"required", {"marker"}}},
+                        .schema = {{"required", {"marker"}}, {"properties", {{"marker", {{"type", "string"}}}}}},
                         .run = [&controller, &nav](const Json& params) {
                             const model::MarkerId id = targetMarker(controller, nav, params);
                             nav.setSelectedMarker(qs(id.value));

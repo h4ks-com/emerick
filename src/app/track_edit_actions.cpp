@@ -355,7 +355,8 @@ void registerTrackEditActions(Registry& registry, ProjectController& controller,
     registry.addAction({.id = "track.rename",
                         .title = "Set track name",
                         .category = "Tracks",
-                        .schema = {{"required", {"name"}}},
+                        .schema = {{"required", {"name"}},
+                                   {"properties", {{"track", {{"type", "string"}}}, {"name", {{"type", "string"}}}}}},
                         .run = [&controller, &nav](const Json& params) {
                             const auto id = targetTrack(controller, nav, params);
                             const auto name = param<std::string>(params, "name");
@@ -394,7 +395,8 @@ void registerTrackEditActions(Registry& registry, ProjectController& controller,
                         .title = "Move track",
                         .aliases = {"reorder track"},
                         .category = "Tracks",
-                        .schema = {{"required", {"track", "index"}}},
+                        .schema = {{"required", {"track", "index"}},
+                                   {"properties", {{"track", {{"type", "string"}}}, {"index", {{"type", "integer"}}}}}},
                         .run = [&controller](const Json& params) {
                             const auto id = trackParam(controller.project(), params);
                             if (!controller.project().moveTrack(id, param<std::size_t>(params, "index"))) {

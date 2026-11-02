@@ -358,41 +358,44 @@ void registerClipActions(Registry& registry, ProjectController& controller, Nav&
                         .category = "Clips",
                         .schema = {{"required", {"clip"}},
                                    {"properties",
-                                    {{"start", Json::object()},
+                                    {{"clip", {{"type", "string"}}},
+                                     {"start", Json::object()},
                                      {"track", {{"type", "string"}}},
                                      {"selection", {{"type", "boolean"}}}}}},
                         .run = [&registry, &controller, &nav](const Json& params) {
                             return moveClips(registry, controller, nav, params);
                         }});
-    registry.addAction(
-        {.id = "clip.resize",
-         .title = "Resize clip",
-         .aliases = {"trim clip"},
-         .category = "Clips",
-         .schema = {{"required", {"clip"}},
-                    {"properties",
-                     {{"start", Json::object()}, {"length", {{"type", "integer"}}}, {"end", Json::object()}}}},
-         .run = [&controller, tempo](const Json& params) {
-             const auto id = clipParam(controller.project(), params);
-             const auto start = optionalPosition(params, "start", tempo());
-             const auto end = optionalPosition(params, "end", tempo());
-             auto length = optionalParam<core::Ticks>(params, "length");
-             if (!start && !length && !end) {
-                 throw AppError("pass start, length, end or a mix");
-             }
-             model::Clip clip = clipOf(controller, id);
-             if (start) {
-                 clip = edited(model::trimStart(clip, *start, tempo(), controller.sampleRate()));
-             }
-             if (end) {
-                 length = *end - model::clipStart(clip);
-             }
-             if (length) {
-                 clip = edited(model::setLength(clip, *length));
-             }
-             replaceClip(controller, id, "resize clip", std::move(clip));
-             return clipResult(controller, id);
-         }});
+    registry.addAction({.id = "clip.resize",
+                        .title = "Resize clip",
+                        .aliases = {"trim clip"},
+                        .category = "Clips",
+                        .schema = {{"required", {"clip"}},
+                                   {"properties",
+                                    {{"clip", {{"type", "string"}}},
+                                     {"start", Json::object()},
+                                     {"length", {{"type", "integer"}}},
+                                     {"end", Json::object()}}}},
+                        .run = [&controller, tempo](const Json& params) {
+                            const auto id = clipParam(controller.project(), params);
+                            const auto start = optionalPosition(params, "start", tempo());
+                            const auto end = optionalPosition(params, "end", tempo());
+                            auto length = optionalParam<core::Ticks>(params, "length");
+                            if (!start && !length && !end) {
+                                throw AppError("pass start, length, end or a mix");
+                            }
+                            model::Clip clip = clipOf(controller, id);
+                            if (start) {
+                                clip = edited(model::trimStart(clip, *start, tempo(), controller.sampleRate()));
+                            }
+                            if (end) {
+                                length = *end - model::clipStart(clip);
+                            }
+                            if (length) {
+                                clip = edited(model::setLength(clip, *length));
+                            }
+                            replaceClip(controller, id, "resize clip", std::move(clip));
+                            return clipResult(controller, id);
+                        }});
     registry.addAction({.id = "clip.split",
                         .title = "Split clip at playhead",
                         .aliases = {"cut clip", "split region"},
@@ -405,7 +408,8 @@ void registerClipActions(Registry& registry, ProjectController& controller, Nav&
                         .title = "Set clip gain",
                         .aliases = {"clip volume"},
                         .category = "Clips",
-                        .schema = {{"required", {"clip", "db"}}},
+                        .schema = {{"required", {"clip", "db"}},
+                                   {"properties", {{"clip", {{"type", "string"}}}, {"db", {{"type", "number"}}}}}},
                         .run = [&controller](const Json& params) {
                             const auto id = clipParam(controller.project(), params);
                             model::AudioClip audio = audioOnly(clipOf(controller, id));
@@ -442,7 +446,10 @@ void registerClipActions(Registry& registry, ProjectController& controller, Nav&
          .category = "Clips",
          .schema = {{"required", {"path"}},
                     {"properties",
-                     {{"track", {{"type", "string"}}}, {"at", Json::object()}, {"newTrack", {{"type", "boolean"}}}}}},
+                     {{"path", {{"type", "string"}}},
+                      {"track", {{"type", "string"}}},
+                      {"at", Json::object()},
+                      {"newTrack", {{"type", "boolean"}}}}}},
          .run = [&registry, &controller,
                  &nav](const Json& params) { return importClip(registry, controller, nav, params); },
          .menus = {kTrackMenu},
@@ -454,20 +461,24 @@ void registerClipActions(Registry& registry, ProjectController& controller, Nav&
          .title = "Import MIDI file",
          .aliases = {"open midi file", "add midi file"},
          .category = "Clips",
-         .schema = {{"required", {"path"}}, {"properties", {{"track", {{"type", "string"}}}, {"at", Json::object()}}}},
+         .schema = {{"required", {"path"}},
+                    {"properties",
+                     {{"path", {{"type", "string"}}}, {"track", {{"type", "string"}}}, {"at", Json::object()}}}},
          .run = [&registry, &controller](const Json& params) { return importMidi(registry, controller, params); },
          .menus = {kTrackMenu},
          .dialog =
              FileDialog{.param = "path", .mode = FileDialogMode::Open, .nameFilter = "MIDI files (*.mid *.midi)"}});
-    registry.addAction({.id = "project.clipEvents",
-                        .title = "Show clip notes and MIDI events",
-                        .category = "Clips",
-                        .schema = {{"required", {"clip"}}, {"properties", {{"includeEvents", {{"type", "boolean"}}}}}},
-                        .run = [&controller, tempo](const Json& params) {
-                            const auto id = clipParam(controller.project(), params);
-                            return clipState(clipOf(controller, id), tempo(),
-                                             optionalParam<bool>(params, "includeEvents").value_or(true));
-                        }});
+    registry.addAction(
+        {.id = "project.clipEvents",
+         .title = "Show clip notes and MIDI events",
+         .category = "Clips",
+         .schema = {{"required", {"clip"}},
+                    {"properties", {{"clip", {{"type", "string"}}}, {"includeEvents", {{"type", "boolean"}}}}}},
+         .run = [&controller, tempo](const Json& params) {
+             const auto id = clipParam(controller.project(), params);
+             return clipState(clipOf(controller, id), tempo(),
+                              optionalParam<bool>(params, "includeEvents").value_or(true));
+         }});
     registerSelectionActions(registry, controller, nav);
     registerClipEditActions(registry, controller, nav);
     registerNoteActions(registry, controller, nav);

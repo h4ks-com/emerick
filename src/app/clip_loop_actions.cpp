@@ -114,16 +114,18 @@ void registerClipLoopActions(Registry& registry, ProjectController& controller, 
          .schema = {{"properties", {{"clip", {{"type", "string"}}}, {"value", {{"type", "boolean"}}}}}},
          .run = [&controller, &nav](const Json& params) { return loopClips(controller, nav, params); },
          .menus = {kEditMenu, kClipContextMenu}});
-    registry.addAction({.id = "clip.setLoopLength",
-                        .title = "Set loop length",
-                        .description = "Loops the MIDI clip's content for length ticks on the timeline, or until end, "
-                                       "with a partial last repeat where it falls short. A length up to the content's "
-                                       "own ends the loop.",
-                        .aliases = {"extend loop", "drag loop"},
-                        .category = "Clips",
-                        .schema = {{"required", {"clip"}},
-                                   {"properties", {{"length", {{"type", "integer"}}}, {"end", Json::object()}}}},
-                        .run = [&controller](const Json& params) { return setLoopLength(controller, params); }});
+    registry.addAction(
+        {.id = "clip.setLoopLength",
+         .title = "Set loop length",
+         .description = "Loops the MIDI clip's content for length ticks on the timeline, or until end, "
+                        "with a partial last repeat where it falls short. A length up to the content's "
+                        "own ends the loop.",
+         .aliases = {"extend loop", "drag loop"},
+         .category = "Clips",
+         .schema = {{"required", {"clip"}},
+                    {"properties",
+                     {{"clip", {{"type", "string"}}}, {"length", {{"type", "integer"}}}, {"end", Json::object()}}}},
+         .run = [&controller](const Json& params) { return setLoopLength(controller, params); }});
 }
 
 }  // namespace emerick::app

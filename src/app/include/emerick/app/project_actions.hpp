@@ -12,11 +12,13 @@
 
 namespace emerick::app {
 
+class ViewEngine;
+
 // Every project, track, clip, transport, device and export action, and the "project", "transport" and "devices"
 // state providers.
 // The tempo with the bpm, numerator and denominator params applied, or an AppError naming the valid range.
 core::TempoMap tempoFromParams(const Json& params, core::TempoMap tempo);
-void registerProjectActions(Registry& registry, ProjectController& controller, Nav& nav);
+void registerProjectActions(Registry& registry, ProjectController& controller, Nav& nav, ViewEngine& views);
 
 // The audio and MIDI track kinds with their add actions, and every track action.
 void registerTrackActions(Registry& registry, ProjectController& controller, Nav& nav);
@@ -86,7 +88,8 @@ void registerCycleActions(Registry& registry, ProjectController& controller, Nav
 
 void registerProjectFileActions(Registry& registry, ProjectController& controller);
 void registerProjectFolderActions(Registry& registry, ProjectController& controller, Nav& nav);
-void registerExportActions(Registry& registry, ProjectController& controller);
+void registerExportActions(Registry& registry, ProjectController& controller, Nav& nav, ViewEngine& views);
+void registerVideoActions(Registry& registry, ProjectController& controller, Nav& nav, ViewEngine& views);
 // Compact reads for agents: midi.analyze and project.summary.
 void registerSummaryActions(Registry& registry, ProjectController& controller);
 // The Metronome settings section, the metronome actions and the "metronome" state provider. Every change to a

@@ -1,7 +1,7 @@
 include(FetchContent)
 set(FETCHCONTENT_QUIET ON)
 
-find_package(Qt6 6.11 REQUIRED COMPONENTS Core Gui Qml Quick QuickControls2 HttpServer Test)
+find_package(Qt6 6.11 REQUIRED COMPONENTS Core Gui GuiPrivate Qml Quick QuickControls2 HttpServer Test)
 qt_standard_project_setup(REQUIRES 6.11)
 
 find_package(PkgConfig REQUIRED)

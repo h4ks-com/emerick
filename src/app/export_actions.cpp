@@ -230,18 +230,6 @@ double boundedParam(const Json& params, const Registry& registry, const char* ke
     return value;
 }
 
-std::optional<LoudnessTarget> loudnessTarget(const Registry& registry, const Json& params) {
-    const bool normalize = optionalParam<bool>(params, "normalize")
-                               .value_or(params.contains("targetLufs") || params.contains("ceilingDbtp") ||
-                                         registry.settingValue(kNormalizeSetting).get<bool>());
-    if (!normalize) {
-        return std::nullopt;
-    }
-    return LoudnessTarget{
-        .lufs = boundedParam(params, registry, "targetLufs", kTargetLufsSetting, kMinTargetLufs),
-        .ceilingDbtp = boundedParam(params, registry, "ceilingDbtp", kCeilingSetting, kMinCeilingDbtp)};
-}
-
 void registerExportSettings(Registry& registry) {
     registry.addSetting({.id = kNormalizeSetting,
                          .title = "Normalize mix exports",
@@ -277,7 +265,19 @@ AudioEncoding encodingParam(const Json& params, const std::filesystem::path& pat
 
 }  // namespace
 
-void registerExportActions(Registry& registry, ProjectController& controller) {
+std::optional<LoudnessTarget> loudnessTarget(const Registry& registry, const Json& params) {
+    const bool normalize = optionalParam<bool>(params, "normalize")
+                               .value_or(params.contains("targetLufs") || params.contains("ceilingDbtp") ||
+                                         registry.settingValue(kNormalizeSetting).get<bool>());
+    if (!normalize) {
+        return std::nullopt;
+    }
+    return LoudnessTarget{
+        .lufs = boundedParam(params, registry, "targetLufs", kTargetLufsSetting, kMinTargetLufs),
+        .ceilingDbtp = boundedParam(params, registry, "ceilingDbtp", kCeilingSetting, kMinCeilingDbtp)};
+}
+
+void registerExportActions(Registry& registry, ProjectController& controller, Nav& nav, ViewEngine& views) {
     registerExportSettings(registry);
     const Json tracksSchema{{"tracks", {{"type", "array"}}}};
     const Json formatSchema{{"type", "string"},
@@ -360,6 +360,7 @@ void registerExportActions(Registry& registry, ProjectController& controller) {
                               .mode = FileDialogMode::Save,
                               .nameFilter = "Audio files (*.wav *.flac *.ogg *.opus *.mp3)",
                               .suffix = "wav"}});
+    registerVideoActions(registry, controller, nav, views);
     registry.addAction({.id = "export.logic",
                         .title = "Export for Logic",
                         .aliases = {"logic pro", "send to logic"},

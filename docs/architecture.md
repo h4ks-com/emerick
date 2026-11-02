@@ -35,6 +35,7 @@ The engine never sees the model. `emerick_app` turns the document into an engine
 - A project is a bundle: a folder named `<Name>.erk` holding `project.json` and `audio/`. On macOS the app's Info.plist declares it a document package, so Finder shows it as one file and opens it in Emerick.
 - A new project starts as `Untitled N.erk` in the `Emerick` folder of the platform music folder, so every take lands in a real folder. Autosave writes `project.json` about 2 s after the last edit or take. Leaving an untitled project that holds nothing deletes it.
 - The document holds absolute paths in the state of the plugins the app ships (the Arranger style, the General MIDI SoundFont, the Expansion Voices folder). `project.json` holds a path inside the folder the bundle sits in relative to the bundle, which may start with `../`, so a project moved with its files still finds them; other paths and other plugins' state stay as they are. `project.collectFiles`, or `project.save` with `collect`, copies every file the project names from outside its bundle into it, audio into `audio/` and the rest into `files/`, and points the project at the copies as one undo step.
+- `video.render` renders the mix as `export.mix` does, then draws `VideoFrame.qml` (the transport counter over the tracks area) offscreen, through the RHI into a texture on a desktop and with the software renderer on the offscreen platform, at each frame's position from the tempo map, and pipes the frames with the mix into `ffmpeg` for an H.264 and AAC MP4. It sets the playhead with `ProjectController::setDisplayPosition` and gives the shared `Nav` view back afterwards. With no window it creates its QML engine on first use.
 - Opening a project checks it for missing audio files, clips that run past their file, audio files at another sample rate than the engine's and routes to missing devices, and offers the issues it finds. `project.health` runs the same check and lists them.
 - An action that takes a path, such as `project.open` or `export.logic`, opens a file dialog when the UI runs it without one. An agent passes the path, and a missing one is an error naming the param. An action that deletes files asks first in the UI; an agent passes `confirm: true`.
 - `export.logic` writes `<Name> for Logic/`: one numbered WAV per audio track from bar 1 to the project end, and `MIDI.mid` with the tempo, the meter, one named track per MIDI track, the project's markers, and markers from the track types that name the timeline, such as chords and Style sections.
@@ -124,6 +125,7 @@ The console (Cmd+\`) runs Lua in the same sandboxed host on the UI thread. `Regi
 | JSON | nlohmann_json |
 | Lua | Lua 5.4 and sol2 |
 | Syntax highlighting | tree-sitter and tree-sitter-lua |
+| Video encoding | ffmpeg, run as its own process |
 | Tests | Catch2 v3 |
 
 License: GPL-3.0-or-later.

@@ -293,7 +293,7 @@ core::TempoMap tempoFromParams(const Json& params, core::TempoMap tempo) {
     return tempo;
 }
 
-void registerProjectActions(Registry& registry, ProjectController& controller, Nav& nav) {
+void registerProjectActions(Registry& registry, ProjectController& controller, Nav& nav, ViewEngine& views) {
     registry.addStateProvider("project", [&controller] { return projectState(controller); });
     registry.addStateProvider("transport", [&controller] { return transportState(controller); });
     registry.addStateProvider("devices", [&controller] { return devicesState(controller); });
@@ -361,7 +361,7 @@ void registerProjectActions(Registry& registry, ProjectController& controller, N
     registerClipActions(registry, controller, nav);
     registerMarkerActions(registry, controller, nav);
     registerCycleActions(registry, controller, nav);
-    registerExportActions(registry, controller);
+    registerExportActions(registry, controller, nav, views);
     registerSummaryActions(registry, controller);
     registerMetronome(registry, controller, nav);
     registerProjectFolderActions(registry, controller, nav);

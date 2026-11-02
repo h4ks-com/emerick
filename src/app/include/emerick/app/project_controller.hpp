@@ -170,7 +170,9 @@ public:
     void refreshDevices();
 
     [[nodiscard]] QString positionText() const;
-    [[nodiscard]] qint64 positionTicks() const { return engine_.position().ticks; }
+    [[nodiscard]] qint64 positionTicks() const { return displayPosition_.value_or(engine_.position().ticks); }
+    // While set, the playhead and the counter show ticks and the transport stays where it is, as a video render needs.
+    void setDisplayPosition(std::optional<core::Ticks> ticks);
     [[nodiscard]] bool playing() const { return engine_.playing(); }
     [[nodiscard]] bool recording() const { return recording_; }
     // Set while the audio device stopped calling back, until it runs again.
@@ -317,6 +319,7 @@ private:
     TrackMeters meters_;
     std::chrono::steady_clock::time_point lastLevels_ = std::chrono::steady_clock::now();
     bool lastStalled_ = false;
+    std::optional<core::Ticks> displayPosition_;
     QVariantMap trackErrors_;
     QVariantList healthIssues_;
     std::optional<std::chrono::steady_clock::time_point> lastActive_;

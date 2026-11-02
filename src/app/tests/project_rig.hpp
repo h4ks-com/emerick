@@ -20,6 +20,7 @@
 #include "emerick/app/project_controller.hpp"
 #include "emerick/app/project_state.hpp"
 #include "emerick/app/registry.hpp"
+#include "emerick/app/view_engine.hpp"
 #include "qt_app.hpp"
 
 namespace emerick::app::test {
@@ -92,6 +93,7 @@ struct ProjectRig {
     CountingAudioBackend* audioLister = nullptr;
     CountingMidiBackend* midiLister = nullptr;
     std::unique_ptr<ProjectController> controller;
+    std::unique_ptr<ViewEngine> views;
     // The offline backend only runs when asked, so while the controller waits on the engine this plays the device.
     QTimer clock;
 
@@ -112,7 +114,8 @@ struct ProjectRig {
         controller = std::make_unique<ProjectController>(registry, std::move(audioOwner), std::move(midiOwner),
                                                          engine::Engine::Options{sampleRate, kBlock}, path("Projects"));
         controller->setWarmWhileActive(false);
-        registerProjectActions(registry, *controller, nav);
+        views = std::make_unique<ViewEngine>(registry, nav, *controller);
+        registerProjectActions(registry, *controller, nav, *views);
         QObject::connect(&clock, &QTimer::timeout, [this] { audio->process(kBlock); });
         clock.start(1);
     }

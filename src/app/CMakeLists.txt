@@ -52,6 +52,7 @@ qt_add_library(emerick_app STATIC
     include/emerick/app/note_edit.hpp
     include/emerick/app/params.hpp
     include/emerick/app/path_access.hpp
+    include/emerick/app/offscreen_view.hpp
     include/emerick/app/peak_cache.hpp
     include/emerick/app/plugin_actions.hpp
     include/emerick/app/plugin_catalog.hpp
@@ -69,8 +70,10 @@ qt_add_library(emerick_app STATIC
     include/emerick/app/track_analysis.hpp
     include/emerick/app/track_list_model.hpp
     include/emerick/app/track_meters.hpp
+    include/emerick/app/timeline_video.hpp
     include/emerick/app/transport_clock.hpp
     include/emerick/app/ui_api.hpp
+    include/emerick/app/view_engine.hpp
     include/emerick/app/voice_audition.hpp
     include/emerick/app/waveform.hpp
     insert_actions.cpp
@@ -91,6 +94,7 @@ qt_add_library(emerick_app STATIC
     midi_export.cpp
     midi_import.cpp
     path_access.cpp
+    offscreen_view.cpp
     peak_cache.cpp
     piano_roll_actions.cpp
     plugin_actions.cpp
@@ -115,8 +119,11 @@ qt_add_library(emerick_app STATIC
     track_edit_actions.cpp
     track_list_model.cpp
     track_meters.cpp
+    timeline_video.cpp
     transport_clock.cpp
     ui_api.cpp
+    video_actions.cpp
+    view_engine.cpp
     voice_audition.cpp
     waveform.cpp)
 target_include_directories(emerick_app PUBLIC include)
@@ -129,7 +136,7 @@ qt_add_resources(emerick_app example_scripts
         ${PROJECT_SOURCE_DIR}/scripts/examples/rename-from-list.lua)
 target_compile_definitions(emerick_app PRIVATE EMERICK_VERSION="${PROJECT_VERSION}" SOL_PRINT_ERRORS=0)
 target_link_libraries(emerick_app
-    PRIVATE lua54 sol2::sol2 tree_sitter_lua PkgConfig::SNDFILE libremidi
+    PRIVATE lua54 sol2::sol2 tree_sitter_lua PkgConfig::SNDFILE libremidi Qt6::GuiPrivate
     PUBLIC Qt6::Core Qt6::Gui Qt6::Quick Qt6::HttpServer emerick_core emerick_model emerick_engine
         nlohmann_json::nlohmann_json)
 emerick_target(emerick_app)
@@ -172,6 +179,7 @@ if(EMERICK_BUILD_TESTS)
         tests/send_test.cpp
         tests/summary_test.cpp
         tests/take_preview_test.cpp
+        tests/timeline_video_test.cpp
         tests/track_hooks_test.cpp
         tests/transport_test.cpp
         tests/voice_audition_test.cpp)

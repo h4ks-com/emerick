@@ -807,8 +807,13 @@ void ProjectController::addTake(const engine::RecordedTake& take) {
                        [&](model::Track& edited) { type->fromTake(edited, take, context); });
 }
 
+void ProjectController::setDisplayPosition(std::optional<core::Ticks> ticks) {
+    displayPosition_ = ticks;
+    emit transportChanged();
+}
+
 QString ProjectController::positionText() const {
-    const core::BarBeatTick position = project_.document().tempo.toBarBeatTick(engine_.position().ticks);
+    const core::BarBeatTick position = project_.document().tempo.toBarBeatTick(positionTicks());
     return QStringLiteral("%1 . %2 . %3").arg(position.bar).arg(position.beat).arg(position.tick, 3, 10, QChar('0'));
 }
 

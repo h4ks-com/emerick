@@ -46,6 +46,10 @@ struct LoudnessTarget {
     double ceilingDbtp = -1;
 };
 
+// The loudness target params ask for with normalize, targetLufs or ceilingDbtp, each defaulting to its export setting,
+// or none.
+std::optional<LoudnessTarget> loudnessTarget(const Registry& registry, const Json& params);
+
 struct MixLevels {
     double integratedLufs = 0;
     double truePeakDbtp = 0;

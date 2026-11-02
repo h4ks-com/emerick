@@ -8,6 +8,7 @@ What can go wrong when untrusted agents drive Emerick through the service, and t
 |---|---|---|
 | Memory blowup from huge renders, many voices or Lua | RLIMIT_DATA per session (`EMERICK_SESSION_MEMORY_MB`), `--lua-memory-mb`, `--max-render-seconds` | service, app |
 | CPU burn from endless Lua or long renders | `--lua-timeout-ms`, `--max-render-seconds`, idle and age reaping | app, service |
+| Video encoding | `video.render` runs the image's ffmpeg, built with only the rawvideo and WAV inputs, the H.264 and AAC encoders, the MP4 muxer and the file and pipe protocols, on the app's own frames and mix; the output path goes through `--agent-write-root` and the length through `--max-render-seconds` | app, image |
 | Disk filling with exports and recordings | RLIMIT_FSIZE per file, per-project quota the reaper checks (`EMERICK_PROJECT_MAX_MB`), RLIMIT_CORE 0 | service |
 | Path escape | `--agent-read-root` and `--agent-write-root` set to the project folder; the app resolves symlinks and `..`. File downloads resolve every path and refuse one that leaves the project | app, service |
 | Plugin loading | `--bundled-plugins-only`, an empty environment and a session `HOME`, so no `CLAP_PATH` or user plugin folder reaches the app | app, service |

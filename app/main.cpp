@@ -43,6 +43,7 @@
 #include "emerick/app/script_library.hpp"
 #include "emerick/app/track_list_model.hpp"
 #include "emerick/app/ui_api.hpp"
+#include "emerick/app/view_engine.hpp"
 #include "emerick/engine/plugin.hpp"
 #include "emerick/yamaha/plugin.hpp"
 
@@ -99,7 +100,7 @@ std::optional<double> positiveOption(const QCommandLineParser& parser, const QCo
     return value;
 }
 
-int runWindow(Registry& registry, Nav& nav, ProjectController& controller, Console& console) {
+int runWindow(Registry& registry, Nav& nav, ProjectController& controller, Console& console, ViewEngine& views) {
     TrackListModel tracks(controller, registry);
     FileOpenFilter fileOpen(registry);
     QGuiApplication::instance()->installEventFilter(&fileOpen);
@@ -108,6 +109,7 @@ int runWindow(Registry& registry, Nav& nav, ProjectController& controller, Conso
     PeakCache peaks;
     QQmlApplicationEngine engine;
     exposeToQml(engine, registry, nav, controller, tracks, peaks, &console);
+    views.adopt(engine, peaks);
     QObject::connect(
         &engine, &QQmlApplicationEngine::objectCreationFailed, QGuiApplication::instance(),
         [] { QCoreApplication::exit(1); }, Qt::QueuedConnection);
@@ -197,7 +199,8 @@ int run(int argc, char** argv) {
          .recordingDelay = registry.settingValue("audio.recordingDelay").get<emerick::core::Frames>()},
         profileFolder.isEmpty() ? std::filesystem::path{}
                                 : std::filesystem::path{profileFolder.toStdString()} / "projects");
-    registerProjectActions(registry, controller, nav);
+    ViewEngine views(registry, nav, controller);
+    registerProjectActions(registry, controller, nav, views);
     PluginCatalog plugins(
         {.cacheFolder =
              (profileFolder.isEmpty() ? QStandardPaths::writableLocation(QStandardPaths::CacheLocation) : profileFolder)
@@ -251,7 +254,7 @@ int run(int argc, char** argv) {
                 runCommandLineScript(lua, parser.value(scriptOption).toStdString(), args, std::cout, std::cerr));
         });
     }
-    return headless ? QGuiApplication::exec() : runWindow(registry, nav, controller, console);
+    return headless ? QGuiApplication::exec() : runWindow(registry, nav, controller, console, views);
 }
 
 }  // namespace

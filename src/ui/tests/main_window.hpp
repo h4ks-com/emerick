@@ -38,6 +38,7 @@ struct MainWindow {
             registerPlugins(rig);
         }
         exposeToQml(engine, rig.registry, rig.nav, *rig.controller, tracks, peaks, &console);
+        rig.views->adopt(engine, peaks);
         engine.loadFromModule("Emerick.Ui", "Main");
         REQUIRE(engine.rootObjects().size() == 1);
         window = qobject_cast<QQuickWindow*>(engine.rootObjects().front());

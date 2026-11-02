@@ -431,3 +431,23 @@ TEST_CASE("dragging the inspector's edge resizes it within its limits and keeps 
     main.rig.registry.setSetting("view.inspectorWidth", static_cast<int>(width));
     MainWindow::settle();
 }
+
+TEST_CASE("a long marker list leaves most of a short inspector to the track settings") {
+    MainWindow& main = MainWindow::instance();
+    const QSize size = main.window->size();
+    for (int marker = 0; marker < 12; ++marker) {
+        main.rig.run("marker.add", {{"at", (500 + marker) * 3840}});
+    }
+    main.rig.nav.setMarkerListOpen(true);
+    main.rig.nav.setConsoleOpen(true);
+    main.window->resize(size.width(), 700);
+    MainWindow::settle();
+
+    QQuickItem* inspector = main.item("inspector");
+    CHECK(main.item("inspector.scroll")->height() > inspector->height() / 2);
+
+    main.window->resize(size);
+    main.rig.nav.setConsoleOpen(false);
+    main.rig.nav.setMarkerListOpen(false);
+    MainWindow::settle();
+}

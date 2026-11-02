@@ -609,7 +609,8 @@ Rectangle {
             model: Project.markers
             boundsBehavior: Flickable.StopAtBounds
             Layout.fillWidth: true
-            Layout.preferredHeight: Math.min(count, Theme.markerListRows) * Theme.buttonHeight
+            Layout.preferredHeight: Math.min(Math.min(count, Theme.markerListRows) * Theme.buttonHeight,
+                                             Math.max(Theme.buttonHeight, inspector.height * Theme.markerListShare))
             ScrollBar.vertical: ScrollBar {}
             delegate: ItemDelegate {
                 id: row

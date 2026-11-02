@@ -1,3 +1,5 @@
+<img src="app/icons/emerick.svg" width="96" alt="Emerick icon" align="right">
+
 # Emerick
 
 Emerick is a digital audio workstation for recording and producing music that people and AI agents drive through the same actions: the window, a command palette, Lua scripts and MCP.

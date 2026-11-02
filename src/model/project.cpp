@@ -4,8 +4,38 @@
 #include <exception>
 #include <iterator>
 #include <utility>
+#include <variant>
+#include <vector>
 
 namespace emerick::model {
+
+namespace {
+
+// Whole-track edits of distinct tracks commute, so a run of them keeps one before and after per track.
+std::vector<Command> foldedTrackEdits(std::vector<Command> commands) {
+    std::vector<Command> folded;
+    std::size_t runStart = 0;
+    for (Command& command : commands) {
+        auto* edit = std::get_if<ReplaceTrack>(&command.operation);
+        if (edit == nullptr) {
+            folded.push_back(std::move(command));
+            runStart = folded.size();
+            continue;
+        }
+        const auto run = std::ranges::subrange(folded.begin() + static_cast<std::ptrdiff_t>(runStart), folded.end());
+        const auto earlier = std::ranges::find_if(run, [&](const Command& other) {
+            return std::get<ReplaceTrack>(other.operation).after.id == edit->after.id;
+        });
+        if (earlier == run.end()) {
+            folded.push_back(std::move(command));
+        } else {
+            std::get<ReplaceTrack>(earlier->operation).after = std::move(edit->after);
+        }
+    }
+    return folded;
+}
+
+}  // namespace
 
 Project::Project(Document document) : document_(std::move(document)) {}
 
@@ -82,13 +112,17 @@ void Project::setSelfContained(bool selfContained, std::string name) {
 void Project::group(std::string name, const std::function<void()>& edits) {
     leaveGesture();
     const std::size_t first = next_;
-    atomic([&] {
-        const DepthScope scope(groupDepth_);
-        edits();
-    });
-    if (next_ != first) {
-        collapseSince(first, std::move(name));
+    {
+        const DepthScope open(editDepth_);
+        atomic([&] {
+            const DepthScope scope(groupDepth_);
+            edits();
+        });
+        if (next_ != first) {
+            collapseSince(first, std::move(name));
+        }
     }
+    trimHistory();
     if (groupDepth_ == 0 && std::exchange(groupChanged_, false)) {
         notify(Change{});
     }
@@ -100,11 +134,22 @@ void Project::atomic(const std::function<void()>& edits) {
                           .gestureStep = gestureStep_,
                           .resets = resets_};
     try {
+        const DepthScope open(editDepth_);
         edits();
     } catch (const std::exception&) {
         rollBack(std::move(checkpoint));
         throw;
     }
+    trimHistory();
+}
+
+void Project::trimHistory() {
+    if (editDepth_ > 0 || history_.size() <= kMaxUndoSteps) {
+        return;
+    }
+    const std::size_t dropped = std::min(history_.size() - kMaxUndoSteps, next_);
+    history_.erase(history_.begin(), history_.begin() + static_cast<std::ptrdiff_t>(dropped));
+    next_ -= dropped;
 }
 
 void Project::rollBack(Checkpoint checkpoint) {
@@ -130,7 +175,7 @@ void Project::collapseSince(std::size_t first, std::string name) {
     const auto begin = history_.begin() + static_cast<std::ptrdiff_t>(first);
     std::vector<Command> commands(std::make_move_iterator(begin), std::make_move_iterator(history_.end()));
     history_.erase(begin, history_.end());
-    history_.push_back({std::move(name), Group{std::move(commands)}});
+    history_.push_back({std::move(name), Group{foldedTrackEdits(std::move(commands))}});
     next_ = history_.size();
 }
 
@@ -138,14 +183,18 @@ void Project::updateGesture(std::string name, const std::function<void()>& edits
     const std::optional<Change> reverted = revertGesture();
     const std::size_t first = next_;
     {
-        const DepthScope group(groupDepth_);
-        const DepthScope gesture(gestureDepth_);
-        edits();
+        const DepthScope open(editDepth_);
+        {
+            const DepthScope group(groupDepth_);
+            const DepthScope gesture(gestureDepth_);
+            edits();
+        }
+        if (next_ - first > 1) {
+            collapseSince(first, std::move(name));
+        }
     }
+    trimHistory();
     groupChanged_ = false;
-    if (next_ - first > 1) {
-        collapseSince(first, std::move(name));
-    }
     gestureStep_ = next_ != first;
     if (gestureStep_ && reverted) {
         notify(merged(*reverted, changeOf(history_[next_ - 1])));
@@ -260,6 +309,7 @@ void Project::execute(Command command) {
     const Change change = changeOf(command);
     history_.push_back(std::move(command));
     ++next_;
+    trimHistory();
     if (groupDepth_ > 0) {
         groupChanged_ = true;
         return;

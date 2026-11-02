@@ -11,6 +11,9 @@
 
 namespace emerick::model {
 
+// Each step can hold whole copies of a track, so we keep only the latest steps.
+inline constexpr std::size_t kMaxUndoSteps = 100;
+
 // Owns the document. Every edit is a Command, so undo, redo and change listeners share one path.
 class Project {
 public:
@@ -83,6 +86,7 @@ private:
     // Reverts the edits made since the checkpoint; after a reset or an undo past it there is nothing to revert to.
     void rollBack(Checkpoint checkpoint);
     void execute(Command command);
+    void trimHistory();
     // Folds the commands from first on into one step named name.
     void collapseSince(std::size_t first, std::string name);
     std::optional<Change> revertGesture();
@@ -95,6 +99,8 @@ private:
     std::map<std::size_t, Listener> listeners_;
     std::size_t nextHandle_ = 1;
     int groupDepth_ = 0;
+    // Checkpoints and groups hold positions in history_, so we trim it only when none is open.
+    int editDepth_ = 0;
     bool groupChanged_ = false;
     // history_[next_ - 1] is the open gesture's step.
     bool gestureStep_ = false;

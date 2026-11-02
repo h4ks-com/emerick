@@ -460,6 +460,47 @@ TEST_CASE("a group of edits undoes and redoes as one step") {
     CHECK(project.document().tracks.empty());
 }
 
+TEST_CASE("a group of many edits to a few tracks undoes and redoes to the right state") {
+    Project project;
+    project.addTrack(named("a"));
+    project.addTrack(named("b"));
+    const TrackId a = project.document().tracks[0].id;
+    const TrackId b = project.document().tracks[1].id;
+    project.group("rename", [&] {
+        for (int step = 1; step <= 3; ++step) {
+            project.editTrack(a, "rename", [&](Track& track) { track.name = "a" + std::to_string(step); });
+            project.editTrack(b, "rename", [&](Track& track) { track.name = "b" + std::to_string(step); });
+        }
+        project.moveTrack(b, 0);
+        project.editTrack(a, "rename", [&](Track& track) { track.name = "a4"; });
+    });
+    CHECK(names(project) == std::vector<std::string>{"b3", "a4"});
+    project.undo();
+    CHECK(names(project) == std::vector<std::string>{"a", "b"});
+    project.redo();
+    CHECK(names(project) == std::vector<std::string>{"b3", "a4"});
+}
+
+TEST_CASE("the history keeps the latest steps and drops the oldest") {
+    Project project;
+    project.addTrack(named("0"));
+    const TrackId id = project.document().tracks.front().id;
+    const auto rename = [&](std::size_t step) {
+        project.editTrack(id, "rename", [&](Track& track) { track.name = std::to_string(step); });
+    };
+    for (std::size_t step = 1; step <= kMaxUndoSteps + 10; ++step) {
+        project.atomic([&] { rename(step); });
+    }
+    std::size_t undone = 0;
+    while (project.undo()) {
+        ++undone;
+    }
+    CHECK(undone == kMaxUndoSteps);
+    CHECK(names(project) == std::vector<std::string>{"10"});
+    project.redo();
+    CHECK(names(project) == std::vector<std::string>{"11"});
+}
+
 TEST_CASE("edits that throw leave the document, the history and the redo steps as they were") {
     Project project;
     project.addTrack(named("kept"));

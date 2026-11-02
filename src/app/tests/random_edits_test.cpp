@@ -5,6 +5,7 @@
 #include <string>
 #include <vector>
 
+#include "emerick/model/project.hpp"
 #include "fuzz_rig.hpp"
 
 using namespace emerick;
@@ -160,7 +161,7 @@ TEST_CASE("random edits each leave one undo step, undo back to the start and red
     const std::uint32_t seed = fuzzSeed();
     INFO("EMERICK_SEED=" << seed);
     std::mt19937 rng{seed};
-    constexpr int kEdits = 120;
+    constexpr int kEdits = static_cast<int>(model::kMaxUndoSteps);
     for (const bool populated : {false, true}) {
         FuzzRig rig;
         if (populated) {

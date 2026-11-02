@@ -221,10 +221,14 @@ void waitForReadAhead(const engine::Engine& engine) {
     }
 }
 
+struct CloseFile {
+    void operator()(std::FILE* file) const { std::fclose(file); }
+};
+
 // Keeps a render in a temporary file, so loudness matching can play it several times while memory stays flat.
 class SpilledAudio {
 public:
-    explicit SpilledAudio(std::size_t channels) : channels_(channels), file_(std::tmpfile(), &std::fclose) {
+    explicit SpilledAudio(std::size_t channels) : channels_(channels), file_(std::tmpfile()) {
         if (!file_) {
             throw AppError("cannot render: no temporary file to hold the mix");
         }
@@ -257,7 +261,7 @@ public:
 
 private:
     std::size_t channels_;
-    std::unique_ptr<std::FILE, decltype(&std::fclose)> file_;
+    std::unique_ptr<std::FILE, CloseFile> file_;
     std::vector<std::size_t> chunkFrames_;
 };
 

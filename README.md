@@ -11,14 +11,17 @@ Emerick is a digital audio workstation for recording and producing music that pe
 | ![Mixer with fourteen channel strips, inserts, sends and live meters](docs/images/mixer.png) | ![Piano roll with a lead melody over velocity, pitch bend and modulation lanes](docs/images/piano-roll.png) |
 | ![Channel EQ shaping a lead synth with a low cut, a mid cut and a presence boost](docs/images/eq.png) | ![Command palette searching every action](docs/images/palette.png) |
 
-## Build and run
+## Install
 
-Emerick builds from source on macOS and Linux. On macOS:
+Download the app for macOS (Apple Silicon or Intel), Linux (x86_64 or arm64 AppImage) or Windows (x86_64 zip) from the [latest release](https://github.com/h4ks-com/emerick/releases/latest).
+
+The macOS app has an ad-hoc signature, so clear the download quarantine before the first launch:
 
 ```
-brew install qt cmake ninja ccache libsndfile fluid-synth lua pkgconf
-make run-release
+xattr -dr com.apple.quarantine /Applications/emerick.app
 ```
+
+To build from source on macOS, run `brew install qt cmake ninja ccache libsndfile fluid-synth lua pkgconf`, then `make run-release`. [CONTRIBUTING.md](CONTRIBUTING.md) covers Linux and Windows.
 
 The app opens with an empty project. Press Cmd+K to search every action, from adding a track to exporting the mix.
 
@@ -29,6 +32,7 @@ The app opens with an empty project. Press Cmd+K to search every action, from ad
 - Ships a General MIDI instrument with the GeneralUser GS SoundFont, so MIDI plays with no setup.
 - Mixes through buses and sends with ten built-in effects (EQ, compressor, delay, reverb, limiter, gate, filter, saturation, chorus, utility) and automation on any parameter.
 - Compensates plugin latency so tracks stay aligned.
+- Opens a tuner and a spectrogram on any track, bus or the master.
 - Exports WAV, FLAC, Ogg, Opus and MP3 at a target loudness (LUFS) and true-peak ceiling.
 - Plays Yamaha keyboard style files with a built-in arranger that follows a chord track.
 
@@ -64,7 +68,7 @@ The Docker image runs a session service: each agent session gets its own Emerick
 docker run --rm -p 127.0.0.1:8080:8080 -v emerick-data:/data ghcr.io/h4ks-com/emerick
 ```
 
-Agents connect to `http://127.0.0.1:8080/mcp`. See [service/README.md](service/README.md) for sessions, settings and storage.
+Agents connect to `http://127.0.0.1:8080/mcp`. Open `http://127.0.0.1:8080/projects/<id>/viewer/` in a browser to see a project and play its mix, read-only. See [service/README.md](service/README.md) for sessions, settings and storage.
 
 ## Documentation
 
@@ -76,7 +80,7 @@ Agents connect to `http://127.0.0.1:8080/mcp`. See [service/README.md](service/R
 
 ## Status
 
-Emerick is in early development. Releases publish the Docker image to `ghcr.io/h4ks-com/emerick`; there are no desktop binaries yet. macOS is the main platform; Linux builds and runs headless in CI.
+Emerick is in early development. Each release publishes the desktop packages and the Docker image `ghcr.io/h4ks-com/emerick`. macOS is the main platform; the Linux and Windows packages build in CI and get less testing.
 
 ## License
 

@@ -32,9 +32,29 @@ int checkedPitch(int pitch) {
     return pitch;
 }
 
-Json addNote(ProjectController& controller, Nav& nav, NoteDefaults& defaults, const Json& params) {
-    const model::ClipId clip = targetClip(controller, nav, params);
-    const model::MidiClip& midi = midiClipOf(controller, clip);
+Json notePropertiesSchema() {
+    return {{"pitch", {{"type", "integer"}, {"minimum", 0}, {"maximum", model::kMaxPitch}}},
+            {"start", {{"type", "integer"}}},
+            {"length", {{"type", "integer"}}},
+            {"velocity", {{"type", "integer"}, {"minimum", 1}, {"maximum", model::kMaxVelocity}}},
+            {"channel",
+             {{"type", "integer"},
+              {"minimum", 1},
+              {"maximum", kMaxChannel},
+              {"description", "default 1; General MIDI plays drums on channel 10"}}}};
+}
+
+Json addNoteSchema() {
+    Json properties = notePropertiesSchema();
+    properties["clip"] = {{"type", "string"}};
+    properties["notes"] = {{"type", "array"},
+                           {"description", "notes to add in place of pitch and start, each with the params of one"},
+                           {"items", {{"type", "object"}, {"properties", notePropertiesSchema()}}}};
+    return properties;
+}
+
+// Reads one new note and makes its length and velocity the defaults for the next one.
+model::Note newNote(const model::MidiClip& midi, NoteDefaults& defaults, const Json& params) {
     const auto start = param<core::Ticks>(params, "start");
     if (start < 0 || start >= midi.length) {
         throw AppError("start must be inside the clip, from 0 to " + std::to_string(midi.length - 1) + " ticks");
@@ -48,17 +68,32 @@ Json addNote(ProjectController& controller, Nav& nav, NoteDefaults& defaults, co
     if (velocity < 1 || velocity > model::kMaxVelocity || channel < 1 || channel > kMaxChannel) {
         throw AppError("velocity must be from 1 to 127 and channel from 1 to 16");
     }
-    const model::Note note{.pitch = checkedPitch(param<int>(params, "pitch")),
-                           .velocity = velocity,
-                           .start = start,
-                           .length = length,
-                           .channel = channel};
-    editNotes(controller, clip, "add note", [&](model::MidiClip& edited) { edited.notes.push_back(note); });
     defaults = {.length = length, .velocity = velocity};
+    return {.pitch = checkedPitch(param<int>(params, "pitch")),
+            .velocity = velocity,
+            .start = start,
+            .length = length,
+            .channel = channel};
+}
+
+Json addNotes(ProjectController& controller, Nav& nav, NoteDefaults& defaults, const Json& params,
+              const std::vector<Json>& given, const std::string& name) {
+    const model::ClipId clip = targetClip(controller, nav, params);
+    const model::MidiClip& midi = midiClipOf(controller, clip);
+    NoteDefaults next = defaults;
+    const std::vector<model::Note> notes =
+        given | std::views::transform([&](const Json& note) { return newNote(midi, next, note); }) |
+        std::ranges::to<std::vector>();
+    editNotes(controller, clip, name,
+              [&](model::MidiClip& edited) { edited.notes.insert(edited.notes.end(), notes.begin(), notes.end()); });
+    defaults = next;
+    const std::vector<model::NoteId> ids =
+        notes | std::views::transform(&model::Note::id) | std::ranges::to<std::vector>();
     if (nav.pianoRollClip() == qs(clip.value)) {
-        nav.setSelectedNotes({qs(note.id.value)});
+        nav.setSelectedNotes(ids | std::views::transform([](const model::NoteId& id) { return qs(id.value); }) |
+                             std::ranges::to<QStringList>());
     }
-    return notesResult(controller, clip, {note.id});
+    return notesResult(controller, clip, ids);
 }
 
 // Moves the notes by ticks and semitones, held back where a note would leave the clip or the keyboard.
@@ -106,28 +141,21 @@ Json quantize(const Registry& registry, ProjectController& controller, const Nav
 
 void registerNoteEdits(Registry& registry, ProjectController& controller, Nav& nav,
                        const std::shared_ptr<NoteDefaults>& defaults) {
-    registry.addAction(
-        {.id = "midi.addNote",
-         .title = "Add note",
-         .description = "Adds a note to the MIDI clip. Start and length are ticks from the clip start; length "
-                        "defaults to the last note length.",
-         .aliases = {"draw note", "pencil"},
-         .category = "MIDI",
-         .schema = {{"required", {"pitch", "start"}},
-                    {"properties",
-                     {{"clip", {{"type", "string"}}},
-                      {"pitch", {{"type", "integer"}, {"minimum", 0}, {"maximum", model::kMaxPitch}}},
-                      {"start", {{"type", "integer"}}},
-                      {"length", {{"type", "integer"}}},
-                      {"velocity", {{"type", "integer"}, {"minimum", 1}, {"maximum", model::kMaxVelocity}}},
-                      {"channel",
-                       {{"type", "integer"},
-                        {"minimum", 1},
-                        {"maximum", kMaxChannel},
-                        {"description", "default 1; General MIDI plays drums on channel 10"}}}}}},
-         .run = [&controller, &nav, defaults](const Json& params) {
-             return addNote(controller, nav, *defaults, params);
-         }});
+    registry.addAction({.id = "midi.addNote",
+                        .title = "Add note",
+                        .description =
+                            "Adds a note to the MIDI clip, or with notes a list of them as one undo step. Start and "
+                            "length are ticks from the clip start; length and velocity default to the last note's.",
+                        .aliases = {"draw note", "pencil", "add notes"},
+                        .category = "MIDI",
+                        .schema = {{"properties", addNoteSchema()}},
+                        .run = [&controller, &nav, defaults](const Json& params) {
+                            if (!params.contains("notes")) {
+                                return addNotes(controller, nav, *defaults, params, {params}, "add note");
+                            }
+                            return addNotes(controller, nav, *defaults, params,
+                                            param<std::vector<Json>>(params, "notes"), "add notes");
+                        }});
     registry.addAction(
         {.id = "midi.moveNotes",
          .title = "Move notes",

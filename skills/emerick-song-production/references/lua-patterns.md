@@ -7,7 +7,7 @@ The patterns `assets/song-template.lua` uses, with the Emerick calls behind them
 | Call | What it does |
 |---|---|
 | `emerick.run(id, params)` | runs any action and returns its result table |
-| `emerick.batch(calls, keepGoing)` | runs a list of `{id, params}` calls as one step |
+| `emerick.batch(calls, keepGoing)` | runs up to 1000 `{id, params}` calls in order, each as its own undo step |
 | `emerick.actions(query)` | lists actions matching a query, with descriptions |
 | `emerick.project()` | the project state: tracks, clips, buses |
 | `emerick.state(name)` | any state entry, such as `transport` |
@@ -48,7 +48,10 @@ local track = run("track.addInstrument", { plugin = "org.emerick.gm", name = "Ba
 emerick.waitReady(60)
 local clip = run("midi.addClip", { track = track, at = 0, length = tick(lastBar) }).id
 run("midi.addNote", { clip = clip, pitch = 40, start = tick(5, 1.5), length = PPQ // 2, velocity = 96 })
+run("midi.addNote", { clip = clip, notes = { { pitch = 40, start = 0, length = PPQ }, { pitch = 43, start = PPQ } } })
 ```
+
+- `midi.addNote` with `notes` adds the whole list to the clip as one undo step.
 
 - `instrument.setParam` takes the param's numeric id. Look ids up by name from `instrument.params` once (the template's `setInstrumentParam`), so the script survives instruments that reorder their params. Choice params take the choice's text, and `instrument.params` lists every choice: the General MIDI instrument's `Sound` param lists its 128 sounds and `Drum kit` its kits.
 - `plugins.list` shows every instrument and effect the build can load, bundled and third party.

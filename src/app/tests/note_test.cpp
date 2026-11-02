@@ -91,6 +91,27 @@ TEST_CASE("a new note takes the last length and the selection follows the piano 
     CHECK(keys.midi().notes.size() == 2);
 }
 
+TEST_CASE("adding many notes is one undo step, and one bad note adds none") {
+    NoteRig keys;
+    keys.add(48, 0);
+    const Json added = keys.run("midi.addNote", {{"notes",
+                                                  {{{"pitch", 60}, {"start", 0}, {"length", 480}, {"velocity", 90}},
+                                                   {{"pitch", 64}, {"start", 480}},
+                                                   {{"pitch", 67}, {"start", 960}, {"channel", 10}}}}});
+    CHECK(added.at("noteCount") == 4);
+    REQUIRE(added.at("notes").size() == 3);
+    const model::Note& last = keys.note(added.at("notes").at(2));
+    CHECK((last.pitch == 67 && last.length == 480 && last.velocity == 90 && last.channel == 10));
+    CHECK(keys.rig.controller->project().undoName() == "add notes");
+    keys.rig.run("project.undo");
+    CHECK(keys.midi().notes.size() == 1);
+
+    CHECK_THROWS_AS(
+        keys.run("midi.addNote", {{"notes", {{{"pitch", 60}, {"start", 0}}, {{"pitch", 200}, {"start", 0}}}}}),
+        AppError);
+    CHECK(keys.midi().notes.size() == 1);
+}
+
 TEST_CASE("moving notes stops at the clip start and the keyboard edges") {
     NoteRig keys;
     const Json low = keys.add(2, 100);

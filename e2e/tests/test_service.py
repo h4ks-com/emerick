@@ -1,6 +1,9 @@
 import json
 import os
+import shutil
+import subprocess
 import sys
+import tempfile
 import unittest
 import urllib.error
 import urllib.request
@@ -50,6 +53,37 @@ class Service(unittest.TestCase):
         self.assertTrue({"mix.wav", "project.erk/project.json"} <= {file["path"] for file in files}, files)
         _, mix = request("GET", f"/projects/{project['id']}/files/mix.wav")
         self.assertEqual(mix[:4], b"RIFF")
+
+    def test_agent_session_renders_a_video(self):
+        _, project = request("POST", "/projects", {"name": "video"})
+        _, session = request("POST", "/sessions", {"project_id": project["id"]})
+        client = Client(session["mcp_url"], timeout=120)
+        client.initialize()
+        track = client.run("track.addInstrument", {"plugin": "org.emerick.gm", "name": "Piano"})["id"]
+        clip = client.run("midi.addClip", {"track": track, "at": 0})["id"]
+        client.run("midi.addNote", {"clip": clip, "pitch": 60, "start": 0, "length": 960})
+        rendered = client.run(
+            "video.render",
+            {"path": f"{session['project_dir']}/song.mp4", "width": 640, "height": 360, "fps": 10, "to": "2.1.0"},
+        )
+        self.assertEqual(rendered["frames"], 20)
+
+        request("DELETE", f"/sessions/{session['id']}")
+        _, video = request("GET", f"/projects/{project['id']}/files/song.mp4")
+        self.assertEqual(video[4:8], b"ftyp")
+        if not shutil.which("ffprobe"):
+            return
+        with tempfile.NamedTemporaryFile(suffix=".mp4") as file:
+            file.write(video)
+            file.flush()
+            probe = subprocess.run(
+                ["ffprobe", "-v", "error", "-count_frames", "-show_entries", "stream=codec_name,nb_read_frames",
+                 "-of", "json", file.name],
+                capture_output=True, check=True, text=True,
+            )
+        streams = {stream["codec_name"]: stream for stream in json.loads(probe.stdout)["streams"]}
+        self.assertEqual(streams["h264"]["nb_read_frames"], "20")
+        self.assertIn("aac", streams)
 
     def test_top_level_mcp_lists_service_tools(self):
         client = Client(f"{SERVICE}/mcp")

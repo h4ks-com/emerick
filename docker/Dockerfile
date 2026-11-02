@@ -9,6 +9,26 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 ENV CC=gcc-14 CXX=g++-14
 
+# video.render pipes frames to this ffmpeg, which takes only raw video and WAV and writes only H.264 and AAC in MP4.
+FROM ubuntu:24.04 AS ffmpeg
+ARG FFMPEG_VERSION=7.1.1
+ARG FFMPEG_SHA256=733984395e0dbbe5c046abda2dc49a5544e7e0e1e2366bba849222ae9e3a03b1
+ARG JOBS=4
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        ca-certificates build-essential curl nasm pkg-config xz-utils libx264-dev \
+    && rm -rf /var/lib/apt/lists/*
+WORKDIR /ffmpeg
+RUN curl -fsSL "https://ffmpeg.org/releases/ffmpeg-$FFMPEG_VERSION.tar.xz" -o ffmpeg.tar.xz \
+    && echo "$FFMPEG_SHA256  ffmpeg.tar.xz" | sha256sum -c - \
+    && tar xJf ffmpeg.tar.xz --strip-components=1 \
+    && ./configure --enable-gpl --enable-libx264 --enable-static --disable-shared --pkg-config-flags=--static \
+        --extra-ldflags=-static --disable-autodetect --disable-everything --disable-network --disable-doc \
+        --disable-ffplay --disable-ffprobe --disable-debug \
+        --enable-encoder=libx264,aac --enable-decoder=rawvideo,pcm_f32le,pcm_s16le,pcm_s24le \
+        --enable-demuxer=rawvideo,wav --enable-muxer=mp4 --enable-protocol=file,pipe \
+        --enable-filter=buffer,buffersink,abuffer,abuffersink,scale,format,aformat,aresample,null,anull,trim,atrim \
+    && make -j "$JOBS" ffmpeg && strip ffmpeg
+
 FROM toolchain AS qt
 ARG TARGETARCH
 ARG QT_VERSION=6.11.3
@@ -33,13 +53,23 @@ RUN --mount=type=cache,target=/ccache \
     && ctest --test-dir build/release -j "$JOBS" --output-on-failure
 
 # We copy the app with only the Qt libraries and plugins it links, and keep Qt's folder layout so Qt finds its plugins.
+# video.render loads the views, so we also copy the QML modules they import, without the other Controls styles.
 FROM build AS bundle
+COPY --from=ffmpeg /ffmpeg/ffmpeg /out/opt/emerick/ffmpeg
 RUN set -e; app=build/release/app; qt=$(readlink -f /opt/qt/current); \
-    mkdir -p /out/opt/emerick "/out$qt/lib" "/out$qt/plugins/platforms"; ln -s "$qt" /out/opt/qt/current; \
+    mkdir -p /out/opt/emerick "/out$qt/lib" "/out$qt/plugins/platforms" "/out$qt/plugins/imageformats"; \
+    ln -s "$qt" /out/opt/qt/current; \
     cp -a "$app/emerick" "$app/emerick-plugin-scanner" "$app/clap" /out/opt/emerick/; \
     cp "$qt/plugins/platforms/libqoffscreen.so" "/out$qt/plugins/platforms/"; \
+    cp "$qt/plugins/imageformats/libqsvg.so" "/out$qt/plugins/imageformats/"; \
+    for module in QtQml QtQuick QtQuick/Controls; do \
+        mkdir -p "/out$qt/qml/$module"; find "$qt/qml/$module" -maxdepth 1 -type f -exec cp {} "/out$qt/qml/$module/" \; ; \
+    done; \
+    for module in QtQml/Models QtQml/WorkerScript QtQuick/Controls/Basic QtQuick/Controls/impl QtQuick/Templates \
+        QtQuick/Layouts QtQuick/Shapes QtQuick/Window; do cp -a "$qt/qml/$module" "/out$qt/qml/$module"; done; \
     find /out/opt -type f \( -name 'emerick*' -o -name '*.clap' -o -name '*.so' \) -exec strip --strip-unneeded {} +; \
-    find /out/opt -type f \( -name 'emerick*' -o -name '*.clap' -o -name '*.so' \) -exec ldd {} + \
+    { find /out/opt/emerick -type f \( -name 'emerick*' -o -name '*.clap' -o -name '*.so' \); \
+      find "/out$qt" -name '*.so' | sed 's|^/out||'; } | xargs ldd \
         | awk '$3 ~ /^\/opt\/qt\// {print $3}' | sort -u \
         | xargs -I{} cp -L {} "/out$qt/lib/"
 

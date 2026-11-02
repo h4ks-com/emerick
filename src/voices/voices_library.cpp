@@ -12,6 +12,7 @@
 #include <ranges>
 #include <thread>
 
+#include "emerick/core/join.hpp"
 #include "voices.hpp"
 
 namespace emerick::voices {
@@ -166,8 +167,8 @@ std::string noisyNotes(const Bank& bank) {
             merged.emplace_back(first, last);
         }
     }
-    return merged | std::views::transform([](const auto& range) { return noteRange(range.first, range.second); }) |
-           std::views::join_with(std::string{", "}) | std::ranges::to<std::string>();
+    return core::join(
+        merged | std::views::transform([](const auto& range) { return noteRange(range.first, range.second); }), ", ");
 }
 
 void publishStore(Plugin& plugin, std::shared_ptr<const Store> store, const std::filesystem::path& folder) {

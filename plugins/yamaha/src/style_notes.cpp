@@ -11,6 +11,7 @@
 #include <vector>
 
 #include "emerick/app/action_params.hpp"
+#include "emerick/core/join.hpp"
 #include "emerick/yamaha/chart.hpp"
 #include "emerick/yamaha/profile.hpp"
 
@@ -31,8 +32,7 @@ std::string sectionLabel(const arranger::StyleSection& section) {
 }
 
 std::size_t chosenIndex(std::string_view name, const std::vector<std::string_view>& choices, const std::string& text) {
-    const std::string known = choices | std::views::join_with(std::string_view{", "}) | std::ranges::to<std::string>();
-    return app::choiceIndex(name, choices, text, "use one of " + known);
+    return app::choiceIndex(name, choices, text, "use one of " + core::join(choices, ", "));
 }
 
 std::vector<const arranger::StyleSection*> chosenSections(const arranger::Style& style,

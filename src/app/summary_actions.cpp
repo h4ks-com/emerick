@@ -21,6 +21,7 @@
 #include "emerick/app/project_state.hpp"
 #include "emerick/app/session_mapping.hpp"
 #include "emerick/app/stem_export.hpp"
+#include "emerick/core/join.hpp"
 #include "emerick/core/overloaded.hpp"
 #include "emerick/model/controls.hpp"
 #include "emerick/model/midi_notes.hpp"
@@ -218,10 +219,10 @@ Json waitReady(ProjectController& controller, const Registry& registry, const Js
     const model::Document& document = controller.project().document();
     const auto ready = [&] { return loadingTracks(registry, document).empty(); };
     if (!processEventsUntil(ready, std::chrono::milliseconds{std::llround(seconds * 1000)})) {
-        const auto names =
+        const auto names = core::join(
             loadingTracks(registry, document) |
-            std::views::transform([&](const model::TrackId& id) { return model::findTrack(document, id)->name; }) |
-            std::views::join_with(std::string{", "}) | std::ranges::to<std::string>();
+                std::views::transform([&](const model::TrackId& id) { return model::findTrack(document, id)->name; }),
+            ", ");
         throw AppError(std::format("{} still loading after {} s, wait longer or check the instrument", names, seconds));
     }
     return Json{{"ready", true}, {"message", "every instrument has loaded its sounds"}};

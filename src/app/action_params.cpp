@@ -11,6 +11,7 @@
 #include <vector>
 
 #include "emerick/core/fuzzy.hpp"
+#include "emerick/core/join.hpp"
 
 namespace emerick::app {
 
@@ -27,9 +28,9 @@ std::string closeChoices(std::span<const std::string_view> choices, std::string_
     const auto count = std::min(kSuggestions, scored.size());
     std::ranges::partial_sort(scored, scored.begin() + static_cast<std::ptrdiff_t>(count), std::greater{},
                               &std::pair<double, std::string_view>::first);
-    return scored | std::views::take(count) |
-           std::views::transform([](const auto& entry) { return std::format("\"{}\"", entry.second); }) |
-           std::views::join_with(std::string_view{", "}) | std::ranges::to<std::string>();
+    return core::join(scored | std::views::take(count) |
+                          std::views::transform([](const auto& entry) { return std::format("\"{}\"", entry.second); }),
+                      ", ");
 }
 
 }  // namespace
@@ -86,8 +87,7 @@ core::Ticks positionParam(const Json& params, const std::string& key, const core
 const engine::EffectSpec& effectType(const std::string& type) {
     const engine::EffectSpec* spec = engine::findEffect(type);
     if (spec == nullptr) {
-        const std::string known = engine::kEffects | std::views::transform(&engine::EffectSpec::id) |
-                                  std::views::join_with(std::string_view{", "}) | std::ranges::to<std::string>();
+        const std::string known = core::join(engine::kEffects | std::views::transform(&engine::EffectSpec::id), ", ");
         throw AppError("unknown effect type " + type + ", use one of " + known);
     }
     return *spec;
@@ -96,8 +96,7 @@ const engine::EffectSpec& effectType(const std::string& type) {
 const engine::EffectParam& effectParamNamed(const engine::EffectSpec& spec, const std::string& name) {
     const auto index = engine::paramIndex(spec, name);
     if (!index) {
-        const std::string known = spec.params | std::views::transform(&engine::EffectParam::id) |
-                                  std::views::join_with(std::string_view{", "}) | std::ranges::to<std::string>();
+        const std::string known = core::join(spec.params | std::views::transform(&engine::EffectParam::id), ", ");
         throw AppError(std::string{spec.title} + " has no param " + name + ", use one of " + known);
     }
     return spec.params[*index];
@@ -122,8 +121,7 @@ std::size_t choiceIndex(std::string_view name, std::span<const std::string_view>
 double effectParamValue(const engine::EffectParam& described, const Json& value) {
     double number = 0.0;
     if (value.is_string() && described.kind == engine::ParamKind::choice) {
-        const std::string known =
-            described.choices | std::views::join_with(std::string_view{", "}) | std::ranges::to<std::string>();
+        const std::string known = core::join(described.choices, ", ");
         number = static_cast<double>(choiceIndex("param " + std::string{described.id}, described.choices,
                                                  value.get<std::string>(), "use one of " + known));
     } else if (value.is_number()) {

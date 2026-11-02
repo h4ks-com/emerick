@@ -5,7 +5,7 @@ set_target_properties(emerick_voices_core PROPERTIES POSITION_INDEPENDENT_CODE O
 emerick_target(emerick_voices_core)
 
 add_library(emerick_voices MODULE voices_plugin.cpp voices_library.cpp voices_settings.cpp)
-target_link_libraries(emerick_voices PRIVATE emerick_voices_core clap nlohmann_json::nlohmann_json)
+target_link_libraries(emerick_voices PRIVATE emerick_voices_core emerick_core clap nlohmann_json::nlohmann_json)
 set_target_properties(emerick_voices PROPERTIES PREFIX "" SUFFIX ".clap" OUTPUT_NAME "Emerick Voices"
     LIBRARY_OUTPUT_DIRECTORY ${emerick_bundled_clap_folder})
 if(APPLE)

@@ -11,6 +11,7 @@
 #include "emerick/app/automation_params.hpp"
 #include "emerick/app/project_actions.hpp"
 #include "emerick/app/project_state.hpp"
+#include "emerick/core/join.hpp"
 #include "emerick/model/automation.hpp"
 
 namespace emerick::app {
@@ -33,10 +34,10 @@ LaneRef targetLane(const Registry& registry, const ProjectController& controller
     auto param =
         automationParam(registry, controller.project().document(), found, controller.instruments().insertPlugins(), id);
     if (!param) {
-        const auto ids = automationParams(registry, controller.project().document(), found,
-                                          controller.instruments().insertPlugins()) |
-                         std::views::transform(&AutomationParam::id) | std::views::join_with(std::string{", "}) |
-                         std::ranges::to<std::string>();
+        const auto ids = core::join(automationParams(registry, controller.project().document(), found,
+                                                     controller.instruments().insertPlugins()) |
+                                        std::views::transform(&AutomationParam::id),
+                                    ", ");
         throw AppError("track " + found.name + " cannot automate " + id +
                        (ids.empty() ? ", since it plays no audio" : ", pick one of " + ids));
     }

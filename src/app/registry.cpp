@@ -482,10 +482,9 @@ void Registry::checkRenderSeconds(double seconds) const {
 }
 
 std::filesystem::path Registry::checkedPath(const std::string& path, PathAccess access) const {
-    const bool fromAgent = origin_ == ActionSource::Mcp || origin_ == ActionSource::Lua;
     const std::optional<std::filesystem::path>& root =
         access == PathAccess::Read ? agentRoots_.read : agentRoots_.write;
-    if (!fromAgent || !root) {
+    if (!fromAgent() || !root) {
         return path;
     }
     if (auto inside = pathInside(path, *root)) {

@@ -88,10 +88,24 @@ TEST_CASE("the insert editor opens on the insert, and a duplicated track gets it
     CHECK(rig.nav.editingInsert().toStdString() == eq);
     rig.run("insert.closeEditor");
     CHECK(rig.nav.editingInsert().isEmpty());
+    CHECK_NOTHROW(rig.registry.run("insert.closeEditor", {}, ActionSource::Lua));
 
     const std::string copy = rig.run("track.duplicate", {{"track", vox}}).at("id");
     CHECK(trackOf(rig, copy).inserts.size() == 1);
     CHECK(trackOf(rig, copy).inserts.front().id != model::InsertId{eq});
+}
+
+TEST_CASE("adding an insert opens its editor for a click, and leaves it closed for a script or an agent") {
+    ProjectRig rig;
+    const std::string vox = rig.run("track.addAudio").at("id");
+    rig.registry.run("insert.add", {{"track", vox}, {"type", "delay"}}, ActionSource::Lua);
+    rig.registry.run("insert.add", {{"track", vox}, {"type", "reverb"}}, ActionSource::Mcp);
+    CHECK(rig.nav.editingInsert().isEmpty());
+    const std::string limiter =
+        rig.registry.run("insert.add", {{"track", vox}, {"type", "limiter"}}, ActionSource::Ui).at("id");
+    CHECK(rig.nav.editingInsert().toStdString() == limiter);
+    rig.registry.run("insert.closeEditor", {}, ActionSource::Lua);
+    CHECK(rig.nav.editingInsert().isEmpty());
 }
 
 TEST_CASE("stems and the mix play each track's inserts before its fader") {

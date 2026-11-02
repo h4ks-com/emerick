@@ -332,6 +332,7 @@ public:
     Json runBatch(const Json& calls, bool keepGoing, ActionSource source) const;
     // Runs call as a request from origin; inside an outer request, the outer origin stays.
     Json runFrom(ActionSource origin, const std::function<Json()>& call) const;
+    [[nodiscard]] bool fromAgent() const { return origin_ == ActionSource::Mcp || origin_ == ActionSource::Lua; }
     // Canonicalizes both roots, so a missing folder throws std::filesystem::filesystem_error.
     void setAgentRoots(AgentRoots roots);
     void setLimits(Limits limits) { limits_ = limits; }

@@ -266,12 +266,10 @@ void registerInsertEditor(Registry& registry, ProjectController& controller, Nav
                         .title = "Close insert editor",
                         .aliases = {"hide effect"},
                         .category = kCategory,
-                        .enabled = [&nav] { return !nav.editingInsert().isEmpty(); },
-                        .run =
-                            [&nav](const Json&) {
-                                nav.setEditingInsert({});
-                                return Json::object();
-                            }});
+                        .run = [&nav](const Json&) {
+                            nav.setEditingInsert({});
+                            return Json::object();
+                        }});
 }
 
 }  // namespace
@@ -308,7 +306,9 @@ void registerInsertActions(Registry& registry, ProjectController& controller, Na
                                                               std::ssize(edited.inserts));
                      edited.inserts.insert(edited.inserts.begin() + at, insert);
                  });
-                 nav.setEditingInsert(qs(insert.id.value));
+                 if (!registry.fromAgent()) {
+                     nav.setEditingInsert(qs(insert.id.value));
+                 }
                  return insertResult(controller, {track, insert.id});
              },
          .submenu =
@@ -378,7 +378,9 @@ void registerPluginInsertActions(Registry& registry, ProjectController& controll
                      edited.inserts.insert(edited.inserts.begin() + at, insert);
                  });
                  controller.instruments().sync(controller.project().document());
-                 nav.setEditingInsert(qs(insert.id.value));
+                 if (!registry.fromAgent()) {
+                     nav.setEditingInsert(qs(insert.id.value));
+                 }
                  return insertResult(controller, {track, insert.id});
              },
          .submenu = effects});

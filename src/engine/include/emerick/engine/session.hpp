@@ -14,6 +14,7 @@
 #include "emerick/core/time.hpp"
 #include "emerick/engine/effects.hpp"
 #include "emerick/engine/plugin.hpp"
+#include "emerick/engine/signal_tap.hpp"
 
 namespace emerick::engine {
 
@@ -201,6 +202,8 @@ struct Session {
     bool sendStart = true;
     // An end at or before start plays straight on.
     Cycle cycle = {};
+    // The app owns the taps; a snapshot shares them until it retires on the UI thread.
+    std::vector<std::shared_ptr<SignalTap>> taps;
 };
 
 // A clip we skipped because its file is missing or at another sample rate.

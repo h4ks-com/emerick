@@ -423,6 +423,9 @@ void mixTracks(Snapshot& snapshot, const AudioBlock& block, const BlockTime& tim
                     std::transform(mixed, mixed + block.frames, destination, destination, std::plus{});
                 }
             }
+            for (const std::shared_ptr<SignalTap>& tap : track.outputTaps) {
+                tap->ring.writeMean(track.mixPointers, static_cast<std::size_t>(block.frames));
+            }
             if (track.outputBus) {
                 feedBus(snapshot.tracks[*track.outputBus], track, 0, block.frames, 1.0F, 1.0F);
             }
@@ -514,6 +517,9 @@ void monitorAndRecordAudio(Snapshot& snapshot, const AudioBlock& block, Frames r
             for (std::size_t index = 0; index < track.inputPointers.size(); ++index) {
                 raise(*track.inputMeter, index, peakOf(track.inputPointers[index], block.frames));
             }
+        }
+        for (const std::shared_ptr<SignalTap>& tap : track.inputTaps) {
+            tap->ring.writeMean(track.inputPointers, static_cast<std::size_t>(block.frames));
         }
         if (track.monitor && audible(track, soloActive)) {
             for (std::size_t out = 0; out < track.mix.size(); ++out) {
@@ -700,6 +706,10 @@ void processBlock(RealtimeState& state, const AudioBlock& block) {
     playInstruments(state, snapshot, block, blockStartFrame, time);
     playPreview(state, snapshot, block.frames);
     mixTracks(snapshot, block, time, instrumentTransport(state, snapshot, time));
+    for (const std::shared_ptr<SignalTap>& tap : snapshot.masterTaps) {
+        tap->ring.writeMean(block.outputs.first(std::min<std::size_t>(block.outputs.size(), 2)),
+                            static_cast<std::size_t>(block.frames));
+    }
     state.publishedFrame.store(state.frame, std::memory_order_relaxed);
     state.publishedPlaying.store(state.transportPlaying || state.countInLeft > 0, std::memory_order_relaxed);
 }

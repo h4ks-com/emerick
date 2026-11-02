@@ -244,6 +244,20 @@ void addOutput(Snapshot& snapshot, const std::shared_ptr<MidiOutputPort>& port) 
     }
 }
 
+// A tap on a track the snapshot lacks stays silent.
+void connectTaps(Snapshot& snapshot, const Session& session) {
+    for (const std::shared_ptr<SignalTap>& tap : session.taps) {
+        if (tap->trackId.empty()) {
+            snapshot.masterTaps.push_back(tap);
+            continue;
+        }
+        const auto track = std::ranges::find(snapshot.tracks, tap->trackId, &TrackState::id);
+        if (track != snapshot.tracks.end()) {
+            (tap->point == TapPoint::input ? track->inputTaps : track->outputTaps).push_back(tap);
+        }
+    }
+}
+
 void collectOutputs(Snapshot& snapshot) {
     for (const TrackState& track : snapshot.tracks) {
         addOutput(snapshot, track.midiOut);
@@ -355,6 +369,7 @@ BuiltSnapshot SnapshotBuilder::build(const Session& session, const StreamLayout&
     addMetronome(snapshot, session, layout, built.errors);
     collectOutputs(snapshot);
     addCycle(snapshot, session);
+    connectTaps(snapshot, session);
     snapshot.chaseMidi = session.chaseMidi;
     snapshot.clockWhileStopped = session.clockWhileStopped;
     return built;

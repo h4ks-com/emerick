@@ -125,6 +125,8 @@ struct TrackState {
     Frames recordDelay = 0;
     std::shared_ptr<LevelMeter> inputMeter;
     std::shared_ptr<LevelMeter> outputMeter;
+    std::vector<std::shared_ptr<SignalTap>> inputTaps;
+    std::vector<std::shared_ptr<SignalTap>> outputTaps;
     // The track's signal per channel for the current block, so we apply its fader and pan and meter it before it joins
     // the mix. A bus's sources add into its mix before we process the bus.
     std::vector<std::vector<float>> mix;
@@ -184,6 +186,7 @@ struct Snapshot {
     std::vector<RestartMessage> cycleRestart;
     std::vector<std::uint8_t> incoming = std::vector<std::uint8_t>(kMaxIncomingMessage);
     MetronomeState metronome;
+    std::vector<std::shared_ptr<SignalTap>> masterTaps;
 };
 
 inline bool anySolo(const Snapshot& snapshot) { return std::ranges::any_of(snapshot.tracks, &TrackState::solo); }

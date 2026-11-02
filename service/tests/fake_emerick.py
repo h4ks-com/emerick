@@ -46,11 +46,11 @@ class Handler(BaseHTTPRequestHandler):
 
 
 def render() -> None:
-    bundle, mix, peaks = (Path(arg) if arg else None for arg in sys.argv[sys.argv.index("--") + 1 :])
+    bundle_arg, mix_arg, peaks = sys.argv[sys.argv.index("--") + 1 :]
+    bundle, mix = Path(bundle_arg), Path(mix_arg) if mix_arg else None
     root = Path(option("agent-write-root"))
-    assert bundle is not None
     assert "--headless" not in sys.argv
-    assert all(path is None or path.is_relative_to(root) for path in (bundle, mix, peaks))
+    assert all(path is None or path.is_relative_to(root) for path in (bundle, mix))
     time.sleep(0.5)
     if "fail" in (bundle / "project.json").read_text():
         sys.exit(1)

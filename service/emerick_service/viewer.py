@@ -17,10 +17,7 @@ from emerick_service.storage import Storage, relative_path, walk
 log = logging.getLogger(__name__)
 AUDIO_SUFFIXES = frozenset({".mp3", ".ogg", ".opus", ".flac", ".wav"})
 RENDERED_MIX = "viewer-mix.mp3"
-PEAKS_VIDEO = "viewer-peaks.mp4"
 LOG_TAIL_BYTES = 2000
-# video.render loads the waveform of every audio clip, and loading one writes its peak file, so we render a
-# one beat thumbnail video only for that side effect.
 RENDER_SCRIPT = """\
 local bundle, mix, peaks = arg[1], arg[2], arg[3]
 emerick.run("project.open", {path = bundle})
@@ -29,10 +26,7 @@ if mix ~= "" then
     emerick.run("export.mix", {path = mix})
 end
 if peaks ~= "" then
-    local ok, error = pcall(emerick.run, "video.render", {path = peaks, width = 128, height = 128, fps = 1, to = 960})
-    if not ok then
-        print("writing peaks failed: " .. tostring(error))
-    end
+    emerick.run("project.writePeaks")
 end
 """
 
@@ -144,7 +138,7 @@ class Renderer:
                 work_dir.mkdir(parents=True)
                 project_dir = await asyncio.to_thread(self._checkout, project_id, bundle, work_dir)
                 mix = project_dir / bundle / RENDERED_MIX if render_mix else None
-                await self._run(work_dir, project_dir, bundle, mix, project_dir / PEAKS_VIDEO if peaks else None)
+                await self._run(work_dir, project_dir, bundle, mix, peaks=peaks)
                 await asyncio.to_thread(self._store, project_id, project_dir, bundle, mix, known)
                 if mix is not None:
                     self.db.set_rendered_hash(project_id, bundle, digest)
@@ -165,11 +159,11 @@ class Renderer:
         shutil.copytree(project_dir / bundle, copy / bundle, symlinks=True)
         return copy
 
-    async def _run(self, work_dir: Path, project_dir: Path, bundle: str, mix: Path | None, peaks: Path | None) -> None:
+    async def _run(self, work_dir: Path, project_dir: Path, bundle: str, mix: Path | None, *, peaks: bool) -> None:
         script = work_dir / "render.lua"
         script.write_text(RENDER_SCRIPT)
         args = render_args(self.settings, script, work_dir / "profile", project_dir)
-        args += ["--", str(project_dir / bundle), str(mix or ""), str(peaks or "")]
+        args += ["--", str(project_dir / bundle), str(mix or ""), "1" if peaks else ""]
         log_path = work_dir / "emerick.log"
         with log_path.open("ab") as output:
             process = await asyncio.create_subprocess_exec(

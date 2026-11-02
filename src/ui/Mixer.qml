@@ -14,6 +14,7 @@ DockPanel {
         delegate: MixerStrip {
             visible: busRoutes === strips.buses
             height: row.stripHeight
+            listsHeight: row.listsHeight
         }
     }
 
@@ -32,7 +33,8 @@ DockPanel {
 
         Row {
             id: row
-            readonly property real stripHeight: Math.max(flick.height, ...children.map(child => child.implicitHeight))
+            readonly property real listsHeight: Math.max(0, ...children.map(child => child.listsImplicitHeight ?? 0))
+            readonly property real stripHeight: Math.max(flick.height, ...children.map(child => child.minimumHeight ?? 0))
             Strips { buses: false }
             Strips { buses: true }
         }

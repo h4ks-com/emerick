@@ -156,6 +156,40 @@ TEST_CASE("dragging a mixer strip's edge resizes every strip within its limits a
     MainWindow::settle();
 }
 
+TEST_CASE("the mixer opens showing whole strips whose faders line up whatever inserts and sends each strip has") {
+    MainWindow& main = MainWindow::instance();
+    const std::string plain = main.rig.run("track.addAudio").at("id");
+    const std::string busy = main.rig.run("track.addAudio").at("id");
+    for (const char* bus : {"Room", "Echo"}) {
+        const std::string id = main.rig.run("track.addBus", {{"name", bus}}).at("id");
+        main.rig.run("send.add", {{"track", busy}, {"bus", id}});
+    }
+    for (const char* type : {"reverb", "delay", "chorus", "gate", "compressor", "limiter"}) {
+        main.rig.run("insert.add", {{"track", busy}, {"type", type}});
+    }
+    main.rig.nav.setEditingInsert({});
+    main.rig.nav.setMixerOpen(true);
+    MainWindow::settle();
+    main.window->grabWindow();
+
+    QQuickItem* mixer = main.item("mixer");
+    const auto sceneY = [](QQuickItem* item) { return item->mapToScene({0, 0}).y(); };
+    for (const std::string& track : {plain, busy}) {
+        QQuickItem* strip = inMixer(main, "track.select:" + qid(track) + ":strip");
+        CHECK(strip->mapToItem(mixer, {0, strip->height()}).y() <= mixer->height());
+        QQuickItem* arm = inMixer(main, "track.setArm:" + qid(track));
+        CHECK(arm->mapToItem(mixer, {0, arm->height()}).y() <= mixer->height());
+    }
+    QQuickItem* plainFader = inMixer(main, "track.setGain:" + qid(plain));
+    QQuickItem* busyFader = inMixer(main, "track.setGain:" + qid(busy));
+    CHECK(sceneY(plainFader) == Catch::Approx(sceneY(busyFader)));
+    CHECK(plainFader->height() == Catch::Approx(busyFader->height()));
+    CHECK(plainFader->height() >= 64);
+
+    main.rig.nav.setMixerOpen(false);
+    MainWindow::settle();
+}
+
 TEST_CASE("the piano roll, mixer and console open together leave the track list at least 40 percent of the window") {
     MainWindow& main = MainWindow::instance();
     main.rig.nav.setPianoRollOpen(true);

@@ -43,6 +43,12 @@ Rectangle {
         return ""
     }
 
+    // The mixer gives every strip the tallest strip's insert and send room, so the faders line up.
+    property real listsHeight: listColumn.implicitHeight
+    readonly property real listsImplicitHeight: listColumn.implicitHeight
+    readonly property real minimumHeight: implicitHeight - listsHeight
+
+    objectName: "track.select:" + trackId + ":strip"
     implicitWidth: Registry.settings["view.stripWidth"]
     implicitHeight: column.implicitHeight + 2 * Theme.space1
     border.width: Theme.hairline
@@ -71,7 +77,7 @@ Rectangle {
 
         Label {
             objectName: "mixer.output:" + strip.trackId
-            visible: strip.outputText !== ""
+            opacity: strip.outputText !== "" ? 1 : 0
             text: strip.outputText
             color: Theme.inkDim
             font.pixelSize: Theme.textSmall
@@ -91,21 +97,44 @@ Rectangle {
             }
         }
 
-        InsertList {
-            visible: strip.playsAudio
-            trackId: strip.trackId
-            inserts: strip.inserts
+        Flickable {
+            id: lists
+            clip: true
+            interactive: false
+            contentWidth: width
+            contentHeight: listColumn.implicitHeight
             Layout.fillWidth: true
-        }
+            Layout.fillHeight: true
+            Layout.preferredHeight: strip.listsHeight
+            Layout.maximumHeight: strip.listsHeight
+            ScrollBar.vertical: ScrollBar {}
 
-        // A strip without audio keeps the sends' room, so its pan knob and fader line up with the other strips'.
-        SendList {
-            opacity: strip.playsAudio ? 1 : 0
-            enabled: strip.playsAudio
-            trackId: strip.trackId
-            sends: strip.sends
-            compact: true
-            Layout.fillWidth: true
+            WheelHandler {
+                acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
+                onWheel: event => lists.contentY = Math.max(0, Math.min(lists.contentY - event.angleDelta.y * Theme.wheelStep,
+                                                                       lists.contentHeight - lists.height))
+            }
+
+            // A strip without audio keeps the sends' room, so its pan knob and fader line up with the other strips'.
+            ColumnLayout {
+                id: listColumn
+                width: lists.width
+                spacing: Theme.space1
+                opacity: strip.playsAudio ? 1 : 0
+                enabled: strip.playsAudio
+
+                InsertList {
+                    trackId: strip.trackId
+                    inserts: strip.inserts
+                    Layout.fillWidth: true
+                }
+                SendList {
+                    trackId: strip.trackId
+                    sends: strip.sends
+                    compact: true
+                    Layout.fillWidth: true
+                }
+            }
         }
 
         RowLayout {
@@ -127,6 +156,7 @@ Rectangle {
             spacing: Theme.space1
             Layout.fillHeight: true
             Layout.preferredHeight: Theme.faderMinHeight
+            Layout.minimumHeight: Theme.faderMinHeight
             Layout.alignment: Qt.AlignHCenter
             GainSlider {
                 orientation: Qt.Vertical
@@ -153,8 +183,9 @@ Rectangle {
         AnalysisReading {
             readonly property var result: Analysis.results[strip.trackId]
             objectName: "tracks.analyze:" + strip.trackId
-            visible: result !== undefined
-            opacity: Analysis.busyTrack === strip.trackId ? Theme.mutedOpacity : 1
+            visible: Object.keys(Analysis.results).length > 0
+            enabled: result !== undefined
+            opacity: result === undefined ? 0 : Analysis.busyTrack === strip.trackId ? Theme.mutedOpacity : 1
             value: result?.activeRmsDb ?? null
             unit: "RMS"
             tip: "Active RMS in dB: the median level of the parts that play. Integrated "

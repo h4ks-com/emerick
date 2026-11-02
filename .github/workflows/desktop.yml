@@ -1,0 +1,289 @@
+name: Desktop
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  QT_VERSION: "6.11.3"
+  CCACHE_DIR: ${{ github.workspace }}/.ccache
+  CCACHE_MAXSIZE: 1G
+  VERSION: ${{ github.event.release.tag_name || format('dev-{0}', github.sha) }}
+
+jobs:
+  macos:
+    name: macos (${{ matrix.arch }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-26
+            arch: arm64
+          - runner: macos-15-intel
+            arch: x86_64
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v5
+
+      # The default Xcode on older images ships a libc++ without std::jthread.
+      - name: Select the newest Xcode
+        run: |
+          ls -d /Applications/Xcode_*.app
+          sudo xcode-select -s "$(ls -d /Applications/Xcode_*.app | sort -V | tail -1)"
+          c++ --version
+
+      - name: Install dependencies
+        run: brew install qt ninja ccache libsndfile fluid-synth pkgconf
+
+      - name: Restore the build caches
+        uses: actions/cache/restore@v4
+        with:
+          path: .ccache
+          key: ccache-desktop-macos-${{ matrix.arch }}-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: ccache-desktop-macos-${{ matrix.arch }}-
+
+      - name: Restore the dependency sources
+        id: deps
+        uses: actions/cache/restore@v4
+        with:
+          path: build/_deps
+          key: deps-desktop-macos-${{ matrix.arch }}-${{ hashFiles('cmake/Dependencies.cmake') }}
+
+      - name: Build
+        run: |
+          export CMAKE_PREFIX_PATH="$(brew --prefix qt)"
+          cmake --preset release
+          cmake --build --preset release
+
+      # macdeployqt fixes only the binaries it is given, so we name the scanner and every bundled CLAP binary.
+      - name: Package the dmg
+        run: |
+          app=build/release/app/emerick.app
+          extra=(-executable="$app/Contents/MacOS/emerick-plugin-scanner")
+          for binary in "$app"/Contents/PlugIns/*.clap/Contents/MacOS/*; do extra+=(-executable="$binary"); done
+          "$(brew --prefix qt)/bin/macdeployqt" "$app" -qmldir=src/ui -qmldir=plugins/yamaha/qml "${extra[@]}"
+          codesign --force --deep --sign - "$app"
+          mkdir -p dist
+          hdiutil create -volname Emerick -srcfolder "$app" -format UDZO "dist/emerick-$VERSION-macos-${{ matrix.arch }}.dmg"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: emerick-macos-${{ matrix.arch }}
+          path: dist/*
+
+      # We save the caches even when the build fails, so the next run starts warm.
+      - name: Save the build caches
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: .ccache
+          key: ccache-desktop-macos-${{ matrix.arch }}-${{ github.run_id }}-${{ github.run_attempt }}
+
+      - name: Save the dependency sources
+        if: always() && steps.deps.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: build/_deps
+          key: deps-desktop-macos-${{ matrix.arch }}-${{ hashFiles('cmake/Dependencies.cmake') }}
+
+  linux:
+    name: linux (${{ matrix.arch }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            arch: x86_64
+            qt_host: linux
+            qt_arch: linux_gcc_64
+          - runner: ubuntu-24.04-arm
+            arch: aarch64
+            qt_host: linux_arm64
+            qt_arch: linux_gcc_arm64
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            g++-14 ninja-build ccache pkg-config libsndfile1-dev libfluidsynth-dev libasound2-dev \
+            libgl1-mesa-dev libgl1-mesa-dri libegl1 libglx-mesa0 libxkbcommon0 libfontconfig1 libdbus-1-3 \
+            libglib2.0-0t64 fontconfig fonts-dejavu-core fonts-inter file
+          echo "CC=gcc-14" >> "$GITHUB_ENV"
+          echo "CXX=g++-14" >> "$GITHUB_ENV"
+
+      - uses: jurplel/install-qt-action@v4
+        with:
+          version: ${{ env.QT_VERSION }}
+          host: ${{ matrix.qt_host }}
+          target: desktop
+          arch: ${{ matrix.qt_arch }}
+          modules: qthttpserver qtwebsockets
+          aqtversion: "==3.3.0"
+          cache: true
+
+      - name: Restore the build caches
+        uses: actions/cache/restore@v4
+        with:
+          path: .ccache
+          key: ccache-desktop-linux-${{ matrix.arch }}-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: ccache-desktop-linux-${{ matrix.arch }}-
+
+      - name: Restore the dependency sources
+        id: deps
+        uses: actions/cache/restore@v4
+        with:
+          path: build/_deps
+          key: deps-desktop-linux-${{ matrix.arch }}-${{ hashFiles('cmake/Dependencies.cmake') }}
+
+      - name: Build
+        run: |
+          cmake --preset release
+          cmake --build --preset release
+
+      - name: Package the AppImage
+        env:
+          APPIMAGE_EXTRACT_AND_RUN: "1"
+          QML_SOURCES_PATHS: ${{ github.workspace }}/src/ui:${{ github.workspace }}/plugins/yamaha/qml
+          OUTPUT: emerick-${{ env.VERSION }}-linux-${{ matrix.arch }}.AppImage
+        run: |
+          base=https://github.com/linuxdeploy
+          curl -fsSLo linuxdeploy "$base/linuxdeploy/releases/download/continuous/linuxdeploy-${{ matrix.arch }}.AppImage"
+          curl -fsSLo linuxdeploy-plugin-qt "$base/linuxdeploy-plugin-qt/releases/download/continuous/linuxdeploy-plugin-qt-${{ matrix.arch }}.AppImage"
+          chmod +x linuxdeploy linuxdeploy-plugin-qt
+          app=build/release/app
+          mkdir -p AppDir/usr/bin
+          cp -a "$app/emerick" "$app/emerick-plugin-scanner" "$app/clap" AppDir/usr/bin/
+          printf '%s\n' '[Desktop Entry]' Type=Application Name=Emerick Exec=emerick Icon=emerick \
+            'Categories=AudioVideo;Audio;' > emerick.desktop
+          ./linuxdeploy --appdir AppDir --plugin qt --output appimage \
+            --executable AppDir/usr/bin/emerick --executable AppDir/usr/bin/emerick-plugin-scanner \
+            --deploy-deps-only AppDir/usr/bin/clap --desktop-file emerick.desktop --icon-file app/icons/emerick.png
+          mkdir -p dist
+          mv "$OUTPUT" dist/
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: emerick-linux-${{ matrix.arch }}
+          path: dist/*
+
+      # We save the caches even when the build fails, so the next run starts warm.
+      - name: Save the build caches
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: .ccache
+          key: ccache-desktop-linux-${{ matrix.arch }}-${{ github.run_id }}-${{ github.run_attempt }}
+
+      - name: Save the dependency sources
+        if: always() && steps.deps.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: build/_deps
+          key: deps-desktop-linux-${{ matrix.arch }}-${{ hashFiles('cmake/Dependencies.cmake') }}
+
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 40
+    defaults:
+      run:
+        shell: msys2 {0}
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          update: true
+          cache: true
+          install: zip
+          pacboy: >-
+            gcc:p cmake:p ninja:p ccache:p pkgconf:p libsndfile:p fluidsynth:p
+            qt6-base:p qt6-declarative:p qt6-httpserver:p qt6-websockets:p
+
+      - name: Restore the build caches
+        uses: actions/cache/restore@v4
+        with:
+          path: .ccache
+          key: ccache-desktop-windows-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: ccache-desktop-windows-
+
+      - name: Restore the dependency sources
+        id: deps
+        uses: actions/cache/restore@v4
+        with:
+          path: build/_deps
+          key: deps-desktop-windows-${{ hashFiles('cmake/Dependencies.cmake') }}
+
+      - name: Build
+        run: |
+          cmake --preset release
+          cmake --build --preset release
+
+      # windeployqt copies Qt and its plugins; we copy every other DLL from the MSYS2 prefix that a binary needs.
+      # MSYS2's Qt puts executables in the top of the build folder. ldd reads only .exe and .dll names, so we give it
+      # copies of the CLAP plugins named .dll.
+      - name: Package the zip
+        run: |
+          app=build/release
+          dist=emerick
+          mkdir -p "$dist" plugin-deps
+          cp -a "$app/emerick.exe" "$app/emerick-plugin-scanner.exe" "$app/clap" "$dist/"
+          strip "$dist"/*.exe "$dist"/clap/*.clap
+          windeployqt6 --release --no-translations --qmldir src/ui --qmldir plugins/yamaha/qml "$dist/emerick.exe"
+          for plugin in "$dist"/clap/*.clap; do cp "$plugin" "plugin-deps/$(basename "$plugin" .clap).dll"; done
+          find "$dist" plugin-deps -type f \( -name '*.exe' -o -name '*.dll' \) -print0 | xargs -0 ldd \
+            | awk '$3 ~ /^\/ucrt64\// {print $3}' | sort -u | xargs -I{} cp -n {} "$dist/"
+          mkdir -p dist
+          zip -qr "dist/emerick-$VERSION-windows-x86_64.zip" "$dist"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: emerick-windows-x86_64
+          path: dist/*
+
+      # We save the caches even when the build fails, so the next run starts warm.
+      - name: Save the build caches
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: .ccache
+          key: ccache-desktop-windows-${{ github.run_id }}-${{ github.run_attempt }}
+
+      - name: Save the dependency sources
+        if: always() && steps.deps.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: build/_deps
+          key: deps-desktop-windows-${{ hashFiles('cmake/Dependencies.cmake') }}
+
+  release:
+    if: github.event_name == 'release'
+    needs: [macos, linux, windows]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          pattern: emerick-*
+          merge-multiple: true
+
+      - name: Attach the packages to the release
+        run: gh release upload "$VERSION" dist/* --clobber --repo "$GITHUB_REPOSITORY"
+        env:
+          GH_TOKEN: ${{ github.token }}

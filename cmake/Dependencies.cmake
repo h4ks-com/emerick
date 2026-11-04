@@ -147,10 +147,11 @@ endif()
 
 list(APPEND CMAKE_MODULE_PATH ${catch2_SOURCE_DIR}/extras)
 
-# Package managers already ship Lua 5.5, which sol2 does not support, so we build 5.4 from source.
+# Package managers already ship Lua 5.5, which sol2 does not support, so we build 5.4 from source. We take it from
+# Lua's GitHub repository, which keeps the sources in one folder, with its tests and amalgamation beside them.
 FetchContent_Declare(lua
-    URL https://www.lua.org/ftp/lua-5.4.8.tar.gz
-    URL_HASH SHA256=4f18ddae154e793e46eeab727c59ef1c0c0c2b744e7b94219710d76f530629ae)
+    URL https://github.com/lua/lua/archive/refs/tags/v5.4.8.tar.gz
+    URL_HASH SHA256=d85b70a65f43c5d2254944d58d625e822c8e2e10d9c6a3bd9b5b657e46376a19)
 FetchContent_MakeAvailable(lua)
 
 # The General MIDI instrument plays GeneralUser GS v2.0.3, which its license lets us redistribute.
@@ -164,13 +165,15 @@ FetchContent_Declare(generaluser_gs_license
     URL_HASH SHA256=7b32efefdf95ce38a043799f0659853ddc00fbaa14d8c50f0aca16b9b8b405be
     DOWNLOAD_NO_EXTRACT TRUE)
 FetchContent_MakeAvailable(generaluser_gs generaluser_gs_license)
-file(GLOB lua_sources ${lua_SOURCE_DIR}/src/*.c)
-list(REMOVE_ITEM lua_sources ${lua_SOURCE_DIR}/src/lua.c ${lua_SOURCE_DIR}/src/luac.c)
+file(GLOB lua_sources ${lua_SOURCE_DIR}/*.c)
+list(REMOVE_ITEM lua_sources ${lua_SOURCE_DIR}/lua.c ${lua_SOURCE_DIR}/ltests.c ${lua_SOURCE_DIR}/onelua.c)
 add_library(lua54 STATIC ${lua_sources})
 # sol2 includes <lua/lua.hpp> first, so we publish the headers under lua/ and link lua54 before Qt, whose
-# include path can carry another Lua's lua/ folder.
-file(COPY ${lua_SOURCE_DIR}/src/lua.h ${lua_SOURCE_DIR}/src/luaconf.h ${lua_SOURCE_DIR}/src/lualib.h
-    ${lua_SOURCE_DIR}/src/lauxlib.h ${lua_SOURCE_DIR}/src/lua.hpp DESTINATION ${CMAKE_BINARY_DIR}/lua54/include/lua)
+# include path can carry another Lua's lua/ folder. Lua's release archives add lua.hpp, which its repository lacks.
+file(COPY ${lua_SOURCE_DIR}/lua.h ${lua_SOURCE_DIR}/luaconf.h ${lua_SOURCE_DIR}/lualib.h ${lua_SOURCE_DIR}/lauxlib.h
+    DESTINATION ${CMAKE_BINARY_DIR}/lua54/include/lua)
+file(WRITE ${CMAKE_BINARY_DIR}/lua54/include/lua/lua.hpp
+    "extern \"C\" {\n#include \"lua.h\"\n#include \"lualib.h\"\n#include \"lauxlib.h\"\n}\n")
 target_include_directories(lua54 SYSTEM PUBLIC ${CMAKE_BINARY_DIR}/lua54/include)
 if(UNIX)
     target_compile_definitions(lua54 PRIVATE LUA_USE_POSIX)

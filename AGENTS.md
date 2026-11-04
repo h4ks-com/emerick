@@ -31,7 +31,7 @@ Emerick is a small native DAW in C++23 and Qt 6.11 QML. It records and plays aud
 - `--install-library <id>` (repeatable) installs a sound library with no window and exits, 1 on a failure; `EMERICK_LIBRARY_DIR` moves the library folder, which a `--profile` run keeps in the profile, and a `--headless` run refuses `library.install` and `library.remove` unless `EMERICK_LIBRARY_INSTALL=1`
 - `video.render` needs `ffmpeg` beside the app or on PATH (Homebrew's on macOS); the image ships a minimal static one in `/opt/emerick`
 - `make viewer-wasm` build the read-only viewer for WebAssembly into `build/viewer-wasm/site`; it installs Qt for WebAssembly and emsdk into `~/.cache/emerick/wasm-toolchain` once
-- `make docker-build` build the image (Qt 6.11, builds the `release` preset with its tests, runs ctest, then a slim runtime with the service)
+- `make docker-build` build the image (Qt 6.11, builds the `release` preset, then a slim runtime with the service)
 - `make e2e` build the Docker image and drive the headless app and the service over MCP
 - `make service-check` ruff, pyright strict and pytest for the session service in `service/`
 - `docker run --rm -p 127.0.0.1:8080:8080 emerick` run the Emerick service, which starts one headless app per session (`service/README.md`)

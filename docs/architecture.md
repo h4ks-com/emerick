@@ -116,7 +116,7 @@ The console (Cmd+\`) runs Lua in the same sandboxed host on the UI thread. `Regi
 
 - Catch2 unit tests per target. The engine runs on `OfflineBackend`, faster than realtime, with golden renders.
 - `NullAudioBackend` and an in-process virtual MIDI port, selected with `--audio=null --midi=virtual`, let the app run anywhere. With the virtual port, `midi.inject` feeds it and `midi.sent` lists what the app sent to it.
-- `docker/` builds the `release` preset with its tests in Ubuntu 24.04 with Qt 6.11 and copies the app, the Qt libraries it links and its CLAP bundles into a slim runtime image. The image runs the session service by default, or one headless app (`QT_QPA_PLATFORM=offscreen`) with `app`, and `e2e/` drives both over MCP.
+- `docker/` builds the `release` preset in Ubuntu 24.04 with Qt 6.11 and copies the app, the Qt libraries it links and its CLAP bundles into a slim runtime image. The image runs the session service by default, or one headless app (`QT_QPA_PLATFORM=offscreen`) with `app`, and `e2e/` drives both over MCP.
 - CI runs `make quality` on macOS and Ubuntu, `make service-check` and `make e2e` on every pull request and push to main. After they pass on a push to main, a `v*.*.*` tag or a published release, CI publishes the image for amd64 and arm64 to GHCR. An action test fails when a registry action has no menu entry, shortcut or control.
 
 ## Session service

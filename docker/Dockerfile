@@ -48,9 +48,8 @@ WORKDIR /src
 COPY --exclude=service --exclude=e2e --exclude=docs --exclude=deploy --exclude=.github --exclude=skills \
     --exclude=.claude-plugin --exclude=*.md . .
 RUN --mount=type=cache,target=/ccache \
-    cmake --preset release -DEMERICK_BUILD_TESTS=ON \
-    && cmake --build --preset release -j "$JOBS" \
-    && ctest --test-dir build/release -j "$JOBS" --output-on-failure
+    cmake --preset release \
+    && cmake --build --preset release -j "$JOBS"
 
 # The browser viewer, built with Qt for WebAssembly of the same Qt version, which the service serves as static files.
 FROM qt AS viewer

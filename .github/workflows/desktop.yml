@@ -42,7 +42,10 @@ jobs:
           c++ --version
 
       - name: Install dependencies
-        run: brew install qt ninja ccache libsndfile fluid-synth pkgconf
+        # sfizz builds its own abseil, and the Intel runner's Homebrew abseil headers in /usr/local/include shadow it.
+        run: |
+          brew install qt ninja ccache libsndfile fluid-synth pkgconf
+          brew unlink abseil || true
 
       - name: Restore the build caches
         uses: actions/cache/restore@v5

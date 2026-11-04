@@ -36,36 +36,6 @@ constexpr qint64 kProgressIntervalMs = 100;
 
 }  // namespace
 
-std::vector<Library> curatedLibraries() {
-    return {
-        {.id = "salamander-grand-piano",
-         .name = "Salamander Grand Piano",
-         .description = "Yamaha C5 grand piano, 16 velocity layers, by Alexander Holm",
-         .url = "https://github.com/sfzinstruments/SalamanderGrandPiano/archive/"
-                "3382bf9496bba2486f5ab0de55a264d1dfc38404.tar.gz",
-         .sha256 = "f36bef84632067387909ba03064daee6e81afdea3f93526c4ee56a22e12613ba",
-         .size = 748'441'806,
-         .license = "CC-BY-3.0",
-         .sfz = "Salamander Grand Piano V3.sfz"},
-        {.id = "vsco2-ce",
-         .name = "VSCO 2 Community Edition",
-         .description = "Orchestra of strings, brass, woodwinds, keys and percussion, by Versilian Studios",
-         .url = "https://github.com/sgossner/VSCO-2-CE/archive/refs/tags/1.1.0.tar.gz",
-         .sha256 = "ac577fd3bc9171560087c8182ef6072f11ae0b63b3c3af9a5f752b91e26d3b96",
-         .size = 2'302'038'139,
-         .license = "CC0-1.0",
-         .sfz = ""},
-        {.id = "big-rusty-drums",
-         .name = "Big Rusty Drums",
-         .description = "Acoustic drum kit with velocity layers and round robins, by Karoryfer Samples",
-         .url = "https://github.com/sfzinstruments/karoryfer.big-rusty-drums/archive/refs/tags/v1.100.tar.gz",
-         .sha256 = "62c5b9ace0d99b0d0925c7018f7835ad042523acb7a7f58bf50eae927507b1f5",
-         .size = 619'600'115,
-         .license = "CC0-1.0",
-         .sfz = "Programs/01-full.sfz"},
-    };
-}
-
 std::filesystem::path libraryFolder(const QString& profileFolder) {
     if (const QString folder = qEnvironmentVariable("EMERICK_LIBRARY_DIR"); !folder.isEmpty()) {
         return folder.toStdString();

@@ -119,6 +119,7 @@ qt_add_library(emerick_app STATIC
     key_focus.cpp
     libraries.cpp
     library_actions.cpp
+    library_catalog.cpp
     lua_helpers.cpp
     lua_host.cpp
     lua_text.cpp

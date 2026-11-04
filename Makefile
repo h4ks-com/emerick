@@ -3,7 +3,7 @@
 
 SOURCES := $(shell git ls-files --cached --others --exclude-standard '*.cpp' '*.hpp')
 # The files changed since the last push to main, including unpushed commits, uncommitted edits and new files.
-BASE := $(shell git merge-base HEAD origin/main 2>/dev/null || git merge-base HEAD main 2>/dev/null)
+BASE ?= $(shell git merge-base HEAD origin/main 2>/dev/null || git merge-base HEAD main 2>/dev/null)
 CHANGED_FILES := $(shell git diff --name-only $(BASE) 2>/dev/null; git ls-files --others --exclude-standard)
 CHANGED := $(sort $(filter $(SOURCES),$(CHANGED_FILES)))
 # A changed header can break any file that includes it, so we lint those files too.

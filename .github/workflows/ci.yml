@@ -5,8 +5,8 @@ on:
   push:
     branches: [main]
     tags: ["v*.*.*"]
-  release:
-    types: [published]
+  schedule:
+    - cron: "0 4 * * *"
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
@@ -19,7 +19,7 @@ env:
   LLVM_VERSION: "22"
   QT_VERSION: "6.11.3"
   CCACHE_DIR: ${{ github.workspace }}/.ccache
-  CCACHE_MAXSIZE: 500M
+  CCACHE_MAXSIZE: 2G
   QT_QPA_PLATFORM: offscreen
   QT_QUICK_BACKEND: software
 
@@ -34,6 +34,8 @@ jobs:
     timeout-minutes: 40
     steps:
       - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
 
       - name: Install macOS dependencies
         if: runner.os == 'macOS'
@@ -68,7 +70,7 @@ jobs:
           cache: true
 
       - name: Restore ccache
-        uses: actions/cache@v5
+        uses: actions/cache/restore@v5
         with:
           path: .ccache
           key: ccache-${{ matrix.os }}-${{ github.sha }}
@@ -80,8 +82,26 @@ jobs:
           path: build/_deps
           key: deps-${{ matrix.os }}-${{ hashFiles('cmake/Dependencies.cmake') }}
 
+      # A push lints the files it changed and the files that include a changed header; the nightly run lints every file.
       - name: Check format, lint and test
-        run: make quality-full
+        run: |
+          base="${{ github.event.pull_request.base.sha || github.event.before }}"
+          if [ "${{ github.event_name }}" = schedule ] || [ -z "$base" ] || ! git cat-file -e "$base^{commit}" 2>/dev/null; then
+            make quality-full
+          else
+            make quality BASE="$base"
+          fi
+
+      - name: Show the ccache hit rate
+        if: always()
+        run: ccache --show-stats
+
+      - name: Save ccache
+        if: always()
+        uses: actions/cache/save@v5
+        with:
+          path: .ccache
+          key: ccache-${{ matrix.os }}-${{ github.sha }}
 
   service:
     runs-on: ubuntu-24.04
@@ -121,7 +141,7 @@ jobs:
           DOCKER_BUILD_ARGS: --cache-from type=gha,scope=amd64 --cache-to type=gha,mode=max,scope=amd64
 
   image:
-    if: github.event_name != 'pull_request'
+    if: github.event_name == 'push'
     needs: [quality, service, e2e]
     strategy:
       matrix:

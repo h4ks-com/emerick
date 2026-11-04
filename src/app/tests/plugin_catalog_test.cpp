@@ -8,6 +8,7 @@
 #include <filesystem>
 #include <optional>
 #include <string>
+#include <vector>
 
 #include "emerick/app/nav.hpp"
 #include "emerick/app/plugin_actions.hpp"
@@ -103,6 +104,25 @@ TEST_CASE("the catalog lists the expansion voices instrument in the app's bundle
     REQUIRE(found.has_value());
     CHECK(found->descriptor.name == "Expansion Voices");
     CHECK(std::ranges::contains(found->descriptor.features, std::string{"instrument"}));
+}
+
+TEST_CASE("every bundle in the app's bundled folder loads, the third-party plugins among them") {
+    QTemporaryDir dir;
+    PluginCatalog::Options options = catalogOptions(dir, EMERICK_PLUGIN_SCANNER);
+    options.folders = {bundledClapFolder(EMERICK_GM_APP_FOLDER)};
+    options.timeout = std::chrono::seconds(10);
+    PluginCatalog catalog(options);
+    catalog.scan({}, false);
+    CHECK(catalog.blocked().empty());
+    std::vector<std::string> ids{"michaelwillis.dragonfly.hall", "michaelwillis.dragonfly.room",
+                                 "michaelwillis.dragonfly.plate", "michaelwillis.dragonfly.early"};
+#if !(defined(__linux__) && defined(__aarch64__))
+    ids.insert(ids.end(), {"com.digital-suburban.dexed", "com.airwindows.consolidated"});
+#endif
+    for (const auto& id : ids) {
+        CAPTURE(id);
+        CHECK(catalog.find(id).has_value());
+    }
 }
 
 TEST_CASE(

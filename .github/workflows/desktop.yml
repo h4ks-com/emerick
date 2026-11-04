@@ -64,12 +64,12 @@ jobs:
           cmake --preset release
           cmake --build --preset release
 
-      # macdeployqt fixes only the binaries it is given, so we name the scanner and every bundled CLAP binary.
+      # macdeployqt fixes only the binaries it is given, so we name the scanner and every CLAP binary we build.
       - name: Package the dmg
         run: |
           app=build/release/app/emerick.app
           extra=(-executable="$app/Contents/MacOS/emerick-plugin-scanner")
-          for binary in "$app"/Contents/PlugIns/*.clap/Contents/MacOS/*; do extra+=(-executable="$binary"); done
+          for binary in "$app"/Contents/PlugIns/Emerick*.clap/Contents/MacOS/*; do extra+=(-executable="$binary"); done
           "$(brew --prefix qt)/bin/macdeployqt" "$app" -qmldir=src/ui -qmldir=plugins/yamaha/qml "${extra[@]}"
           codesign --force --deep --sign - "$app"
           mkdir -p dist
@@ -234,14 +234,15 @@ jobs:
 
       # windeployqt copies Qt and its plugins; we copy every other DLL from the MSYS2 prefix that a binary needs.
       # MSYS2's Qt puts executables in the top of the build folder. ldd reads only .exe and .dll names, so we give it
-      # copies of the CLAP plugins named .dll.
+      # copies of the CLAP plugins named .dll. We strip only our own plugins, since MinGW's strip can break the
+      # MSVC-built third-party ones.
       - name: Package the zip
         run: |
           app=build/release
           dist=emerick
           mkdir -p "$dist" plugin-deps
           cp -a "$app/emerick.exe" "$app/emerick-plugin-scanner.exe" "$app/clap" "$dist/"
-          strip "$dist"/*.exe "$dist"/clap/*.clap
+          strip "$dist"/*.exe "$dist"/clap/Emerick*.clap
           windeployqt6 --release --no-translations --qmldir src/ui --qmldir plugins/yamaha/qml "$dist/emerick.exe"
           for plugin in "$dist"/clap/*.clap; do cp "$plugin" "plugin-deps/$(basename "$plugin" .clap).dll"; done
           find "$dist" plugin-deps -type f \( -name '*.exe' -o -name '*.dll' \) -print0 | xargs -0 ldd \

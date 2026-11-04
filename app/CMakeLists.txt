@@ -12,13 +12,17 @@ emerick_target(emerick)
 add_dependencies(emerick emerick-plugin-scanner emerick_gm emerick_voices emerick_sampler emerick_arranger_device)
 if(APPLE)
     set(bundled_clap_folder "$<TARGET_BUNDLE_CONTENT_DIR:emerick>/PlugIns")
+    set(notices_folder "$<TARGET_BUNDLE_CONTENT_DIR:emerick>/Resources")
 else()
     set(bundled_clap_folder "$<TARGET_FILE_DIR:emerick>/clap")
+    set(notices_folder ${bundled_clap_folder})
 endif()
 # A target of its own runs on every build, so a rebuilt plugin reaches the app even when the app itself did not relink.
 add_custom_target(emerick_bundled_plugins ALL
     COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:emerick-plugin-scanner> $<TARGET_FILE_DIR:emerick>
-    COMMAND ${CMAKE_COMMAND} -E copy_directory_if_different ${emerick_bundled_clap_folder} ${bundled_clap_folder})
+    COMMAND ${CMAKE_COMMAND} -E copy_directory_if_different ${emerick_bundled_clap_folder} ${bundled_clap_folder}
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different ${CMAKE_CURRENT_SOURCE_DIR}/third-party-notices.txt
+        ${PROJECT_SOURCE_DIR}/LICENSE ${notices_folder})
 add_dependencies(emerick_bundled_plugins emerick)
 target_link_libraries(emerick PRIVATE Qt6::Gui Qt6::Qml Qt6::Quick emerick_app emerick_uiplugin emerick_yamaha_plugin
     emerick_yamaha_pluginplugin)

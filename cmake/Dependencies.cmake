@@ -233,3 +233,71 @@ foreach(target sfizz_internal sfizz_parser sfizz_messaging sfizz_import sfizz_st
     endforeach()
     target_compile_definitions(${target} PRIVATE NDEBUG)
 endforeach()
+
+# The app ships these CLAP plugins as their upstream releases build them. Dexed and Airwindows publish no Linux aarch64
+# build, so there the app ships only Dragonfly. Dexed stays on 1.0.1 because the Linux build of 1.1.0 needs glibc 2.43.
+set(dragonfly_release
+    https://github.com/michaelwillis/dragonfly-reverb/releases/download/3.2.10/dragonfly-reverb-3.2.10)
+set(dexed_release https://github.com/asb2m10/dexed/releases/download/v1.0.1/Dexed-1.0.1)
+set(airwindows_release https://github.com/baconpaul/airwin2rack/releases/download/DAWPlugin)
+if(APPLE)
+    FetchContent_Declare(dragonfly
+        URL ${dragonfly_release}-macos-universal.dmg
+        URL_HASH SHA256=e0b854b92a4e51ce5851320fb1a9f91ab1a4309f997de070e175b3e5cab4adaf
+        DOWNLOAD_NO_EXTRACT TRUE)
+    FetchContent_Declare(dexed
+        URL ${dexed_release}-macOS.zip
+        URL_HASH SHA256=4269448bc1312424cafd29aff615d891bc5905ebfc54b42ce70c56b9b10dc401)
+    FetchContent_Declare(airwindows
+        URL ${airwindows_release}/airwindows-consolidated-macOS-2026-10-31-d013e10.dmg
+        URL_HASH SHA256=067106f1311f60ab6dc20d8cc92bbf9919de0136f299cccf0e53924223ec23eb
+        DOWNLOAD_NO_EXTRACT TRUE)
+    set(third_party_plugins dragonfly dexed airwindows)
+elseif(WIN32)
+    FetchContent_Declare(dragonfly
+        URL ${dragonfly_release}-win64.zip
+        URL_HASH SHA256=ca5f35f9dcd9a33f06490d3c92f04061a1a798cb81257d5ca5851bdda0824c66)
+    FetchContent_Declare(dexed
+        URL ${dexed_release}-win.zip
+        URL_HASH SHA256=1f118445f2c5c411636bb41ddf8b456db09af74cd38f9ede8a93a01020505f05)
+    FetchContent_Declare(airwindows
+        URL ${airwindows_release}/AirwindowsConsolidated-2026-10-31-d013e10-Windows.zip
+        URL_HASH SHA256=a21a0df8b0e47a96b4932fed3c05490c3f208fad84eb2fc73f4ca570dd34f292)
+    set(third_party_plugins dragonfly dexed airwindows)
+elseif(CMAKE_SYSTEM_PROCESSOR STREQUAL "x86_64")
+    FetchContent_Declare(dragonfly
+        URL ${dragonfly_release}-linux-x86_64.tar.xz
+        URL_HASH SHA256=59f1593120de82e31dd194e2ab1536af14fec2b3ec6ec45abf6d9c8ac02ef430)
+    FetchContent_Declare(dexed
+        URL ${dexed_release}-lnx.zip
+        URL_HASH SHA256=2bac3d0c4237e8c22c4274b6d5b59fe6329fcae72864f81b5830393eff354fc1)
+    FetchContent_Declare(airwindows
+        URL ${airwindows_release}/AirwindowsConsolidated-2026-10-31-d013e10-Linux.zip
+        URL_HASH SHA256=98f9f37788a14cfff97dad73332e7f7621e29bd2685b4ef5f0671273a1253ef4)
+    set(third_party_plugins dragonfly dexed airwindows)
+elseif(CMAKE_SYSTEM_PROCESSOR STREQUAL "aarch64")
+    FetchContent_Declare(dragonfly
+        URL ${dragonfly_release}-linux-arm64.tar.xz
+        URL_HASH SHA256=6c830ad1b1cc028b0f3c4f4c0a4b073d7193ba1c8783528ed9365df1fc9b23c2)
+    set(third_party_plugins dragonfly)
+endif()
+FetchContent_MakeAvailable(${third_party_plugins})
+# On macOS Dragonfly and Airwindows put their CLAP bundles in an installer package inside a disk image.
+foreach(plugin IN LISTS third_party_plugins)
+    set(folder ${${plugin}_SOURCE_DIR})
+    file(GLOB disk_image ${folder}/*.dmg)
+    if(disk_image AND NOT EXISTS ${folder}/installer)
+        execute_process(COMMAND hdiutil attach -nobrowse -readonly -mountpoint ${folder}/mount ${disk_image}
+            OUTPUT_QUIET COMMAND_ERROR_IS_FATAL ANY)
+        file(GLOB package ${folder}/mount/*.pkg)
+        file(REMOVE_RECURSE ${folder}/partial)
+        execute_process(COMMAND pkgutil --expand-full ${package} ${folder}/partial RESULT_VARIABLE expanded)
+        execute_process(COMMAND hdiutil detach ${folder}/mount OUTPUT_QUIET COMMAND_ERROR_IS_FATAL ANY)
+        if(NOT expanded EQUAL 0)
+            message(FATAL_ERROR "pkgutil could not expand ${package}")
+        endif()
+        file(RENAME ${folder}/partial ${folder}/installer)
+    endif()
+    file(GLOB claps LIST_DIRECTORIES true ${folder}/*.clap ${folder}/installer/*.pkg/Payload/*.clap)
+    list(APPEND emerick_third_party_claps ${claps})
+endforeach()

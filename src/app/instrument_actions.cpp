@@ -16,12 +16,6 @@
 
 namespace emerick::app {
 
-namespace {
-
-Json pluginSchema() { return {{"type", "string"}, {"description", "a CLAP or VST3 instrument id from plugins.list"}}; }
-
-Json formatSchema() { return {{"type", "string"}, {"enum", {"clap", "vst3"}}}; }
-
 model::PluginSlot slotFor(const Registry& registry, PluginCatalog& catalog, const Json& params) {
     const auto id = param<std::string>(params, "plugin");
     const auto formatId = optionalParam<std::string>(params, "format");
@@ -45,6 +39,25 @@ model::PluginSlot slotFor(const Registry& registry, PluginCatalog& catalog, cons
     return slot;
 }
 
+model::TrackId midiTrack(const Registry& registry, const ProjectController& controller, const Nav& nav,
+                         const Json& params) {
+    const model::TrackId id = targetTrack(controller, nav, params);
+    const model::Track& track = *controller.project().track(id);
+    const TrackType* type = registry.trackType(track.kind);
+    if (type == nullptr || !type->routes.midi) {
+        throw AppError("track " + track.name + " is not a MIDI track, select a MIDI track or run track.addInstrument");
+    }
+    return id;
+}
+
+void syncInstruments(ProjectController& controller) { controller.instruments().sync(controller.project().document()); }
+
+namespace {
+
+Json pluginSchema() { return {{"type", "string"}, {"description", "a CLAP or VST3 instrument id from plugins.list"}}; }
+
+Json formatSchema() { return {{"type", "string"}, {"enum", {"clap", "vst3"}}}; }
+
 std::vector<MenuChoice> instrumentChoices(const Registry& registry, PluginCatalog& catalog) {
     return scannedCatalog(registry, catalog).plugins() |
            std::views::filter([](const CatalogPlugin& plugin) { return engine::isInstrument(plugin.descriptor); }) |
@@ -57,17 +70,6 @@ std::vector<MenuChoice> instrumentChoices(const Registry& registry, PluginCatalo
            std::ranges::to<std::vector>();
 }
 
-model::TrackId midiTrack(const Registry& registry, const ProjectController& controller, const Nav& nav,
-                         const Json& params) {
-    const model::TrackId id = targetTrack(controller, nav, params);
-    const model::Track& track = *controller.project().track(id);
-    const TrackType* type = registry.trackType(track.kind);
-    if (type == nullptr || !type->routes.midi) {
-        throw AppError("track " + track.name + " is not a MIDI track, select a MIDI track or run track.addInstrument");
-    }
-    return id;
-}
-
 model::TrackId instrumentTrack(const Registry& registry, const ProjectController& controller, const Nav& nav,
                                const Json& params) {
     const model::TrackId id = midiTrack(registry, controller, nav, params);
@@ -77,9 +79,6 @@ model::TrackId instrumentTrack(const Registry& registry, const ProjectController
     }
     return id;
 }
-
-// A script runs its actions without turning the event loop, so we load the instruments its earlier actions added.
-void syncInstruments(ProjectController& controller) { controller.instruments().sync(controller.project().document()); }
 
 std::shared_ptr<engine::Plugin> samplerOf(const Instruments& instruments, const model::Track& track) {
     return track.instrument && track.instrument->pluginId == kSamplerPluginId ? instruments.find(track.id) : nullptr;
@@ -286,6 +285,7 @@ void registerInstrumentActions(Registry& registry, ProjectController& controller
              },
          .menus = {kTrackContextMenu},
          .dialog = FileDialog{.param = "path", .nameFilter = "SFZ instruments (*.sfz)"}});
+    registerDexedActions(registry, controller, nav, catalog);
     reportSamplers(registry, controller);
     registerAuditionAction(registry, controller);
     registerPluginInsertActions(registry, controller, nav, catalog);

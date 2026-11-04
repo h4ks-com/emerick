@@ -23,8 +23,18 @@ void registerInstrumentActions(Registry& registry, ProjectController& controller
                                const std::filesystem::path& libraryFolder = {});
 // Adds insert.addPlugin, which insert.add runs for a plugin.
 void registerPluginInsertActions(Registry& registry, ProjectController& controller, Nav& nav, PluginCatalog& catalog);
+// Adds dexed.programs and dexed.load, which pick the DX7 program a Dexed instrument plays.
+void registerDexedActions(Registry& registry, ProjectController& controller, Nav& nav, PluginCatalog& catalog);
 
 // Scans the catalog the first time something asks for its plugins.
 const PluginCatalog& scannedCatalog(const Registry& registry, PluginCatalog& catalog);
+
+// The slot of the instrument the params name by plugin id and optional format.
+model::PluginSlot slotFor(const Registry& registry, PluginCatalog& catalog, const Json& params);
+// The MIDI track the params name, or the selected one.
+model::TrackId midiTrack(const Registry& registry, const ProjectController& controller, const Nav& nav,
+                         const Json& params);
+// A script runs its actions without turning the event loop, so we load the instruments its earlier actions added.
+void syncInstruments(ProjectController& controller);
 
 }  // namespace emerick::app

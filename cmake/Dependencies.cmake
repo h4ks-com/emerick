@@ -165,6 +165,11 @@ FetchContent_Declare(generaluser_gs_license
     URL_HASH SHA256=7b32efefdf95ce38a043799f0659853ddc00fbaa14d8c50f0aca16b9b8b405be
     DOWNLOAD_NO_EXTRACT TRUE)
 FetchContent_MakeAvailable(generaluser_gs generaluser_gs_license)
+# The DX7 cartridges Dexed builds into its own binary under GPL-3.0, which dexed.load picks by id.
+FetchContent_Declare(dexed_cartridges
+    URL https://raw.githubusercontent.com/asb2m10/dexed/v1.0.1/assets/builtin_pgm.zip
+    URL_HASH SHA256=6ab2487b1e76f58ba748858ecf0867b7cc91708cfc46a0dcec6f2922bf9cbb8d)
+FetchContent_MakeAvailable(dexed_cartridges)
 file(GLOB lua_sources ${lua_SOURCE_DIR}/*.c)
 list(REMOVE_ITEM lua_sources ${lua_SOURCE_DIR}/lua.c ${lua_SOURCE_DIR}/ltests.c ${lua_SOURCE_DIR}/onelua.c)
 add_library(lua54 STATIC ${lua_sources})

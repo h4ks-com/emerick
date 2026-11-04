@@ -55,6 +55,8 @@ qt_add_library(emerick_app STATIC
     console_completion.cpp
     control_actions.cpp
     core_actions.cpp
+    dexed.cpp
+    dexed_actions.cpp
     effect_catalog.cpp
     fade_actions.cpp
     export_actions.cpp
@@ -69,6 +71,7 @@ qt_add_library(emerick_app STATIC
     include/emerick/app/console.hpp
     include/emerick/app/console_completion.hpp
     include/emerick/app/core_actions.hpp
+    include/emerick/app/dexed.hpp
     include/emerick/app/effect_catalog.hpp
     include/emerick/app/event_wait.hpp
     include/emerick/app/instruments.hpp
@@ -177,6 +180,8 @@ qt_add_resources(emerick_app example_scripts
         ${PROJECT_SOURCE_DIR}/scripts/examples/arm-midi.lua
         ${PROJECT_SOURCE_DIR}/scripts/examples/mute-all.lua
         ${PROJECT_SOURCE_DIR}/scripts/examples/rename-from-list.lua)
+file(GLOB dexed_cartridges ${dexed_cartridges_SOURCE_DIR}/*.syx)
+qt_add_resources(emerick_app dexed_cartridges PREFIX /dexed BASE ${dexed_cartridges_SOURCE_DIR} FILES ${dexed_cartridges})
 target_compile_definitions(emerick_app PRIVATE EMERICK_VERSION="${PROJECT_VERSION}" SOL_PRINT_ERRORS=0)
 target_link_libraries(emerick_app
     PRIVATE lua54 sol2::sol2 tree_sitter_lua PkgConfig::SNDFILE libremidi Qt6::GuiPrivate emerick_sampler_params
@@ -194,6 +199,7 @@ if(EMERICK_BUILD_TESTS)
         tests/control_curve_test.cpp
         tests/console_test.cpp
         tests/cycle_test.cpp
+        tests/dexed_test.cpp
         tests/devices_test.cpp
         tests/fade_test.cpp
         tests/gesture_test.cpp

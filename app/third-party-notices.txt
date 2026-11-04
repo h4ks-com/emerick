@@ -5,7 +5,7 @@ addresses below.
 Dragonfly Reverb 3.2.10, GPL-3.0
 https://github.com/michaelwillis/dragonfly-reverb/tree/3.2.10
 
-Dexed 1.0.1, GPL-3.0
+Dexed 1.0.1, GPL-3.0, and the DX7 cartridges it builds in, which Emerick also ships
 https://github.com/asb2m10/dexed/tree/v1.0.1
 
 Airwindows Consolidated d013e10, GPL-3.0 as built with JUCE, MIT for its own sources

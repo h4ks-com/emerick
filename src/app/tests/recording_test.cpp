@@ -119,8 +119,14 @@ TEST_CASE("a device that stops calling back stops the transport, keeps the take 
     CHECK(transport.at("streamError").get<std::string>().starts_with("The audio device stopped responding"));
     CHECK(transport.at("playing") == false);
     CHECK(transport.at("recording") == false);
-    REQUIRE(rig.waitForTakes(1) == 1);
-    CHECK(projectState(*rig.controller).at("tracks").at(0).at("clips").size() == 1);
+    // The controller's own tick may have collected the take while we waited for the error, so we wait for its clip.
+    CHECK(processUntil(
+        [&] {
+            rig.audio->process(kBlock);
+            rig.controller->collectTakes();
+            return projectState(*rig.controller).at("tracks").at(0).at("clips").size() == 1;
+        },
+        5000));
 
     rig.clock.start(1);
     rig.run("transport.play");

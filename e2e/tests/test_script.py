@@ -18,11 +18,30 @@ print("exported", arg[1], #arg)
 """
 
 
-def run_script(name, code, *args):
+DOWNLOAD = """
+local function started()
+    for _, library in ipairs(emerick.run("library.list").libraries) do
+        if library.id == "big-rusty-drums" then
+            assert(library.error == "", library.error)
+            return library.received > 0
+        end
+    end
+end
+emerick.run("library.install", {library = "big-rusty-drums"})
+emerick.wait(60, started)
+assert(started(), "no bytes after 60 s")
+emerick.run("library.cancel", {library = "big-rusty-drums"})
+print("downloading")
+"""
+
+
+def run_script(name, code, *args, env=()):
     with open(os.path.join(HOST_OUT, name), "w") as file:
         file.write(code)
+    flags = [flag for pair in env for flag in ("-e", pair)]
     return subprocess.run(
-        ["docker", "run", "--rm", "-v", f"{HOST_OUT}:/e2e-out", IMAGE, "--script", f"/e2e-out/{name}", "--", *args],
+        ["docker", "run", "--rm", *flags, "-v", f"{HOST_OUT}:/e2e-out", IMAGE, "--script", f"/e2e-out/{name}", "--",
+         *args],
         capture_output=True, text=True, timeout=120)
 
 
@@ -37,6 +56,12 @@ class Script(unittest.TestCase):
         self.assertEqual(result.stdout, "exported\thello\t2\n")
         samples = float_wav_samples(os.path.join(HOST_OUT, "script-mix.wav"))
         self.assertGreater(max(abs(sample) for sample in samples), 0.01)
+
+    def test_library_download_reaches_https(self):
+        result = run_script("download.lua", DOWNLOAD,
+                            env=("EMERICK_LIBRARY_INSTALL=1", "EMERICK_LIBRARY_DIR=/tmp/libraries"))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout, "downloading\n")
 
     def test_script_error_names_the_line(self):
         result = run_script("fail.lua", "print('before')\nerror('stop here')")

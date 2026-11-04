@@ -67,11 +67,12 @@ RUN --mount=type=cache,target=/root/.cache/emerick \
 FROM build AS bundle
 COPY --from=ffmpeg /ffmpeg/ffmpeg /out/opt/emerick/ffmpeg
 RUN set -e; app=build/release/app; qt=$(readlink -f /opt/qt/current); \
-    mkdir -p /out/opt/emerick "/out$qt/lib" "/out$qt/plugins/platforms" "/out$qt/plugins/imageformats"; \
+    mkdir -p /out/opt/emerick "/out$qt/lib" "/out$qt/plugins/platforms" "/out$qt/plugins/imageformats" "/out$qt/plugins/tls"; \
     ln -s "$qt" /out/opt/qt/current; \
     cp -a "$app/emerick" "$app/emerick-plugin-scanner" "$app/clap" /out/opt/emerick/; \
     cp "$qt/plugins/platforms/libqoffscreen.so" "/out$qt/plugins/platforms/"; \
     cp "$qt/plugins/imageformats/libqsvg.so" "/out$qt/plugins/imageformats/"; \
+    cp "$qt/plugins/tls/libqopensslbackend.so" "/out$qt/plugins/tls/"; \
     for module in QtQml QtQuick QtQuick/Controls; do \
         mkdir -p "/out$qt/qml/$module"; find "$qt/qml/$module" -maxdepth 1 -type f -exec cp {} "/out$qt/qml/$module/" \; ; \
     done; \
@@ -97,7 +98,7 @@ FROM ubuntu:24.04 AS runtime
 ENV DEBIAN_FRONTEND=noninteractive
 # Qt links the GL dispatch libraries, but headless sessions never create a GL context, so we drop the Mesa drivers.
 RUN apt-get update && apt-get install -y --no-install-recommends \
-        python3 libsndfile1 libfluidsynth3 libatomic1 libasound2t64 libgl1 libegl1 libopengl0 libxkbcommon0 libfontconfig1 \
+        ca-certificates libssl3t64 python3 libsndfile1 libfluidsynth3 libatomic1 libasound2t64 libgl1 libegl1 libopengl0 libxkbcommon0 libfontconfig1 \
         libdbus-1-3 libglib2.0-0t64 libgssapi-krb5-2 fontconfig fonts-dejavu-core \
     && dpkg --purge --force-depends libglx-mesa0 libegl-mesa0 libgl1-mesa-dri mesa-libgallium \
         $(dpkg-query -W -f '${Package}\n' 'libllvm*') \

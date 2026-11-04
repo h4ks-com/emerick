@@ -241,10 +241,11 @@ endforeach()
 
 # The app ships these CLAP plugins as their upstream releases build them. Dexed and Airwindows publish no Linux aarch64
 # build, so there the app ships only Dragonfly. Dexed stays on 1.0.1 because the Linux build of 1.1.0 needs glibc 2.43.
+# Airwindows replaces the files of its rolling release every week, so we download our own unchanged copies.
 set(dragonfly_release
     https://github.com/michaelwillis/dragonfly-reverb/releases/download/3.2.10/dragonfly-reverb-3.2.10)
 set(dexed_release https://github.com/asb2m10/dexed/releases/download/v1.0.1/Dexed-1.0.1)
-set(airwindows_release https://github.com/baconpaul/airwin2rack/releases/download/DAWPlugin)
+set(airwindows_release https://github.com/h4ks-com/emerick/releases/download/deps-airwindows-d013e10)
 if(APPLE)
     FetchContent_Declare(dragonfly
         URL ${dragonfly_release}-macos-universal.dmg

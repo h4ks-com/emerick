@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 from conftest import MakeClient, new_project, start_session, wait_for_status
 
-from emerick_service.child import MissingFlagsError, child_args
+from emerick_service.child import MissingFlagsError, child_args, child_env
 from emerick_service.config import Settings
 
 TOOLS_CALL = {"jsonrpc": "2.0", "id": 7, "method": "tools/call", "params": {"name": "actions.run"}}
@@ -101,6 +101,14 @@ def test_child_gets_roots_and_limits(tmp_path: Path) -> None:
     assert {"--mcp-port=20001", "--lua-timeout-ms=500", "--bundled-plugins-only"} <= set(args)
     unlimited = child_args(Settings(lua_timeout_ms=None, bundled_plugins_only=False), 1, tmp_path, tmp_path)
     assert not any(arg.startswith(("--lua-timeout-ms", "--bundled-plugins-only")) for arg in unlimited)
+
+
+def test_child_reads_the_shared_library_folder(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("EMERICK_LIBRARY_DIR", "/data/libraries")
+    monkeypatch.delenv("EMERICK_LIBRARY_INSTALL", raising=False)
+    env = child_env(tmp_path)
+    assert env["EMERICK_LIBRARY_DIR"] == "/data/libraries"
+    assert "EMERICK_LIBRARY_INSTALL" not in env
 
 
 def test_top_level_mcp_lists_tools(make_client: MakeClient) -> None:

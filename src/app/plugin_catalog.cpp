@@ -198,7 +198,8 @@ std::filesystem::path bundledClapFolder(const std::filesystem::path& appFolder) 
 #endif
 }
 
-std::vector<std::filesystem::path> clapSearchFolders(const std::filesystem::path& appFolder) {
+std::vector<std::filesystem::path> clapSearchFolders(const std::filesystem::path& appFolder,
+                                                     const std::filesystem::path& libraryFolder) {
     const std::filesystem::path home = QDir::homePath().toStdString();
 #ifdef Q_OS_MACOS
     std::vector<std::filesystem::path> folders{bundledClapFolder(appFolder), home / "Library/Audio/Plug-Ins/CLAP",
@@ -211,6 +212,7 @@ std::vector<std::filesystem::path> clapSearchFolders(const std::filesystem::path
 #else
     std::vector<std::filesystem::path> folders{bundledClapFolder(appFolder), home / ".clap", "/usr/lib/clap"};
 #endif
+    folders.insert(folders.begin() + 1, libraryClapFolder(libraryFolder));
     for (const QString& folder : qEnvironmentVariable("CLAP_PATH").split(QDir::listSeparator(), Qt::SkipEmptyParts)) {
         folders.emplace_back(folder.toStdString());
     }
@@ -229,8 +231,13 @@ std::vector<std::filesystem::path> vst3SearchFolders() {
 #endif
 }
 
-std::vector<std::filesystem::path> pluginSearchFolders(const std::filesystem::path& appFolder) {
-    std::vector<std::filesystem::path> folders = clapSearchFolders(appFolder);
+std::filesystem::path libraryClapFolder(const std::filesystem::path& libraryFolder) {
+    return libraryFolder / "plugins" / "clap";
+}
+
+std::vector<std::filesystem::path> pluginSearchFolders(const std::filesystem::path& appFolder,
+                                                       const std::filesystem::path& libraryFolder) {
+    std::vector<std::filesystem::path> folders = clapSearchFolders(appFolder, libraryFolder);
     std::ranges::copy(vst3SearchFolders(), std::back_inserter(folders));
     return folders;
 }

@@ -38,6 +38,7 @@ qt_add_qml_module(emerick_ui
         InsertList.qml
         Inspector.qml
         KeyCommands.qml
+        LibrariesPanel.qml
         LevelMeter.qml
         Main.qml
         MarkerLane.qml
@@ -74,6 +75,7 @@ qt_add_qml_module(emerick_ui
     RESOURCES
         icons/arrows-merge.svg
         icons/automation.svg
+        icons/books.svg
         icons/broom.svg
         icons/caret-left.svg
         icons/caret-right.svg
@@ -117,7 +119,7 @@ target_link_libraries(emerick_ui PRIVATE Qt6::Quick Qt6::QuickControls2)
 
 if(EMERICK_BUILD_TESTS AND NOT EMERICK_VIEWER)
     # QML singletons register once per process, so each test that loads a view gets its own binary.
-    foreach(name analysis automation console cycle editing effects file_menu instrument meter midi_source mixer monitors picker piano_roll recording timeline tooltips transport_bar value_controls video)
+    foreach(name analysis automation console cycle editing effects file_menu instrument libraries meter midi_source mixer monitors picker piano_roll recording timeline tooltips transport_bar value_controls video)
         emerick_test(emerick_ui_${name}_tests tests/${name}_test.cpp)
         target_include_directories(emerick_ui_${name}_tests PRIVATE ${PROJECT_SOURCE_DIR}/src/app/tests)
         target_link_libraries(emerick_ui_${name}_tests PRIVATE emerick_app emerick_uiplugin Qt6::Quick Qt6::Test)

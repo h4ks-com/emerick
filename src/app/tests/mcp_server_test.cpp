@@ -110,19 +110,22 @@ TEST_CASE("state.get lists the active limits") {
                        {"luaMemoryMb", 256},
                        {"maxRenderSeconds", nullptr},
                        {"bundledPluginsOnly", false},
+                       {"libraryInstall", true},
                        {"agentReadRoot", nullptr},
                        {"agentWriteRoot", nullptr}});
 
     fixture.registry.setLimits({.luaTimeout = std::chrono::milliseconds{2000},
                                 .luaMemoryBytes = std::size_t{64} << 20,
                                 .renderSeconds = 600,
-                                .bundledPluginsOnly = true});
+                                .bundledPluginsOnly = true,
+                                .libraryInstall = false});
     fixture.registry.setAgentRoots({.read = std::nullopt, .write = fixture.dir.path().toStdString()});
     const Json limited = fixture.tool("state.get", {{"name", "limits"}}).at("structuredContent").at("limits");
     CHECK(limited.at("luaTimeoutMs") == 2000);
     CHECK(limited.at("luaMemoryMb") == 64);
     CHECK(limited.at("maxRenderSeconds") == 600.0);
     CHECK(limited.at("bundledPluginsOnly") == true);
+    CHECK(limited.at("libraryInstall") == false);
     CHECK(limited.at("agentReadRoot").is_null());
     CHECK(limited.at("agentWriteRoot") == std::filesystem::canonical(fixture.dir.path().toStdString()).string());
 }

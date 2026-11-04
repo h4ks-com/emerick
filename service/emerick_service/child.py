@@ -57,6 +57,9 @@ class RpcReply(BaseModel):
 JSON_REPLY = TypeAdapter(dict[str, JsonValue])
 
 
+LIBRARY_ENV = ("EMERICK_LIBRARY_DIR", "EMERICK_LIBRARY_INSTALL")
+
+
 def child_env(home: Path) -> dict[str, str]:
     runtime = home / "runtime"
     runtime.mkdir(mode=0o700, parents=True, exist_ok=True)
@@ -66,6 +69,7 @@ def child_env(home: Path) -> dict[str, str]:
         "QT_QPA_PLATFORM": "offscreen",
         "QT_QUICK_BACKEND": "software",
         "LC_ALL": "C.UTF-8",
+        **{name: os.environ[name] for name in LIBRARY_ENV if name in os.environ},
     }
 
 

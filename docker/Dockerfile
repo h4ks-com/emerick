@@ -116,6 +116,7 @@ ENV PATH=/opt/emerick:/opt/service/bin:$PATH \
     LC_ALL=C.UTF-8 \
     EMERICK_BIN=/opt/emerick/emerick \
     EMERICK_DATA_DIR=/data \
+    EMERICK_LIBRARY_DIR=/data/libraries \
     EMERICK_WORK_DIR=/tmp/emerick-sessions \
     EMERICK_HOST=0.0.0.0 \
     EMERICK_PORT=8080

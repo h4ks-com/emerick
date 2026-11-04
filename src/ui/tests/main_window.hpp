@@ -13,6 +13,7 @@
 #include "emerick/app/console.hpp"
 #include "emerick/app/core_actions.hpp"
 #include "emerick/app/key_focus.hpp"
+#include "emerick/app/libraries.hpp"
 #include "emerick/app/monitor_actions.hpp"
 #include "emerick/app/qml_exposure.hpp"
 #include "project_rig.hpp"
@@ -28,6 +29,7 @@ struct MainWindow {
     LuaHost lua{rig.registry, ui};
     Console console{rig.registry, lua};
     std::unique_ptr<Monitors> monitors;
+    std::unique_ptr<Libraries> libraries;
     QQmlApplicationEngine engine;
     KeyFocusFilter keyFocus;
     QQuickWindow* window = nullptr;
@@ -38,10 +40,12 @@ struct MainWindow {
         registerCoreActions(rig.registry, rig.nav, {});
         registerConsoleActions(rig.registry, rig.nav, console);
         monitors = registerMonitors(rig.registry, *rig.controller, rig.nav);
+        libraries = registerLibraries(rig.registry, rig.nav, rig.path("libraries"));
         if (registerPlugins) {
             registerPlugins(rig);
         }
-        exposeToQml(engine, rig.registry, rig.nav, *rig.controller, tracks, peaks, &console, monitors.get());
+        exposeToQml(engine, rig.registry, rig.nav, *rig.controller, tracks, peaks, &console, monitors.get(),
+                    libraries.get());
         rig.views->adopt(engine, peaks);
         engine.loadFromModule("Emerick.Ui", "Main");
         REQUIRE(engine.rootObjects().size() == 1);

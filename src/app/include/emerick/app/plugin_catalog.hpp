@@ -64,13 +64,19 @@ private:
 // The folder of CLAP bundles that ship with the app whose executable sits in appFolder.
 std::filesystem::path bundledClapFolder(const std::filesystem::path& appFolder);
 
-// The app's bundled CLAP folder, the standard CLAP folders of this platform, then each folder in CLAP_PATH.
-std::vector<std::filesystem::path> clapSearchFolders(const std::filesystem::path& appFolder);
+// The CLAP bundles Emerick downloads into its library folder.
+std::filesystem::path libraryClapFolder(const std::filesystem::path& libraryFolder);
+
+// The app's bundled CLAP folder, the library's CLAP folder, the standard CLAP folders of this platform, then each
+// folder in CLAP_PATH.
+std::vector<std::filesystem::path> clapSearchFolders(const std::filesystem::path& appFolder,
+                                                     const std::filesystem::path& libraryFolder);
 
 // The standard VST3 folders of this platform.
 std::vector<std::filesystem::path> vst3SearchFolders();
 
 // The CLAP search folders, then the VST3 ones.
-std::vector<std::filesystem::path> pluginSearchFolders(const std::filesystem::path& appFolder);
+std::vector<std::filesystem::path> pluginSearchFolders(const std::filesystem::path& appFolder,
+                                                       const std::filesystem::path& libraryFolder);
 
 }  // namespace emerick::app

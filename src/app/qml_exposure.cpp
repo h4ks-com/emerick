@@ -16,7 +16,7 @@
 namespace emerick::app {
 
 void exposeToQml(QQmlEngine& engine, Registry& registry, Nav& nav, ProjectController& controller,
-                 TrackListModel& tracks, PeakCache& peaks, Console* console, Monitors* monitors) {
+                 TrackListModel& tracks, PeakCache& peaks, Console* console, Monitors* monitors, Libraries* libraries) {
     qmlRegisterUncreatableMetaObject(emerick::app::staticMetaObject, "Emerick.App", 1, 0, "App",
                                      "App only holds enums");
     qmlRegisterSingletonInstance("Emerick.App", 1, 0, "Registry", &registry);
@@ -47,6 +47,9 @@ void exposeToQml(QQmlEngine& engine, Registry& registry, Nav& nav, ProjectContro
     if (monitors != nullptr) {
         qmlRegisterSingletonInstance("Emerick.App", 1, 0, "Tuner", &monitors->tuner);
         qmlRegisterSingletonInstance("Emerick.App", 1, 0, "Spectrogram", &monitors->spectrogram);
+    }
+    if (libraries != nullptr) {
+        qmlRegisterSingletonInstance("Emerick.App", 1, 0, "Libraries", libraries);
     }
     qmlRegisterType<SpectrogramView>("Emerick.App", 1, 0, "SpectrogramView");
     qmlRegisterType<ClipNotes>("Emerick.App", 1, 0, "ClipNotes");

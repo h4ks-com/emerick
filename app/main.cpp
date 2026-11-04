@@ -29,6 +29,7 @@
 #include "emerick/app/console.hpp"
 #include "emerick/app/core_actions.hpp"
 #include "emerick/app/key_focus.hpp"
+#include "emerick/app/libraries.hpp"
 #include "emerick/app/lua_host.hpp"
 #include "emerick/app/mcp_server.hpp"
 #include "emerick/app/mcp_tools.hpp"
@@ -79,12 +80,28 @@ private:
     const Registry& registry_;
 };
 
-// We read --headless and --script before QGuiApplication exists, because Qt picks its platform plugin when it is built.
+// We read --headless, --script and --install-library before QGuiApplication exists, because Qt picks its platform
+// plugin when it is built.
 bool runsWithoutWindow(int argc, char** argv) {
     return std::ranges::any_of(std::span{argv, static_cast<std::size_t>(argc)}, [](const char* arg) {
         const std::string_view flag{arg};
-        return flag == "--headless" || flag == "--script" || flag == "-s" || flag.starts_with("--script=");
+        return flag == "--headless" || flag == "--script" || flag == "-s" || flag.starts_with("--script=") ||
+               flag.starts_with("--install-library");
     });
+}
+
+int installLibraries(const Registry& registry, const QStringList& ids) {
+    for (const QString& id : ids) {
+        try {
+            const Json installed = registry.run("library.install", {{"library", id.toStdString()}, {"wait", true}});
+            std::cout << installed.at("name").get<std::string>() << " in " << installed.at("path").get<std::string>()
+                      << '\n';
+        } catch (const AppError& error) {
+            qCritical("%s", error.what());
+            return 1;
+        }
+    }
+    return 0;
 }
 
 std::optional<double> positiveOption(const QCommandLineParser& parser, const QCommandLineOption& option,
@@ -102,7 +119,7 @@ std::optional<double> positiveOption(const QCommandLineParser& parser, const QCo
 }
 
 int runWindow(Registry& registry, Nav& nav, ProjectController& controller, Console& console, ViewEngine& views,
-              Monitors& monitors) {
+              Monitors& monitors, Libraries& libraries) {
     TrackListModel tracks(controller, registry);
     FileOpenFilter fileOpen(registry);
     QGuiApplication::instance()->installEventFilter(&fileOpen);
@@ -110,7 +127,7 @@ int runWindow(Registry& registry, Nav& nav, ProjectController& controller, Conso
     QGuiApplication::instance()->installEventFilter(&keyFocus);
     PeakCache peaks;
     QQmlApplicationEngine engine;
-    exposeToQml(engine, registry, nav, controller, tracks, peaks, &console, &monitors);
+    exposeToQml(engine, registry, nav, controller, tracks, peaks, &console, &monitors, &libraries);
     views.adopt(engine, peaks);
     QObject::connect(
         &engine, &QQmlApplicationEngine::objectCreationFailed, QGuiApplication::instance(),
@@ -161,8 +178,10 @@ int run(int argc, char** argv) {
         "max-render-seconds", "Refuse an offline render longer than this much audio (default: no limit).", "seconds");
     const QCommandLineOption bundledPluginsOnly(
         "bundled-plugins-only", "Load and scan only the plugins the app ships, never system or user plugin folders.");
+    const QCommandLineOption installLibrary(
+        "install-library", "Install this sound library with no window and exit; repeat it for more libraries.", "id");
     parser.addOptions({headlessOption, scriptOption, mcpPort, mcpBindAny, noLuaMcp, audio, midi, profile, agentReadRoot,
-                       agentWriteRoot, luaTimeout, luaMemory, maxRender, bundledPluginsOnly});
+                       agentWriteRoot, luaTimeout, luaMemory, maxRender, bundledPluginsOnly, installLibrary});
     parser.addPositionalArgument("args", "Arguments the script reads from its arg table.", "[-- args...]");
     parser.process(application);
     const bool script = parser.isSet(scriptOption);
@@ -182,7 +201,9 @@ int run(int argc, char** argv) {
          }),
          .luaMemoryBytes = luaMemoryMb ? static_cast<std::size_t>(*luaMemoryMb * kBytesPerMb) : Limits{}.luaMemoryBytes,
          .renderSeconds = positiveOption(parser, maxRender, kMaxRenderSeconds),
-         .bundledPluginsOnly = parser.isSet(bundledPluginsOnly)});
+         .bundledPluginsOnly = parser.isSet(bundledPluginsOnly),
+         .libraryInstall =
+             !parser.isSet(headlessOption) || qEnvironmentVariable("EMERICK_LIBRARY_INSTALL") == QStringLiteral("1")});
     const std::filesystem::path appFolder = QCoreApplication::applicationDirPath().toStdString();
     if (registry.limits().bundledPluginsOnly) {
         emerick::engine::allowPluginsOnlyIn(bundledClapFolder(appFolder));
@@ -208,12 +229,17 @@ int run(int argc, char** argv) {
              (profileFolder.isEmpty() ? QStandardPaths::writableLocation(QStandardPaths::CacheLocation) : profileFolder)
                  .toStdString(),
          .scanner = (QCoreApplication::applicationDirPath() + "/emerick-plugin-scanner").toStdString(),
-         .folders = registry.limits().bundledPluginsOnly ? std::vector{bundledClapFolder(appFolder)}
-                                                         : pluginSearchFolders(appFolder)});
+         .folders = registry.limits().bundledPluginsOnly
+                        ? std::vector{bundledClapFolder(appFolder)}
+                        : pluginSearchFolders(appFolder, libraryFolder(profileFolder))});
     registerPluginActions(registry, nav, plugins);
     registerInstrumentActions(registry, controller, nav, plugins);
     const auto yamaha = emerick::yamaha::registerWith(registry, controller, nav);
     const auto monitors = registerMonitors(registry, controller, nav);
+    const auto libraries = registerLibraries(registry, nav, libraryFolder(profileFolder));
+    if (parser.isSet(installLibrary)) {
+        return installLibraries(registry, parser.values(installLibrary));
+    }
     bool validPort = true;
     quint16 port = script ? 0 : registry.settingValue("mcp.port").get<quint16>();
     if (parser.isSet(mcpPort)) {
@@ -257,7 +283,8 @@ int run(int argc, char** argv) {
                 runCommandLineScript(lua, parser.value(scriptOption).toStdString(), args, std::cout, std::cerr));
         });
     }
-    return headless ? QGuiApplication::exec() : runWindow(registry, nav, controller, console, views, *monitors);
+    return headless ? QGuiApplication::exec()
+                    : runWindow(registry, nav, controller, console, views, *monitors, *libraries);
 }
 
 }  // namespace

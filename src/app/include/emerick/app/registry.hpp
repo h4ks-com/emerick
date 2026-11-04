@@ -50,6 +50,7 @@ struct Limits {
     std::size_t luaMemoryBytes = std::size_t{256} << 20;
     std::optional<double> renderSeconds;
     bool bundledPluginsOnly = false;
+    bool libraryInstall = true;
 };
 
 // The menu bar lists these menus in this order. A menu path such as "Plugins/Yamaha Arranger" shows as a submenu.

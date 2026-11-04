@@ -258,6 +258,12 @@ ApplicationWindow {
                 activeColor: Theme.ink
             }
             ChromeButton {
+                objectName: "library.open"
+                iconName: "books"
+                active: Nav.librariesOpen
+                activeColor: Theme.ink
+            }
+            ChromeButton {
                 objectName: "palette.open"
                 iconName: "magnifying-glass"
             }
@@ -407,6 +413,11 @@ ApplicationWindow {
     Loader {
         active: Nav.spectrogramOpen
         sourceComponent: SpectrogramWindow {}
+    }
+    Loader {
+        anchors.fill: parent
+        active: Nav.librariesOpen
+        sourceComponent: LibrariesPanel {}
     }
 
     Popup {

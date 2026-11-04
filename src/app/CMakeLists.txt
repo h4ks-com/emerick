@@ -74,6 +74,7 @@ qt_add_library(emerick_app STATIC
     include/emerick/app/instruments.hpp
     include/emerick/app/introspector.hpp
     include/emerick/app/key_focus.hpp
+    include/emerick/app/libraries.hpp
     include/emerick/app/lua_helpers.hpp
     include/emerick/app/lua_host.hpp
     include/emerick/app/lua_text.hpp
@@ -116,6 +117,8 @@ qt_add_library(emerick_app STATIC
     instruments.cpp
     introspector.cpp
     key_focus.cpp
+    libraries.cpp
+    library_actions.cpp
     lua_helpers.cpp
     lua_host.cpp
     lua_text.cpp
@@ -176,7 +179,7 @@ qt_add_resources(emerick_app example_scripts
 target_compile_definitions(emerick_app PRIVATE EMERICK_VERSION="${PROJECT_VERSION}" SOL_PRINT_ERRORS=0)
 target_link_libraries(emerick_app
     PRIVATE lua54 sol2::sol2 tree_sitter_lua PkgConfig::SNDFILE libremidi Qt6::GuiPrivate emerick_sampler_params
-    PUBLIC Qt6::Core Qt6::Gui Qt6::Quick Qt6::HttpServer emerick_core emerick_model emerick_engine
+    PUBLIC Qt6::Core Qt6::Gui Qt6::Network Qt6::Quick Qt6::HttpServer emerick_core emerick_model emerick_engine
         emerick_view_data nlohmann_json::nlohmann_json)
 emerick_target(emerick_app)
 
@@ -199,6 +202,7 @@ if(EMERICK_BUILD_TESTS)
         tests/plugin_insert_test.cpp
         tests/instrument_test.cpp
         tests/introspector_test.cpp
+        tests/libraries_test.cpp
         tests/lua_host_test.cpp
         tests/marker_test.cpp
         tests/mcp_server_test.cpp

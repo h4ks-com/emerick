@@ -450,6 +450,7 @@ Json Registry::limitsState() const {
             {"luaMemoryMb", limits_.luaMemoryBytes >> 20},
             {"maxRenderSeconds", optionalJson(limits_.renderSeconds, [](double seconds) { return seconds; })},
             {"bundledPluginsOnly", limits_.bundledPluginsOnly},
+            {"libraryInstall", limits_.libraryInstall},
             {"agentReadRoot", optionalJson(agentRoots_.read, pathText)},
             {"agentWriteRoot", optionalJson(agentRoots_.write, pathText)}};
 }

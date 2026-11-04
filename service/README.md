@@ -43,6 +43,8 @@ Environment variables. Set a limit to `none` to leave its flag off.
 | `EMERICK_LUA_MEMORY_MB` | `256` | `--lua-memory-mb` |
 | `EMERICK_MAX_RENDER_SECONDS` | `900` | `--max-render-seconds` |
 | `EMERICK_BUNDLED_PLUGINS_ONLY` | `true` | `--bundled-plugins-only` |
+| `EMERICK_LIBRARY_DIR` | `/data/libraries` in the image | the sound libraries every session reads; `emerick --install-library <id>` installs one there |
+| `EMERICK_LIBRARY_INSTALL` | | `1` lets sessions run `library.install` and `library.remove` |
 | `EMERICK_VIEWER_DIR` | `/opt/emerick/viewer` | the Emerick Viewer build (`index.html`, `*.wasm`, `*.js`) |
 | `EMERICK_MAX_RENDERS` | `1` | mix renders at once; more wait in a queue |
 | `EMERICK_RENDER_TIMEOUT_SECONDS` | `1800` | stop a mix render after this long |

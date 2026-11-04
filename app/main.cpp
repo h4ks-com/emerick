@@ -25,6 +25,10 @@
 #include <utility>
 #include <vector>
 
+#ifdef __GLIBC__
+#include <malloc.h>
+#endif
+
 #include "emerick/app/backends.hpp"
 #include "emerick/app/console.hpp"
 #include "emerick/app/core_actions.hpp"
@@ -290,6 +294,11 @@ int run(int argc, char** argv) {
 }  // namespace
 
 int main(int argc, char* argv[]) {
+#ifdef __GLIBC__
+    // glibc keeps what each thread frees in that thread's own heap, so every export of a sampled song grew a session
+    // by about 0.5 GB; with one heap we reuse that memory.
+    mallopt(M_ARENA_MAX, 1);
+#endif
     try {
         return run(argc, argv);
     } catch (const std::exception& error) {

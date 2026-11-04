@@ -30,11 +30,12 @@ struct PluginInsertRig : ProjectRig {
         registry.setSetting(kVst3FoldersSetting, Json::array({EMERICK_TEST_VST3_FOLDER}));
     }
 
-    // The test folder holds a bundle that hangs, so a short timeout keeps each scan quick.
+    // The test folder holds a bundle that hangs, so a short timeout keeps each scan quick, and one long enough that a
+    // busy CI machine still sees the crashing bundle crash.
     PluginCatalog catalog{{.cacheFolder = path("cache"),
                            .scanner = EMERICK_PLUGIN_SCANNER,
                            .folders = {},
-                           .timeout = std::chrono::milliseconds(500)}};
+                           .timeout = std::chrono::seconds(2)}};
 
     // An audio track playing a constant 0.5 with the test gain as its insert.
     std::pair<std::string, std::string> guitarWithGain() {

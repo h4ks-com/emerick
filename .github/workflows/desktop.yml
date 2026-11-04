@@ -21,6 +21,7 @@ env:
 jobs:
   macos:
     name: macos (${{ matrix.arch }})
+    if: github.event_name != 'release' || startsWith(github.event.release.tag_name, 'v')
     strategy:
       fail-fast: false
       matrix:
@@ -100,6 +101,7 @@ jobs:
 
   linux:
     name: linux (${{ matrix.arch }})
+    if: github.event_name != 'release' || startsWith(github.event.release.tag_name, 'v')
     strategy:
       fail-fast: false
       matrix:
@@ -198,6 +200,7 @@ jobs:
           key: deps-desktop-linux-${{ matrix.arch }}-${{ hashFiles('cmake/Dependencies.cmake') }}
 
   windows:
+    if: github.event_name != 'release' || startsWith(github.event.release.tag_name, 'v')
     runs-on: windows-latest
     timeout-minutes: 40
     defaults:

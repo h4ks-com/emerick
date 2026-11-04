@@ -10,15 +10,27 @@
 #include <QUrl>
 #include <QtEnvironmentVariables>
 #include <algorithm>
+#include <filesystem>
+#include <optional>
 #include <ranges>
 #include <system_error>
 #include <utility>
 
+#include "emerick/app/path_access.hpp"
 #include "emerick/core/join.hpp"
 
 namespace emerick::app {
 
 namespace {
+
+const Library& findLibrary(const std::vector<Library>& catalog, const std::string& id) {
+    const auto found = std::ranges::find(catalog, id, &Library::id);
+    if (found == catalog.end()) {
+        throw AppError("no library " + id + "; pick one of " +
+                       core::join(catalog | std::views::transform(&Library::id), ", "));
+    }
+    return *found;
+}
 
 constexpr qint64 kProgressIntervalMs = 100;
 
@@ -207,13 +219,31 @@ Libraries::Libraries(std::filesystem::path folder, std::vector<Library> catalog,
 
 Libraries::~Libraries() = default;
 
-const Library& Libraries::find(const std::string& id) const {
-    const auto found = std::ranges::find(catalog_, id, &Library::id);
-    if (found == catalog_.end()) {
-        throw AppError("no library " + id + "; pick one of " +
-                       core::join(catalog_ | std::views::transform(&Library::id), ", "));
+const Library& Libraries::find(const std::string& id) const { return findLibrary(catalog_, id); }
+
+std::filesystem::path librarySfz(const std::filesystem::path& folder, const std::string& id, const std::string& file) {
+    const std::vector<Library> catalog = curatedLibraries();
+    const Library& library = findLibrary(catalog, id);
+    if (!std::filesystem::is_directory(folder / library.id)) {
+        throw AppError(library.name + " is not installed; install it with library.install");
     }
-    return *found;
+    const std::filesystem::path root = std::filesystem::canonical(folder / library.id);
+    const std::optional<std::filesystem::path> chosen = pathInside(root / (file.empty() ? library.sfz : file), root);
+    if (!chosen) {
+        throw AppError(file + " is outside the " + library.name + " library");
+    }
+    if (std::filesystem::is_directory(*chosen)) {
+        std::vector<std::string> names;
+        for (const auto& entry : std::filesystem::recursive_directory_iterator(*chosen)) {
+            if (entry.path().extension() == ".sfz") {
+                names.push_back(std::filesystem::relative(entry.path(), root).generic_string());
+            }
+        }
+        std::ranges::sort(names);
+        throw AppError("pick an .sfz file of " + library.name + " with file, such as " +
+                       core::join(names | std::views::take(40), ", "));
+    }
+    return *chosen;
 }
 
 bool Libraries::installed(const Library& library) const {

@@ -2,6 +2,7 @@
 #include <array>
 #include <bit>
 #include <catch2/catch_test_macros.hpp>
+#include <catch2/matchers/catch_matchers_string.hpp>
 #include <chrono>
 #include <cmath>
 #include <filesystem>
@@ -28,7 +29,7 @@ const std::string kSine = "org.emerick.test.sine";
 struct InstrumentRig : ProjectRig {
     InstrumentRig() {
         registerPluginActions(registry, nav, catalog);
-        registerInstrumentActions(registry, *controller, nav, catalog);
+        registerInstrumentActions(registry, *controller, nav, catalog, path("libraries"));
         registry.setSetting(kClapFoldersSetting, Json::array({EMERICK_TEST_CLAP_FOLDER}));
     }
 
@@ -395,6 +396,27 @@ TEST_CASE("sampler.load plays an SFZ file through Emerick Sampler as one undo st
     REQUIRE(rig.controller->project().track(id)->clips.empty());
     rig.run("project.undo");
     CHECK_FALSE(rig.controller->project().track(id)->instrument.has_value());
+}
+
+TEST_CASE("sampler.load plays a file of an installed sound library") {
+    InstrumentRig rig;
+    rig.registry.setSetting(kClapFoldersSetting, Json::array({bundledClapFolder(EMERICK_GM_APP_FOLDER).string()}));
+    const model::TrackId id{rig.run("track.addMidi").at("id").get<std::string>()};
+    const auto load = [&](const Json& params) {
+        Json all = params;
+        all["track"] = id.value;
+        return rig.run("sampler.load", all);
+    };
+    CHECK_THROWS_WITH(load({{"library", "vsco2-ce"}}), Catch::Matchers::ContainsSubstring("library.install"));
+    const std::filesystem::path library = rig.path("libraries") / "vsco2-ce";
+    std::filesystem::create_directories(library / "Strings");
+    std::filesystem::copy(EMERICK_SAMPLER_SINE, library / "Strings", std::filesystem::copy_options::recursive);
+    CHECK_THROWS_WITH(load({{"library", "vsco2-ce"}}), Catch::Matchers::ContainsSubstring("Strings/sine.sfz"));
+    CHECK_THROWS_WITH(load({{"library", "vsco2-ce"}, {"file", "../../escape.sfz"}}),
+                      Catch::Matchers::ContainsSubstring("outside"));
+    CHECK(load({{"library", "vsco2-ce"}, {"file", "Strings/sine.sfz"}}).at("message") == "Loaded sine");
+    CHECK(Json::parse(rig.controller->project().track(id)->instrument->state).at("path") ==
+          std::filesystem::canonical(library / "Strings" / "sine.sfz").string());
 }
 
 TEST_CASE("a sampler whose SFZ file is gone warns on its track") {

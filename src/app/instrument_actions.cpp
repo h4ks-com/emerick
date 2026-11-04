@@ -8,6 +8,7 @@
 #include <vector>
 
 #include "emerick/app/action_params.hpp"
+#include "emerick/app/libraries.hpp"
 #include "emerick/app/plugin_actions.hpp"
 #include "emerick/app/project_actions.hpp"
 #include "emerick/app/voice_audition.hpp"
@@ -127,7 +128,8 @@ void reportSamplers(Registry& registry, const ProjectController& controller) {
 
 }  // namespace
 
-void registerInstrumentActions(Registry& registry, ProjectController& controller, Nav& nav, PluginCatalog& catalog) {
+void registerInstrumentActions(Registry& registry, ProjectController& controller, Nav& nav, PluginCatalog& catalog,
+                               const std::filesystem::path& libraryFolder) {
     const auto choices = [&registry, &catalog] { return instrumentChoices(registry, catalog); };
     registry.addAction(
         {.id = "track.addInstrument",
@@ -254,18 +256,31 @@ void registerInstrumentActions(Registry& registry, ProjectController& controller
     registry.addAction(
         {.id = "sampler.load",
          .title = "Load SFZ instrument",
-         .description = "Plays an SFZ instrument file on the MIDI track through Emerick Sampler, loading Emerick "
-                        "Sampler first when the track plays another instrument, as one undo step. The project keeps "
+         .description = "Plays an SFZ instrument on the MIDI track through Emerick Sampler, loading Emerick "
+                        "Sampler first when the track plays another instrument, as one undo step. Pass an .sfz path, "
+                        "or a sound library id from library.list with an optional file inside it. The project keeps "
                         "the file's path.",
-         .aliases = {"open sfz", "load sfz", "sampler file"},
+         .aliases = {"open sfz", "load sfz", "sampler file", "load sound library"},
          .category = "Tracks",
-         .schema = {{"required", {"path"}},
-                    {"properties",
+         .schema = {{"properties",
                      {{"track", {{"type", "string"}}},
-                      {"path", {{"type", "string"}, {"description", "an .sfz file"}}}}}},
+                      {"path", {{"type", "string"}, {"description", "an .sfz file"}}},
+                      {"library", {{"type", "string"}, {"description", "an installed library id from library.list"}}},
+                      {"file",
+                       {{"type", "string"},
+                        {"description", "an .sfz file inside the library, relative to it; default its main .sfz"}}}}}},
          .run =
-             [&registry, &controller, &nav, &catalog](const Json& params) {
+             [&registry, &controller, &nav, &catalog,
+              libraries = std::make_shared<const std::filesystem::path>(libraryFolder)](const Json& params) {
                  const model::TrackId id = midiTrack(registry, controller, nav, params);
+                 if (params.contains("library")) {
+                     return loadSampler(registry, controller, catalog, id,
+                                        librarySfz(*libraries, param<std::string>(params, "library"),
+                                                   params.value("file", std::string{})));
+                 }
+                 if (!params.contains("path")) {
+                     throw AppError("pass path, an .sfz file, or library, a sound library id from library.list");
+                 }
                  return loadSampler(registry, controller, catalog, id,
                                     registry.checkedPath(param<std::string>(params, "path"), PathAccess::Read));
              },

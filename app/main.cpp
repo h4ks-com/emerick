@@ -233,7 +233,7 @@ int run(int argc, char** argv) {
                         ? std::vector{bundledClapFolder(appFolder)}
                         : pluginSearchFolders(appFolder, libraryFolder(profileFolder))});
     registerPluginActions(registry, nav, plugins);
-    registerInstrumentActions(registry, controller, nav, plugins);
+    registerInstrumentActions(registry, controller, nav, plugins, libraryFolder(profileFolder));
     const auto yamaha = emerick::yamaha::registerWith(registry, controller, nav);
     const auto monitors = registerMonitors(registry, controller, nav);
     const auto libraries = registerLibraries(registry, nav, libraryFolder(profileFolder));

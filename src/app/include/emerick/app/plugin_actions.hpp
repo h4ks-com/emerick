@@ -1,5 +1,7 @@
 #pragma once
 
+#include <filesystem>
+
 #include "emerick/app/nav.hpp"
 #include "emerick/app/plugin_catalog.hpp"
 #include "emerick/app/project_controller.hpp"
@@ -15,8 +17,10 @@ inline constexpr const char* kGeneralMidiSoundFontSetting = "plugins.generalMidi
 // The Plugins settings section with the user's CLAP folders, and the actions that rescan and list CLAP plugins.
 void registerPluginActions(Registry& registry, Nav& nav, PluginCatalog& catalog);
 
-// The add instrument track, load instrument, remove instrument and show editor actions.
-void registerInstrumentActions(Registry& registry, ProjectController& controller, Nav& nav, PluginCatalog& catalog);
+// The add instrument track, load instrument, remove instrument and show editor actions. sampler.load plays the sound
+// libraries installed in libraryFolder.
+void registerInstrumentActions(Registry& registry, ProjectController& controller, Nav& nav, PluginCatalog& catalog,
+                               const std::filesystem::path& libraryFolder = {});
 // Adds insert.addPlugin, which insert.add runs for a plugin.
 void registerPluginInsertActions(Registry& registry, ProjectController& controller, Nav& nav, PluginCatalog& catalog);
 

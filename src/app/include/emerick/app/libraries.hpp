@@ -34,6 +34,9 @@ std::vector<Library> curatedLibraries();
 // EMERICK_LIBRARY_DIR, else the libraries folder of a --profile run, else the user's app data folder.
 std::filesystem::path libraryFolder(const QString& profileFolder);
 
+// The .sfz file to play from an installed library in folder: file, relative to the library, else its main .sfz.
+std::filesystem::path librarySfz(const std::filesystem::path& folder, const std::string& id, const std::string& file);
+
 class LibraryDownload;
 
 // Installs and removes the libraries of a catalog, one subfolder each in the library folder. A download lands in a

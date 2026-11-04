@@ -6,6 +6,7 @@
 
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <cstdint>
 #include <cstring>
 #include <filesystem>
@@ -28,8 +29,6 @@ using emerick::sampler::kLoadingParam;
 using emerick::sampler::kParamCount;
 using emerick::sampler::kProblemParam;
 
-// We keep whole samples in memory, so an offline render never waits for sfizz to stream them from disk.
-constexpr std::uint32_t kPreloadFrames = std::uint32_t{1} << 30U;
 constexpr std::uint32_t kDefaultBlock = 1024;
 constexpr int kAllNotesOff = 123;
 constexpr int kBendCenter = 8192;
@@ -70,6 +69,9 @@ struct Plugin {
     double sampleRate = 48000.0;
     std::uint32_t maxFrames = kDefaultBlock;
     bool active = false;
+    // sfizz streams samples from disk while it plays live, and in an export it waits for each one to load.
+    std::atomic<bool> offline{false};
+    bool freewheeling = false;
 };
 
 Plugin& pluginOf(const clap_plugin* plugin) { return *static_cast<Plugin*>(plugin->plugin_data); }
@@ -89,7 +91,6 @@ Instrument loadInstrument(const std::string& path) {
         return {.synth = nullptr, .problem = "The SFZ file " + path + " is gone. Run sampler.load with its new path."};
     }
     auto synth = std::make_unique<sfz::Sfizz>();
-    synth->setPreloadSize(kPreloadFrames);
     if (!synth->loadSfzFile(path) || synth->getNumRegions() == 0) {
         return {.synth = nullptr, .problem = "The SFZ file " + path + " plays no samples. Load another SFZ file."};
     }
@@ -141,6 +142,7 @@ void publishLoaded(Plugin& plugin) {
     plugin.playingPath = plugin.load->path;
     plugin.load.reset();
     plugin.instrument = std::move(*loaded);
+    plugin.freewheeling = false;
     configure(plugin);
     if (const auto* params =
             static_cast<const clap_host_params*>(plugin.host->get_extension(plugin.host, std::data(CLAP_EXT_PARAMS)))) {
@@ -227,8 +229,22 @@ void play(sfz::Sfizz& synth, const clap_event_header* header, std::uint32_t fram
     }
 }
 
+void followRenderMode(Plugin& plugin, sfz::Sfizz& synth) {
+    const bool offline = plugin.offline.load(std::memory_order_relaxed);
+    if (offline == plugin.freewheeling) {
+        return;
+    }
+    if (offline) {
+        synth.enableFreeWheeling();
+    } else {
+        synth.disableFreeWheeling();
+    }
+    plugin.freewheeling = offline;
+}
+
 clap_process_status process(const clap_plugin* clapPlugin, const clap_process* process) {
-    sfz::Sfizz* synth = pluginOf(clapPlugin).instrument.synth.get();
+    Plugin& plugin = pluginOf(clapPlugin);
+    sfz::Sfizz* synth = plugin.instrument.synth.get();
     const std::span<float*> outputs(process->audio_outputs[0].data32, 2);
     const std::uint32_t frames = process->frames_count;
     if (synth == nullptr || frames == 0) {
@@ -237,6 +253,7 @@ clap_process_status process(const clap_plugin* clapPlugin, const clap_process* p
         }
         return CLAP_PROCESS_CONTINUE;
     }
+    followRenderMode(plugin, *synth);
     const std::uint32_t events = process->in_events->size(process->in_events);
     for (std::uint32_t index = 0; index < events; ++index) {
         play(*synth, process->in_events->get(process->in_events, index), frames);
@@ -362,6 +379,15 @@ bool notePortGet(const clap_plugin* /*unused*/, std::uint32_t index, bool isInpu
 
 const clap_plugin_note_ports kNotePorts{notePortCount, notePortGet};
 
+bool hasHardRealtimeRequirement(const clap_plugin* /*unused*/) { return false; }
+
+bool setRenderMode(const clap_plugin* clapPlugin, clap_plugin_render_mode mode) {
+    pluginOf(clapPlugin).offline.store(mode == CLAP_RENDER_OFFLINE, std::memory_order_relaxed);
+    return true;
+}
+
+const clap_plugin_render kRender{hasHardRealtimeRequirement, setRenderMode};
+
 const void* extension(const clap_plugin* /*unused*/, const char* id) {
     if (std::strcmp(id, std::data(CLAP_EXT_AUDIO_PORTS)) == 0) {
         return &kAudioPorts;
@@ -374,6 +400,9 @@ const void* extension(const clap_plugin* /*unused*/, const char* id) {
     }
     if (std::strcmp(id, std::data(CLAP_EXT_PARAMS)) == 0) {
         return &kParams;
+    }
+    if (std::strcmp(id, std::data(CLAP_EXT_RENDER)) == 0) {
+        return &kRender;
     }
     return nullptr;
 }

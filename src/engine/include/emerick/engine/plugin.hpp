@@ -81,6 +81,8 @@ public:
     // Runs what the plugin asked of the main thread: its callback, a restart and closing its editor. Returns true once
     // after the plugin marked its state changed.
     virtual bool idle() = 0;
+    // Tells the plugin an export renders it faster than real time, so it may take as long as it needs per block.
+    virtual void setOfflineRendering(bool /*offline*/) {}
     // Nullopt when the plugin keeps no state or fails to save it.
     [[nodiscard]] virtual std::optional<std::vector<std::uint8_t>> saveState() const = 0;
     virtual bool loadState(std::span<const std::uint8_t> bytes) = 0;

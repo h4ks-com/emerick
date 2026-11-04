@@ -15,10 +15,12 @@
 
 #include "emerick/app/audio_file.hpp"
 #include "emerick/app/project_controller.hpp"
+#include "emerick/app/track_rows.hpp"
 #include "emerick/engine/audio_analysis.hpp"
 #include "emerick/engine/engine.hpp"
 #include "emerick/model/clip_edit.hpp"
 #include "emerick/model/document.hpp"
+#include "sampler_params.hpp"
 
 namespace emerick::app {
 
@@ -31,6 +33,8 @@ constexpr auto kReadAheadTimeout = std::chrono::seconds{5};
 constexpr const char* kRenderDevice = "render";
 
 using RenderInstruments = std::vector<std::shared_ptr<engine::Plugin>>;
+
+constexpr std::chrono::seconds kSamplerLoadTimeout{120};
 
 std::string fileStem(const std::string& name) {
     std::string stem = name.empty() ? std::string{"track"} : name;
@@ -149,6 +153,19 @@ engine::Session captureSession(const engine::Session& session, const std::vector
     return renderSession(session, std::move(tracks));
 }
 
+// Emerick Sampler loads its SFZ file on a thread of its own, and swaps it in on the main thread before it activates.
+void waitForSampler(const model::Track& track, engine::Plugin& plugin) {
+    const auto deadline = std::chrono::steady_clock::now() + kSamplerLoadTimeout;
+    while (plugin.paramValue(sampler::kLoadingParam) == 1.0) {
+        if (std::chrono::steady_clock::now() > deadline) {
+            throw AppError(std::format("cannot render track {}: its SFZ instrument still loads after {} s", track.name,
+                                       kSamplerLoadTimeout.count()));
+        }
+        plugin.idle();
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+}
+
 std::shared_ptr<engine::Plugin> renderPlugin(const model::Track& track, const model::PluginSlot& slot) {
     auto plugin = engine::createPlugin(slot.format, slot.bundle, slot.pluginId);
     if (!plugin) {
@@ -156,6 +173,9 @@ std::shared_ptr<engine::Plugin> renderPlugin(const model::Track& track, const mo
     }
     if (!slot.state.empty() && !(*plugin)->loadState(slot.state)) {
         throw AppError("cannot render track " + track.name + ": " + slot.name + " did not load its settings");
+    }
+    if (slot.pluginId == kSamplerPluginId) {
+        waitForSampler(track, **plugin);
     }
     return *std::move(plugin);
 }
@@ -433,9 +453,16 @@ void OfflineRender::start(engine::Session session, double sampleRate) {
     // We open the stream here, so the instruments activate on this thread and process never has to.
     engine_->keepWarm(true);
     engine_->locate(0);
+    for (const auto& instrument : instruments_) {
+        instrument->setOfflineRendering(true);
+    }
 }
 
-OfflineRender::~OfflineRender() = default;
+OfflineRender::~OfflineRender() {
+    for (const auto& instrument : instruments_) {
+        instrument->setOfflineRendering(false);
+    }
+}
 
 void OfflineRender::process(engine::Frames frames, const ChunkSink& sink, const std::function<void()>& idle,
                             const std::stop_token& stop) {

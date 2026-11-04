@@ -210,6 +210,11 @@ function(emerick_add_sfizz)
     set(CMAKE_CXX_STANDARD 17)
     set(CMAKE_AUTOMOC OFF)
     set(CMAKE_DISABLE_FIND_PACKAGE_OpenMP ON)
+    # Unoptimized, sfizz takes minutes to decode the start of every sample in a large library.
+    if(NOT MSVC)
+        set(CMAKE_C_FLAGS_DEBUG "-O2 -g")
+        set(CMAKE_CXX_FLAGS_DEBUG "-O2 -g")
+    endif()
     # sfizz passes 32-bit ARM flags to every processor whose name starts with arm, which Apple's arm64 refuses.
     if(CMAKE_SYSTEM_PROCESSOR STREQUAL "arm64")
         set(PROJECT_SYSTEM_PROCESSOR aarch64 CACHE STRING "" FORCE)

@@ -1,3 +1,5 @@
+#include <sndfile.h>
+
 #include <algorithm>
 #include <array>
 #include <bit>
@@ -15,6 +17,7 @@
 #include "emerick/app/instruments.hpp"
 #include "emerick/app/plugin_actions.hpp"
 #include "emerick/app/plugin_catalog.hpp"
+#include "emerick/engine/sound_file.hpp"
 #include "emerick/model/json.hpp"
 #include "project_rig.hpp"
 
@@ -396,6 +399,24 @@ TEST_CASE("sampler.load plays an SFZ file through Emerick Sampler as one undo st
     REQUIRE(rig.controller->project().track(id)->clips.empty());
     rig.run("project.undo");
     CHECK_FALSE(rig.controller->project().track(id)->instrument.has_value());
+}
+
+TEST_CASE("an export right after sampler.load waits for the SFZ file and plays it") {
+    InstrumentRig rig;
+    rig.registry.setSetting(kClapFoldersSetting, Json::array({bundledClapFolder(EMERICK_GM_APP_FOLDER).string()}));
+    const model::TrackId id{rig.run("track.addMidi").at("id").get<std::string>()};
+    rig.run("sampler.load",
+            {{"track", id.value}, {"path", (std::filesystem::path{EMERICK_SAMPLER_SINE} / "sine.sfz").string()}});
+    addNote(*rig.controller, id);
+    const std::filesystem::path mix = rig.path("mix.wav");
+    rig.run("export.mix", {{"path", mix.string()}});
+    SF_INFO info{};
+    SNDFILE* file = engine::openSoundFile(mix, SFM_READ, &info);
+    REQUIRE(file != nullptr);
+    std::vector<float> samples(static_cast<std::size_t>(info.frames * info.channels));
+    sf_readf_float(file, samples.data(), info.frames);
+    sf_close(file);
+    CHECK(loudest(samples) > 0.05F);
 }
 
 TEST_CASE("sampler.load plays a file of an installed sound library") {

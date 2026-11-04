@@ -244,6 +244,12 @@ bool ClapPlugin::idle() {
     return impl.stateDirty.exchange(false, std::memory_order_relaxed);
 }
 
+void ClapPlugin::setOfflineRendering(bool offline) {
+    if (impl_->proxy->canUseRender()) {
+        impl_->proxy->renderSet(offline ? CLAP_RENDER_OFFLINE : CLAP_RENDER_REALTIME);
+    }
+}
+
 std::optional<std::vector<std::uint8_t>> ClapPlugin::saveState() const {
     if (!impl_->proxy->canUseState()) {
         return std::nullopt;

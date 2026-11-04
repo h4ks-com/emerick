@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <array>
 #include <cstddef>
+#include <filesystem>
 #include <iterator>
 #include <ranges>
 #include <string>
@@ -165,6 +166,9 @@ std::string bundledSound(const model::PluginSlot& slot) {
     if (slot.pluginId == kVoicesPluginId && state.contains("voice") && state.at("voice").is_object()) {
         const Json& voice = state.at("voice");
         return voice.value("pack", std::string{}) + " / " + voice.value("name", std::string{});
+    }
+    if (slot.pluginId == kSamplerPluginId) {
+        return std::filesystem::path{state.value("path", std::string{})}.stem().string();
     }
     return {};
 }

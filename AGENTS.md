@@ -9,7 +9,7 @@ Emerick is a small native DAW in C++23 and Qt 6.11 QML. It records and plays aud
 - How code is written (types at the boundary, realtime rules, QML rules, names): `docs/CODE_STYLE.md`
 - Architecture and layer rules: `docs/architecture.md`
 - Visual design tokens and layout: `docs/design.md`
-- Layers: `src/core`, `src/model`, `src/engine` (no Qt), `src/app` (Qt glue, registry, MCP, Lua), `src/ui` (QML), `src/viewer` (the read-only viewer, built for WebAssembly), `src/gm` (the bundled General MIDI CLAP instrument), `src/voices` (the bundled Expansion Voices CLAP instrument), `src/arranger` (the Yamaha style arranger engine and the bundled Arranger CLAP device, no Qt), `plugins/<name>`, `app/` (executable)
+- Layers: `src/core`, `src/model`, `src/engine` (no Qt), `src/app` (Qt glue, registry, MCP, Lua), `src/ui` (QML), `src/viewer` (the read-only viewer, built for WebAssembly), `src/gm` (the bundled General MIDI CLAP instrument), `src/voices` (the bundled Expansion Voices CLAP instrument), `src/sampler` (the bundled Emerick Sampler CLAP instrument, SFZ through sfizz, no Qt), `src/arranger` (the Yamaha style arranger engine and the bundled Arranger CLAP device, no Qt), `plugins/<name>`, `app/` (executable)
 - Tests sit next to their module in `tests/`, one Catch2 binary per module
 
 ## Commands (the Makefile is the single interface)

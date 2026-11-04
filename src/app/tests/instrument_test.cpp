@@ -10,6 +10,7 @@
 #include <span>
 #include <vector>
 
+#include "emerick/app/event_wait.hpp"
 #include "emerick/app/instruments.hpp"
 #include "emerick/app/plugin_actions.hpp"
 #include "emerick/app/plugin_catalog.hpp"
@@ -372,4 +373,42 @@ TEST_CASE("an ambiguous or unknown choice text names up to three close choices")
     CHECK(std::ranges::count(unknown, '/') == 3);
     CHECK_FALSE(unknown.contains("Clean Guitar"));
     CHECK(message("trumpet") == "Voice has no choice \"trumpet\", run instrument.params for its choices");
+}
+
+TEST_CASE("sampler.load plays an SFZ file through Emerick Sampler as one undo step") {
+    InstrumentRig rig;
+    rig.registry.setSetting(kClapFoldersSetting, Json::array({bundledClapFolder(EMERICK_GM_APP_FOLDER).string()}));
+    const std::filesystem::path sine = std::filesystem::path{EMERICK_SAMPLER_SINE} / "sine.sfz";
+    const model::TrackId id{rig.run("track.addMidi").at("id").get<std::string>()};
+    CHECK(rig.run("sampler.load", {{"track", id.value}, {"path", sine.string()}}).at("message") == "Loaded sine");
+    const model::Track& track = *rig.controller->project().track(id);
+    REQUIRE(track.instrument.has_value());
+    CHECK(track.instrument->pluginId == kSamplerPluginId);
+    CHECK(Json::parse(track.instrument->state).at("path") == sine.string());
+    rig.run("project.waitReady", {{"timeout", 10}});
+    addNote(*rig.controller, id);
+    rig.controller->play();
+    rig.audio->process(kBlock * 64);
+    CHECK(loudest(rig.audio->output("interface", 1)) > 0.05F);
+    CHECK_THROWS_AS(rig.run("sampler.load", {{"track", id.value}, {"path", rig.path("none.sfz").string()}}), AppError);
+    rig.run("project.undo");
+    REQUIRE(rig.controller->project().track(id)->clips.empty());
+    rig.run("project.undo");
+    CHECK_FALSE(rig.controller->project().track(id)->instrument.has_value());
+}
+
+TEST_CASE("a sampler whose SFZ file is gone warns on its track") {
+    InstrumentRig rig;
+    rig.registry.setSetting(kClapFoldersSetting, Json::array({bundledClapFolder(EMERICK_GM_APP_FOLDER).string()}));
+    const model::TrackId id{rig.run("track.addMidi").at("id").get<std::string>()};
+    rig.run("sampler.load",
+            {{"track", id.value}, {"path", (std::filesystem::path{EMERICK_SAMPLER_SINE} / "sine.sfz").string()}});
+    const std::string gone = Json{{"path", rig.path("gone.sfz").string()}}.dump();
+    rig.controller->project().editTrack(
+        id, "move file", [&](model::Track& track) { track.instrument->state.assign(gone.begin(), gone.end()); });
+    rig.run("project.waitReady", {{"timeout", 10}});
+    const auto warning = [&] {
+        return rig.controller->trackErrors().value(QString::fromStdString(id.value)).toString();
+    };
+    CHECK(processEventsUntil([&] { return warning().contains("gone.sfz"); }, std::chrono::seconds(10)));
 }

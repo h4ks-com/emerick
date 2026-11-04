@@ -43,6 +43,7 @@ QList<double> controlPointList(const model::MidiClip& clip, const QString& lane)
 inline constexpr const char* kGeneralMidiPluginId = "org.emerick.gm";
 inline constexpr const char* kVoicesPluginId = "org.emerick.voices";
 inline constexpr const char* kArrangerPluginId = "org.emerick.arranger";
+inline constexpr const char* kSamplerPluginId = "org.emerick.sampler";
 
 // The track's instrument as {name, format, sound}: the sound a bundled instrument's saved state picks, such as the
 // General MIDI sound or the Expansion Voices voice, or empty. A track without an instrument gives an empty map.

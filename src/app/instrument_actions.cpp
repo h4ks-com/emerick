@@ -1,5 +1,7 @@
 #include <algorithm>
 #include <cstdint>
+#include <filesystem>
+#include <memory>
 #include <ranges>
 #include <string>
 #include <utility>
@@ -9,6 +11,7 @@
 #include "emerick/app/plugin_actions.hpp"
 #include "emerick/app/project_actions.hpp"
 #include "emerick/app/voice_audition.hpp"
+#include "sampler_params.hpp"
 
 namespace emerick::app {
 
@@ -76,6 +79,51 @@ model::TrackId instrumentTrack(const Registry& registry, const ProjectController
 
 // A script runs its actions without turning the event loop, so we load the instruments its earlier actions added.
 void syncInstruments(ProjectController& controller) { controller.instruments().sync(controller.project().document()); }
+
+std::shared_ptr<engine::Plugin> samplerOf(const Instruments& instruments, const model::Track& track) {
+    return track.instrument && track.instrument->pluginId == kSamplerPluginId ? instruments.find(track.id) : nullptr;
+}
+
+Json loadSampler(const Registry& registry, ProjectController& controller, PluginCatalog& catalog,
+                 const model::TrackId& id, const std::filesystem::path& path) {
+    if (!std::filesystem::is_regular_file(path)) {
+        throw AppError("no SFZ file at " + path.string() + ", pass the path of an .sfz file");
+    }
+    const std::string name = path.stem().string();
+    const std::string state = Json{{"path", path.string()}}.dump();
+    controller.project().group("load SFZ " + name, [&] {
+        const model::Track& track = *controller.project().track(id);
+        if (!track.instrument || track.instrument->pluginId != kSamplerPluginId) {
+            loadInstrument(registry, controller, id, slotFor(registry, catalog, {{"plugin", kSamplerPluginId}}));
+        }
+        editTrack(controller, id, "load SFZ " + name,
+                  [&](model::Track& edited) { edited.instrument->state.assign(state.begin(), state.end()); });
+    });
+    syncInstruments(controller);
+    return {{"track", id.value}, {"path", path.string()}, {"message", "Loaded " + name}};
+}
+
+// Emerick Sampler names why it plays nothing and whether it still loads in hidden params, which we show as the track's
+// warning and wait for in project.waitReady.
+void reportSamplers(Registry& registry, const ProjectController& controller) {
+    registry.addWarnings([&controller](const model::Document& document) {
+        std::vector<engine::SessionError> warnings;
+        for (const model::Track& track : document.tracks) {
+            const auto sampler = samplerOf(controller.instruments(), track);
+            if (std::string text = sampler ? sampler->paramText(sampler::kProblemParam, 0.0) : ""; !text.empty()) {
+                warnings.push_back({.trackId = track.id.value, .message = std::move(text)});
+            }
+        }
+        return warnings;
+    });
+    registry.addLoadingTracks([&controller](const model::Document& document) {
+        return document.tracks | std::views::filter([&](const model::Track& track) {
+                   const auto sampler = samplerOf(controller.instruments(), track);
+                   return sampler && sampler->paramValue(sampler::kLoadingParam) == 1.0;
+               }) |
+               std::views::transform(&model::Track::id) | std::ranges::to<std::vector>();
+    });
+}
 
 }  // namespace
 
@@ -203,6 +251,27 @@ void registerInstrumentActions(Registry& registry, ProjectController& controller
                        [&set](model::Track& track) { track.instrument->state = std::move(set.state); });
              return Json{{"track", id.value}, {"param", paramId}, {"value", set.value}, {"text", set.text}};
          }});
+    registry.addAction(
+        {.id = "sampler.load",
+         .title = "Load SFZ instrument",
+         .description = "Plays an SFZ instrument file on the MIDI track through Emerick Sampler, loading Emerick "
+                        "Sampler first when the track plays another instrument, as one undo step. The project keeps "
+                        "the file's path.",
+         .aliases = {"open sfz", "load sfz", "sampler file"},
+         .category = "Tracks",
+         .schema = {{"required", {"path"}},
+                    {"properties",
+                     {{"track", {{"type", "string"}}},
+                      {"path", {{"type", "string"}, {"description", "an .sfz file"}}}}}},
+         .run =
+             [&registry, &controller, &nav, &catalog](const Json& params) {
+                 const model::TrackId id = midiTrack(registry, controller, nav, params);
+                 return loadSampler(registry, controller, catalog, id,
+                                    registry.checkedPath(param<std::string>(params, "path"), PathAccess::Read));
+             },
+         .menus = {kTrackContextMenu},
+         .dialog = FileDialog{.param = "path", .nameFilter = "SFZ instruments (*.sfz)"}});
+    reportSamplers(registry, controller);
     registerAuditionAction(registry, controller);
     registerPluginInsertActions(registry, controller, nav, catalog);
 }

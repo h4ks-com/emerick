@@ -197,3 +197,39 @@ add_library(tree_sitter_lua STATIC ${tree_sitter_lua_SOURCE_DIR}/src/parser.c ${
 target_include_directories(tree_sitter_lua PRIVATE ${tree_sitter_lua_SOURCE_DIR}/src)
 target_link_libraries(tree_sitter_lua PUBLIC tree_sitter)
 set_target_properties(tree_sitter tree_sitter_lua PROPERTIES C_STANDARD 11)
+
+# The Emerick Sampler plays SFZ instruments through libsfizz, linked statically with the libraries its release bundles.
+# We build it as C++17 in a function scope, the standard it is tested with, and leave out its clients and OpenMP.
+FetchContent_Declare(sfizz
+    URL https://github.com/sfztools/sfizz/releases/download/1.2.3/sfizz-1.2.3.tar.gz
+    URL_HASH SHA256=a9339eac7620d7f0f6b44bdfe860680fab73e66efad4b5f15b21198dd9436822
+    EXCLUDE_FROM_ALL
+    SYSTEM)
+function(emerick_add_sfizz)
+    set(CMAKE_POLICY_DEFAULT_CMP0126 NEW)
+    set(CMAKE_CXX_STANDARD 17)
+    set(CMAKE_AUTOMOC OFF)
+    set(CMAKE_DISABLE_FIND_PACKAGE_OpenMP ON)
+    # sfizz passes 32-bit ARM flags to every processor whose name starts with arm, which Apple's arm64 refuses.
+    if(CMAKE_SYSTEM_PROCESSOR STREQUAL "arm64")
+        set(PROJECT_SYSTEM_PROCESSOR aarch64 CACHE STRING "" FORCE)
+    endif()
+    set(ENABLE_LTO OFF CACHE BOOL "" FORCE)
+    set(SFIZZ_JACK OFF CACHE BOOL "" FORCE)
+    set(SFIZZ_RENDER OFF CACHE BOOL "" FORCE)
+    set(SFIZZ_SHARED OFF CACHE BOOL "" FORCE)
+    set(SFIZZ_GIT_SUBMODULE_CHECK OFF CACHE BOOL "" FORCE)
+    FetchContent_MakeAvailable(sfizz)
+endfunction()
+emerick_add_sfizz()
+# sfizz turns its asserts and debug prints on in every build type, and they print from the audio thread.
+foreach(target sfizz_internal sfizz_parser sfizz_messaging sfizz_import sfizz_static)
+    foreach(property COMPILE_DEFINITIONS INTERFACE_COMPILE_DEFINITIONS)
+        get_target_property(definitions ${target} ${property})
+        if(definitions)
+            list(REMOVE_ITEM definitions SFIZZ_ENABLE_RELEASE_ASSERT=1 SFIZZ_ENABLE_RELEASE_DBG=1)
+            set_target_properties(${target} PROPERTIES ${property} "${definitions}")
+        endif()
+    endforeach()
+    target_compile_definitions(${target} PRIVATE NDEBUG)
+endforeach()

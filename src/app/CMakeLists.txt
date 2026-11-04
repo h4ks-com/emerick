@@ -175,7 +175,7 @@ qt_add_resources(emerick_app example_scripts
         ${PROJECT_SOURCE_DIR}/scripts/examples/rename-from-list.lua)
 target_compile_definitions(emerick_app PRIVATE EMERICK_VERSION="${PROJECT_VERSION}" SOL_PRINT_ERRORS=0)
 target_link_libraries(emerick_app
-    PRIVATE lua54 sol2::sol2 tree_sitter_lua PkgConfig::SNDFILE libremidi Qt6::GuiPrivate
+    PRIVATE lua54 sol2::sol2 tree_sitter_lua PkgConfig::SNDFILE libremidi Qt6::GuiPrivate emerick_sampler_params
     PUBLIC Qt6::Core Qt6::Gui Qt6::Quick Qt6::HttpServer emerick_core emerick_model emerick_engine
         emerick_view_data nlohmann_json::nlohmann_json)
 emerick_target(emerick_app)
@@ -224,5 +224,6 @@ if(EMERICK_BUILD_TESTS)
         tests/transport_test.cpp
         tests/voice_audition_test.cpp)
     target_link_libraries(emerick_app_tests
-        PRIVATE emerick_app emerick_test_clap emerick_test_vst3 emerick_gm_clap emerick_voices_clap Qt6::Network Qt6::Qml Qt6::QuickControls2 PkgConfig::SNDFILE libremidi)
+        PRIVATE emerick_app emerick_test_clap emerick_test_vst3 emerick_gm_clap emerick_voices_clap emerick_sampler_clap Qt6::Network Qt6::Qml Qt6::QuickControls2 PkgConfig::SNDFILE libremidi)
+    target_compile_definitions(emerick_app_tests PRIVATE EMERICK_SAMPLER_SINE="${PROJECT_SOURCE_DIR}/src/sampler/tests/sine")
 endif()

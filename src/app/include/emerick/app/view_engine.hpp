@@ -12,7 +12,8 @@
 namespace emerick::app {
 
 // The QML engine that offscreen views load into: the window's engine, or with no window one made on first use, since
-// the Emerick.App singletons register once per process.
+// the Emerick.App singletons register once per process. It also saves the timeline view with the project and restores
+// it when a project opens, so every way of running the app opens a project as it was saved.
 class ViewEngine {
 public:
     ViewEngine(Registry& registry, Nav& nav, ProjectController& controller);

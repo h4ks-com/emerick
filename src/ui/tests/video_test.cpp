@@ -86,6 +86,55 @@ TEST_CASE("the playhead of each frame sits on that frame's tick and then holds w
     CHECK(main.rig.controller->positionTicks() == 0);
 }
 
+TEST_CASE("a frame draws the automation curve between the points") {
+    MainWindow& main = MainWindow::instance();
+    while (!main.rig.controller->project().document().tracks.empty()) {
+        main.rig.run("track.remove", {{"track", main.rig.controller->project().document().tracks.front().id.value}});
+    }
+    addClip(main, 20);
+    const std::string track = main.rig.controller->project().document().tracks.front().id.value;
+    const core::Ticks bar = main.rig.controller->project().document().tempo.ticksPerBar();
+    main.rig.nav.setAutomationOpen(true);
+    main.rig.run("automation.addPoint", {{"track", track}, {"tick", 0}, {"value", -60.0}});
+    const std::string last =
+        main.rig.run("automation.addPoint", {{"track", track}, {"tick", bar * 6}, {"value", 0.0}}).at("point");
+    const auto render = [&] {
+        TimelineFrames frames(*main.rig.views, main.rig.nav, *main.rig.controller,
+                              {.width = kWidth, .height = kHeight, .fps = kFps, .from = 0, .to = bar * 8});
+        return frames.frame(0);
+    };
+    const QImage rising = render();
+    main.rig.run("automation.movePoints", {{"points", Json::array({last})}, {"value", -60.0}});
+    const QImage flat = render();
+    main.rig.nav.setAutomationOpen(false);
+
+    const double scale = kHeight / kVideoBaseHeight;
+    const double headerWidth = main.rig.registry.settingValue("view.headerWidth").get<double>();
+    const double laneWidth = kWidth / scale - headerWidth;
+    const int middle = static_cast<int>(scale * (headerWidth + (laneWidth * 3 / kVideoBarsVisible)));
+    int changed = 0;
+    for (int y = 0; y < kHeight; ++y) {
+        changed += rising.pixel(middle, y) != flat.pixel(middle, y) ? 1 : 0;
+    }
+    CHECK(changed > 0);
+}
+
+TEST_CASE("a frame keeps the view's zoom and track height when asked to") {
+    MainWindow& main = MainWindow::instance();
+    if (main.rig.controller->project().document().tracks.empty()) {
+        addClip(main, 20);
+    }
+    main.rig.nav.setPixelsPerTick(0.1);
+    main.rig.nav.setTrackHeight(100);
+    const core::Ticks bar = main.rig.controller->project().document().tempo.ticksPerBar();
+    TimelineFrames frames(
+        *main.rig.views, main.rig.nav, *main.rig.controller,
+        {.width = kWidth, .height = kHeight, .fps = kFps, .from = 0, .to = bar * 8, .currentView = true});
+    frames.frame(0);
+    CHECK(main.rig.nav.pixelsPerTick() == Catch::Approx(0.1));
+    CHECK(main.rig.nav.trackHeight() == 100);
+}
+
 TEST_CASE("a rendered video holds a frame per period and the mix for as long as the picture lasts") {
     const QString ffprobe = QStandardPaths::findExecutable("ffprobe");
     try {

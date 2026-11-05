@@ -31,6 +31,9 @@ struct VideoRequest {
     double fps = 30;
     core::Ticks from = 0;
     core::Ticks to = 0;
+    // Keeps the zoom and track height the view has, where by default the frame shows kVideoBarsVisible bars and fits
+    // the tracks to its height.
+    bool currentView = false;
 };
 
 // The frames of a request: VideoFrame drawn offscreen at each frame's position. The views share Nav

@@ -8,8 +8,10 @@
 #include <QTemporaryDir>
 #include <QTest>
 #include <algorithm>
+#include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 #include <cstddef>
+#include <string>
 #include <vector>
 
 #include "emerick/app/peak_levels.hpp"
@@ -190,4 +192,18 @@ TEST_CASE("the viewer fetches a peak file again until the service has written it
             return levels != nullptr && levels->levels.front().maximum.size() == kPeaks;
         },
         5000));
+}
+
+TEST_CASE("the viewer opens a project with the view it was saved with") {
+    ensureApplication();
+    model::Document document = sampleDocument();
+    const std::string keys = document.tracks[0].id.value;
+    document.view = {
+        {"pixelsPerTick", 0.2}, {"trackHeight", 120}, {"automationOpen", false}, {"automationLanes", {{keys, "pan"}}}};
+    viewer::Viewer viewer;
+    REQUIRE(viewer.load(QByteArray::fromStdString(model::toJson(document).dump()), "Sample").isEmpty());
+    CHECK(viewer.nav.pixelsPerTick() == Catch::Approx(0.2));
+    CHECK(viewer.nav.trackHeight() == 120);
+    CHECK_FALSE(viewer.nav.automationOpen());
+    CHECK(viewer.nav.automationLane(QString::fromStdString(keys)) == "pan");
 }

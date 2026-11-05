@@ -10,6 +10,7 @@ qt_add_library(emerick_view_data STATIC
     transport_clock.cpp
     variant.cpp
     view_actions.cpp
+    view_state.cpp
     waveform.cpp
     include/emerick/app/clip_notes.hpp
     include/emerick/app/control_curve.hpp
@@ -23,6 +24,7 @@ qt_add_library(emerick_view_data STATIC
     include/emerick/app/transport_clock.hpp
     include/emerick/app/variant.hpp
     include/emerick/app/view_actions.hpp
+    include/emerick/app/view_state.hpp
     include/emerick/app/waveform.hpp)
 target_include_directories(emerick_view_data PUBLIC include PRIVATE ${PROJECT_SOURCE_DIR}/src/gm)
 target_link_libraries(emerick_view_data

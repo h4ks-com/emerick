@@ -11,10 +11,12 @@
 #include <functional>
 #include <map>
 #include <memory>
+#include <nlohmann/json.hpp>
 #include <optional>
 #include <set>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 #include "emerick/app/instruments.hpp"
@@ -170,6 +172,11 @@ public:
     void setWarmWhileActive(bool enabled) { warmWhileActive_ = enabled; }
     // Lists the devices again; we also do this whenever a backend reports a device change.
     void refreshDevices();
+    // Each save writes the view that save returns into the project, and opening a project hands its view to restore.
+    void setViewStore(std::function<nlohmann::json()> save, std::function<void(const nlohmann::json&)> restore) {
+        saveView_ = std::move(save);
+        restoreView_ = std::move(restore);
+    }
 
     [[nodiscard]] QString positionText() const;
     [[nodiscard]] qint64 positionTicks() const { return displayPosition_.value_or(engine_.position().ticks); }
@@ -296,6 +303,8 @@ private:
     std::filesystem::path folder_;
     bool untitled_ = false;
     bool edited_ = false;
+    std::function<nlohmann::json()> saveView_;
+    std::function<void(const nlohmann::json&)> restoreView_;
     std::filesystem::file_time_type writtenAt_;
     QTimer autosaveTimer_;
     EngineTrackCache engineTracks_;

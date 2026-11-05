@@ -169,7 +169,11 @@ void ProjectController::createUntitled() {
 
 void ProjectController::write() {
     try {
-        model::saveProject(withRelativePluginPaths(instruments_.withStates(project_.document()), folder_), folder_);
+        model::Document saved = withRelativePluginPaths(instruments_.withStates(project_.document()), folder_);
+        if (saveView_) {
+            saved.view = saveView_();
+        }
+        model::saveProject(saved, folder_);
     } catch (const std::runtime_error& error) {
         throw AppError(error.what());
     }
@@ -266,12 +270,16 @@ void ProjectController::open(const std::filesystem::path& path) {
         throw AppError("cannot read " + (bundle / "project.json").string() + ": " + error.what());
     }
     repairDeviceIds(document, engine_.audioDevices());
+    const nlohmann::json view = std::exchange(document.view, nlohmann::json::object());
     if (reopening) {
         settleTakes();
     } else {
         leave();
     }
     moveTo(bundle, std::move(document));
+    if (restoreView_) {
+        restoreView_(view);
+    }
 }
 
 void ProjectController::save() {

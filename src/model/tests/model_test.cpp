@@ -65,6 +65,7 @@ Document sampleDocument() {
     document.markers = {{.name = "Intro", .at = 0}, {.name = "Chorus", .at = 7680, .color = 3}};
     document.clockPorts = {"Digital Keyboard Port 1"};
     document.pluginData = {{"yamaha", {{"voices", {{{"channel", 9}}}}}}};
+    document.view = {{"trackHeight", 96}};
     return document;
 }
 
@@ -82,6 +83,7 @@ TEST_CASE("document round trips through json") {
     CHECK(loaded.tracks[0].data == document.tracks[0].data);
     CHECK(toJson(document)["format"] == kFormatVersion);
     CHECK(loaded.markers == document.markers);
+    CHECK(loaded.view == document.view);
 }
 
 TEST_CASE("sends and output buses round trip, and a format 3 project loads with none") {

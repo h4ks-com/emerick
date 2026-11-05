@@ -234,6 +234,9 @@ struct Document {
     Cycle cycle = {};
     // Saves copy the files the project names into its bundle and keep the loaded style inside project.json.
     bool selfContained = false;
+    // The timeline view a saved project holds. The app moves it into its view state when it opens the project, so an
+    // open project keeps it empty.
+    nlohmann::json view = nlohmann::json::object();
 
     bool operator==(const Document&) const = default;
 };

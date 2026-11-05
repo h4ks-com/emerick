@@ -194,10 +194,12 @@ TimelineFrames::TimelineFrames(ViewEngine& views, Nav& nav, ProjectController& c
     frame->setSize(size / ratio / scale);
     const auto* tracks = frame->findChild<QQuickItem*>("video.tracks");
     const double laneWidth = tracks->property("laneWidth").toDouble();
-    nav.setPixelsPerTick(laneWidth / static_cast<double>(kVideoBarsVisible * tempo.ticksPerBar()));
-    if (!document.tracks.empty()) {
-        nav.setTrackHeight(static_cast<int>((tracks->height() - tracks->property("lanesTop").toDouble()) /
-                                            static_cast<double>(document.tracks.size())));
+    if (!request.currentView) {
+        nav.setPixelsPerTick(laneWidth / static_cast<double>(kVideoBarsVisible * tempo.ticksPerBar()));
+        if (!document.tracks.empty()) {
+            nav.setTrackHeight(static_cast<int>((tracks->height() - tracks->property("lanesTop").toDouble()) /
+                                                static_cast<double>(document.tracks.size())));
+        }
     }
     visibleTicks_ = laneWidth / nav.pixelsPerTick();
 }

@@ -315,3 +315,29 @@ TEST_CASE("remove unused audio deletes only files no clip uses after the agent c
     CHECK_FALSE(std::filesystem::exists(rig.controller->folder() / "audio" / "drop.wav"));
     CHECK_FALSE(rig.controller->project().undo());
 }
+
+TEST_CASE("a project saves the timeline view and opens with it") {
+    ProjectRig rig;
+    const std::string id = rig.run("track.addAudio", {{"name", "Vox"}}).at("id");
+    rig.run("project.saveAs", {{"path", rig.path("Songs/View").string()}});
+    rig.nav.setPixelsPerTick(0.2);
+    rig.nav.setScrollTicks(3840);
+    rig.nav.setTrackHeight(120);
+    rig.run("automation.showLane", {{"track", id}, {"param", "pan"}});
+    rig.run("project.save");
+    CHECK(savedProject(rig.path("Songs/View.erk")).at("view").at("automationLanes").at(id) == "pan");
+
+    rig.run("project.new");
+    rig.nav.setPixelsPerTick(0.05);
+    rig.nav.setScrollTicks(0);
+    rig.nav.setTrackHeight(60);
+    rig.nav.setAutomationOpen(false);
+    rig.nav.setAutomationLanes({});
+    rig.run("project.open", {{"path", rig.path("Songs/View.erk").string()}});
+    CHECK(rig.nav.pixelsPerTick() == Approx(0.2));
+    CHECK(rig.nav.scrollTicks() == Approx(3840));
+    CHECK(rig.nav.trackHeight() == 120);
+    CHECK(rig.nav.automationOpen());
+    CHECK(rig.nav.automationLane(QString::fromStdString(id)) == "pan");
+    CHECK(rig.controller->project().document().view.empty());
+}

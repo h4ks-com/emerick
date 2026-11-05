@@ -348,7 +348,8 @@ nlohmann::json toJson(const Document& document) {
         {"clockPorts", document.clockPorts},
         {"pluginData", document.pluginData},
         {"cycle", {{"enabled", document.cycle.enabled}, {"start", document.cycle.start}, {"end", document.cycle.end}}},
-        {"selfContained", document.selfContained}};
+        {"selfContained", document.selfContained},
+        {"view", document.view}};
 }
 
 Document documentFromJson(const nlohmann::json& json) {
@@ -364,7 +365,8 @@ Document documentFromJson(const nlohmann::json& json) {
                       json.value("clockPorts", std::vector<std::string>{}),
                       json.value("pluginData", nlohmann::json::object()),
                       cycleFromJson(json.value("cycle", nlohmann::json::object())),
-                      json.value("selfContained", false)};
+                      json.value("selfContained", false),
+                      json.value("view", nlohmann::json::object())};
     for (const auto& track : json.at("tracks")) {
         document.tracks.push_back(trackFromJson(track));
     }

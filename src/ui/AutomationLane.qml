@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Controls.Basic
+import QtQuick.Shapes
 import Emerick.App
 
 // A track's automation lane over its clips, as a line with a handle per point in the track color. Click to add a point,
@@ -100,57 +101,51 @@ Item {
         return null
     }
 
-    onPointsChanged: line.requestPaint()
-    onScrollTicksChanged: line.requestPaint()
-    onPixelsPerTickChanged: line.requestPaint()
-    onHeightChanged: line.requestPaint()
-    onWidthChanged: line.requestPaint()
-    onParamChanged: line.requestPaint()
-    onReadsChanged: line.requestPaint()
+    // The line through the points from the left edge to the right edge, flat at the parameter's value without points.
+    function linePath() {
+        if (points.length === 0) {
+            return [Qt.point(0, yOf(param.value)), Qt.point(width, yOf(param.value))]
+        }
+        const path = [Qt.point(0, yOf(points[0].value))]
+        for (let index = 0; index < points.length; ++index) {
+            const point = points[index]
+            const next = points[index + 1]
+            path.push(Qt.point(xOf(point.tick), yOf(point.value)))
+            if (next === undefined) {
+                break
+            }
+            if (point.curve === "hold") {
+                path.push(Qt.point(xOf(next.tick), yOf(point.value)))
+            } else if (point.curve === "smooth" || param.scale !== "linear") {
+                const steps = 16
+                for (let step = 1; step < steps; ++step) {
+                    const t = step / steps
+                    const eased = point.curve === "smooth" ? t * t * (3 - 2 * t) : t
+                    path.push(Qt.point(xOf(point.tick + (next.tick - point.tick) * t),
+                                       yOf(point.value + (next.value - point.value) * eased)))
+                }
+            }
+        }
+        path.push(Qt.point(width, yOf(points[points.length - 1].value)))
+        return path
+    }
 
     Rectangle {
         anchors.fill: parent
         color: Theme.fadeShade
     }
 
-    Canvas {
-        id: line
+    // We draw the line with a Shape, because a Canvas paints a frame late and video frames would miss it.
+    Shape {
         anchors.fill: parent
-        onPaint: {
-            const context = getContext("2d")
-            context.reset()
-            context.lineWidth = Theme.selectionWidth
-            context.strokeStyle = lane.points.length > 0 && lane.reads ? lane.trackColor : Theme.inkDim
-            context.beginPath()
-            if (lane.points.length === 0) {
-                context.moveTo(0, lane.yOf(lane.param.value))
-                context.lineTo(width, lane.yOf(lane.param.value))
-                context.stroke()
-                return
+        preferredRendererType: Shape.CurveRenderer
+        ShapePath {
+            strokeWidth: Theme.selectionWidth
+            strokeColor: lane.points.length > 0 && lane.reads ? lane.trackColor : Theme.inkDim
+            fillColor: "transparent"
+            PathPolyline {
+                path: lane.linePath()
             }
-            const first = lane.points[0]
-            context.moveTo(0, lane.yOf(first.value))
-            for (let index = 0; index < lane.points.length; ++index) {
-                const point = lane.points[index]
-                const next = lane.points[index + 1]
-                context.lineTo(lane.xOf(point.tick), lane.yOf(point.value))
-                if (next === undefined) {
-                    break
-                }
-                if (point.curve === "hold") {
-                    context.lineTo(lane.xOf(next.tick), lane.yOf(point.value))
-                } else if (point.curve === "smooth" || lane.param.scale !== "linear") {
-                    const steps = 16
-                    for (let step = 1; step < steps; ++step) {
-                        const t = step / steps
-                        const eased = point.curve === "smooth" ? t * t * (3 - 2 * t) : t
-                        context.lineTo(lane.xOf(point.tick + (next.tick - point.tick) * t),
-                                       lane.yOf(point.value + (next.value - point.value) * eased))
-                    }
-                }
-            }
-            context.lineTo(width, lane.yOf(lane.points[lane.points.length - 1].value))
-            context.stroke()
         }
     }
 

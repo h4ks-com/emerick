@@ -7,6 +7,7 @@
 #include "emerick/app/clip_notes.hpp"
 #include "emerick/app/control_curve.hpp"
 #include "emerick/app/enums.hpp"
+#include "emerick/app/view_state.hpp"
 #include "emerick/app/waveform.hpp"
 #include "emerick/model/json.hpp"
 
@@ -14,7 +15,7 @@ namespace emerick::viewer {
 
 namespace {
 
-// The document keeps no view state, so we open the automation of a project that has any, on each track's first lane.
+// A project saved without its view opens with each automated track's first lane on show.
 void showAutomation(const model::Document& document, app::Nav& nav) {
     QVariantMap lanes;
     for (const model::Track& track : document.tracks) {
@@ -60,7 +61,11 @@ QString Viewer::load(const QByteArray& json, const QString& name) {
     } catch (const std::runtime_error& error) {
         return QString::fromUtf8(error.what());
     }
-    showAutomation(project.document(), nav);
+    if (project.document().view.empty()) {
+        showAutomation(project.document(), nav);
+    } else {
+        app::applyViewState(nav, project.document().view);
+    }
     return {};
 }
 

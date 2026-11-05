@@ -68,7 +68,8 @@ void gatherNotes(MidiClip& clip) {
                                    .velocity = event.bytes[2],
                                    .start = event.at,
                                    .length = 0,
-                                   .channel = on->channel});
+                                   .channel = on->channel,
+                                   .lyric = {}});
         } else if (const auto off = keyOf(event, false)) {
             if (const auto found = held.find(*off); found != held.end()) {
                 Note note = found->second;

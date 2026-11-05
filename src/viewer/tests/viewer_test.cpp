@@ -173,3 +173,21 @@ TEST_CASE("the viewer draws a project with the app's tracks view and nothing in 
         view->grabWindow().save(QString::fromUtf8(path));
     }
 }
+
+TEST_CASE("the viewer fetches a peak file again until the service has written it") {
+    ensureApplication();
+    const QTemporaryDir bundle;
+    viewer::RemotePeaks peaks;
+    peaks.setBundle(QUrl::fromLocalFile(bundle.path()));
+    REQUIRE(peaks.levels("audio/voice.wav") == nullptr);
+    QTest::qWait(500);
+    REQUIRE(peaks.levels("audio/voice.wav") == nullptr);
+
+    writeBundle(bundle);
+    REQUIRE(processUntil(
+        [&] {
+            const app::PeakLevels* levels = peaks.levels("audio/voice.wav");
+            return levels != nullptr && levels->levels.front().maximum.size() == kPeaks;
+        },
+        5000));
+}

@@ -10,6 +10,7 @@
 #include <variant>
 
 #include "emerick/app/project_view.hpp"
+#include "emerick/app/read_only_titles.hpp"
 #include "emerick/app/view_actions.hpp"
 #include "emerick/model/automation.hpp"
 #include "emerick/model/clip_edit.hpp"
@@ -130,9 +131,21 @@ QVariantList ViewerRegistry::shortcuts() const {
     return list;
 }
 
+QString ViewerRegistry::title(const QString& id) const {
+    if (const Action* found = action(id)) {
+        return found->title;
+    }
+    for (const app::ActionKeys& shown : app::kReadOnlyActions) {
+        if (id == QLatin1StringView{shown.id}) {
+            return QString::fromUtf8(shown.title);
+        }
+    }
+    return {};
+}
+
 QVariantMap ViewerRegistry::actionInfo(const QString& id) const {
     const Action* found = action(id);
-    return {{"title", found != nullptr ? found->title : QString{}},
+    return {{"title", title(id)},
             {"shortcut", found != nullptr ? found->shortcuts.value(0) : QString{}},
             {"enabled", found != nullptr},
             {"choices", automationModes()}};

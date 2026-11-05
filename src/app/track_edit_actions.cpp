@@ -12,6 +12,7 @@
 #include "emerick/app/automation_params.hpp"
 #include "emerick/app/project_actions.hpp"
 #include "emerick/app/project_state.hpp"
+#include "emerick/app/read_only_titles.hpp"
 #include "emerick/model/clip_edit.hpp"
 
 namespace emerick::app {
@@ -28,9 +29,10 @@ struct TrackFlag {
 };
 
 constexpr std::array kTrackFlags{
-    TrackFlag{"track.setMute", "Mute track", "silence track", "M", &model::Track::mute,
+    TrackFlag{kMuteKeys.id, kMuteKeys.title, "silence track", kMuteKeys.shortcut, &model::Track::mute,
               &ProjectController::setLiveMute},
-    TrackFlag{"track.setSolo", "Solo track", "listen alone", "S", &model::Track::solo, &ProjectController::setLiveSolo},
+    TrackFlag{kSoloKeys.id, kSoloKeys.title, "listen alone", kSoloKeys.shortcut, &model::Track::solo,
+              &ProjectController::setLiveSolo},
     TrackFlag{"track.setArm", "Arm track for recording", "record enable", "Alt+R", &model::Track::armed,
               &ProjectController::setLiveArmed},
     TrackFlag{"track.setMonitor", "Monitor track input", "input monitoring", "", &model::Track::monitor, nullptr}};
@@ -225,8 +227,8 @@ void registerTrackLooks(Registry& registry, ProjectController& controller, const
 }
 
 void registerTrackSelection(Registry& registry, ProjectController& controller, Nav& nav) {
-    registry.addAction({.id = "track.select",
-                        .title = "Select track",
+    registry.addAction({.id = kSelectTrackKeys.id,
+                        .title = kSelectTrackKeys.title,
                         .description = "With extend it adds the track to the selection or takes it out, and with "
                                        "range it selects every track from the selected track to this one.",
                         .aliases = {"show track in inspector"},
@@ -407,8 +409,8 @@ void registerTrackEditActions(Registry& registry, ProjectController& controller,
     registerTrackSelection(registry, controller, nav);
     registerTrackFlags(registry, controller, nav);
     registry.addAction(
-        {.id = "track.setGain",
-         .title = "Set track gain",
+        {.id = kTrackGainKeys.id,
+         .title = kTrackGainKeys.title,
          .description = "With selection every selected track moves by the same number of dB.",
          .aliases = {"track volume", "fader"},
          .category = "Tracks",

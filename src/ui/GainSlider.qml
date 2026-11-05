@@ -14,7 +14,11 @@ Slider {
     to: Theme.gainMaxDb
     value: gainDb
     padding: 0
-    ToolTip.visible: pressed || hovered
+    // A disabled slider gets no hover, and a read-only view still shows the gain.
+    HoverHandler {
+        id: pointer
+    }
+    ToolTip.visible: pressed || pointer.hovered
     ToolTip.text: "Set track gain   " + value.toFixed(1) + " dB"
     onMoved: Registry.updateGesture(Registry.actionInfo("track.setGain").title,
                                     [{id: "track.setGain", params: {track: trackId, db: value, selection: true}}])

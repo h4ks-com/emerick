@@ -10,6 +10,7 @@
 
 #include "emerick/app/action_params.hpp"
 #include "emerick/app/project_state.hpp"
+#include "emerick/app/read_only_titles.hpp"
 #include "emerick/app/session_mapping.hpp"
 #include "emerick/app/view_actions.hpp"
 
@@ -46,8 +47,8 @@ void registerProjectEditActions(Registry& registry, ProjectController& controlle
                                 return projectState(controller);
                             },
                         .menus = {kEditMenu}});
-    registry.addAction({.id = "project.setTempo",
-                        .title = "Set tempo and meter",
+    registry.addAction({.id = kTempoKeys.id,
+                        .title = kTempoKeys.title,
                         .aliases = {"bpm", "time signature"},
                         .category = "Project",
                         .schema = {{"properties",

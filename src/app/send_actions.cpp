@@ -8,6 +8,7 @@
 #include "emerick/app/automation_params.hpp"
 #include "emerick/app/project_actions.hpp"
 #include "emerick/app/project_state.hpp"
+#include "emerick/app/read_only_titles.hpp"
 
 namespace emerick::app {
 
@@ -88,7 +89,7 @@ struct SendFlag {
 };
 
 constexpr std::array kSendFlags{
-    SendFlag{"send.setPre", "Set send pre-fader", "pre fader send", &model::Send::pre},
+    SendFlag{kSendPreKeys.id, kSendPreKeys.title, "pre fader send", &model::Send::pre},
     SendFlag{"send.setEnabled", "Turn send on or off", "bypass send", &model::Send::enabled}};
 
 void registerSendEdits(Registry& registry, ProjectController& controller, const Nav& nav) {
@@ -107,8 +108,8 @@ void registerSendEdits(Registry& registry, ProjectController& controller, const 
                             });
                         }});
     registry.addAction(
-        {.id = "send.setLevel",
-         .title = "Set send level",
+        {.id = kSendLevelKeys.id,
+         .title = kSendLevelKeys.title,
          .aliases = {"send amount", "aux level"},
          .category = "Tracks / Sends",
          .schema = {{"required", {"bus", "db"}},

@@ -11,6 +11,7 @@
 #include "emerick/app/automation_params.hpp"
 #include "emerick/app/project_actions.hpp"
 #include "emerick/app/project_state.hpp"
+#include "emerick/app/read_only_titles.hpp"
 #include "emerick/app/view_actions.hpp"
 #include "emerick/core/join.hpp"
 #include "emerick/model/automation.hpp"
@@ -376,8 +377,8 @@ void registerLaneActions(Registry& registry, ProjectController& controller, Nav&
 
 void registerModeActions(Registry& registry, ProjectController& controller, Nav& nav) {
     registry.addAction(
-        {.id = "automation.setMode",
-         .title = "Set automation mode",
+        {.id = kAutomationModeKeys.id,
+         .title = kAutomationModeKeys.title,
          .description = "Off ignores the track's lanes, Read plays them, Touch writes while a control is held during "
                         "playback and Latch keeps writing its last value until the transport stops.",
          .aliases = {"automation read", "automation touch", "automation latch"},

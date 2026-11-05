@@ -3,6 +3,8 @@
 #include <QDir>
 #include <QFile>
 #include <QImage>
+#include <QQmlContext>
+#include <QQmlProperty>
 #include <QQuickItem>
 #include <QQuickView>
 #include <QTemporaryDir>
@@ -11,6 +13,7 @@
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 #include <cstddef>
+#include <functional>
 #include <string>
 #include <vector>
 
@@ -246,5 +249,55 @@ TEST_CASE("the viewer opens a saved view with two lanes on a track and shows a r
     viewer->registry.runAction("automation.showLane", {{"track", voice}, {"param", "mute"}, {"add", true}});
     CHECK(viewer->nav.shownLanes(voice) == QStringList{"pan", "mute"});
     // We delete the dropped lane row now, because Qt crashes when it does so at process exit.
+    QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
+}
+
+TEST_CASE("hovering a track header button in the viewer shows what it does") {
+    ensureApplication();
+    const auto [viewer, view] = shownViewer();
+    REQUIRE(QTest::qWaitForWindowExposed(view));
+    const model::Document document = sampleDocument();
+    REQUIRE(viewer->load(QByteArray::fromStdString(model::toJson(document).dump()), "Sample").isEmpty());
+    const QString voice = QString::fromStdString(document.tracks[1].id.value);
+    const QString keys = QString::fromStdString(document.tracks[0].id.value);
+    for (const QString& name : {"track.setMute:" + voice, "automation.setMode:" + voice, "track.setGain:" + keys,
+                                "track.setGain:" + keys + ":db"}) {
+        QQuickItem* button = nullptr;
+        REQUIRE(processUntil([&] {
+            button = find(view->rootObject(), name);
+            return button != nullptr && button->isVisible();
+        }));
+        QTest::mouseMove(view, button->mapToScene({button->width() / 2, button->height() / 2}).toPoint());
+        const auto tip = [&](const char* property) {
+            return QQmlProperty(button, property, qmlContext(button)).read();
+        };
+        INFO(name.toStdString());
+        CHECK(processUntil([&] { return tip("ToolTip.visible").toBool(); }));
+        CHECK_FALSE(tip("ToolTip.text").toString().isEmpty());
+        QTest::mouseMove(view, {1, 1});
+    }
+}
+
+TEST_CASE("every control the viewer shows, with the mixer and automation open, names what it does") {
+    ensureApplication();
+    const auto [viewer, view] = shownViewer();
+    REQUIRE(viewer->load(QByteArray::fromStdString(model::toJson(sampleDocument()).dump()), "Sample").isEmpty());
+    viewer->nav.setMixerOpen(true);
+    viewer->nav.setAutomationOpen(true);
+    REQUIRE(processUntil([&] { return find(view->rootObject(), "mixer") != nullptr; }));
+    QStringList untitled;
+    std::function<void(QQuickItem*)> walk = [&](QQuickItem* item) {
+        if (item->isVisible() && item->opacity() > 0 && item->property("actionId").isValid() &&
+            QQmlProperty(item, "ToolTip.text", qmlContext(item)).read().toString().isEmpty()) {
+            untitled.append(item->property("actionId").toString());
+        }
+        for (QQuickItem* child : item->childItems()) {
+            walk(child);
+        }
+    };
+    walk(view->rootObject());
+    CHECK(untitled.join(", ").toStdString().empty());
+    viewer->nav.setMixerOpen(false);
+    // We delete the closed mixer now, because Qt crashes when it does so at process exit.
     QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
 }

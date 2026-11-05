@@ -12,6 +12,7 @@
 
 #include "emerick/app/core_actions.hpp"
 #include "emerick/app/lua_host.hpp"
+#include "emerick/app/read_only_titles.hpp"
 #include "emerick/app/session_mapping.hpp"
 #include "emerick/app/stem_export.hpp"
 #include "emerick/app/track_list_model.hpp"
@@ -719,4 +720,13 @@ TEST_CASE("renaming clips names them in one undo step, and an empty name clears 
     rig.run("clip.rename", {{"clip", first}, {"name", ""}});
     CHECK(nameOf(first).empty());
     CHECK_THROWS_AS(rig.run("clip.rename", {{"clip", first}}), AppError);
+}
+
+TEST_CASE("the viewer names each control it shows turned off with the app's own title") {
+    ProjectRig rig;
+    for (const ActionKeys& shown : kReadOnlyActions) {
+        INFO(shown.id);
+        CHECK(rig.registry.actionInfo(QString::fromUtf8(shown.id)).value("title").toString() ==
+              QString::fromUtf8(shown.title));
+    }
 }

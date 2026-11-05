@@ -45,8 +45,12 @@ Button {
     // A press dismisses the tooltip until the pointer leaves, so it never covers the menu or panel the button opens.
     property bool tipDismissed: false
     onPressed: tipDismissed = true
-    onHoveredChanged: if (!hovered) tipDismissed = false
-    ToolTip.visible: hovered && !tipDismissed
+    // A disabled button gets no hover, and a read-only view still names what each button does.
+    HoverHandler {
+        id: pointer
+        onHoveredChanged: if (!hovered) button.tipDismissed = false
+    }
+    ToolTip.visible: pointer.hovered && !tipDismissed && opacity > 0 && ToolTip.text !== ""
     ToolTip.delay: Theme.tooltipDelay
     contentItem: IconLabel {
         icon: button.icon

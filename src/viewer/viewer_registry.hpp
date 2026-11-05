@@ -63,6 +63,7 @@ private:
     void addAction(const char* id, const char* title, QStringList shortcuts,
                    std::function<void(const QVariantMap&)> run);
     [[nodiscard]] const Action* action(const QString& id) const;
+    [[nodiscard]] QString title(const QString& id) const;
     void seekToTicks(qint64 ticks);
     void stepToMarker(int step);
     void openInPianoRoll(const QString& clip);

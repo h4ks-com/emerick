@@ -49,6 +49,20 @@ Rectangle {
         return item ? item.trackId : ""
     }
 
+    // We find rows by their position, because tracks with lanes open below them are taller. A y below the last track
+    // gives the track count.
+    function rowAt(y) {
+        const content = y - area.lanesTop + list.contentY
+        const index = list.indexAt(0, content)
+        return index >= 0 ? index : content < 0 ? 0 : list.count
+    }
+    // The y of the row's top, or of the last track's bottom for the track count.
+    function rowTop(row) {
+        const item = list.itemAtIndex(Math.max(0, Math.min(row, list.count - 1)))
+        const top = item === null ? row * Nav.trackHeight : row >= list.count ? item.y + item.height : item.y
+        return area.lanesTop + top - list.contentY
+    }
+
     function rowAccepts(row, type) {
         const item = list.itemAtIndex(row)
         return item !== null && item.clipType === type
@@ -124,7 +138,7 @@ Rectangle {
             }
             const rows = [...Array(list.count).keys()]
             const row = rows.find(index => area.trackIdAt(index) === Nav.trackMenu)
-            const top = area.lanesTop + (row === undefined ? 0 : row) * Nav.trackHeight - list.contentY
+            const top = area.rowTop(row ?? 0)
             trackMenu.popup(area, area.headerWidth - Theme.space5, top + Theme.space5)
         }
     }
@@ -272,18 +286,22 @@ Rectangle {
             required property var automation
             required property var automationParams
             required property var takePreview
-            readonly property string automationParam: Nav.automationLanes[trackId] ?? "gain"
+            readonly property var shownLanes: Nav.automationLanes[trackId] ?? ["gain"]
+            readonly property string automationParam: shownLanes[0]
             readonly property var shownParam: automationParams.find(param => param.id === automationParam) ?? null
+            readonly property var extraLanes: Nav.automationOpen
+                ? shownLanes.slice(1).map(id => automationParams.find(param => param.id === id)).filter(param => param)
+                : []
             readonly property bool dropTarget: area.dragRows !== 0 && index === area.dragFrom + area.dragRows
             readonly property color trackColor: Theme.trackColors[colorIndex % Project.trackColorCount]
             width: ListView.view.width
-            height: Nav.trackHeight
+            height: Nav.trackHeight * (1 + extraLanes.length)
 
             Item {
                 objectName: "lane:" + row.trackId
                 x: area.headerWidth
                 width: area.laneWidth
-                height: parent.height
+                height: Nav.trackHeight
                 clip: true
 
                 MouseArea {
@@ -350,7 +368,7 @@ Rectangle {
                             pixelsPerTick: area.pixelsPerTick
                             viewFrom: area.scrollTicks
                             viewTo: area.scrollTicks + area.visibleTicks
-                            height: row.height
+                            height: Nav.trackHeight
                         }
                     }
                     TakeRegion {
@@ -362,7 +380,7 @@ Rectangle {
                         pixelsPerTick: area.pixelsPerTick
                         viewFrom: area.scrollTicks
                         viewTo: area.scrollTicks + area.visibleTicks
-                        height: row.height
+                        height: Nav.trackHeight
                     }
                 }
 
@@ -381,7 +399,7 @@ Rectangle {
 
             TrackHeader {
                 width: area.headerWidth
-                height: parent.height
+                height: Nav.trackHeight
                 index: row.index
                 trackId: row.trackId
                 name: row.name
@@ -399,8 +417,30 @@ Rectangle {
                 automationMode: row.automationMode
                 automationParams: row.automationParams
                 automationParam: row.automationParam
+                shownLanes: row.shownLanes
+                trackList: area
                 onDropIndexChanged: area.dropIndex = dropIndex
                 onContextRequested: area.menuAtCursor = true
+            }
+
+            Repeater {
+                model: row.extraLanes
+                delegate: AutomationRow {
+                    required property var modelData
+                    required property int index
+                    y: Nav.trackHeight * (index + 1)
+                    width: row.width
+                    height: Nav.trackHeight
+                    headerWidth: area.headerWidth
+                    trackId: row.trackId
+                    trackColor: row.trackColor
+                    param: modelData
+                    params: row.automationParams
+                    points: row.automation.find(lane => lane.param === modelData.id)?.points ?? []
+                    reads: row.automationMode !== "off"
+                    scrollTicks: area.scrollTicks
+                    pixelsPerTick: area.pixelsPerTick
+                }
             }
 
             Rectangle {
@@ -442,8 +482,8 @@ Rectangle {
             visible = false
             const fromTicks = area.scrollTicks + (x - area.headerWidth) / area.pixelsPerTick
             const toTicks = fromTicks + width / area.pixelsPerTick
-            const firstRow = Math.floor((y - area.lanesTop + list.contentY) / Nav.trackHeight)
-            const lastRow = Math.floor((y + height - area.lanesTop + list.contentY) / Nav.trackHeight)
+            const firstRow = area.rowAt(y)
+            const lastRow = area.rowAt(y + height)
             const ids = Array.from(kept)
             for (let row = Math.max(0, firstRow); row <= Math.min(list.count - 1, lastRow); ++row) {
                 const item = list.itemAtIndex(row)
@@ -466,7 +506,7 @@ Rectangle {
     Rectangle {
         objectName: "tracks.dropIndicator"
         visible: area.dropIndex >= 0
-        y: area.lanesTop + area.dropIndex * Nav.trackHeight - list.contentY - height / 2
+        y: area.rowTop(area.dropIndex) - height / 2
         width: area.width
         height: Theme.selectionWidth
         color: Theme.ink
@@ -482,7 +522,7 @@ Rectangle {
         property real at: 0
 
         function follow(drag) {
-            row = Math.max(0, Math.floor((drag.y + list.contentY) / Nav.trackHeight))
+            row = area.rowAt(drag.y + area.lanesTop)
             at = Project.placed(Math.round(area.scrollTicks + Math.max(0, drag.x - area.headerWidth) / area.pixelsPerTick),
                                 Qt.NoModifier)
         }
@@ -503,7 +543,7 @@ Rectangle {
         objectName: "tracks.fileDropTarget"
         visible: fileDrop.containsDrag
         x: Math.max(area.headerWidth, area.xOf(fileDrop.at))
-        y: area.lanesTop + fileDrop.row * Nav.trackHeight - list.contentY
+        y: area.rowTop(fileDrop.row)
         width: area.width - x
         height: fileDrop.files * Nav.trackHeight
         color: Theme.glow(Theme.tape)

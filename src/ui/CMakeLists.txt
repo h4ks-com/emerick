@@ -13,6 +13,7 @@ qt_add_qml_module(emerick_ui
         AudioRoutePicker.qml
         AutomationLane.qml
         AutomationPicker.qml
+        AutomationRow.qml
         ChromeButton.qml
         ClipBody.qml
         ClipItem.qml

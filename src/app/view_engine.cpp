@@ -1,14 +1,11 @@
 #include "emerick/app/view_engine.hpp"
 
 #include "emerick/app/qml_exposure.hpp"
-#include "emerick/app/view_state.hpp"
 
 namespace emerick::app {
 
 ViewEngine::ViewEngine(Registry& registry, Nav& nav, ProjectController& controller)
-    : registry_(registry), nav_(nav), controller_(controller) {
-    controller.setViewStore([&nav] { return viewState(nav); }, [&nav](const Json& view) { applyViewState(nav, view); });
-}
+    : registry_(registry), nav_(nav), controller_(controller) {}
 
 ViewEngine::~ViewEngine() = default;
 

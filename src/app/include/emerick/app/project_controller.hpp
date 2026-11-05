@@ -20,6 +20,7 @@
 #include <vector>
 
 #include "emerick/app/instruments.hpp"
+#include "emerick/app/nav.hpp"
 #include "emerick/app/peak_cache.hpp"
 #include "emerick/app/registry.hpp"
 #include "emerick/app/session_mapping.hpp"
@@ -342,5 +343,9 @@ private:
     std::map<std::string, TakePreview> previews_;
     QTimer timer_;
 };
+
+// Saves nav's timeline view with each save and restores it when a project opens, so every way of running the app opens
+// a project as it was saved.
+void keepViewWithProject(ProjectController& controller, Nav& nav);
 
 }  // namespace emerick::app

@@ -25,9 +25,11 @@ Rectangle {
     property bool instrument: false
     // The row a drag would move this track to, or -1 while no drag runs.
     property int dropIndex: -1
+    property Item trackList
     property string automationMode
     property var automationParams: []
     property string automationParam
+    property var shownLanes: [automationParam]
     readonly property bool showsAutomation: Nav.automationOpen && automationParams.length > 0
     readonly property var automationModes: Registry.actionInfo("automation.setMode").choices
 
@@ -77,7 +79,8 @@ Rectangle {
             if (Math.abs(dy) < Theme.dragThreshold) {
                 return
             }
-            const target = Math.max(0, Math.min(Tracks.rowCount() - 1, Math.round(header.index + dy / header.height)))
+            const pointer = mapToItem(header.trackList, 0, mouse.y)
+            const target = Math.max(0, Math.min(Tracks.rowCount() - 1, header.trackList.rowAt(pointer.y)))
             header.dropIndex = target > header.index ? target + 1 : target
         }
         onReleased: {
@@ -280,6 +283,20 @@ Rectangle {
                 choices: header.automationParams.map(param => ({id: param.id, title: param.title,
                                                                params: {param: param.id}}))
                 Layout.fillWidth: true
+            }
+            AutomationPicker {
+                objectName: "automation.showLane:" + header.trackId + ":add"
+                actionId: "automation.showLane"
+                trackId: header.trackId
+                choices: header.automationParams.filter(param => header.shownLanes.indexOf(param.id) < 0)
+                                                .map(param => ({id: param.id, title: param.title,
+                                                                params: {param: param.id, add: true}}))
+                visible: choices.length > 0
+                iconName: "plus"
+                iconColor: Theme.inkDim
+                implicitWidth: Theme.headerButton
+                Layout.preferredWidth: Theme.headerButton
+                ToolTip.text: "Add automation lane"
             }
         }
 

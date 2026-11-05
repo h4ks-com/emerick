@@ -379,7 +379,7 @@ Item {
             }
             target = item.place(pressStart + dx / item.pixelsPerTick, mouse.modifiers)
             item.drag("clip.move", {start: target, selection: true})
-            const wanted = Math.round(dy / Nav.trackHeight)
+            const wanted = item.timeline.rowAt(item.timeline.mapFromItem(null, at.x, at.y).y) - item.rowIndex
             rows = item.timeline.trackIdAt(item.rowIndex + wanted) !== "" ? wanted : rows
             item.timeline.dragFrom = item.rowIndex
             item.timeline.dragType = item.clip.type

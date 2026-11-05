@@ -115,6 +115,27 @@ TEST_CASE("automation refuses values out of range, unknown parameters and tracks
     CHECK(rig.run("view.toggleAutomation").at("automationOpen") == false);
 }
 
+TEST_CASE("a track shows further lanes below it, and hiding its first lane brings up the next") {
+    ProjectRig rig;
+    const std::string vox = rig.run("track.addAudio").at("id");
+    rig.run("automation.showLane", {{"track", vox}, {"param", "pan"}, {"add", true}});
+    rig.run("automation.showLane", {{"track", vox}, {"param", "mute"}, {"add", true}});
+    CHECK(rig.nav.shownLanes(qs(vox)) == QStringList{"gain", "pan", "mute"});
+
+    rig.run("automation.showLane", {{"track", vox}, {"param", "pan"}, {"add", true}});
+    CHECK(rig.nav.shownLanes(qs(vox)) == QStringList{"gain", "pan", "mute"});
+    rig.run("automation.showLane", {{"track", vox}, {"param", "gain"}, {"replace", "mute"}});
+    CHECK(rig.nav.shownLanes(qs(vox)) == QStringList{"gain", "pan"});
+    rig.run("automation.addPoint", {{"track", vox}, {"tick", 0}, {"value", -6.0}});
+    CHECK(laneOf(rig, vox, "gain") != nullptr);
+
+    CHECK(rig.run("automation.hideLane", {{"track", vox}, {"param", "gain"}}).at("lanes") == Json::array({"pan"}));
+    CHECK(rig.nav.automationLane(qs(vox)) == "pan");
+    rig.run("automation.hideLane", {{"track", vox}, {"param", "pan"}});
+    CHECK(rig.nav.shownLanes(qs(vox)) == QStringList{"gain"});
+    CHECK_THROWS_AS(rig.run("automation.showLane", {{"track", vox}, {"param", "nope"}, {"add", true}}), AppError);
+}
+
 TEST_CASE("the engine plays lanes in Read and ignores them in Off, and a send lane follows its send") {
     ProjectRig rig;
     const std::string vox = rig.run("track.addAudio").at("id");

@@ -8,12 +8,15 @@
 #include <algorithm>
 #include <chrono>
 #include <cmath>
+#include <cstddef>
 #include <optional>
+#include <ranges>
 #include <string>
 #include <thread>
 #include <variant>
 #include <vector>
 
+#include "emerick/app/automation_params.hpp"
 #include "emerick/core/overloaded.hpp"
 
 namespace emerick::app {
@@ -140,6 +143,25 @@ private:
     QProcess process_;
 };
 
+// Each track takes a row, and while the lanes are open each further lane whose param the track can automate takes
+// another, as the track list draws them.
+std::size_t timelineRows(const Registry& registry, const Nav& nav, const ProjectController& controller) {
+    const model::Document& document = controller.project().document();
+    if (!nav.automationOpen()) {
+        return document.tracks.size();
+    }
+    std::size_t rows = 0;
+    for (const model::Track& track : document.tracks) {
+        const std::vector<AutomationParam> params =
+            automationParams(registry, document, track, controller.instruments().insertPlugins());
+        const QStringList shown = nav.shownLanes(qs(track.id.value));
+        rows += 1 + static_cast<std::size_t>(std::ranges::count_if(shown.sliced(1), [&](const QString& id) {
+                    return std::ranges::contains(params, id.toStdString(), &AutomationParam::id);
+                }));
+    }
+    return rows;
+}
+
 }  // namespace
 
 int videoFrameCount(const core::TempoMap& tempo, core::Ticks from, core::Ticks to, double fps) {
@@ -198,7 +220,7 @@ TimelineFrames::TimelineFrames(ViewEngine& views, Nav& nav, ProjectController& c
         nav.setPixelsPerTick(laneWidth / static_cast<double>(kVideoBarsVisible * tempo.ticksPerBar()));
         if (!document.tracks.empty()) {
             nav.setTrackHeight(static_cast<int>((tracks->height() - tracks->property("lanesTop").toDouble()) /
-                                                static_cast<double>(document.tracks.size())));
+                                                static_cast<double>(timelineRows(views.registry(), nav, controller))));
         }
     }
     visibleTicks_ = laneWidth / nav.pixelsPerTick();

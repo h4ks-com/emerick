@@ -119,6 +119,61 @@ TEST_CASE("a frame draws the automation curve between the points") {
     CHECK(changed > 0);
 }
 
+TEST_CASE("a frame fits every lane row and draws a bus's lanes on the bus rows") {
+    MainWindow& main = MainWindow::instance();
+    while (!main.rig.controller->project().document().tracks.empty()) {
+        main.rig.run("track.remove", {{"track", main.rig.controller->project().document().tracks.front().id.value}});
+    }
+    addClip(main, 20);
+    const std::string vox = main.rig.controller->project().document().tracks.front().id.value;
+    const std::string mix = main.rig.run("track.addBus", {{"name", "Mix"}}).at("id");
+    for (const std::string& track : {vox, mix}) {
+        for (const char* param : {"pan", "mute"}) {
+            main.rig.run("automation.showLane", {{"track", track}, {"param", param}, {"add", true}});
+        }
+    }
+    const core::Ticks bar = main.rig.controller->project().document().tempo.ticksPerBar();
+    main.rig.run("automation.addPoint", {{"track", mix}, {"tick", 0}, {"value", -60.0}});
+    const std::string gain =
+        main.rig.run("automation.addPoint", {{"track", mix}, {"tick", bar * 6}, {"value", 0.0}}).at("point");
+    main.rig.run("automation.addPoint", {{"track", mix}, {"param", "mute"}, {"tick", 0}, {"value", 0.0}});
+    const std::string mute =
+        main.rig.run("automation.addPoint", {{"track", mix}, {"param", "mute"}, {"tick", bar * 6}, {"value", 1.0}})
+            .at("point");
+    const auto render = [&] {
+        TimelineFrames frames(*main.rig.views, main.rig.nav, *main.rig.controller,
+                              {.width = kWidth, .height = kHeight, .fps = kFps, .from = 0, .to = bar * 8});
+        return frames.frame(0);
+    };
+    const QImage rising = render();
+    main.rig.run("automation.movePoints", {{"points", Json::array({gain})}, {"value", -60.0}});
+    const QImage flatGain = render();
+    main.rig.run("automation.movePoints", {{"points", Json::array({mute})}, {"value", 0.0}});
+    const QImage flatMute = render();
+    main.rig.nav.setAutomationLanes({});
+    main.rig.nav.setAutomationOpen(false);
+    MainWindow::settle();
+
+    const double scale = kHeight / kVideoBaseHeight;
+    const double headerWidth = main.rig.registry.settingValue("view.headerWidth").get<double>();
+    const double laneWidth = kWidth / scale - headerWidth;
+    const int middle = static_cast<int>(scale * (headerWidth + (laneWidth * 3 / kVideoBarsVisible)));
+    const auto changedRows = [&](const QImage& before, const QImage& after) {
+        std::vector<int> rows;
+        for (int y = 0; y < kHeight; ++y) {
+            if (before.pixel(middle, y) != after.pixel(middle, y)) {
+                rows.push_back(y);
+            }
+        }
+        return rows;
+    };
+    const std::vector<int> gainRows = changedRows(rising, flatGain);
+    const std::vector<int> muteRows = changedRows(flatGain, flatMute);
+    REQUIRE_FALSE(gainRows.empty());
+    REQUIRE_FALSE(muteRows.empty());
+    CHECK(muteRows.front() > gainRows.back());
+}
+
 TEST_CASE("a frame keeps the view's zoom and track height when asked to") {
     MainWindow& main = MainWindow::instance();
     if (main.rig.controller->project().document().tracks.empty()) {

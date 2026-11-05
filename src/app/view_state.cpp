@@ -2,17 +2,29 @@
 
 namespace emerick::app {
 
-Json viewState(const Nav& nav) {
-    Json lanes = Json::object();
-    const QVariantMap shown = nav.automationLanes();
-    for (auto lane = shown.cbegin(); lane != shown.cend(); ++lane) {
-        lanes[lane.key().toStdString()] = lane.value().toString().toStdString();
+namespace {
+
+QStringList savedLanes(const Json& params) {
+    QStringList lanes;
+    if (!params.is_array()) {
+        return lanes;
     }
+    for (const Json& param : params) {
+        if (param.is_string()) {
+            lanes.append(qs(param.get<std::string>()));
+        }
+    }
+    return lanes;
+}
+
+}  // namespace
+
+Json viewState(const Nav& nav) {
     return {{"pixelsPerTick", nav.pixelsPerTick()},
             {"scrollTicks", nav.scrollTicks()},
             {"trackHeight", nav.trackHeight()},
             {"automationOpen", nav.automationOpen()},
-            {"automationLanes", std::move(lanes)}};
+            {"automationLanes", nav.automationLanesJson()}};
 }
 
 void applyViewState(Nav& nav, const Json& state) {
@@ -33,9 +45,9 @@ void applyViewState(Nav& nav, const Json& state) {
     }
     if (const auto found = state.find("automationLanes"); found != state.end() && found->is_object()) {
         QVariantMap lanes;
-        for (const auto& [track, param] : found->items()) {
-            if (param.is_string()) {
-                lanes.insert(qs(track), qs(param.get<std::string>()));
+        for (const auto& [track, params] : found->items()) {
+            if (const QStringList shown = savedLanes(params); !shown.isEmpty()) {
+                lanes.insert(qs(track), shown);
             }
         }
         nav.setAutomationLanes(lanes);

@@ -105,12 +105,15 @@ public:
     [[nodiscard]] QVariantMap editingBlock() const { return editingBlock_; }
     // The height of one key row in the piano roll, its vertical zoom.
     [[nodiscard]] int keyHeight() const { return keyHeight_; }
-    // Whether tracks show their automation lanes, and per track id the parameter its lane shows, gain by default.
+    // Whether tracks show their automation lanes, and per track id the parameters its lanes show, gain by default.
+    // The first lane draws over the clips and each further lane gets its own row below the track.
     [[nodiscard]] bool automationOpen() const { return automationOpen_; }
     [[nodiscard]] QVariantMap automationLanes() const { return automationLanes_; }
-    [[nodiscard]] QString automationLane(const QString& trackId) const {
-        return automationLanes_.value(trackId, QStringLiteral("gain")).toString();
+    [[nodiscard]] QStringList shownLanes(const QString& trackId) const {
+        const QStringList shown = automationLanes_.value(trackId).toStringList();
+        return shown.isEmpty() ? QStringList{QStringLiteral("gain")} : shown;
     }
+    [[nodiscard]] QString automationLane(const QString& trackId) const { return shownLanes(trackId).front(); }
     // Selected automation points, in any lane; selecting them deselects the clips and the marker.
     [[nodiscard]] QStringList selectedPoints() const { return selectedPoints_; }
     [[nodiscard]] QStringList selectedClips() const { return selectedClips_; }
@@ -174,6 +177,30 @@ public:
     }
     void setAutomationOpen(bool value) { assign(automationOpen_, value, &Nav::changed); }
     void setAutomationLanes(const QVariantMap& value) { assign(automationLanes_, value, &Nav::changed); }
+    // Puts param in place of the lane replaced, the first lane by default, or after the shown lanes with add.
+    void showLane(const QString& trackId, const QString& param, bool add, const QString& replaced = {}) {
+        QStringList shown = shownLanes(trackId);
+        if (add) {
+            shown.append(param);
+        } else {
+            shown[std::max<qsizetype>(0, shown.indexOf(replaced))] = param;
+        }
+        shown.removeDuplicates();
+        QVariantMap lanes = automationLanes_;
+        lanes.insert(trackId, shown);
+        setAutomationLanes(lanes);
+    }
+    void hideLane(const QString& trackId, const QString& param) {
+        QStringList shown = shownLanes(trackId);
+        shown.removeAll(param);
+        QVariantMap lanes = automationLanes_;
+        if (shown.isEmpty()) {
+            lanes.remove(trackId);
+        } else {
+            lanes.insert(trackId, shown);
+        }
+        setAutomationLanes(lanes);
+    }
     void setSelectedPoints(const QStringList& value) {
         if (!value.isEmpty()) {
             assign(selectedClips_, {}, &Nav::selectionChanged);
@@ -211,6 +238,17 @@ public:
         setScrollTicks(anchorTicks - x / pixelsPerTick_);
     }
     void setLaneWidth(double value) { assign(laneWidth_, value, &Nav::scrollChanged); }
+
+    [[nodiscard]] nlohmann::json automationLanesJson() const {
+        nlohmann::json lanes = nlohmann::json::object();
+        for (auto entry = automationLanes_.cbegin(); entry != automationLanes_.cend(); ++entry) {
+            nlohmann::json& params = lanes[entry.key().toStdString()] = nlohmann::json::array();
+            for (const QString& param : entry.value().toStringList()) {
+                params.push_back(param.toStdString());
+            }
+        }
+        return lanes;
+    }
 
     [[nodiscard]] nlohmann::json toJson() const {
         const auto strings = [](const QStringList& values) {
@@ -258,7 +296,7 @@ public:
                                                     {"to", selectedBlocks_.value("to").toLongLong()}}},
             {"keyHeight", keyHeight_},
             {"automationOpen", automationOpen_},
-            {"automationLanes", lanes()},
+            {"automationLanes", automationLanesJson()},
             {"selectedPoints", strings(selectedPoints_)}};
     }
 
@@ -269,14 +307,6 @@ signals:
     void scrollChanged();
 
 private:
-    [[nodiscard]] nlohmann::json lanes() const {
-        nlohmann::json lanes = nlohmann::json::object();
-        for (auto entry = automationLanes_.cbegin(); entry != automationLanes_.cend(); ++entry) {
-            lanes[entry.key().toStdString()] = entry.value().toString().toStdString();
-        }
-        return lanes;
-    }
-
     template <class T>
     void assign(T& field, const T& value, void (Nav::*signal)()) {
         if (field != value) {

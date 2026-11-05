@@ -22,6 +22,7 @@
 #include "emerick/app/project_health.hpp"
 #include "emerick/app/project_state.hpp"
 #include "emerick/app/session_mapping.hpp"
+#include "emerick/app/view_state.hpp"
 #include "emerick/model/clip_edit.hpp"
 #include "emerick/model/json.hpp"
 
@@ -909,6 +910,11 @@ double ProjectController::curveThroughMidpoint(const QString& shape, double gain
 
 QVariantMap ProjectController::routeDevices() const {
     return toVariant(app::routeDevices(devicesState(*this))).toMap();
+}
+
+void keepViewWithProject(ProjectController& controller, Nav& nav) {
+    controller.setViewStore([&nav] { return viewState(nav); },
+                            [&nav](const nlohmann::json& view) { applyViewState(nav, view); });
 }
 
 }  // namespace emerick::app

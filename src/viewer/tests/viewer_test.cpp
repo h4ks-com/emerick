@@ -76,26 +76,39 @@ QQuickItem* find(QQuickItem* root, const QString& objectName) {
 
 QString idOf(const model::Clip& clip) { return QString::fromStdString(model::clipId(clip).value); }
 
+struct ShownViewer {
+    viewer::Viewer* viewer;
+    QQuickView* view;
+};
+
+// The view and the singletons it binds to live as long as the process, because Qt Quick crashes when destroyed during
+// static teardown, and the singletons register once, so every test shares one view.
+ShownViewer shownViewer() {
+    static const ShownViewer shown = [] {
+        auto* viewer = new viewer::Viewer;
+        viewer->exposeToQml();
+        auto* view = new QQuickView;
+        view->setResizeMode(QQuickView::SizeRootObjectToView);
+        view->loadFromModule("Emerick.Viewer", "Viewer");
+        view->resize(kWidth, kHeight);
+        view->show();
+        return ShownViewer{.viewer = viewer, .view = view};
+    }();
+    return shown;
+}
+
 }  // namespace
 
 TEST_CASE("the viewer draws a project with the app's tracks view and nothing in it edits") {
     ensureApplication();
     const QTemporaryDir bundle;
     writeBundle(bundle);
-    // The view and the singletons it binds to live as long as the process, because Qt Quick crashes when destroyed
-    // during static teardown.
-    auto* viewer = new viewer::Viewer;
-    viewer->exposeToQml();
+    const auto [viewer, view] = shownViewer();
+    REQUIRE(view->status() == QQuickView::Ready);
+    REQUIRE(QTest::qWaitForWindowExposed(view));
     viewer->peaks.setBundle(QUrl::fromLocalFile(bundle.path()));
     REQUIRE(viewer->load(QByteArray::fromStdString(model::toJson(sampleDocument()).dump()), "Sample").isEmpty());
     viewer->nav.setAutomationOpen(true);
-    auto* view = new QQuickView;
-    view->setResizeMode(QQuickView::SizeRootObjectToView);
-    view->loadFromModule("Emerick.Viewer", "Viewer");
-    REQUIRE(view->status() == QQuickView::Ready);
-    view->resize(kWidth, kHeight);
-    view->show();
-    REQUIRE(QTest::qWaitForWindowExposed(view));
 
     const model::Document& document = viewer->project.document();
     const QString phrase = idOf(document.tracks[0].clips[0]);
@@ -198,12 +211,40 @@ TEST_CASE("the viewer opens a project with the view it was saved with") {
     ensureApplication();
     model::Document document = sampleDocument();
     const std::string keys = document.tracks[0].id.value;
-    document.view = {
-        {"pixelsPerTick", 0.2}, {"trackHeight", 120}, {"automationOpen", false}, {"automationLanes", {{keys, "pan"}}}};
+    document.view = {{"pixelsPerTick", 0.2},
+                     {"trackHeight", 120},
+                     {"automationOpen", false},
+                     {"automationLanes", {{keys, nlohmann::json::array({"pan"})}}}};
     viewer::Viewer viewer;
     REQUIRE(viewer.load(QByteArray::fromStdString(model::toJson(document).dump()), "Sample").isEmpty());
     CHECK(viewer.nav.pixelsPerTick() == Catch::Approx(0.2));
     CHECK(viewer.nav.trackHeight() == 120);
     CHECK_FALSE(viewer.nav.automationOpen());
     CHECK(viewer.nav.automationLane(QString::fromStdString(keys)) == "pan");
+}
+
+TEST_CASE("the viewer opens a saved view with two lanes on a track and shows a row for each") {
+    ensureApplication();
+    const auto [viewer, view] = shownViewer();
+    REQUIRE(QTest::qWaitForWindowExposed(view));
+    model::Document document = sampleDocument();
+    const QString voice = QString::fromStdString(document.tracks[1].id.value);
+    document.view = {{"automationOpen", true}, {"automationLanes", {{voice.toStdString(), {"gain", "pan"}}}}};
+    REQUIRE(viewer->load(QByteArray::fromStdString(model::toJson(document).dump()), "Sample").isEmpty());
+    QQuickItem* pan = nullptr;
+    REQUIRE(processUntil([&] {
+        pan = find(view->rootObject(), "automation.lane:" + voice + ":pan");
+        return pan != nullptr && pan->isVisible();
+    }));
+    QQuickItem* gain = find(view->rootObject(), "automation.lane:" + voice);
+    REQUIRE(gain != nullptr);
+    CHECK(gain->isVisible());
+    CHECK(pan->mapToScene({0, 0}).y() == Catch::Approx(gain->mapToScene({0, gain->height()}).y()));
+
+    viewer->registry.runAction("automation.hideLane", {{"track", voice}, {"param", "gain"}});
+    CHECK(viewer->nav.shownLanes(voice) == QStringList{"pan"});
+    viewer->registry.runAction("automation.showLane", {{"track", voice}, {"param", "mute"}, {"add", true}});
+    CHECK(viewer->nav.shownLanes(voice) == QStringList{"pan", "mute"});
+    // We delete the dropped lane row now, because Qt crashes when it does so at process exit.
+    QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
 }

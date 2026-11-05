@@ -114,6 +114,7 @@ struct ProjectRig {
         controller = std::make_unique<ProjectController>(registry, std::move(audioOwner), std::move(midiOwner),
                                                          engine::Engine::Options{sampleRate, kBlock}, path("Projects"));
         controller->setWarmWhileActive(false);
+        keepViewWithProject(*controller, nav);
         views = std::make_unique<ViewEngine>(registry, nav, *controller);
         registerProjectActions(registry, *controller, nav, *views);
         QObject::connect(&clock, &QTimer::timeout, [this] { audio->process(kBlock); });

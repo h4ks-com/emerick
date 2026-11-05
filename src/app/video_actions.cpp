@@ -80,14 +80,15 @@ void registerVideoActions(Registry& registry, ProjectController& controller, Nav
     registry.addAction(
         {.id = "video.render",
          .title = "Render video",
-         .description =
+         .description = std::format(
              "Render an MP4 (H.264 and AAC) of the tracks area under the transport counter, with the playhead "
              "walking in from the left and then holding while the clips scroll under it, and the mix as its sound, "
              "to path. width and height default to 1920 and 1080 (1280 and 720 also suit), fps to 30; from and to "
              "take ticks or bar.beat.tick and default to the project start and end. The frames show the timeline as "
-             "the view has it, with the automation lanes on show; view fit, the default, shows 8 bars and fits the "
+             "the view has it, with the automation lanes on show; view fit, the default, shows {} bars and fits the "
              "tracks to the height, and view current keeps the view's zoom and track height. Needs ffmpeg beside the "
              "app or on PATH.",
+             kVideoBarsVisible),
          .aliases = {"export video", "timeline video", "render movie"},
          .keywords = {"mp4", "movie", "h264", "share", "post"},
          .category = "Export",

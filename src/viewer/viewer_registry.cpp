@@ -100,10 +100,12 @@ ViewerRegistry::ViewerRegistry(const ViewerProject& project, app::Nav& nav, QObj
     addAction(kEditClipKeys.id, kEditClipKeys.title, {},
               [this](const QVariantMap& params) { openInPianoRoll(params.value("clip").toString()); });
     addAction("automation.showLane", "Show automation lane", {}, [this](const QVariantMap& params) {
-        QVariantMap lanes = nav_.automationLanes();
-        lanes.insert(params.value("track").toString(), params.value("param"));
-        nav_.setAutomationLanes(lanes);
+        nav_.showLane(params.value("track").toString(), params.value("param").toString(), params.value("add").toBool(),
+                      params.value("replace").toString());
         nav_.setAutomationOpen(true);
+    });
+    addAction("automation.hideLane", "Hide automation lane", {}, [this](const QVariantMap& params) {
+        nav_.hideLane(params.value("track").toString(), params.value("param").toString());
     });
 }
 

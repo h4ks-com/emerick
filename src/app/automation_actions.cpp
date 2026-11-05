@@ -318,21 +318,39 @@ void registerLaneActions(Registry& registry, ProjectController& controller, Nav&
                                 return laneResult(controller, lane.track, lane.param.id);
                             },
                         .menus = {kTrackContextMenu}});
-    registry.addAction({.id = "automation.showLane",
-                        .title = "Show automation lane",
-                        .description = "Shows the lane of param on the track and opens the automation view.",
-                        .aliases = {"automation parameter"},
-                        .category = kCategory,
-                        .schema = {{"required", {"param"}},
-                                   {"properties", {{"track", {{"type", "string"}}}, {"param", {{"type", "string"}}}}}},
-                        .run = [&registry, &controller, &nav](const Json& params) {
-                            const LaneRef lane = targetLane(registry, controller, nav, params);
-                            QVariantMap lanes = nav.automationLanes();
-                            lanes.insert(qs(lane.track.value), qs(lane.param.id));
-                            nav.setAutomationLanes(lanes);
-                            nav.setAutomationOpen(true);
-                            return laneResult(controller, lane.track, lane.param.id);
-                        }});
+    registry.addAction(
+        {.id = "automation.showLane",
+         .title = "Show automation lane",
+         .description = "Shows the lane of param on the track in place of its first lane, or of the lane replace, "
+                        "and opens the automation view; with add the lane gets its own row below the track.",
+         .aliases = {"automation parameter", "add automation lane"},
+         .category = kCategory,
+         .schema = {{"required", {"param"}},
+                    {"properties",
+                     {{"track", {{"type", "string"}}},
+                      {"param", {{"type", "string"}}},
+                      {"add", {{"type", "boolean"}}},
+                      {"replace", {{"type", "string"}}}}}},
+         .run = [&registry, &controller, &nav](const Json& params) {
+             const LaneRef lane = targetLane(registry, controller, nav, params);
+             nav.showLane(qs(lane.track.value), qs(lane.param.id), optionalParam<bool>(params, "add").value_or(false),
+                          qs(optionalParam<std::string>(params, "replace").value_or("")));
+             nav.setAutomationOpen(true);
+             return laneResult(controller, lane.track, lane.param.id);
+         }});
+    registry.addAction(
+        {.id = "automation.hideLane",
+         .title = "Hide automation lane",
+         .description = "Hides the lane of param on the track; the next lane, or gain, takes the first lane's place.",
+         .category = kCategory,
+         .schema = {{"required", {"param"}},
+                    {"properties", {{"track", {{"type", "string"}}}, {"param", {{"type", "string"}}}}}},
+         .run = [&controller, &nav](const Json& params) {
+             const QString track = qs(targetTrack(controller, nav, params).value);
+             nav.hideLane(track, qs(param<std::string>(params, "param")));
+             return Json{{"track", track.toStdString()},
+                         {"lanes", nav.automationLanesJson().value(track.toStdString(), Json::array({"gain"}))}};
+         }});
     registry.addAction({.id = "automation.getLane",
                         .title = "Get automation lane",
                         .description =

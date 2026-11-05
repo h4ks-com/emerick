@@ -226,6 +226,7 @@ int run(int argc, char** argv) {
          .recordingDelay = registry.settingValue("audio.recordingDelay").get<emerick::core::Frames>()},
         profileFolder.isEmpty() ? std::filesystem::path{}
                                 : std::filesystem::path{profileFolder.toStdString()} / "projects");
+    keepViewWithProject(controller, nav);
     ViewEngine views(registry, nav, controller);
     registerProjectActions(registry, controller, nav, views);
     PluginCatalog plugins(

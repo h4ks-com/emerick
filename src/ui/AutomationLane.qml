@@ -15,8 +15,11 @@ Item {
     required property real scrollTicks
     required property real pixelsPerTick
     property bool reads: true
+    // A further lane in its own row below the track names its param in its object names.
+    property bool primary: true
+    readonly property string laneKey: trackId + (primary ? "" : ":" + param.id)
 
-    objectName: "automation.lane:" + trackId
+    objectName: "automation.lane:" + laneKey
     readonly property real inset: Theme.fadeHandle
     readonly property real span: param.maximum - param.minimum
 
@@ -101,7 +104,6 @@ Item {
         return null
     }
 
-    // The line through the points from the left edge to the right edge, flat at the parameter's value without points.
     function linePath() {
         if (points.length === 0) {
             return [Qt.point(0, yOf(param.value)), Qt.point(width, yOf(param.value))]
@@ -177,7 +179,7 @@ Item {
 
     MouseArea {
         id: edit
-        objectName: "automation.addPoint:" + lane.trackId
+        objectName: "automation.addPoint:" + lane.laneKey
         anchors.fill: parent
         acceptedButtons: Registry.readOnly ? Qt.NoButton : Qt.LeftButton
         hoverEnabled: true

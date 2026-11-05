@@ -21,7 +21,7 @@ void showAutomation(const model::Document& document, app::Nav& nav) {
     for (const model::Track& track : document.tracks) {
         if (!track.automation.empty()) {
             lanes.insert(QString::fromStdString(track.id.value),
-                         QString::fromStdString(track.automation.front().param));
+                         QStringList{QString::fromStdString(track.automation.front().param)});
         }
     }
     nav.setAutomationLanes(lanes);

@@ -10,6 +10,7 @@
 #include "emerick/app/plugin_actions.hpp"
 #include "emerick/app/project_files.hpp"
 #include "emerick/app/stem_export.hpp"
+#include "emerick/app/view_state.hpp"
 #include "emerick/model/clip_edit.hpp"
 #include "emerick/model/json.hpp"
 #include "midi_file.hpp"
@@ -325,7 +326,7 @@ TEST_CASE("a project saves the timeline view and opens with it") {
     rig.nav.setTrackHeight(120);
     rig.run("automation.showLane", {{"track", id}, {"param", "pan"}});
     rig.run("project.save");
-    CHECK(savedProject(rig.path("Songs/View.erk")).at("view").at("automationLanes").at(id) == "pan");
+    CHECK(savedProject(rig.path("Songs/View.erk")).at("view").at("automationLanes").at(id) == Json::array({"pan"}));
 
     rig.run("project.new");
     rig.nav.setPixelsPerTick(0.05);
@@ -340,4 +341,19 @@ TEST_CASE("a project saves the timeline view and opens with it") {
     CHECK(rig.nav.automationOpen());
     CHECK(rig.nav.automationLane(QString::fromStdString(id)) == "pan");
     CHECK(rig.controller->project().document().view.empty());
+}
+
+TEST_CASE("a saved view keeps each track's lanes in order and skips lanes saved with the wrong type") {
+    Nav saved;
+    saved.showLane("vox", "pan", false);
+    saved.showLane("vox", "mute", true);
+    const Json state = viewState(saved);
+    CHECK(state.at("automationLanes").at("vox") == Json::array({"pan", "mute"}));
+
+    Nav opened;
+    applyViewState(opened, state);
+    CHECK(opened.shownLanes("vox") == QStringList{"pan", "mute"});
+    applyViewState(opened, {{"automationLanes", {{"vox", "mute"}, {"keys", 3}}}});
+    CHECK(opened.shownLanes("vox") == QStringList{"gain"});
+    CHECK(opened.shownLanes("keys") == QStringList{"gain"});
 }

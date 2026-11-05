@@ -13,7 +13,9 @@
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 #include <cstddef>
+#include <format>
 #include <functional>
+#include <nlohmann/json.hpp>
 #include <string>
 #include <vector>
 
@@ -300,4 +302,27 @@ TEST_CASE("every control the viewer shows, with the mixer and automation open, n
     viewer->nav.setMixerOpen(false);
     // We delete the closed mixer now, because Qt crashes when it does so at process exit.
     QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
+}
+
+TEST_CASE("the viewer draws a Chords track's chord names and a Style track's sections as blocks") {
+    ensureApplication();
+    const auto [viewer, view] = shownViewer();
+    model::Document document;
+    model::Track chords{.name = "Chords", .kind = "yamaha.chord"};
+    chords.data = nlohmann::json::parse(R"([{"at":0,"chord":"C"},{"at":1920,"chord":"G7"}])");
+    model::Track style{.name = "Style", .kind = "yamaha.style"};
+    style.data =
+        nlohmann::json::parse(R"([{"at":0,"kind":"intro","variation":0},{"at":1920,"kind":"main","variation":1}])");
+    document.tracks = {chords, style};
+    REQUIRE(viewer->load(QByteArray::fromStdString(model::toJson(document).dump()), "Arranger").isEmpty());
+
+    const auto label = [&](const model::Track& track, core::Ticks at) -> QString {
+        QQuickItem* item =
+            find(view->rootObject(), QString::fromStdString(std::format("lane.blockLabel:{}:{}", track.id.value, at)));
+        return item != nullptr ? item->property("text").toString() : QString{};
+    };
+    REQUIRE(processUntil([&] { return label(chords, 0) == "C"; }));
+    CHECK(label(chords, 1920) == "G7");
+    CHECK(label(style, 0) == "Intro 1");
+    CHECK(label(style, 1920) == "Main B");
 }

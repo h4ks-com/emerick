@@ -1,6 +1,8 @@
 #include "emerick/yamaha/sysex.hpp"
 
 #include <algorithm>
+#include <cstddef>
+#include <iterator>
 #include <stdexcept>
 #include <string>
 
@@ -37,12 +39,13 @@ bool hasHeader(std::span<const std::uint8_t> message, std::size_t length, std::u
 
 std::optional<SectionPress> sectionFromCode(std::uint8_t code, bool on) {
     const int variation = code & 0x07;
-    const auto* const found =
-        std::ranges::find(kSections, std::optional<std::uint8_t>(code & 0xF8), &SectionInfo::sysexFamily);
-    if (found == kSections.end() || variation >= variationCount(*found)) {
+    const auto index = static_cast<std::size_t>(std::ranges::distance(
+        kSections.begin(),
+        std::ranges::find(kSections, std::optional<std::uint8_t>(code & 0xF8), &SectionInfo::sysexFamily)));
+    if (index == kSections.size() || variation >= variationCount(kSections[index])) {
         return std::nullopt;
     }
-    return SectionPress{found->kind, variation, on};
+    return SectionPress{kSections[index].kind, variation, on};
 }
 
 }  // namespace

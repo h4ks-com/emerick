@@ -16,6 +16,7 @@
 #include "emerick/app/track_rows.hpp"
 #include "emerick/app/variant.hpp"
 #include "emerick/model/automation.hpp"
+#include "emerick/yamaha/lane_layout.hpp"
 
 namespace emerick::viewer {
 
@@ -141,9 +142,15 @@ QVariant ViewerTracks::data(const QModelIndex& index, int role) const {
         case Role::clips:
             return app::clipList(track, rowContext(document));
         case Role::trackData:
+            if (const auto blocks = yamaha::laneBlocks(track.kind, track.data)) {
+                return app::toVariant(*blocks);
+            }
+            return QVariantMap{};
         case Role::takePreview:
             return QVariantMap{};
         case Role::laneComponent:
+            return yamaha::drawsBlocks(track.kind) ? QStringLiteral("qrc:/qt/qml/Emerick/Viewer/BlockRow.qml")
+                                                   : QString{};
         case Role::headerComponent:
         case Role::clipType:
             return QString{};

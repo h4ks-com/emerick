@@ -13,13 +13,12 @@
 #include "emerick/app/project_controller.hpp"
 #include "emerick/app/registry.hpp"
 #include "emerick/yamaha/chart.hpp"
+#include "emerick/yamaha/lane_layout.hpp"
 #include "keyboard_check.hpp"
 #include "style_sync.hpp"
 
 namespace emerick::yamaha {
 
-inline constexpr const char* kChordKind = "yamaha.chord";
-inline constexpr const char* kStyleKind = "yamaha.style";
 inline constexpr const char* kYamahaMenu = "Plugins/Yamaha Arranger";
 // The menus a right click on a chord or section block opens, which run their actions with that block.
 inline constexpr const char* kChordContextMenu = "Chord context";
@@ -31,19 +30,11 @@ inline constexpr const char* kSendVoicesSetting = "yamaha.sendVoicesOnPlay";
 inline constexpr const char* kControllerPortSetting = "yamaha.controllerPort";
 inline constexpr const char* kControllerChannelSetting = "yamaha.controllerChannel";
 inline constexpr int kControllerChannel = 16;
-// The last block of a lane lasts until the next event, so the lane draws it and selects it as one bar.
-inline constexpr core::Ticks kLastBlockTicks = 4 * core::kTicksPerQuarter;
 
-// A Chords or Style track keeps its events in data as a JSON array; a new track has no data and no events.
 template <class Event>
 std::vector<Event> eventsOf(const nlohmann::json& data) {
-    if (data.is_null()) {
-        return {};
-    }
     try {
-        auto events = data.get<std::vector<Event>>();
-        std::ranges::stable_sort(events, {}, &Event::at);
-        return events;
+        return sortedEvents<Event>(data);
     } catch (const nlohmann::json::exception& error) {
         throw app::AppError(std::string{"the track data is damaged: "} + error.what());
     } catch (const std::invalid_argument& error) {

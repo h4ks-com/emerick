@@ -2,12 +2,16 @@ add_library(emerick_yamaha_codec
     src/chart.cpp
     src/chord.cpp
     src/keyboard_template.cpp
+    src/lane_layout.cpp
     src/profile.cpp
     src/render.cpp
     src/sysex.cpp)
 target_include_directories(emerick_yamaha_codec PUBLIC include)
 target_link_libraries(emerick_yamaha_codec PUBLIC emerick_core nlohmann_json::nlohmann_json)
 emerick_target(emerick_yamaha_codec)
+if(EMERICK_VIEWER)
+    return()
+endif()
 
 qt_add_library(emerick_yamaha_plugin STATIC
     include/emerick/yamaha/chord_input.hpp

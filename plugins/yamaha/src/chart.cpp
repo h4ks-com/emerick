@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <cstddef>
 #include <format>
 #include <iterator>
 #include <map>
@@ -161,11 +162,13 @@ void to_json(nlohmann::json& json, const SectionEvent& event) {
 
 void from_json(const nlohmann::json& json, SectionEvent& event) {
     const auto kind = json.at("kind").get<std::string>();
-    const auto* const found = std::ranges::find(kSections, kind, &SectionInfo::json);
-    if (found == kSections.end()) {
+    const auto index = static_cast<std::size_t>(
+        std::ranges::distance(kSections.begin(), std::ranges::find(kSections, kind, &SectionInfo::json)));
+    if (index == kSections.size()) {
         throw std::invalid_argument("unknown section: " + kind);
     }
-    event = {json.at("at").get<core::Ticks>(), found->kind, json.at("variation").get<int>(), json.value("bars", 0)};
+    event = {json.at("at").get<core::Ticks>(), kSections[index].kind, json.at("variation").get<int>(),
+             json.value("bars", 0)};
     if (event.bars < 0) {
         throw std::invalid_argument("a pattern length must be positive");
     }

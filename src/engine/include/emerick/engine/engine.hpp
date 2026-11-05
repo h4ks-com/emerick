@@ -124,6 +124,9 @@ public:
     [[nodiscard]] bool midiFlushed() const;
     // Returns the takes finished since the last call.
     std::vector<RecordedTake> takeRecordings();
+    // Finishes on the calling thread every take the audio thread has ended, so takeRecordings returns them at once. A
+    // MIDI take that recorded nothing never reaches takeRecordings.
+    void finishEndedTakes();
     // Returns what every take in progress gained since the last call.
     std::vector<TakeProgress> takeProgress();
     // Reads and resets the input level of every audio track with an input.

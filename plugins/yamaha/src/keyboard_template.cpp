@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <array>
 #include <cstddef>
+#include <iterator>
 #include <stdexcept>
 #include <string>
 #include <string_view>
@@ -106,11 +107,12 @@ std::vector<std::uint8_t> encodeKeyboardTemplate(const KeyboardTemplate& setting
     bytes[kController] = static_cast<std::uint8_t>(settings.controllerPort);
     bytes[kController + 1] = static_cast<std::uint8_t>(settings.controllerChannel - 1);
     for (const auto& [cc, function] : settings.buttons) {
-        const auto* const item = std::ranges::find(kButtonCcs, cc);
-        if (item == kButtonCcs.end()) {
+        const auto item =
+            static_cast<std::size_t>(std::ranges::distance(kButtonCcs.begin(), std::ranges::find(kButtonCcs, cc)));
+        if (item == kButtonCcs.size()) {
             throw std::invalid_argument("the External Controller has no on/off item for CC " + std::to_string(cc));
         }
-        bytes[kButtons + static_cast<std::size_t>(item - kButtonCcs.begin())] = static_cast<std::uint8_t>(function);
+        bytes[kButtons + item] = static_cast<std::uint8_t>(function);
     }
     bytes[kKnobs] = kCutoff;
     bytes[kKnobs + 1] = kKeyboardPart;

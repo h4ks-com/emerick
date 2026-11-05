@@ -14,6 +14,8 @@
 #include "emerick/app/plugin_actions.hpp"
 #include "emerick/app/project_actions.hpp"
 #include "emerick/app/project_state.hpp"
+#include "emerick/app/session_mapping.hpp"
+#include "emerick/app/stem_export.hpp"
 #include "emerick/yamaha/profile.hpp"
 #include "gm_sounds.hpp"
 #include "registration.hpp"
@@ -404,6 +406,56 @@ Json notes(BuiltinArranger& builtin, const app::Registry& registry, const app::P
     return result;
 }
 
+// The part tracks render without their instruments, so the Arranger alone plays and only its MIDI is recorded.
+Json freeze(const app::Registry& registry, app::ProjectController& controller, const app::Nav& nav,
+            const Json& params) {
+    const model::TrackId style = styleTrack(controller, nav, params);
+    const std::vector<std::string> parts = partTracks(controller.project().document(), style) |
+                                           std::views::filter([](const auto& id) { return id.has_value(); }) |
+                                           std::views::transform([](const auto& id) { return id->value; }) |
+                                           std::ranges::to<std::vector>();
+    if (parts.empty()) {
+        throw AppError("no part track takes MIDI from the Style track, run arranger.setup first");
+    }
+    model::Document document = app::liveDocument(controller);
+    for (model::Track& track : document.tracks) {
+        if (std::ranges::contains(parts, track.id.value)) {
+            track.instrument.reset();
+        }
+    }
+    engine::Session session = app::toSession(document, registry, controller.folder());
+    std::erase_if(session.tracks, [&](const engine::Track& track) {
+        return track.id != style.value && !std::ranges::contains(parts, track.id);
+    });
+    const std::vector<engine::RecordedTake> takes = app::recordMidiOffline(
+        session, registry, app::playbackContext(controller, document), parts, controller.sampleRate());
+    for (const engine::RecordedTake& take : takes) {
+        if (!take.error.empty()) {
+            throw AppError("cannot freeze track " + take.trackId + ": " + take.error);
+        }
+        if (take.droppedMidiEvents > 0) {
+            throw AppError(std::format("cannot freeze track {}: it lost {} MIDI events, freeze again", take.trackId,
+                                       take.droppedMidiEvents));
+        }
+    }
+    const app::TakeContext context{.tempo = document.tempo, .stopTicks = app::exportEnd(session, document)};
+    const app::TrackType& midi = *registry.trackType("midi");
+    Json frozen = Json::array();
+    controller.project().group("freeze arranger", [&] {
+        for (const std::string& part : parts) {
+            const auto take = std::ranges::find(takes, part, &engine::RecordedTake::trackId);
+            app::editTrack(controller, model::TrackId{part}, "freeze part", [&](model::Track& track) {
+                if (take != takes.end()) {
+                    midi.fromTake(track, *take, context);
+                }
+                track.midiIn = {};
+            });
+            frozen.push_back({{"track", part}, {"events", take != takes.end() ? take->midiEvents.size() : 0}});
+        }
+    });
+    return Json{{"style", style.value}, {"parts", frozen}};
+}
+
 }  // namespace
 
 void registerBuiltinArranger(app::Registry& registry, app::ProjectController& controller, app::Nav& nav) {
@@ -463,6 +515,19 @@ void registerBuiltinArranger(app::Registry& registry, app::ProjectController& co
                  &nav](const Json& params) { return notes(*builtin, registry, controller, nav, params); },
          .menus = {kYamahaMenu},
          .notifies = true});
+    registry.addAction({.id = "arranger.freeze",
+                        .title = "Freeze arranger parts",
+                        .description =
+                            "Plays the Arranger offline over the whole song and records what it sends each part track "
+                            "into a MIDI clip on that track, then takes the part tracks off the Arranger, so the parts "
+                            "play and export from their clips. Undo puts the parts back on the Arranger.",
+                        .aliases = {"record style parts", "render arranger to midi", "bounce arranger"},
+                        .keywords = {"style", "arranger", "freeze", "midi"},
+                        .category = "Yamaha",
+                        .schema = {{"properties", {{"track", {{"type", "string"}}}}}},
+                        .run = [&registry, &controller,
+                                &nav](const Json& params) { return freeze(registry, controller, nav, params); },
+                        .menus = {kYamahaMenu}});
 }
 
 }  // namespace emerick::yamaha

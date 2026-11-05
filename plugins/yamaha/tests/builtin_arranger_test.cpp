@@ -496,6 +496,33 @@ TEST_CASE("export mix and stems render the part tracks the Arranger plays from t
     CHECK(loudest(rig.path("stems") / "Bass.wav") > 0.01F);
 }
 
+TEST_CASE("freezing the arranger records each part into a clip, takes the parts off it and exports their notes") {
+    ArrangerRig rig;
+    rig.run("arranger.setup");
+    const std::string style = rig.trackOfKind("yamaha.style");
+    rig.run("arranger.style.load", {{"track", style}, {"path", rig.demo.string()}});
+    playMainA(rig, style);
+    const auto bass = std::ranges::find(rig.document().tracks, std::string{"Bass"}, &model::Track::name);
+    REQUIRE(bass != rig.document().tracks.end());
+    const model::TrackId bassId = bass->id;
+
+    const Json result = rig.run("arranger.freeze");
+    CHECK(result.at("parts").size() == kPartNames.size());
+    const model::Track& frozen = rig.track(bassId.value);
+    CHECK(frozen.midiIn.sourceTrack.value.empty());
+    REQUIRE(frozen.clips.size() == 1);
+    const auto& clip = std::get<model::MidiClip>(frozen.clips.front());
+    CHECK_FALSE(clip.notes.empty());
+    CHECK(clip.start == 0);
+
+    rig.run("export.midi", {{"path", rig.path("song.mid").string()}});
+    CHECK(std::filesystem::file_size(rig.path("song.mid")) > 100);
+
+    rig.run("project.undo");
+    CHECK(rig.track(bassId.value).midiIn.sourceTrack.value == style);
+    CHECK(rig.track(bassId.value).clips.empty());
+}
+
 TEST_CASE("inspecting an arranger mix leaves out the Style track and finds the parts the style never plays quiet") {
     ArrangerRig rig;
     rig.run("arranger.setup");

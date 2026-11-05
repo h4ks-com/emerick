@@ -508,6 +508,8 @@ std::vector<RecordedTake> Engine::takeRecordings() {
     return impl_->inbox.take();
 }
 
+void Engine::finishEndedTakes() { impl_->writer.pollAll(); }
+
 std::vector<TakeProgress> Engine::takeProgress() {
     std::vector<TakeProgress> progress;
     for (const auto& entry : impl_->builder.recorders()) {

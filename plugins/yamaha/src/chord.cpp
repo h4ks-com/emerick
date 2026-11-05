@@ -4,6 +4,7 @@
 #include <array>
 #include <bitset>
 #include <cstdlib>
+#include <iterator>
 #include <span>
 #include <string_view>
 #include <utility>
@@ -63,11 +64,12 @@ std::string accidentalText(int accidentals) {
 }
 
 std::optional<int> typeFromSuffix(std::string_view suffix) {
-    const auto* const found = std::ranges::find(kChordTypes, suffix, &ChordType::name);
-    if (found == kChordTypes.end()) {
+    const auto index =
+        std::ranges::distance(kChordTypes.begin(), std::ranges::find(kChordTypes, suffix, &ChordType::name));
+    if (std::cmp_equal(index, kChordTypes.size())) {
         return std::nullopt;
     }
-    return static_cast<int>(found - kChordTypes.begin());
+    return static_cast<int>(index);
 }
 
 std::size_t noteLength(std::string_view text) {

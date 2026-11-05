@@ -86,6 +86,9 @@ public:
                  const std::stop_token& stop = {});
     // Runs what the instruments asked of the UI thread, such as loading a voice after a program change.
     void idleInstruments();
+    // Plays frames from the start on the calling thread, which must be the UI thread, and returns the take of each
+    // listed track that recorded MIDI from the track it takes MIDI from.
+    std::vector<engine::RecordedTake> recordMidi(const std::vector<std::string>& trackIds, engine::Frames frames);
 
 private:
     void start(engine::Session session, double sampleRate);
@@ -95,6 +98,12 @@ private:
     engine::OfflineBackend* offline_ = nullptr;
     std::unique_ptr<engine::Engine> engine_;
 };
+
+// Plays the session offline from the start to its export end, with no audio output, and returns the take of each listed
+// track that recorded MIDI from the track it takes MIDI from.
+std::vector<engine::RecordedTake> recordMidiOffline(const engine::Session& session, const Registry& registry,
+                                                    const PlaybackContext& context,
+                                                    const std::vector<std::string>& trackIds, double sampleRate);
 
 // Appends the first two channels of a render chunk to stereo, which holds two channels.
 void appendStereo(std::vector<std::vector<float>>& stereo, const std::vector<std::vector<float>>& chunk);

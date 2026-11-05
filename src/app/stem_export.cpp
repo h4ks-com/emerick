@@ -503,6 +503,32 @@ void OfflineRender::idleInstruments() {
     }
 }
 
+std::vector<engine::RecordedTake> OfflineRender::recordMidi(const std::vector<std::string>& trackIds,
+                                                            engine::Frames frames) {
+    for (const std::string& id : trackIds) {
+        engine_->setArmed(id, true);
+    }
+    engine_->setRecording(true);
+    process(frames, [](const std::vector<std::vector<float>>&) {}, [this] { idleInstruments(); });
+    engine_->stop();
+    offline_->process(kBlock);
+    engine_->finishEndedTakes();
+    return engine_->takeRecordings();
+}
+
+std::vector<engine::RecordedTake> recordMidiOffline(const engine::Session& session, const Registry& registry,
+                                                    const PlaybackContext& context,
+                                                    const std::vector<std::string>& trackIds, double sampleRate) {
+    const engine::Frames frames = renderFrames(session, *context.document, registry, sampleRate);
+    std::vector<engine::Track> tracks =
+        session.tracks | std::views::transform(audible) | std::ranges::to<std::vector>();
+    for (engine::Track& track : tracks) {
+        track.audioOut = {};
+    }
+    OfflineRender render(renderSession(session, std::move(tracks)), registry, context, sampleRate);
+    return render.recordMidi(trackIds, frames);
+}
+
 std::unique_ptr<OfflineRender> instrumentRender(std::shared_ptr<engine::Plugin> instrument, engine::MidiClip clip,
                                                 const core::TempoMap& tempo, double sampleRate) {
     engine::Track track;

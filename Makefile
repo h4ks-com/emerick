@@ -65,9 +65,11 @@ lint: build
 lint-changed: build
 	$(if $(call TIDY_FILES,$(LINT_CHANGED)),$(call TIDY,$(LINT_CHANGED)))
 
-quality: format-check lint-changed test
+quality: format-check build
+	$(MAKE) --no-print-directory -j2 lint-changed test
 
-quality-full: format-check lint test
+quality-full: format-check build
+	$(MAKE) --no-print-directory -j2 lint test
 
 # While working: fix what the tools can fix in the changed files, then check only those files.
 fix: build

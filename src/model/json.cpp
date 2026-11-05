@@ -135,13 +135,17 @@ core::FadeShape fadeShapeFromJson(const nlohmann::json& json, const char* key) {
 }
 
 nlohmann::json noteToJson(const Note& note) {
-    return {{"id", note.id.value}, {"pitch", note.pitch},   {"velocity", note.velocity},
-            {"start", note.start}, {"length", note.length}, {"channel", note.channel}};
+    nlohmann::json json{{"id", note.id.value}, {"pitch", note.pitch},   {"velocity", note.velocity},
+                        {"start", note.start}, {"length", note.length}, {"channel", note.channel}};
+    if (!note.lyric.empty()) {
+        json["lyric"] = note.lyric;
+    }
+    return json;
 }
 
 Note noteFromJson(const nlohmann::json& json) {
-    return {NoteId{json.at("id")}, json.at("pitch"),  json.at("velocity"),
-            json.at("start"),      json.at("length"), json.at("channel")};
+    return {NoteId{json.at("id")}, json.at("pitch"),   json.at("velocity"),    json.at("start"),
+            json.at("length"),     json.at("channel"), json.value("lyric", "")};
 }
 
 // Projects before format 4 keep their notes as note-ons and note-offs among the events.

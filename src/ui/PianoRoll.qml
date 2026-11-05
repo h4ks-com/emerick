@@ -202,7 +202,7 @@ DockPanel {
             model: roll.notes.length
             delegate: Rectangle {
                 required property int index
-                readonly property var note: roll.notes[index] ?? {id: "", pitch: 0, velocity: 1, start: 0, length: 0}
+                readonly property var note: roll.notes[index] ?? {id: "", pitch: 0, velocity: 1, start: 0, length: 0, lyric: ""}
                 objectName: "note:" + note.id
                 x: roll.xOf(note.start)
                 y: roll.yOf(note.pitch)
@@ -214,6 +214,16 @@ DockPanel {
                 color: chosen ? Theme.selectedNote(note.velocity) : Theme.velocityColor(note.velocity)
                 border.width: chosen ? Theme.selectionWidth : Theme.hairline
                 border.color: chosen ? Theme.ink : Theme.clipInk
+                // We show the lyric only once the note is big enough to hold all of it.
+                Text {
+                    objectName: "note.lyric:" + parent.note.id
+                    anchors.verticalCenter: parent.verticalCenter
+                    leftPadding: Theme.space1
+                    visible: text !== "" && implicitWidth <= parent.width && font.pixelSize <= parent.height
+                    text: parent.note.lyric ?? ""
+                    color: Theme.graphite
+                    font.pixelSize: Theme.textSmall
+                }
                 Item {
                     objectName: "midi.resizeNotes:" + parent.note.id
                     anchors.right: parent.right
@@ -339,6 +349,12 @@ DockPanel {
                 keys.play(-1)
                 mode = ""
             }
+            onDoubleClicked: mouse => {
+                const note = roll.noteAt(mouse.x, mouse.y)
+                if (note) {
+                    lyricField.open(note)
+                }
+            }
             onCanceled: {
                 band.visible = false
                 if (mode === "move" || mode === "resize") {
@@ -347,6 +363,60 @@ DockPanel {
                 }
                 keys.play(-1)
                 mode = ""
+            }
+        }
+
+        TextField {
+            id: lyricField
+            objectName: "midi.setLyric"
+            property string noteId
+            visible: noteId !== ""
+            height: Math.max(roll.keyHeight, implicitHeight)
+            width: Math.max(Theme.lyricFieldWidth, implicitWidth)
+            padding: 0
+            leftPadding: Theme.space1
+            color: Theme.ink
+            font.pixelSize: Theme.textSmall
+            ToolTip.text: Registry.actionInfo("midi.setLyric").title + "   Tab for the next note"
+            ToolTip.visible: hovered
+            ToolTip.delay: Theme.tooltipDelay
+            background: Rectangle {
+                color: Theme.graphite
+                radius: Theme.radiusClip / 2
+                border.color: Theme.rule
+            }
+
+            function open(note) {
+                noteId = note.id
+                x = roll.xOf(note.start)
+                y = roll.yOf(note.pitch) + (roll.keyHeight - height) / 2
+                text = note.lyric ?? ""
+                forceActiveFocus()
+                selectAll()
+            }
+            function save() {
+                const note = roll.notes.find(note => note.id === noteId)
+                if (note && text !== (note.lyric ?? "")) {
+                    Registry.runAction("midi.setLyric", {notes: [noteId], lyric: text})
+                }
+            }
+            onAccepted: {
+                save()
+                noteId = ""
+            }
+            onActiveFocusChanged: if (!activeFocus) noteId = ""
+            Keys.onEscapePressed: noteId = ""
+            Keys.onTabPressed: {
+                save()
+                const current = roll.notes.find(note => note.id === noteId)
+                const later = roll.notes.filter(note => current && (note.start > current.start
+                                                    || (note.start === current.start && note.pitch < current.pitch)))
+                later.sort((a, b) => a.start - b.start || b.pitch - a.pitch)
+                if (later.length > 0) {
+                    open(later[0])
+                } else {
+                    noteId = ""
+                }
             }
         }
     }

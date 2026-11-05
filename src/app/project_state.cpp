@@ -136,8 +136,8 @@ Json positionState(core::Ticks ticks, const core::TempoMap& tempo) {
 }
 
 Json noteState(const model::Note& note) {
-    return {{"id", note.id.value}, {"pitch", note.pitch},   {"velocity", note.velocity},
-            {"start", note.start}, {"length", note.length}, {"channel", note.channel}};
+    return {{"id", note.id.value},   {"pitch", note.pitch},     {"velocity", note.velocity}, {"start", note.start},
+            {"length", note.length}, {"channel", note.channel}, {"lyric", note.lyric}};
 }
 
 Json clipState(const model::Clip& clip, const core::TempoMap& tempo, bool includeEvents) {

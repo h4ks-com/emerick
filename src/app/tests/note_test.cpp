@@ -336,3 +336,25 @@ TEST_CASE("the piano roll opens on the selected MIDI clip and state shows notes 
     CHECK(keys.rig.run("midi.audition", {{"track", keys.track}, {"pitch", 60}}).at("sent") == false);
     CHECK(keys.rig.run("view.togglePianoRoll").at("pianoRollOpen") == false);
 }
+
+TEST_CASE("notes carry lyrics through add, set, undo, clip events and a saved project") {
+    NoteRig keys;
+    const Json sung = keys.run("midi.addNote", {{"notes",
+                                                 {{{"pitch", 62}, {"start", 0}, {"lyric", "Ci"}},
+                                                  {{"pitch", 64}, {"start", 480}, {"lyric", "+"}},
+                                                  {{"pitch", 66}, {"start", 960}}}}})
+                          .at("notes");
+    CHECK(sung.at(0).at("lyric") == "Ci");
+    CHECK(keys.note(sung.at(2)).lyric.empty());
+
+    keys.run("midi.setLyric", {{"notes", {sung.at(2).at("id")}}, {"lyric", "+~"}});
+    CHECK(keys.note(sung.at(2)).lyric == "+~");
+    CHECK(keys.rig.controller->project().undoName() == "set lyric");
+    const Json events = keys.rig.run("project.clipEvents", {{"clip", keys.clip}});
+    CHECK(events.at("notes").at(2).at("lyric") == "+~");
+    keys.rig.run("project.undo");
+    CHECK(keys.note(sung.at(2)).lyric.empty());
+
+    const model::Document reopened = model::documentFromJson(model::toJson(keys.rig.controller->project().document()));
+    CHECK(reopened == keys.rig.controller->project().document());
+}

@@ -84,6 +84,29 @@ TEST_CASE("midi.import round trips a MIDI file written by export.midi") {
     CHECK(midi.notes[1].length == 240);
 }
 
+TEST_CASE("midi.import and export.midi keep each note's lyric on its note") {
+    ProjectRig rig;
+    const std::string voice = rig.run("track.addMidi", {{"name", "Vocal score"}}).at("id");
+    const std::string clip = rig.run("midi.addClip", {{"track", voice}, {"at", 0}}).at("id");
+    rig.run("midi.addNote", {{"clip", clip},
+                             {"notes",
+                              {{{"pitch", 62}, {"start", 0}, {"length", 480}, {"lyric", "Ci"}},
+                               {{"pitch", 64}, {"start", 480}, {"length", 480}, {"lyric", "+"}},
+                               {{"pitch", 64}, {"start", 960}, {"length", 480}, {"lyric", "+~"}},
+                               {{"pitch", 66}, {"start", 1440}, {"length", 480}}}}});
+    const std::string file = rig.path("score.mid").string();
+    rig.run("export.midi", {{"path", file}});
+
+    const Json imported = rig.run("midi.import", {{"path", file}});
+
+    const std::vector<model::Note>& notes = midiClip(rig, imported.at("clips").at(0)).notes;
+    REQUIRE(notes.size() == 4);
+    CHECK(notes[0].lyric == "Ci");
+    CHECK(notes[1].lyric == "+");
+    CHECK(notes[2].lyric == "+~");
+    CHECK(notes[3].lyric.empty());
+}
+
 TEST_CASE("midi.import splits channels into tracks, scales ticks and keeps controller events, as one undo step") {
     ProjectRig rig;
     const std::filesystem::path file = rig.path("two.mid");

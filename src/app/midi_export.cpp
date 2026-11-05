@@ -3,10 +3,12 @@
 #include <algorithm>
 #include <cstdint>
 #include <fstream>
+#include <iterator>
 #include <libremidi/writer.hpp>
 #include <map>
 #include <string_view>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "emerick/core/midi.hpp"
@@ -97,8 +99,30 @@ std::vector<TimedBytes> conductor(const engine::Session& session, const model::D
     return events;
 }
 
+// Each lyric sits just before its note-on, where OpenUtau and karaoke players read it.
+std::vector<TimedBytes> lyricEvents(const model::Track& source) {
+    std::vector<TimedBytes> events;
+    for (const model::Clip& clip : source.clips) {
+        const auto* midi = std::get_if<model::MidiClip>(&clip);
+        if (midi == nullptr || midi->muted || midi->length <= 0) {
+            continue;
+        }
+        const core::Ticks plays = std::max(midi->length, midi->loopLength);
+        for (core::Ticks pass = 0; pass < plays; pass += midi->length) {
+            for (const model::Note& note : midi->notes) {
+                if (!note.lyric.empty() && pass + note.start < plays) {
+                    events.push_back(
+                        {midi->start + pass + note.start, metaText(libremidi::meta_event_type::LYRIC, note.lyric)});
+                }
+            }
+        }
+    }
+    return events;
+}
+
 std::vector<TimedBytes> trackEvents(const engine::Track& track, const model::Track& source) {
     std::vector<TimedBytes> events{{0, metaText(libremidi::meta_event_type::TRACK_NAME, source.name)}};
+    std::ranges::move(lyricEvents(source), std::back_inserter(events));
     for (const engine::MidiClip& clip : track.midiClips) {
         for (const engine::MidiEvent& event : clip.events) {
             if (belongsInFile(event.bytes)) {

@@ -185,6 +185,7 @@ QtObject {
     readonly property int controlPointSlack: 6
     readonly property int velocityBar: 4
     readonly property int noteGrip: 6
+    readonly property int lyricFieldWidth: 64
     readonly property int minGridSpacing: 6
     readonly property color whiteKey: "#D9DADD"
     readonly property color blackKey: "#202125"

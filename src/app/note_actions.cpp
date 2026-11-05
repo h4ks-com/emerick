@@ -32,6 +32,11 @@ int checkedPitch(int pitch) {
     return pitch;
 }
 
+Json lyricSchema() {
+    return {{"type", "string"},
+            {"description", R"(the syllable sung on the note; "+" continues the word and "+~" holds the syllable)"}};
+}
+
 Json notePropertiesSchema() {
     return {{"pitch", {{"type", "integer"}, {"minimum", 0}, {"maximum", model::kMaxPitch}}},
             {"start", {{"type", "integer"}}},
@@ -41,7 +46,8 @@ Json notePropertiesSchema() {
              {{"type", "integer"},
               {"minimum", 1},
               {"maximum", kMaxChannel},
-              {"description", "default 1; General MIDI plays drums on channel 10"}}}};
+              {"description", "default 1; General MIDI plays drums on channel 10"}}},
+            {"lyric", lyricSchema()}};
 }
 
 Json addNoteSchema() {
@@ -73,7 +79,8 @@ model::Note newNote(const model::MidiClip& midi, NoteDefaults& defaults, const J
             .velocity = velocity,
             .start = start,
             .length = length,
-            .channel = channel};
+            .channel = channel,
+            .lyric = optionalParam<std::string>(params, "lyric").value_or("")};
 }
 
 Json addNotes(ProjectController& controller, Nav& nav, NoteDefaults& defaults, const Json& params,
@@ -222,6 +229,21 @@ void registerNoteEdits(Registry& registry, ProjectController& controller, Nav& n
              });
              return notesResult(controller, clip, ids);
          }});
+    registry.addAction({.id = "midi.setLyric",
+                        .title = "Set lyric",
+                        .description = "Sets the syllable sung on the notes; an empty lyric clears it.",
+                        .aliases = {"lyrics", "syllable", "words"},
+                        .category = "MIDI",
+                        .schema = {{"required", {"lyric"}}, {"properties", withNoteSchema({{"lyric", lyricSchema()}})}},
+                        .run = [&controller, &nav](const Json& params) {
+                            const model::ClipId clip = targetClip(controller, nav, params);
+                            const auto ids = targetNotes(controller, nav, clip, params);
+                            const auto lyric = param<std::string>(params, "lyric");
+                            editNotes(controller, clip, "set lyric", [&](model::MidiClip& edited) {
+                                forNotes(edited, ids, [&](model::Note& note) { note.lyric = lyric; });
+                            });
+                            return notesResult(controller, clip, ids);
+                        }});
     registry.addAction({.id = "midi.deleteNotes",
                         .title = "Delete notes",
                         .aliases = {"remove notes", "erase notes"},

@@ -85,6 +85,9 @@ struct Note {
     Ticks start = 0;  // relative to the clip start
     Ticks length = 0;
     int channel = 1;
+    // The syllable sung on the note, kept as written: OpenUtau writes "+" for the next syllable of a word and "+~" to
+    // hold one.
+    std::string lyric;
 
     bool operator==(const Note&) const = default;
 };

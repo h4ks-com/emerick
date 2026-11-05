@@ -43,7 +43,8 @@ QVariantList noteList(const model::MidiClip& clip, core::Ticks from) {
                                            {"velocity", note.velocity},
                                            {"start", QVariant::fromValue(from + note.start)},
                                            {"length", QVariant::fromValue(note.length)},
-                                           {"channel", note.channel}}};
+                                           {"channel", note.channel},
+                                           {"lyric", qs(note.lyric)}}};
            }) |
            std::ranges::to<QVariantList>();
 }

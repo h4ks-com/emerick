@@ -121,6 +121,33 @@ TEST_CASE("dragging a note's right edge resizes it on the grid") {
     CHECK(roll.main.rig.controller->project().undoName() == "resize notes");
 }
 
+TEST_CASE("a note shows its lyric once it is big enough, and a double-click edits it with Tab to the next note") {
+    Roll roll;
+    const std::string first = roll.add(64, 0);
+    const std::string second = roll.add(62, 480);
+    roll.main.rig.run("midi.setLyric", {{"clip", roll.clip}, {"notes", {first}}, {"lyric", "Ci"}});
+    MainWindow::settle();
+    QQuickItem* lyric = roll.main.item("note.lyric:" + qid(first));
+    CHECK(lyric->isVisible());
+    roll.main.rig.nav.setPixelsPerTick(roll.pixelsPerTick() / 40);
+    MainWindow::settle();
+    CHECK_FALSE(lyric->isVisible());
+    roll.main.rig.nav.setPixelsPerTick(roll.pixelsPerTick() * 40);
+    MainWindow::settle();
+
+    QTest::mouseDClick(roll.main.window, Qt::LeftButton, Qt::NoModifier, roll.cell(240, 64).toPoint());
+    QQuickItem* field = roll.main.item("midi.setLyric");
+    REQUIRE(processUntil([&] { return field->hasActiveFocus(); }));
+    QTest::keyClick(roll.main.window, 't');
+    QTest::keyClick(roll.main.window, 'y');
+    QTest::keyClick(roll.main.window, Qt::Key_Tab);
+    QTest::keyClick(roll.main.window, '+');
+    QTest::keyClick(roll.main.window, Qt::Key_Return);
+    CHECK(roll.note(first).lyric == "ty");
+    CHECK(roll.note(second).lyric == "+");
+    CHECK_FALSE(field->isVisible());
+}
+
 TEST_CASE("dragging a velocity bar up raises the note's velocity") {
     Roll roll;
     const std::string id = roll.add(60, 960);

@@ -52,6 +52,7 @@ run("midi.addNote", { clip = clip, notes = { { pitch = 40, start = 0, length = P
 ```
 
 - `midi.addNote` with `notes` adds the whole list to the clip as one undo step.
+- A note takes a `lyric`, the syllable sung on it: `"+"` continues the word and `"+~"` holds the syllable. `midi.setLyric` changes it later, and MIDI export and import keep it.
 
 - `instrument.setParam` takes the param's numeric id. Look ids up by name from `instrument.params` once (the template's `setInstrumentParam`), so the script survives instruments that reorder their params. Choice params take the choice's text, and `instrument.params` lists every choice: the General MIDI instrument's `Sound` param lists its 128 sounds and `Drum kit` its kits.
 - `plugins.list` shows every instrument and effect the build can load, bundled and third party.

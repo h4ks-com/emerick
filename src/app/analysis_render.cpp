@@ -511,11 +511,21 @@ public:
             add(path);
             return;
         }
+        std::vector<std::filesystem::path> beside;
         for (auto entry = std::filesystem::recursive_directory_iterator(root, error);
-             !error && entry != std::filesystem::recursive_directory_iterator(); entry.increment(error)) {
+             !error && entry != std::filesystem::recursive_directory_iterator() && beside.size() <= kMostBeside;
+             entry.increment(error)) {
             if (entry->is_regular_file(error)) {
-                add(entry->path());
+                beside.push_back(entry->path());
             }
+        }
+        // A folder as large as an installed sound library holds no edits, so we stamp only the file named in it.
+        if (beside.size() > kMostBeside) {
+            add(path);
+            return;
+        }
+        for (const std::filesystem::path& file : beside) {
+            add(file);
         }
     }
 
@@ -526,6 +536,7 @@ public:
 
 private:
     static constexpr std::size_t kMostFiles = 20000;
+    static constexpr std::size_t kMostBeside = 2000;
     static constexpr std::size_t kLongestPath = 1024;
 
     static bool named(const std::string& text) {

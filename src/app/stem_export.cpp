@@ -3,6 +3,8 @@
 #include <sndfile.h>
 
 #include <QCoreApplication>
+#include <QDebug>
+#include <QString>
 
 #ifndef _WIN32
 #include <cerrno>
@@ -1274,6 +1276,8 @@ void renderMixAndTracks(const engine::Session& session, const Registry& registry
                                                      std::vector<float>(static_cast<std::size_t>(stage.shift)));
                 // Sources also keep their stems, so a later render whose sources play the same skips them.
                 std::vector<AudioWriter> kept;
+                std::vector<std::vector<std::vector<float>>> toKeep;
+                std::future<void> keeping;
                 if (!key.empty() && stage.reads.empty()) {
                     for (const std::size_t index : stage.writes) {
                         kept.emplace_back(stems->file(tracks[index].id), 2, sampleRate);
@@ -1291,9 +1295,20 @@ void renderMixAndTracks(const engine::Session& session, const Registry& registry
                             carried.erase(carried.begin(), carried.begin() + static_cast<std::ptrdiff_t>(size));
                         }
                         if (!kept.empty()) {
-                            kept[position].write(stem);
+                            toKeep.push_back(stem);
                         }
                         streams[stage.writes[position]]->push(std::move(stem));
+                    }
+                    // We write the kept stems on another thread while the render plays the next chunk.
+                    if (!kept.empty()) {
+                        if (keeping.valid()) {
+                            keeping.get();
+                        }
+                        keeping = std::async(std::launch::async, [&kept, chunks = std::exchange(toKeep, {})] {
+                            for (std::size_t position = 0; position < chunks.size(); ++position) {
+                                kept[position].write(chunks[position]);
+                            }
+                        });
                     }
                 };
                 const OfflineRender::ChunkFeed feed = [&](engine::Frames) {
@@ -1317,6 +1332,9 @@ void renderMixAndTracks(const engine::Session& session, const Registry& registry
                 } else {
                     render.process(frames, pushStems, idle, {}, fed, pushStems);
                 }
+                if (keeping.valid()) {
+                    keeping.get();
+                }
                 outcome.played();
             });
         }) |
@@ -1333,6 +1351,10 @@ void renderMixAndTracks(const engine::Session& session, const Registry& registry
     if (!key.empty()) {
         stems->keep(key);
     }
+    qInfo().noquote() << QString::fromStdString(
+        replay
+            ? std::format("render: played the kept stems of {} tracks and rendered the buses", sources.size())
+            : std::format("render: rendered {} tracks{}", sources.size(), key.empty() ? "" : " and kept their stems"));
 }
 
 }  // namespace emerick::app

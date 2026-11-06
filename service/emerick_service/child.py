@@ -63,8 +63,12 @@ LIBRARY_ENV = ("EMERICK_LIBRARY_DIR", "EMERICK_LIBRARY_INSTALL")
 def child_env(home: Path) -> dict[str, str]:
     runtime = home / "runtime"
     runtime.mkdir(mode=0o700, parents=True, exist_ok=True)
+    # The session's temporary files, such as the stems a render keeps, go with its work folder when it closes.
+    temporary = home / "tmp"
+    temporary.mkdir(parents=True, exist_ok=True)
     return {
         "HOME": str(home),
+        "TMPDIR": str(temporary),
         "XDG_RUNTIME_DIR": str(runtime),
         "QT_QPA_PLATFORM": "offscreen",
         "QT_QUICK_BACKEND": "software",

@@ -4,6 +4,7 @@
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers.hpp>
 #include <chrono>
+#include <limits>
 #include <ranges>
 
 #include "rig.hpp"
@@ -400,4 +401,15 @@ TEST_CASE("a session swapped in during playback takes over at the next block") {
     CHECK(sent[2].bytes[1] == 62);
     CHECK(frameOf(sent[2]) == 72000);
     CHECK(rig.engine.position().frames == 96000);
+}
+
+TEST_CASE("the offline backend flushes denormals while it processes, as a device's audio thread does") {
+    OfflineBackend backend(rigDevices());
+    volatile float smallest = std::numeric_limits<float>::min();
+    float halved = 1.0F;
+    backend.open({.deviceIds = {"interface"}, .sampleRate = 48000.0, .blockFrames = 4},
+                 [&](const AudioBlock&) { halved = smallest / 2.0F; });
+    backend.process(4);
+    CHECK(halved == 0.0F);
+    CHECK(smallest / 2.0F > 0.0F);
 }

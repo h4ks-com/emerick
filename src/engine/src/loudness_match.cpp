@@ -18,9 +18,9 @@ constexpr double kCloseEnoughLu = 0.05;
 using Channels = std::vector<std::vector<float>>;
 
 double integratedLufsOf(const SignalReplay& signal, std::size_t channels, double sampleRate) {
-    TrackMeter meter(channels, sampleRate);
+    LoudnessMeter meter(channels, sampleRate);
     signal([&meter](std::span<const std::vector<float>> chunk) { meter.add(chunk); });
-    return meter.levels().integratedLufs;
+    return meter.integratedLufs();
 }
 
 }  // namespace

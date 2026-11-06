@@ -330,6 +330,27 @@ TrackLevels TrackMeter::levels() const {
             .tone = state.tone()};
 }
 
+struct LoudnessMeter::State {
+    LoudnessSteps loudness;
+    std::size_t frames = 0;
+};
+
+LoudnessMeter::LoudnessMeter(std::size_t channels, double sampleRate)
+    : state_(std::make_unique<State>(LoudnessSteps(channels, sampleRate))) {}
+
+LoudnessMeter::~LoudnessMeter() = default;
+LoudnessMeter::LoudnessMeter(LoudnessMeter&&) noexcept = default;
+LoudnessMeter& LoudnessMeter::operator=(LoudnessMeter&&) noexcept = default;
+
+void LoudnessMeter::add(std::span<const std::vector<float>> chunk) {
+    for (std::size_t channel = 0; channel < chunk.size(); ++channel) {
+        state_->loudness.add(channel, chunk[channel], state_->frames);
+    }
+    state_->frames += chunk.front().size();
+}
+
+double LoudnessMeter::integratedLufs() const { return state_->loudness.lufs(state_->frames); }
+
 InterpolationTaps interpolationTaps() {
     InterpolationTaps taps{};
     for (std::size_t phase = 0; phase < kOversampling; ++phase) {

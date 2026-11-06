@@ -105,6 +105,25 @@ private:
     std::unique_ptr<State> state_;
 };
 
+// Measures the integrated loudness TrackMeter reports of a signal handed over in consecutive chunks.
+class LoudnessMeter {
+public:
+    LoudnessMeter(std::size_t channels, double sampleRate);
+    ~LoudnessMeter();
+    LoudnessMeter(LoudnessMeter&&) noexcept;
+    LoudnessMeter& operator=(LoudnessMeter&&) noexcept;
+    LoudnessMeter(const LoudnessMeter&) = delete;
+    LoudnessMeter& operator=(const LoudnessMeter&) = delete;
+
+    // Takes one vector per channel, all of one length.
+    void add(std::span<const std::vector<float>> chunk);
+    [[nodiscard]] double integratedLufs() const;
+
+private:
+    struct State;
+    std::unique_ptr<State> state_;
+};
+
 // Measures loudness after ITU-R BS.1770-4 with every channel weighted 1, so a mono full scale 997 Hz sine reads
 // -3.01 LUFS. Every channel has the same length.
 AudioAnalysis analyzeAudio(const std::vector<std::vector<float>>& channels, const AnalysisTiming& timing);

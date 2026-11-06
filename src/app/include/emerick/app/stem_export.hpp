@@ -1,10 +1,12 @@
 #pragma once
 
 #include <cstdint>
+#include <cstdio>
 #include <filesystem>
 #include <functional>
 #include <memory>
 #include <optional>
+#include <span>
 #include <stop_token>
 #include <string>
 #include <utility>
@@ -12,6 +14,7 @@
 
 #include "emerick/app/audio_file.hpp"
 #include "emerick/app/registry.hpp"
+#include "emerick/engine/audio_analysis.hpp"
 #include "emerick/engine/engine.hpp"
 #include "emerick/engine/session.hpp"
 #include "emerick/model/document.hpp"
@@ -27,6 +30,11 @@ PlaybackContext playbackContext(ProjectController& controller, const model::Docu
 // Where exports of the session stop: the project end, or the end of the bar of the last MIDI event a track plays, such
 // as a chord from a lane, when that event comes after the project end.
 core::Ticks exportEnd(const engine::Session& session, const model::Document& document);
+
+// The frames a render of the session plays up to its export end. Throws AppError when the project has no clips or the
+// render is longer than the render limit.
+engine::Frames renderFrames(const engine::Session& session, const model::Document& document, const Registry& registry,
+                            double sampleRate);
 
 // Renders each audio track and each MIDI track with an instrument of the session alone and dry, with its clip gains,
 // fades and track gain, and each bus with the tracks of the session that feed it, to <folder>/<track name>.wav, or
@@ -58,6 +66,29 @@ struct MixLevels {
 std::optional<MixLevels> exportMix(const engine::Session& session, const Registry& registry,
                                    const PlaybackContext& context, const std::filesystem::path& file, double sampleRate,
                                    const std::optional<LoudnessTarget>& target = {}, AudioEncoding encoding = {});
+
+// Keeps a render in a temporary file, so loudness matching can play it several times while memory stays flat.
+class SpilledAudio {
+public:
+    explicit SpilledAudio(std::size_t channels);
+
+    void append(std::span<const std::vector<float>> chunk);
+    // Hands the sink the chunks in the sizes they were appended in.
+    void replay(const engine::ChunkSink& sink) const;
+
+private:
+    struct CloseFile {
+        void operator()(std::FILE* file) const;
+    };
+
+    std::size_t channels_;
+    std::unique_ptr<std::FILE, CloseFile> file_;
+    std::vector<std::size_t> chunkFrames_;
+};
+
+// Writes a stereo mix to writer, turned to the target as exportMix does, and returns the levels it ends at.
+std::optional<MixLevels> writeMix(const SpilledAudio& mix, AudioWriter& writer, double sampleRate,
+                                  const std::optional<LoudnessTarget>& target);
 
 // One render's fresh instruments and offline engine. The UI thread constructs it, runs idleInstruments and destroys it,
 // and any one thread runs process.

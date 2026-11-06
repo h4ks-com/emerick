@@ -5,18 +5,24 @@
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_string.hpp>
+#include <chrono>
 #include <cmath>
 #include <filesystem>
 #include <format>
 #include <numbers>
+#include <optional>
 #include <random>
 #include <span>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "emerick/app/action_params.hpp"
 #include "emerick/app/audio_file.hpp"
+#include "emerick/app/session_mapping.hpp"
+#include "emerick/app/stem_export.hpp"
 #include "emerick/engine/audio_analysis.hpp"
+#include "emerick/model/document.hpp"
 #include "project_rig.hpp"
 
 using Catch::Approx;
@@ -489,4 +495,78 @@ TEST_CASE("inspecting a clean mix finds no issues, a too loud track is an imbala
     CHECK(imbalances[0].at("to").at("bbt") == "6.1.0");
     CHECK(imbalances[0].at("evidence").at("offsetDb").get<double>() > 8);
     CHECK(rig.run("mix.inspect", {{"from", "2.1.0"}, {"to", "6.1.0"}, {"resolution", nullptr}}) == inspection);
+}
+
+TEST_CASE("analyze, inspect and export share one render until the project or a file it plays changes") {
+    ProjectRig rig;
+    const std::string tone = addTrack(rig, "Tone", sine(1000, 0.5, 2));
+    const auto lufs = [&] { return rig.run("tracks.analyze").at("tracks")[0].at("integratedLufs").get<double>(); };
+    const double loud = lufs();
+    const std::filesystem::path clip =
+        toSession(rig.controller->project().document(), rig.registry, rig.controller->folder())
+            .tracks.at(0)
+            .audioClips.at(0)
+            .path;
+    const auto written = std::filesystem::last_write_time(clip);
+    writeWav(clip, {sine(1000, 0.05, 2)}, kRate);
+    std::filesystem::last_write_time(clip, written);
+    CHECK(lufs() == loud);
+
+    std::filesystem::last_write_time(clip, written + std::chrono::seconds{1});
+    const double quiet = lufs();
+    CHECK(quiet == Approx(loud - 20).margin(0.1));
+    rig.run("track.setGain", {{"track", tone}, {"db", -6.0}});
+    CHECK(lufs() == Approx(quiet - 6).margin(0.1));
+}
+
+TEST_CASE("the shared render measures and exports exactly what a render of its own does") {
+    ProjectRig rig;
+    const std::string vox = addTrack(rig, "Vox", beeps(2500, 0.25, 4));
+    addTrack(rig, "Bed", noise(0.1, 3), "2.1.0");
+    const std::string verb = rig.run("track.addBus", {{"name", "Verb"}}).at("id");
+    rig.run("insert.add", {{"track", verb}, {"type", "reverb"}});
+    rig.run("send.add", {{"track", vox}, {"bus", verb}, {"db", -6.0}});
+    const std::string score = rig.run("track.addMidi", {{"name", "Score"}}).at("id");
+    rig.run("track.setMute", {{"track", score}, {"value", true}});
+
+    const Json shared = rig.run("tracks.analyze").at("tracks");
+    const Json own = rig.run("tracks.analyze", {{"from", "1.1.0"}}).at("tracks");
+    REQUIRE(shared.size() == own.size());
+    for (std::size_t index = 0; index < shared.size(); ++index) {
+        for (const char* level : {"activeRmsDb", "integratedLufs", "truePeakDbtp", "bands"}) {
+            CHECK(shared[index].at(level) == own[index].at(level));
+        }
+    }
+    CHECK(rig.run("mix.inspect") == rig.run("mix.inspect", {{"resolution", "bar"}}));
+
+    const emerick::model::Document document = liveDocument(*rig.controller);
+    const emerick::engine::Session session = toSession(document, rig.registry, rig.controller->folder());
+    for (const std::optional<LoudnessTarget>& target :
+         {std::optional<LoudnessTarget>{}, std::optional{LoudnessTarget{}}}) {
+        Json params{{"path", rig.path("shared.wav").string()}};
+        if (target) {
+            params["targetLufs"] = target->lufs;
+            params["ceilingDbtp"] = target->ceilingDbtp;
+        }
+        const Json result = rig.run("export.mix", params);
+        const std::optional<MixLevels> levels = exportMix(
+            session, rig.registry, playbackContext(*rig.controller, document), rig.path("own.wav"), kRate, target);
+        CHECK(readAudio(rig.path("shared.wav")).channels == readAudio(rig.path("own.wav")).channels);
+        if (levels) {
+            CHECK(result.at("integratedLufs") == levelDb(levels->integratedLufs));
+            CHECK(result.at("truePeakDbtp") == levelDb(levels->truePeakDbtp));
+        }
+    }
+}
+
+TEST_CASE("export mix leaves out a muted track the shared render hears") {
+    ProjectRig rig;
+    addTrack(rig, "Tone", sine(440, 0.5, 2));
+    const std::string bed = addTrack(rig, "Bed", noise(0.5, 2));
+    rig.run("track.setMute", {{"track", bed}, {"value", true}});
+    rig.run("mix.inspect");
+    rig.run("export.mix", {{"path", rig.path("mix.wav").string()}});
+    const emerick::engine::TrackLevels levels =
+        emerick::engine::analyzeAudio(readAudio(rig.path("mix.wav")).channels, {.sampleRate = kRate}).levels;
+    CHECK(levels.truePeakDbtp == Approx(20 * std::log10(0.5)).margin(0.2));
 }

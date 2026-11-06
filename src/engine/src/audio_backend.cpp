@@ -3,6 +3,7 @@
 #include "emerick/engine/audio_backend.hpp"
 
 #include <algorithm>
+#include <cfenv>
 #include <chrono>
 #include <cmath>
 #include <ranges>
@@ -10,10 +11,28 @@
 #include <utility>
 
 #include "clock.hpp"
+#include "interleaved_io.hpp"
 
 namespace emerick::engine {
 
 namespace {
+
+// Flushes denormals on this thread while it lives, then puts the floating point mode back.
+class FlushedDenormals {
+public:
+    FlushedDenormals() {
+        std::fegetenv(&saved_);
+        flushDenormalsToZero();
+    }
+    ~FlushedDenormals() { std::fesetenv(&saved_); }
+    FlushedDenormals(const FlushedDenormals&) = delete;
+    FlushedDenormals& operator=(const FlushedDenormals&) = delete;
+    FlushedDenormals(FlushedDenormals&&) = delete;
+    FlushedDenormals& operator=(FlushedDenormals&&) = delete;
+
+private:
+    std::fenv_t saved_{};
+};
 
 const DeviceChannels* findDevice(const StreamLayout& layout, std::string_view deviceId) {
     const auto found = std::ranges::find(layout.devices, deviceId, &DeviceChannels::id);
@@ -100,6 +119,9 @@ void OfflineBackend::process(Frames frames) {
     std::vector<std::vector<float>> outputBuffers(outputCount);
     std::vector<const float*> inputPointers(inputCount);
     std::vector<float*> outputPointers(outputCount);
+    // We flush denormals as the device backends do on their audio threads, so a render sounds as playback does and a
+    // decaying reverb tail never slows it down.
+    const FlushedDenormals flushed;
     while (frames > 0 && callback_) {
         const Frames block = std::min(frames, layout_.maxFrames);
         for (std::size_t channel = 0; channel < inputCount; ++channel) {

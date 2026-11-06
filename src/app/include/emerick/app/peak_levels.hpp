@@ -38,6 +38,9 @@ struct AudioStamp {
     bool operator==(const AudioStamp&) const = default;
 };
 
+// The stamp of a file, or nothing when it cannot be read.
+std::optional<AudioStamp> stampOf(const std::filesystem::path& audio);
+
 // A peak file holds the finest peaks of one audio file and the stamp of that file.
 struct PeakFile {
     AudioStamp stamp;

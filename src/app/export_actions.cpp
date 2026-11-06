@@ -280,6 +280,7 @@ std::optional<LoudnessTarget> loudnessTarget(const Registry& registry, const Jso
 
 void registerExportActions(Registry& registry, ProjectController& controller, Nav& nav, ViewEngine& views) {
     registerExportSettings(registry);
+    auto renders = std::make_shared<ProjectRenders>();
     const Json tracksSchema{{"tracks", {{"type", "array"}}}};
     const Json formatSchema{{"type", "string"},
                             {"enum", kAudioFormats | std::views::keys | std::ranges::to<std::vector<std::string>>()}};
@@ -340,15 +341,11 @@ void registerExportActions(Registry& registry, ProjectController& controller, Na
                       {"targetLufs", {{"type", "number"}, {"minimum", kMinTargetLufs}, {"maximum", 0}}},
                       {"ceilingDbtp", {{"type", "number"}, {"minimum", kMinCeilingDbtp}, {"maximum", 0}}}}}},
          .run =
-             [&controller, &registry](const Json& params) {
+             [&controller, &registry, renders](const Json& params) {
                  const std::filesystem::path file =
                      registry.checkedPath(param<std::string>(params, "path"), PathAccess::Write);
-                 const AudioEncoding encoding = encodingParam(params, file);
-                 const model::Document document = liveDocument(controller);
-                 const std::optional<MixLevels> levels =
-                     exportMix(toSession(document, registry, controller.folder()), registry,
-                               playbackContext(controller, document), file, controller.sampleRate(),
-                               loudnessTarget(registry, params), encoding);
+                 const std::optional<MixLevels> levels = renders->exportMix(
+                     controller, registry, file, loudnessTarget(registry, params), encodingParam(params, file));
                  Json result{{"file", file.string()}};
                  if (levels) {
                      result["integratedLufs"] = levelDb(levels->integratedLufs);
@@ -503,11 +500,11 @@ void registerExportActions(Registry& registry, ProjectController& controller, Na
          .category = "Analyze",
          .schema = {{"properties", rangeSchema}},
          .run =
-             [&controller, &registry](const Json& params) {
+             [&controller, &registry, renders](const Json& params) {
                  const model::Document& document = controller.project().document();
                  const std::vector<model::TrackId> ids = analyzableTracks(registry, document);
                  const Json measured =
-                     ids.empty() ? Json::object() : renderNow(prepareTracksRender(controller, registry, params)).json;
+                     ids.empty() ? Json::object() : renders->analyzeTracks(controller, registry, params);
                  const Json tracks = ids | std::views::transform([&](const model::TrackId& id) {
                                          const Json& levels = measured.at(id.value);
                                          Json track{{"id", id.value},
@@ -539,8 +536,8 @@ void registerExportActions(Registry& registry, ProjectController& controller, Na
          .keywords = {"issues", "problems", "whine", "beep", "clipping", "harsh", "balance", "check"},
          .category = "Analyze",
          .schema = {{"properties", rangeSchema}},
-         .run = [&controller, &registry](
-                    const Json& params) { return renderNow(prepareMixInspection(controller, registry, params)).json; },
+         .run = [&controller, &registry,
+                 renders](const Json& params) { return renders->inspectMix(controller, registry, params); },
          .menus = {kFileMenu},
          .notifies = true});
 }

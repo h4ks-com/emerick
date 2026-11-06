@@ -13,6 +13,7 @@
 #include <span>
 #include <vector>
 
+#include "emerick/app/audio_file.hpp"
 #include "emerick/app/event_wait.hpp"
 #include "emerick/app/instruments.hpp"
 #include "emerick/app/plugin_actions.hpp"
@@ -417,6 +418,27 @@ TEST_CASE("an export right after sampler.load waits for the SFZ file and plays i
     sf_readf_float(file, samples.data(), info.frames);
     sf_close(file);
     CHECK(loudest(samples) > 0.05F);
+}
+
+TEST_CASE("analyzing again renders again once a sample beside a sampler's SFZ file changes") {
+    InstrumentRig rig;
+    rig.registry.setSetting(kClapFoldersSetting, Json::array({bundledClapFolder(EMERICK_GM_APP_FOLDER).string()}));
+    const std::filesystem::path folder = rig.path("sine");
+    std::filesystem::copy(EMERICK_SAMPLER_SINE, folder, std::filesystem::copy_options::recursive);
+    const model::TrackId id{rig.run("track.addMidi").at("id").get<std::string>()};
+    rig.run("sampler.load", {{"track", id.value}, {"path", (folder / "sine.sfz").string()}});
+    addNote(*rig.controller, id);
+    const auto lufs = [&] { return rig.run("tracks.analyze").at("tracks")[0].at("integratedLufs").get<double>(); };
+    const double loud = lufs();
+
+    AudioData sample = readAudio(folder / "sine.wav");
+    for (std::vector<float>& channel : sample.channels) {
+        std::ranges::transform(channel, channel.begin(), [](float value) { return value / 10; });
+    }
+    const auto written = std::filesystem::last_write_time(folder / "sine.wav");
+    writeWav(folder / "sine.wav", sample.channels, sample.sampleRate);
+    std::filesystem::last_write_time(folder / "sine.wav", written + std::chrono::seconds{1});
+    CHECK(lufs() < loud - 10);
 }
 
 TEST_CASE("sampler.load plays a file of an installed sound library") {

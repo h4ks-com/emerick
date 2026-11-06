@@ -166,6 +166,22 @@ TEST_CASE("a track meter fed in uneven chunks reads what the whole signal reads"
     }
 }
 
+TEST_CASE("a loudness meter fed in chunks reads the integrated loudness a track meter reads") {
+    const std::vector<float> left = sine(440, 0.6, 3.1);
+    const std::vector<float> right = sine(90, 0.2, 3.1);
+    emerick::engine::TrackMeter track(2, kRate);
+    emerick::engine::LoudnessMeter loudness(2, kRate);
+    for (std::size_t begin = 0; begin < left.size(); begin += 7001) {
+        const auto first = static_cast<std::ptrdiff_t>(begin);
+        const auto end = static_cast<std::ptrdiff_t>(std::min(left.size(), begin + 7001));
+        const std::vector<std::vector<float>> chunk{{left.begin() + first, left.begin() + end},
+                                                    {right.begin() + first, right.begin() + end}};
+        track.add(chunk);
+        loudness.add(chunk);
+    }
+    CHECK(loudness.integratedLufs() == track.levels().integratedLufs);
+}
+
 TEST_CASE("matching loudness lifts a quiet mix to the target and keeps its true peak under the ceiling") {
     std::vector<float> quiet = sine(220, 0.02, 4);
     for (std::size_t frame = 0; frame < quiet.size(); frame += 12000) {

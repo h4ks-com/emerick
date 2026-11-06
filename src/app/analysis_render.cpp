@@ -15,6 +15,7 @@
 #include <vector>
 
 #include "emerick/app/action_params.hpp"
+#include "emerick/app/peak_levels.hpp"
 #include "emerick/app/project_state.hpp"
 #include "emerick/app/session_mapping.hpp"
 #include "emerick/app/stem_export.hpp"
@@ -23,6 +24,7 @@
 #include "emerick/engine/mix_issues.hpp"
 #include "emerick/engine/window_meter.hpp"
 #include "emerick/model/document.hpp"
+#include "emerick/model/json.hpp"
 
 namespace emerick::app {
 
@@ -182,42 +184,45 @@ struct OutputMeters {
     std::ptrdiff_t seen = 0;
     std::vector<engine::TrackMeter> meters;
     std::vector<engine::WindowMeter> windows;
+    // The measurement of the last chunk, which runs while the render makes the next one.
+    std::vector<std::future<void>> measuring;
 
-    void add(const std::vector<std::vector<float>>& chunk) {
+    void wait() {
+        for (std::future<void>& meter : measuring) {
+            meter.get();
+        }
+        measuring.clear();
+    }
+
+    void add(std::vector<std::vector<float>> chunk) {
+        wait();
         const std::ptrdiff_t length = std::ssize(chunk.front());
         const std::ptrdiff_t first = std::clamp(skip - seen, std::ptrdiff_t{0}, length);
         seen += length;
         if (first == length) {
             return;
         }
-        // Each output's meters run on their own thread, since measuring takes about as long as rendering.
-        std::vector<std::future<void>> measured;
-        measured.reserve(meters.size());
-        for (std::size_t index = 0; index < meters.size(); ++index) {
-            measured.push_back(std::async(std::launch::async, [this, &chunk, first, index] {
-                const auto channels = std::span{chunk}.subspan(2 * index, 2);
-                const auto measure = [&](std::span<const std::vector<float>> part) {
-                    meters[index].add(part);
-                    if (!windows.empty()) {
-                        windows[index].add(part);
-                    }
-                };
-                if (first == 0) {
-                    measure(channels);
-                    return;
-                }
-                measure(channels | std::views::transform([first](const std::vector<float>& channel) {
-                            return std::vector<float>(channel.begin() + first, channel.end());
-                        }) |
-                        std::ranges::to<std::vector>());
-            }));
+        if (first > 0) {
+            for (std::vector<float>& channel : chunk) {
+                channel.erase(channel.begin(), channel.begin() + first);
+            }
         }
-        for (std::future<void>& meter : measured) {
-            meter.get();
+        // Each output's meters run on their own thread, since measuring takes about as long as rendering.
+        const auto shared = std::make_shared<const std::vector<std::vector<float>>>(std::move(chunk));
+        measuring.reserve(meters.size());
+        for (std::size_t index = 0; index < meters.size(); ++index) {
+            measuring.push_back(std::async(std::launch::async, [this, shared, index] {
+                const auto channels = std::span{*shared}.subspan(2 * index, 2);
+                meters[index].add(channels);
+                if (!windows.empty()) {
+                    windows[index].add(channels);
+                }
+            }));
         }
     }
 
-    [[nodiscard]] std::vector<Measured> results() const {
+    [[nodiscard]] std::vector<Measured> results() {
+        wait();
         return std::views::iota(std::size_t{0}, meters.size()) | std::views::transform([&](std::size_t index) {
                    return Measured{
                        .levels = meters[index].levels(),
@@ -234,13 +239,14 @@ struct Measurement {
     // We measure no windows when this and the params' resolution are both null.
     Json defaultResolution;
     std::function<Json(const AnalysisRange&, const engine::Session&, std::vector<Measured>)> report;
+    // With the mix, we also append each chunk of the mix to it when it is set.
+    std::shared_ptr<SpilledAudio> mix;
 };
 
 // UI thread: checks from, to and resolution and sets up one render of the outputs, each track as its stem plays, and
 // what report makes of their measurements.
-RenderJob prepareMeasurement(ProjectController& controller, const Registry& registry, const Json& params,
-                             Measurement measurement) {
-    const model::Document document = liveDocument(controller);
+RenderJob prepareMeasurement(ProjectController& controller, const Registry& registry, const model::Document& document,
+                             const Json& params, Measurement measurement) {
     auto session = std::make_shared<const engine::Session>(toSession(document, registry, controller.folder()));
     const core::TempoMap& tempo = document.tempo;
     const core::Ticks end = exportEnd(*session, document);
@@ -292,7 +298,13 @@ RenderJob prepareMeasurement(ProjectController& controller, const Registry& regi
     }
     return {.render = std::move(render),
             .frames = range.frameOf(range.to),
-            .sink = [meters](const std::vector<std::vector<float>>& chunk) { meters->add(chunk); },
+            .sink =
+                [meters, mix = measurement.mix](std::vector<std::vector<float>> chunk) {
+                    if (mix) {
+                        mix->append(std::span{chunk}.first(2));
+                    }
+                    meters->add(std::move(chunk));
+                },
             .finish =
                 [meters, range, session, report = std::move(measurement.report)] {
                     return RenderResult{.channels = {}, .json = report(range, *session, meters->results())};
@@ -303,21 +315,26 @@ std::vector<std::string> trackIdsOf(const std::vector<model::TrackId>& ids) {
     return ids | std::views::transform(&model::TrackId::value) | std::ranges::to<std::vector>();
 }
 
+Json tracksJson(const AnalysisRange& range, const std::vector<std::string>& trackIds,
+                const std::vector<Measured>& measured) {
+    Json json = Json::object();
+    for (const auto& [id, levels] : std::views::zip(trackIds, measured)) {
+        json[id] = levelsJson(range, id, levels);
+    }
+    return json;
+}
+
 RenderJob prepareAnalysis(ProjectController& controller, const Registry& registry, const Json& params,
                           const std::vector<model::TrackId>& ids) {
     return prepareMeasurement(
-        controller, registry, params,
+        controller, registry, liveDocument(controller), params,
         {.trackIds = trackIdsOf(ids),
          .withMix = false,
          .defaultResolution = nullptr,
-         .report = [trackIds = trackIdsOf(ids)](const AnalysisRange& range, const engine::Session&,
-                                                std::vector<Measured> measured) {
-             Json json = Json::object();
-             for (const auto& [id, levels] : std::views::zip(trackIds, measured)) {
-                 json[id] = levelsJson(range, id, levels);
-             }
-             return json;
-         }});
+         .report = [trackIds = trackIdsOf(ids)](
+                       const AnalysisRange& range, const engine::Session&,
+                       const std::vector<Measured>& measured) { return tracksJson(range, trackIds, measured); },
+         .mix = nullptr});
 }
 
 engine::InspectedOutput trackOutput(const engine::Session& session, const std::string& id, Measured measured) {
@@ -401,14 +418,252 @@ RenderJob prepareMixInspection(ProjectController& controller, const Registry& re
         throw AppError("the project has no audio tracks or buses to inspect, add one first");
     }
     return prepareMeasurement(
-        controller, registry, params,
+        controller, registry, liveDocument(controller), params,
         {.trackIds = trackIdsOf(ids),
          .withMix = true,
          .defaultResolution = kResolutionNames.front(),
-         .report = [trackIds = trackIdsOf(ids)](const AnalysisRange& range, const engine::Session& session,
-                                                std::vector<Measured> measured) {
-             return inspectionJson(range, session, trackIds, std::move(measured));
-         }});
+         .report =
+             [trackIds = trackIdsOf(ids)](const AnalysisRange& range, const engine::Session& session,
+                                          std::vector<Measured> measured) {
+                 return inspectionJson(range, session, trackIds, std::move(measured));
+             },
+         .mix = nullptr});
+}
+
+using FileStamp = std::pair<std::filesystem::path, AudioStamp>;
+
+// Everything a render of the project reads: the project with its plugins' states, the settings, the folder its paths
+// start from, the sample rate and the files they name. A key that names too many files to stamp matches no other.
+struct RenderKey {
+    std::string document;
+    Json settings;
+    std::filesystem::path folder;
+    double sampleRate = 0;
+    std::vector<FileStamp> files;
+    bool stamped = true;
+    bool operator==(const RenderKey& other) const {
+        return stamped && other.stamped && document == other.document && settings == other.settings &&
+               folder == other.folder && sampleRate == other.sampleRate && files == other.files;
+    }
+};
+
+struct ProjectRender {
+    RenderKey key;
+    std::vector<std::string> trackIds;
+    AnalysisRange range;
+    engine::Session session;
+    // We keep the mix first, then each track of trackIds.
+    std::vector<Measured> measured;
+    std::shared_ptr<SpilledAudio> mix;
+};
+
+class FileStamps {
+public:
+    explicit FileStamps(std::filesystem::path folder) : folder_(std::move(folder)) {}
+
+    // Stamps the file a string names, with or without the project folder before it.
+    void addFile(const std::string& text) {
+        if (named(text)) {
+            add(folder_ / text);
+        }
+    }
+
+    // Stamps every file in the folder of the file a plugin's string names, or in the folder it names, since a plugin
+    // such as a sampler also reads the files beside the one it names. In the project folder itself, where exports
+    // land, we stamp only the named file.
+    void addFolderOf(const std::string& text) {
+        std::error_code error;
+        const std::filesystem::path path = folder_ / text;
+        if (!named(text) || !std::filesystem::exists(path, error)) {
+            return;
+        }
+        const std::filesystem::path root = std::filesystem::is_directory(path, error) ? path : path.parent_path();
+        if (std::filesystem::equivalent(root, folder_, error)) {
+            add(path);
+            return;
+        }
+        for (auto entry = std::filesystem::recursive_directory_iterator(root, error);
+             !error && entry != std::filesystem::recursive_directory_iterator(); entry.increment(error)) {
+            if (entry->is_regular_file(error)) {
+                add(entry->path());
+            }
+        }
+    }
+
+    void moveInto(RenderKey& key) {
+        key.stamped = files_.size() <= kMostFiles;
+        key.files = std::move(files_);
+    }
+
+private:
+    static constexpr std::size_t kMostFiles = 20000;
+    static constexpr std::size_t kLongestPath = 1024;
+
+    static bool named(const std::string& text) {
+        return !text.empty() && text.size() <= kLongestPath && !text.contains('\n') && !text.contains('\0');
+    }
+
+    void add(const std::filesystem::path& path) {
+        std::error_code error;
+        if (files_.size() <= kMostFiles && std::filesystem::is_regular_file(path, error)) {
+            if (const auto stamp = stampOf(path)) {
+                files_.emplace_back(path, *stamp);
+            }
+        }
+    }
+
+    std::filesystem::path folder_;
+    std::vector<FileStamp> files_;
+};
+
+template <class Visit>
+void forEachString(const Json& json, const Visit& visit) {
+    if (json.is_structured()) {
+        for (const Json& value : json) {
+            forEachString(value, visit);
+        }
+    } else if (json.is_string()) {
+        visit(json.get_ref<const std::string&>());
+    }
+}
+
+// The strings of every plugin state that is JSON, such as a sampler's SFZ path.
+Json pluginStates(const model::Document& document) {
+    Json states = Json::array();
+    const auto addState = [&](const std::optional<model::PluginSlot>& slot) {
+        if (slot) {
+            Json state = Json::parse(slot->state, nullptr, false);
+            if (!state.is_discarded()) {
+                states.push_back(std::move(state));
+            }
+        }
+    };
+    for (const model::Track& track : document.tracks) {
+        addState(track.instrument);
+        for (const model::Insert& insert : track.inserts) {
+            addState(insert.plugin);
+        }
+    }
+    return states;
+}
+
+RenderKey renderKey(const model::Document& document, const engine::Session& session, const Registry& registry,
+                    const std::filesystem::path& folder, double sampleRate) {
+    const Json json = model::toJson(document);
+    RenderKey key{.document = json.dump(),
+                  .settings = Json::object(),
+                  .folder = folder,
+                  .sampleRate = sampleRate,
+                  .files = {},
+                  .stamped = true};
+    for (const Setting& setting : registry.allSettings()) {
+        key.settings[setting.id] = registry.settingValue(setting.id);
+    }
+    FileStamps stamps(folder);
+    forEachString(json, [&](const std::string& text) { stamps.addFile(text); });
+    forEachString(pluginStates(document), [&](const std::string& text) { stamps.addFolderOf(text); });
+    for (const engine::Track& track : session.tracks) {
+        for (const engine::AudioClip& clip : track.audioClips) {
+            stamps.addFile(clip.path.string());
+        }
+    }
+    stamps.moveInto(key);
+    return key;
+}
+
+bool measuresWholeProject(const Json& params) {
+    return std::ranges::none_of(std::array{"from", "to", "resolution"},
+                                [&](const char* name) { return params.contains(name) && !params.at(name).is_null(); });
+}
+
+// mix.inspect hears every track unmuted, so its mix is the exported mix while no track is soloed and each muted track
+// is silent anyway: it plays no audio and sends no other track MIDI.
+bool exportsInspectedMix(const Registry& registry, const model::Document& document) {
+    const auto changesMix = [&](const model::Track& track) {
+        if (track.solo) {
+            return true;
+        }
+        const TrackType* type = registry.trackType(track.kind);
+        return track.mute && (type == nullptr || playsAudio(*type, track) ||
+                              std::ranges::contains(document.tracks, track.id, [](const model::Track& other) {
+                                  return other.midiIn.sourceTrack;
+                              }));
+    };
+    return std::ranges::none_of(document.tracks, changesMix);
+}
+
+const ProjectRender& ProjectRenders::current(ProjectController& controller, const Registry& registry,
+                                             const model::Document& document) {
+    const std::vector<model::TrackId> ids = analyzableTracks(registry, document);
+    if (ids.empty()) {
+        throw AppError("the project has no audio tracks or buses to inspect, add one first");
+    }
+    RenderKey key = renderKey(document, toSession(document, registry, controller.folder()), registry,
+                              controller.folder(), controller.sampleRate());
+    if (last_ && last_->key == key) {
+        return *last_;
+    }
+    last_.reset();
+    auto render = std::make_shared<ProjectRender>();
+    render->key = std::move(key);
+    render->trackIds = trackIdsOf(ids);
+    render->mix = std::make_shared<SpilledAudio>(2);
+    renderNow(prepareMeasurement(controller, registry, document, Json::object(),
+                                 {.trackIds = render->trackIds,
+                                  .withMix = true,
+                                  .defaultResolution = kResolutionNames.front(),
+                                  .report =
+                                      [&render = *render](const AnalysisRange& range, const engine::Session& session,
+                                                          std::vector<Measured> measured) {
+                                          render.range = range;
+                                          render.session = session;
+                                          render.measured = std::move(measured);
+                                          return Json{};
+                                      },
+                                  .mix = render->mix}));
+    last_ = std::move(render);
+    return *last_;
+}
+
+Json ProjectRenders::analyzeTracks(ProjectController& controller, const Registry& registry, const Json& params) {
+    if (!measuresWholeProject(params)) {
+        return renderNow(prepareTracksRender(controller, registry, params)).json;
+    }
+    const ProjectRender& render = current(controller, registry, liveDocument(controller));
+    AnalysisRange range = render.range;
+    range.windows.clear();
+    const std::vector<Measured> tracks = render.measured | std::views::drop(1) |
+                                         std::views::transform([](const Measured& measured) {
+                                             return Measured{.levels = measured.levels, .windows = {}};
+                                         }) |
+                                         std::ranges::to<std::vector>();
+    return tracksJson(range, render.trackIds, tracks);
+}
+
+Json ProjectRenders::inspectMix(ProjectController& controller, const Registry& registry, const Json& params) {
+    if (!measuresWholeProject(params)) {
+        return renderNow(prepareMixInspection(controller, registry, params)).json;
+    }
+    const ProjectRender& render = current(controller, registry, liveDocument(controller));
+    return inspectionJson(render.range, render.session, render.trackIds, render.measured);
+}
+
+std::optional<MixLevels> ProjectRenders::exportMix(ProjectController& controller, const Registry& registry,
+                                                   const std::filesystem::path& file,
+                                                   const std::optional<LoudnessTarget>& target,
+                                                   AudioEncoding encoding) {
+    const model::Document document = liveDocument(controller);
+    const engine::Session session = toSession(document, registry, controller.folder());
+    if (analyzableTracks(registry, document).empty() || !exportsInspectedMix(registry, document)) {
+        return app::exportMix(session, registry, playbackContext(controller, document), file, controller.sampleRate(),
+                              target, encoding);
+    }
+    renderFrames(session, document, registry, controller.sampleRate());
+    if (!file.parent_path().empty()) {
+        std::filesystem::create_directories(file.parent_path());
+    }
+    AudioWriter writer(file, 2, controller.sampleRate(), encoding);
+    return writeMix(*current(controller, registry, document).mix, writer, controller.sampleRate(), target);
 }
 
 }  // namespace emerick::app

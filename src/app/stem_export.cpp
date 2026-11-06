@@ -241,49 +241,7 @@ void waitForReadAhead(const engine::Engine& engine) {
     }
 }
 
-struct CloseFile {
-    void operator()(std::FILE* file) const { std::fclose(file); }
-};
-
-// Keeps a render in a temporary file, so loudness matching can play it several times while memory stays flat.
-class SpilledAudio {
-public:
-    explicit SpilledAudio(std::size_t channels) : channels_(channels), file_(std::tmpfile()) {
-        if (!file_) {
-            throw AppError("cannot render: no temporary file to hold the mix");
-        }
-    }
-
-    void append(std::span<const std::vector<float>> chunk) {
-        for (const std::vector<float>& channel : chunk) {
-            if (std::fwrite(channel.data(), sizeof(float), channel.size(), file_.get()) != channel.size()) {
-                throw AppError("cannot render: the disk has no room for the temporary mix");
-            }
-        }
-        chunkFrames_.push_back(chunk.front().size());
-    }
-
-    void replay(const engine::ChunkSink& sink) const {
-        if (std::fseek(file_.get(), 0, SEEK_SET) != 0) {
-            throw AppError("cannot render: the temporary mix did not read back");
-        }
-        std::vector<std::vector<float>> chunk(channels_);
-        for (const std::size_t frames : chunkFrames_) {
-            for (std::vector<float>& channel : chunk) {
-                channel.resize(frames);
-                if (std::fread(channel.data(), sizeof(float), frames, file_.get()) != frames) {
-                    throw AppError("cannot render: the temporary mix did not read back");
-                }
-            }
-            sink(chunk);
-        }
-    }
-
-private:
-    std::size_t channels_;
-    std::unique_ptr<std::FILE, CloseFile> file_;
-    std::vector<std::size_t> chunkFrames_;
-};
+}  // namespace
 
 engine::Frames renderFrames(const engine::Session& session, const model::Document& document, const Registry& registry,
                             double sampleRate) {
@@ -295,7 +253,38 @@ engine::Frames renderFrames(const engine::Session& session, const model::Documen
     return document.tempo.ticksToFrames(end, sampleRate);
 }
 
-}  // namespace
+SpilledAudio::SpilledAudio(std::size_t channels) : channels_(channels), file_(std::tmpfile()) {
+    if (!file_) {
+        throw AppError("cannot render: no temporary file to hold the mix");
+    }
+}
+
+void SpilledAudio::append(std::span<const std::vector<float>> chunk) {
+    for (const std::vector<float>& channel : chunk) {
+        if (std::fwrite(channel.data(), sizeof(float), channel.size(), file_.get()) != channel.size()) {
+            throw AppError("cannot render: the disk has no room for the temporary mix");
+        }
+    }
+    chunkFrames_.push_back(chunk.front().size());
+}
+
+void SpilledAudio::replay(const engine::ChunkSink& sink) const {
+    if (std::fseek(file_.get(), 0, SEEK_SET) != 0) {
+        throw AppError("cannot render: the temporary mix did not read back");
+    }
+    std::vector<std::vector<float>> chunk(channels_);
+    for (const std::size_t frames : chunkFrames_) {
+        for (std::vector<float>& channel : chunk) {
+            channel.resize(frames);
+            if (std::fread(channel.data(), sizeof(float), frames, file_.get()) != frames) {
+                throw AppError("cannot render: the temporary mix did not read back");
+            }
+        }
+        sink(chunk);
+    }
+}
+
+void SpilledAudio::CloseFile::operator()(std::FILE* file) const { std::fclose(file); }
 
 model::Document liveDocument(ProjectController& controller) {
     return controller.instruments().withStates(controller.project().document());
@@ -386,7 +375,16 @@ std::optional<MixLevels> exportMix(const engine::Session& session, const Registr
     }
     SpilledAudio mix(2);
     renderMix([&mix](std::span<const std::vector<float>> chunk) { mix.append(chunk); });
+    return writeMix(mix, writer, sampleRate, target);
+}
+
+std::optional<MixLevels> writeMix(const SpilledAudio& mix, AudioWriter& writer, double sampleRate,
+                                  const std::optional<LoudnessTarget>& target) {
     const engine::SignalReplay replay = [&mix](const engine::ChunkSink& sink) { mix.replay(sink); };
+    if (!target) {
+        replay([&writer](std::span<const std::vector<float>> chunk) { writer.write(chunk); });
+        return std::nullopt;
+    }
     const engine::LoudnessMatch match = engine::matchLoudness(replay, 2, sampleRate, target->lufs, target->ceilingDbtp);
     engine::TrackMeter meter(2, sampleRate);
     const auto write = [&](std::span<const std::vector<float>> chunk) {

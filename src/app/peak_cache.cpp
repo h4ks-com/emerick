@@ -22,16 +22,6 @@ constexpr core::Frames kBlocksPerRead = 64;
 
 using engine::SndFile;
 
-std::optional<AudioStamp> stampOf(const std::filesystem::path& audio) {
-    std::error_code error;
-    const auto size = std::filesystem::file_size(audio, error);
-    const auto modified = std::filesystem::last_write_time(audio, error);
-    if (error) {
-        return std::nullopt;
-    }
-    return AudioStamp{size, static_cast<qint64>(modified.time_since_epoch().count())};
-}
-
 Peaks readAudioPeaks(const std::filesystem::path& audio) {
     SF_INFO info{};
     const SndFile sound{engine::openSoundFile(audio, SFM_READ, &info)};
@@ -84,6 +74,16 @@ void storePeaks(const std::filesystem::path& file, const PeakFile& peaks) {
 }
 
 }  // namespace
+
+std::optional<AudioStamp> stampOf(const std::filesystem::path& audio) {
+    std::error_code error;
+    const auto size = std::filesystem::file_size(audio, error);
+    const auto modified = std::filesystem::last_write_time(audio, error);
+    if (error) {
+        return std::nullopt;
+    }
+    return AudioStamp{size, static_cast<qint64>(modified.time_since_epoch().count())};
+}
 
 PeakLevels loadPeaks(const std::filesystem::path& audio) {
     const auto stamp = stampOf(audio);

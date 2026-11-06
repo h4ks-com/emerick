@@ -2,6 +2,7 @@ import asyncio
 import contextlib
 import functools
 import gzip
+import logging
 import mimetypes
 import re
 from collections.abc import AsyncGenerator, Callable
@@ -42,6 +43,8 @@ from emerick_service.sessions import (
 )
 from emerick_service.storage import LocalStorage, PathEscapeError, S3Storage, Storage, contained, file_chunks
 from emerick_service.viewer import Renderer, choose_bundle
+
+log = logging.getLogger(__name__)
 
 mimetypes.add_type("application/wasm", ".wasm")
 BYTE_RANGE = re.compile(r"bytes=(\d*)-(\d*)")
@@ -120,7 +123,9 @@ def create_app(settings: Settings, storage: Storage | None = None) -> FastAPI:
     settings.data_dir.mkdir(parents=True, exist_ok=True)
     settings.work_dir.mkdir(parents=True, exist_ok=True)
     db = Database(settings.db_path)
-    client = httpx.AsyncClient(timeout=httpx.Timeout(10, read=None))
+    # A session's server closes an idle connection after a few seconds, so a pooled one can close just as we send on
+    # it. We open a fresh connection per call, which costs little on localhost.
+    client = httpx.AsyncClient(timeout=httpx.Timeout(10, read=None), limits=httpx.Limits(max_keepalive_connections=0))
     manager = SessionManager(settings, db, storage or make_storage(settings), client)
     renderer = Renderer(settings, db, manager.storage)
     mcp = build_mcp(manager, db)
@@ -314,7 +319,11 @@ def create_app(settings: Settings, storage: Storage | None = None) -> FastAPI:
         db.touch(session_id)
         headers = {name: value for name, value in request.headers.items() if name in FORWARDED_REQUEST_HEADERS}
         upstream = client.build_request(request.method, child.mcp_url, headers=headers, content=await request.body())
-        response = await client.send(upstream, stream=True)
+        try:
+            response = await client.send(upstream, stream=True)
+        except httpx.HTTPError as error:
+            log.warning("session %s did not answer %s on MCP: %r", session_id, request.method, error)
+            raise
         return StreamingResponse(
             response.aiter_raw(),
             status_code=response.status_code,

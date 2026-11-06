@@ -127,6 +127,32 @@ TEST_CASE("a track on a device that cannot run at the engine's rate leaves the o
                        "Digital Keyboard runs at 44100 Hz; set Audio > Sample rate to 44100 and restart Emerick"}});
 }
 
+TEST_CASE("a track on an unplugged MIDI port plays as if routed to none and keeps its route") {
+    ProjectRig rig;
+    model::Document document;
+    model::Track keys;
+    keys.kind = "midi";
+    keys.midiIn = {.portId = "Digital Keyboard Port 1", .channel = 0};
+    keys.midiOut = {.portId = "Digital Keyboard Port 1", .channel = 1};
+    model::Track vox;
+    vox.kind = "audio";
+    vox.audioOut = {"interface", {1, 2}};
+    document.tracks = {keys, vox};
+    const auto folder = rig.path("song.erk");
+    model::saveProject(document, folder);
+    rig.run("project.open", {{"path", folder.string()}});
+
+    rig.run("transport.play");
+    rig.audio->process(kBlock);
+    CHECK(rig.controller->engine().playing());
+    rig.run("transport.locate", {{"at", "1.1.0"}});
+    CHECK(rig.controller->engine().position().ticks < rig.controller->ticksPerBar());
+    const Json state = projectState(*rig.controller);
+    CHECK_FALSE(state.contains("sessionError"));
+    CHECK(state.at("routeErrors").size() == 2);
+    CHECK(rig.controller->project().track(keys.id)->midiOut.portId == "Digital Keyboard Port 1");
+}
+
 TEST_CASE("the stream opens on play with only the outputs, and closes again once stopped") {
     ProjectRig rig;
     const std::string vox = rig.run("track.addAudio").at("id");

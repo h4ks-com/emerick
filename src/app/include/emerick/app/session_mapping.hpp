@@ -10,6 +10,7 @@
 #include "emerick/app/automation_params.hpp"
 #include "emerick/app/registry.hpp"
 #include "emerick/engine/audio_backend.hpp"
+#include "emerick/engine/midi_backend.hpp"
 #include "emerick/engine/session.hpp"
 #include "emerick/model/document.hpp"
 
@@ -66,7 +67,7 @@ void attachPluginInserts(engine::Track& track, const model::Track& source, const
 // route for the engine and report it.
 std::vector<engine::SessionError> dropUnusableDevices(engine::Session& session,
                                                       std::span<const engine::AudioDeviceInfo> devices,
-                                                      double sampleRate);
+                                                      std::span<const engine::MidiPortInfo> ports, double sampleRate);
 // Older builds could store a device id with text after it; a known id that starts the stored one replaces it.
 void repairDeviceIds(model::Document& document, std::span<const engine::AudioDeviceInfo> devices);
 

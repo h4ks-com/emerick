@@ -220,8 +220,22 @@ engine::Session toSession(const model::Document& document, const Registry& regis
 
 std::vector<engine::SessionError> dropUnusableDevices(engine::Session& session,
                                                       std::span<const engine::AudioDeviceInfo> devices,
-                                                      double sampleRate) {
+                                                      std::span<const engine::MidiPortInfo> ports, double sampleRate) {
     std::vector<engine::SessionError> errors;
+    const auto plugged = [&](const std::string& portId, bool input) {
+        return std::ranges::any_of(
+            ports, [&](const engine::MidiPortInfo& port) { return port.id == portId && port.isInput == input; });
+    };
+    const auto dropPort = [&](const std::string& owner, engine::MidiRoute& route, bool input) {
+        if (route.portId.empty() || plugged(route.portId, input)) {
+            return;
+        }
+        errors.push_back({owner, std::string{"the MIDI "} + (input ? "input " : "output ") + route.portId +
+                                     " is missing, so the track plays as if routed to none until it returns"});
+        route.portId.clear();
+    };
+    std::erase_if(session.clockPorts, [&](const std::string& port) { return !plugged(port, false); });
+    dropPort(engine::kMetronomeId, session.metronome.midiOut, false);
     const auto drop = [&](const std::string& owner, engine::AudioRoute& route, const std::string& missingText) {
         if (route.deviceId.empty()) {
             return;
@@ -240,6 +254,11 @@ std::vector<engine::SessionError> dropUnusableDevices(engine::Session& session,
                  std::string{"the audio "} + side + " device " + route->deviceId +
                      " is missing, pick a device in the inspector");
         }
+        for (engine::AudioRoute* route : {&track.captureOut, &track.chainOut}) {
+            drop(track.id, *route, "the audio output device " + route->deviceId + " is missing");
+        }
+        dropPort(track.id, track.midiIn, true);
+        dropPort(track.id, track.midiOut, false);
     }
     engine::AudioRoute& metronome = session.metronome.audioOut;
     drop(engine::kMetronomeId, metronome,

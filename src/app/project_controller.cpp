@@ -346,8 +346,9 @@ void ProjectController::flush() {
 
 void ProjectController::refreshDevices() {
     const std::vector<engine::AudioDeviceInfo> before = engine_.audioDevices();
+    const std::vector<engine::MidiPortInfo> portsBefore = engine_.midiPorts();
     engine_.refreshDevices();
-    if (engine_.audioDevices() != before) {
+    if (engine_.audioDevices() != before || engine_.midiPorts() != portsBefore) {
         scheduleFlush();
     }
     emit devicesChanged();
@@ -631,7 +632,7 @@ void ProjectController::publish() {
     session.cycle = engineCycle();
     session.taps = taps_ | std::views::values | std::ranges::to<std::vector>();
     applyPasses(session);
-    routeErrors_ = dropUnusableDevices(session, engine_.audioDevices(), options_.sampleRate);
+    routeErrors_ = dropUnusableDevices(session, engine_.audioDevices(), engine_.midiPorts(), options_.sampleRate);
     registeredWarnings_ = registeredWarnings(project_.document(), registry_);
     std::set<std::string> ids;
     std::set<std::string> audioIds;

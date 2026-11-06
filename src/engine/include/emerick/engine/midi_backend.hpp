@@ -17,6 +17,7 @@ struct MidiPortInfo {
     std::string id;
     std::string name;
     bool isInput = false;
+    bool operator==(const MidiPortInfo&) const = default;
 };
 
 // Timestamps are steady clock nanoseconds, the clock AudioBlock::hostTimeNs uses.

@@ -179,13 +179,38 @@ std::unique_ptr<OfflineRender> mixAndTracksRender(const engine::Session& session
 // The cores this process may use: a container's CPU quota can allow fewer than the machine has.
 std::size_t availableCores();
 
+// The signal before its fader of each track nothing feeds, from the last render of the mix and tracks, in a temporary
+// folder, so a later render whose sources play the same plays them from there.
+class SourceStems {
+public:
+    SourceStems();
+    ~SourceStems();
+    SourceStems(const SourceStems&) = delete;
+    SourceStems& operator=(const SourceStems&) = delete;
+    SourceStems(SourceStems&&) = delete;
+    SourceStems& operator=(SourceStems&&) = delete;
+
+    [[nodiscard]] std::filesystem::path file(const std::string& trackId) const;
+    // True while the files hold whole stems of the sources key names.
+    [[nodiscard]] bool holds(const std::string& key) const { return !key.empty() && key == key_; }
+    // The files are being written, or failed to read back, so they hold nothing whole until keep.
+    void forget() { key_.clear(); }
+    void keep(std::string key) { key_ = std::move(key); }
+
+private:
+    std::filesystem::path folder_;
+    std::string key_;
+};
+
 // UI thread: renders what one render of the session's tracks, all unmuted, would hand sink: the mix of every track
 // that plays audio on channels 1 and 2 and each listed track's own output after it, for frames from the start. Each
 // track nothing feeds plays alone on its own core, with the tracks it takes MIDI from, into a stem of its signal
 // before its fader; then each bus plays alone from the stems that feed it once they exist, and the last render plays
-// every stem through its fader. A loop of buses plays in one render.
+// every stem through its fader. A loop of buses plays in one render. With stems, the sources play from them when
+// sourcesKey, which names everything the sources play, matches what they hold, and render into them otherwise.
 void renderMixAndTracks(const engine::Session& session, const Registry& registry, const PlaybackContext& context,
                         const std::vector<std::string>& trackIds, double sampleRate, engine::Frames frames,
-                        const OfflineRender::ChunkSink& sink);
+                        const OfflineRender::ChunkSink& sink, SourceStems* stems = nullptr,
+                        const std::string& sourcesKey = {});
 
 }  // namespace emerick::app

@@ -45,6 +45,7 @@ private:
                                  const model::Document& document);
 
     std::shared_ptr<const ProjectRender> last_;
+    std::shared_ptr<SourceStems> stems_;
 };
 
 }  // namespace emerick::app

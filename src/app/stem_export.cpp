@@ -1,11 +1,21 @@
 #include "emerick/app/stem_export.hpp"
 
+#include <sndfile.h>
+
+#include <QCoreApplication>
+
+#ifndef _WIN32
+#include <cerrno>
+#include <csignal>
+#endif
+
 #include <algorithm>
 #include <atomic>
 #include <charconv>
 #include <chrono>
 #include <cmath>
 #include <condition_variable>
+#include <cstdint>
 #include <cstdio>
 #include <deque>
 #include <filesystem>
@@ -30,6 +40,7 @@
 #include "emerick/app/track_rows.hpp"
 #include "emerick/engine/audio_analysis.hpp"
 #include "emerick/engine/engine.hpp"
+#include "emerick/engine/sound_file.hpp"
 #include "emerick/model/clip_edit.hpp"
 #include "emerick/model/document.hpp"
 #include "sampler_params.hpp"
@@ -47,6 +58,7 @@ constexpr const char* kRenderDevice = OfflineRender::kDevice;
 using RenderInstruments = std::vector<std::shared_ptr<engine::Plugin>>;
 
 constexpr std::chrono::seconds kSamplerLoadTimeout{120};
+constexpr const char* kStemsPrefix = "emerick-stems-";
 
 std::string fileStem(const std::string& name) {
     std::string stem = name.empty() ? std::string{"track"} : name;
@@ -965,14 +977,93 @@ std::unique_ptr<OfflineRender> mixAndTracksRender(const engine::Session& session
                                            sampleRate);
 }
 
+namespace {
+
+// A process the service stops never runs its destructors, so each new SourceStems removes the stems of processes that
+// ended.
+void removeLeftStems() {
+#ifndef _WIN32
+    std::error_code error;
+    for (const auto& entry : std::filesystem::directory_iterator(std::filesystem::temp_directory_path(), error)) {
+        const std::string name = entry.path().filename().string();
+        if (!name.starts_with(kStemsPrefix)) {
+            continue;
+        }
+        long pid = 0;
+        const char* digits = name.data() + std::string_view{kStemsPrefix}.size();
+        if (std::from_chars(digits, name.data() + name.size(), pid).ec == std::errc{} && pid > 0 &&
+            ::kill(static_cast<pid_t>(pid), 0) != 0 && errno == ESRCH) {
+            std::filesystem::remove_all(entry.path(), error);
+        }
+    }
+#endif
+}
+
+}  // namespace
+
 std::size_t availableCores() {
     static const std::size_t kCores = readAvailableCores();
     return kCores;
 }
 
+SourceStems::SourceStems()
+    : folder_(std::filesystem::temp_directory_path() / std::format("{}{}-{:x}", kStemsPrefix,
+                                                                   QCoreApplication::applicationPid(),
+                                                                   reinterpret_cast<std::uintptr_t>(this))) {
+    removeLeftStems();
+    std::filesystem::create_directories(folder_);
+}
+
+SourceStems::~SourceStems() {
+    std::error_code error;
+    std::filesystem::remove_all(folder_, error);
+}
+
+std::filesystem::path SourceStems::file(const std::string& trackId) const { return folder_ / (trackId + ".wav"); }
+
+namespace {
+
+// Pushes each kept stem in the chunks its render pushed it in: the settling blocks, then the chunks of the render.
+void replayStems(const SourceStems& stems, const std::vector<engine::Track>& tracks,
+                 const std::vector<std::size_t>& sources, engine::Frames frames,
+                 std::vector<std::unique_ptr<StemStream>>& streams) {
+    struct CloseSound {
+        void operator()(SNDFILE* file) const { sf_close(file); }
+    };
+    std::vector<std::unique_ptr<SNDFILE, CloseSound>> files;
+    for (const std::size_t index : sources) {
+        SF_INFO info{};
+        files.emplace_back(engine::openSoundFile(stems.file(tracks[index].id), SFM_READ, &info));
+        if (!files.back() || info.channels != 2) {
+            throw AppError("cannot render: a kept stem did not read back");
+        }
+    }
+    std::vector<engine::Frames> sizes{kSettleBlocks * kBlock};
+    for (engine::Frames done = 0; done < frames; done += kChunk) {
+        sizes.push_back(std::min(kChunk, frames - done));
+    }
+    std::vector<float> interleaved;
+    for (const engine::Frames size : sizes) {
+        for (std::size_t position = 0; position < sources.size(); ++position) {
+            interleaved.resize(2 * static_cast<std::size_t>(size));
+            if (sf_readf_float(files[position].get(), interleaved.data(), size) != size) {
+                throw AppError("cannot render: a kept stem ended early");
+            }
+            std::vector<std::vector<float>> stem(2, std::vector<float>(static_cast<std::size_t>(size)));
+            for (std::size_t frame = 0; frame < stem.front().size(); ++frame) {
+                stem[0][frame] = interleaved[2 * frame];
+                stem[1][frame] = interleaved[(2 * frame) + 1];
+            }
+            streams[sources[position]]->push(std::move(stem));
+        }
+    }
+}
+
+}  // namespace
+
 void renderMixAndTracks(const engine::Session& session, const Registry& registry, const PlaybackContext& context,
                         const std::vector<std::string>& trackIds, double sampleRate, engine::Frames frames,
-                        const OfflineRender::ChunkSink& sink) {
+                        const OfflineRender::ChunkSink& sink, SourceStems* stems, const std::string& sourcesKey) {
     const model::Document& document = *context.document;
     const engine::Session capture = captureSession(session, trackIds, &document);
     const std::vector<engine::Track>& tracks = capture.tracks;
@@ -1054,7 +1145,23 @@ void renderMixAndTracks(const engine::Session& session, const Registry& registry
                    });
         }) |
         std::ranges::to<std::vector>();
-    for (const std::vector<std::size_t>& bucket : bucketsOf(groups)) {
+    const std::vector<std::size_t> sources =
+        std::views::iota(std::size_t{0}, count) |
+        std::views::filter([&](std::size_t index) { return sounds[index] && graph->level[index] == 0; }) |
+        std::ranges::to<std::vector>();
+    std::string key;
+    if (stems != nullptr && !sourcesKey.empty()) {
+        key = std::format("{}\n{} frames at {} Hz", sourcesKey, frames, sampleRate);
+        for (const std::size_t index : sources) {
+            key += "\n" + tracks[index].id;
+        }
+    }
+    const bool replay = stems != nullptr && stems->holds(key);
+    if (stems != nullptr) {
+        stems->forget();
+    }
+    for (const std::vector<std::size_t>& bucket :
+         replay ? std::vector<std::vector<std::size_t>>{} : bucketsOf(groups)) {
         std::vector<engine::Track> members;
         std::vector<std::size_t> writes;
         for (std::size_t index = 0; index < count; ++index) {
@@ -1165,6 +1272,13 @@ void renderMixAndTracks(const engine::Session& session, const Registry& registry
                 std::size_t chunk = 0;
                 std::vector<std::vector<float>> late(2 * stage.writes.size(),
                                                      std::vector<float>(static_cast<std::size_t>(stage.shift)));
+                // Sources also keep their stems, so a later render whose sources play the same skips them.
+                std::vector<AudioWriter> kept;
+                if (!key.empty() && stage.reads.empty()) {
+                    for (const std::size_t index : stage.writes) {
+                        kept.emplace_back(stems->file(tracks[index].id), 2, sampleRate);
+                    }
+                }
                 const auto pushStems = [&](std::vector<std::vector<float>> output) {
                     for (std::size_t position = 0; position < stage.writes.size(); ++position) {
                         std::vector<std::vector<float>> stem(2);
@@ -1175,6 +1289,9 @@ void renderMixAndTracks(const engine::Session& session, const Registry& registry
                             carried.insert(carried.end(), played.begin(), played.end());
                             stem[side].assign(carried.begin(), carried.begin() + static_cast<std::ptrdiff_t>(size));
                             carried.erase(carried.begin(), carried.begin() + static_cast<std::ptrdiff_t>(size));
+                        }
+                        if (!kept.empty()) {
+                            kept[position].write(stem);
                         }
                         streams[stage.writes[position]]->push(std::move(stem));
                     }
@@ -1204,7 +1321,18 @@ void renderMixAndTracks(const engine::Session& session, const Registry& registry
             });
         }) |
         std::ranges::to<std::vector>();
-    work.run(jobs);
+    std::vector<std::function<void()>> all = jobs;
+    if (replay) {
+        all.emplace_back([&] {
+            FailedStage outcome(sources, {}, streams);
+            replayStems(*stems, tracks, sources, frames, streams);
+            outcome.played();
+        });
+    }
+    work.run(all);
+    if (!key.empty()) {
+        stems->keep(key);
+    }
 }
 
 }  // namespace emerick::app

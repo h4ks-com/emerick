@@ -12,6 +12,7 @@
 #include <span>
 #include <string>
 #include <string_view>
+#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -247,6 +248,9 @@ struct Measurement {
     std::shared_ptr<SpilledAudio> mix;
     // With the mix, plays each track and bus on its own core, on the thread that runs the job.
     bool acrossCores = false;
+    // Across the cores, the sources play from these stems while they hold sourcesKey, and render into them otherwise.
+    std::shared_ptr<SourceStems> stems;
+    std::string sourcesKey;
 };
 
 // UI thread: checks from, to and resolution and sets up one render of the outputs, each track as its stem plays, and
@@ -297,11 +301,12 @@ RenderJob prepareMeasurement(ProjectController& controller, const Registry& regi
     std::unique_ptr<OfflineRender> render;
     std::function<void(const OfflineRender::ChunkSink&)> play;
     if (measurement.withMix && measurement.acrossCores) {
-        const auto played =
-            std::make_shared<const std::pair<PlaybackContext, std::vector<std::string>>>(context, trackIds);
-        play = [session, &registry, played, rate = range.sampleRate,
+        const auto played = std::make_shared<const std::tuple<PlaybackContext, std::vector<std::string>, std::string>>(
+            context, trackIds, measurement.sourcesKey);
+        play = [session, &registry, played, stems = measurement.stems, rate = range.sampleRate,
                 frames = range.frameOf(range.to)](const OfflineRender::ChunkSink& sink) {
-            renderMixAndTracks(*session, registry, played->first, played->second, rate, frames, sink);
+            renderMixAndTracks(*session, registry, std::get<0>(*played), std::get<1>(*played), rate, frames, sink,
+                               stems.get(), std::get<2>(*played));
         };
     } else if (measurement.withMix) {
         render = mixAndTracksRender(*session, registry, context, trackIds, range.sampleRate);
@@ -350,7 +355,9 @@ RenderJob prepareAnalysis(ProjectController& controller, const Registry& registr
                        const AnalysisRange& range, const engine::Session&,
                        const std::vector<Measured>& measured) { return tracksJson(range, trackIds, measured); },
          .mix = nullptr,
-         .acrossCores = false});
+         .acrossCores = false,
+         .stems = nullptr,
+         .sourcesKey = {}});
 }
 
 engine::InspectedOutput trackOutput(const engine::Session& session, const std::string& id, Measured measured) {
@@ -444,7 +451,9 @@ RenderJob prepareMixInspection(ProjectController& controller, const Registry& re
                  return inspectionJson(range, session, trackIds, std::move(measured));
              },
          .mix = nullptr,
-         .acrossCores = false});
+         .acrossCores = false,
+         .stems = nullptr,
+         .sourcesKey = {}});
 }
 
 using FileStamp = std::pair<std::filesystem::path, AudioStamp>;
@@ -453,6 +462,9 @@ using FileStamp = std::pair<std::filesystem::path, AudioStamp>;
 // start from, the sample rate and the files they name. A key that names too many files to stamp matches no other.
 struct RenderKey {
     std::string document;
+    // The document without its mixer settings, which act after the inserts, so a change to them alone leaves what the
+    // tracks nothing feeds play as it was.
+    std::string sources;
     Json settings;
     std::filesystem::path folder;
     double sampleRate = 0;
@@ -564,10 +576,40 @@ Json pluginStates(const model::Document& document) {
     return states;
 }
 
+// The document with no fader, pan, mute, solo, sends or output bus on its tracks and no lane that moves them.
+Json withoutMixer(Json document) {
+    for (Json& track : document.at("tracks")) {
+        for (const char* field : {"gainDb", "pan", "mute", "solo", "sends", "outputBus"}) {
+            track.erase(field);
+        }
+        Json& lanes = track.at("automation");
+        const auto mixer = std::ranges::remove_if(lanes, [](const Json& lane) {
+            const auto& param = lane.at("param").get_ref<const std::string&>();
+            return param == "gain" || param == "pan" || param == "mute" || param.starts_with("send.");
+        });
+        lanes.erase(mixer.begin(), mixer.end());
+    }
+    return document;
+}
+
+// Everything the tracks nothing feeds play, or empty when the key stamped too few of the files.
+std::string sourcesKey(const RenderKey& key) {
+    if (!key.stamped) {
+        return {};
+    }
+    std::string text =
+        std::format("{}\n{}\n{}\n{}", key.sources, key.settings.dump(), key.folder.string(), key.sampleRate);
+    for (const auto& [path, stamp] : key.files) {
+        text += std::format("\n{} {} {}", path.string(), stamp.size, stamp.modified);
+    }
+    return text;
+}
+
 RenderKey renderKey(const model::Document& document, const engine::Session& session, const Registry& registry,
                     const std::filesystem::path& folder, double sampleRate) {
     const Json json = model::toJson(document);
     RenderKey key{.document = json.dump(),
+                  .sources = withoutMixer(json).dump(),
                   .settings = Json::object(),
                   .folder = folder,
                   .sampleRate = sampleRate,
@@ -621,6 +663,9 @@ const ProjectRender& ProjectRenders::current(ProjectController& controller, cons
         return *last_;
     }
     last_.reset();
+    if (!stems_) {
+        stems_ = std::make_shared<SourceStems>();
+    }
     auto render = std::make_shared<ProjectRender>();
     render->key = std::move(key);
     render->trackIds = trackIdsOf(ids);
@@ -638,7 +683,9 @@ const ProjectRender& ProjectRenders::current(ProjectController& controller, cons
                                           return Json{};
                                       },
                                   .mix = render->mix,
-                                  .acrossCores = true}));
+                                  .acrossCores = true,
+                                  .stems = stems_,
+                                  .sourcesKey = sourcesKey(render->key)}));
     last_ = std::move(render);
     return *last_;
 }

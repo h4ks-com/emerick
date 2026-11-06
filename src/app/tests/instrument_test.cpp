@@ -509,6 +509,37 @@ TEST_CASE("rendering each track and bus on its own core hands over exactly the c
     }
 }
 
+TEST_CASE(
+    "an export after a mixer change plays the kept stems, and one after an instrument change renders them again") {
+    InstrumentRig rig;
+    const model::TrackId synth = rig.addSynth();
+    addNote(*rig.controller, synth);
+    const model::TrackId second = rig.addSynth();
+    addNote(*rig.controller, second);
+    const std::string verb = rig.run("track.addBus", {{"name", "Verb"}}).at("id");
+    rig.run("insert.add", {{"track", verb}, {"type", "reverb"}});
+    rig.run("send.add", {{"track", synth.value}, {"bus", verb}, {"db", -6.0}});
+    rig.run("track.setOutputBus", {{"track", second.value}, {"bus", verb}});
+    rig.run("insert.add", {{"track", second.value}, {"type", "limiter"}});
+    const auto exportsAsOneRender = [&](const std::string& name) {
+        const std::filesystem::path shared = rig.path(name + "-shared.wav");
+        const std::filesystem::path own = rig.path(name + "-own.wav");
+        rig.run("export.mix", {{"path", shared.string()}});
+        const model::Document document = liveDocument(*rig.controller);
+        exportMix(toSession(document, rig.registry, rig.controller->folder()), rig.registry,
+                  playbackContext(*rig.controller, document), own, kRate);
+        CHECK(readAudio(shared).channels == readAudio(own).channels);
+    };
+    rig.run("mix.inspect");
+    rig.run("track.setGain", {{"track", synth.value}, {"db", -4.0}});
+    rig.run("track.setPan", {{"track", second.value}, {"value", 0.3}});
+    rig.run("automation.addPoint",
+            {{"track", synth.value}, {"param", "send." + verb + ".level"}, {"tick", 480}, {"value", -2.0}});
+    exportsAsOneRender("mixer");
+    rig.run("instrument.setParam", {{"track", synth.value}, {"param", 0}, {"value", 0.25}});
+    exportsAsOneRender("instrument");
+}
+
 TEST_CASE("sampler.load plays a file of an installed sound library") {
     InstrumentRig rig;
     rig.registry.setSetting(kClapFoldersSetting, Json::array({bundledClapFolder(EMERICK_GM_APP_FOLDER).string()}));

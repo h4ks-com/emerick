@@ -37,6 +37,7 @@ qt_add_qml_module(emerick_ui
         HealthPanel.qml
         InsertEditor.qml
         InsertList.qml
+        IssuesPanel.qml
         Inspector.qml
         KeyCommands.qml
         LibrariesPanel.qml

@@ -88,6 +88,8 @@ public:
     Q_INVOKABLE QVariantMap insert(const QString& id) const;
     // Whether every listed track has the same value of the named role, so a view can show "Mixed" where they differ.
     Q_INVOKABLE bool sameAcross(const QStringList& ids, const QString& role) const;
+    // The track's name, or an empty string when it is gone.
+    Q_INVOKABLE QString trackName(const QString& id) const;
 
 signals:
     void revisionChanged();

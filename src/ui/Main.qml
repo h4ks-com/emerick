@@ -81,7 +81,11 @@ ApplicationWindow {
     }
     Connections {
         target: Registry
-        function onNoticeRaised(title, text) {
+        function onNoticeRaised(title, text, issues) {
+            if (issues.length > 0) {
+                issuesPanel.show(title, text, issues)
+                return
+            }
             noticeDialog.title = title
             noticeDialog.text = text
             noticeDialog.open()
@@ -368,6 +372,10 @@ ApplicationWindow {
     CommandPalette {}
 
     HealthPanel {}
+
+    IssuesPanel {
+        id: issuesPanel
+    }
 
     GlassPanel {
         id: healthNotice

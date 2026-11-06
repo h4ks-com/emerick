@@ -405,7 +405,8 @@ signals:
     void menusChanged();
     void fileDialogRequested(const QVariantMap& request);
     void confirmRequested(const QVariantMap& request);
-    void noticeRaised(const QString& title, const QString& text) const;
+    // issues are the result's issues, such as mix.inspect's, which the notice lists so a click can go to each one.
+    void noticeRaised(const QString& title, const QString& text, const QVariantList& issues) const;
     void gesturingChanged();
     void actionRan(const std::string& id, const nlohmann::json& params, emerick::app::ActionSource source) const;
 

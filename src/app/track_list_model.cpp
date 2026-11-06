@@ -131,6 +131,11 @@ QVariantList TrackListModel::laneChoices(const QString& clip) const {
     return midi == nullptr ? QVariantList{} : toVariant(app::laneChoices(*midi)).toList();
 }
 
+QString TrackListModel::trackName(const QString& id) const {
+    const model::Track* track = project_.track(model::TrackId{id.toStdString()});
+    return track == nullptr ? QString{} : qs(track->name);
+}
+
 bool TrackListModel::sameAcross(const QStringList& ids, const QString& role) const {
     const int key = roleNames().key(role.toUtf8(), -1);
     const auto values =

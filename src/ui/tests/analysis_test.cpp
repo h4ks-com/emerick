@@ -1,4 +1,7 @@
+#include <QTest>
+#include <algorithm>
 #include <catch2/catch_test_macros.hpp>
+#include <format>
 #include <string>
 
 #include "main_window.hpp"
@@ -23,6 +26,31 @@ TEST_CASE("the inspector's analyze button renders the track off the UI thread an
     CHECK(processUntil([&] { return MainWindow::find(main.window->contentItem(), name + ":readout") != nullptr; }));
     CHECK(main.item(name + ":LUFS")->property("text").toString().startsWith("-"));
     CHECK(main.item(name + ":RMS")->property("text").toString().startsWith("-12.0"));
+    MainWindow::settle();
+}
+
+TEST_CASE("inspecting the mix from the UI lists each issue, and a click selects its track and goes to it") {
+    MainWindow& main = MainWindow::instance();
+    const std::string id = main.rig.run("track.addAudio", {{"name", "Offset"}}).at("id");
+    writeConstant(main.rig.path("offset.wav"), 48000, 0.25F);
+    main.rig.run("clip.import", {{"track", id}, {"path", main.rig.path("offset.wav").string()}, {"at", "3.1.0"}});
+    main.rig.nav.setSelectedTrack({});
+    const Json issues = main.rig.run("mix.inspect").at("issues");
+    const auto issue = std::ranges::find(issues, Json(id), [](const Json& entry) { return entry.at("track"); });
+    REQUIRE(issue != issues.end());
+    const QString row = QStringLiteral("transport.locate:%1").arg(issue - issues.begin());
+
+    main.rig.registry.activate("mix.inspect");
+    CHECK(main.item(row)->property("text").toString().contains(
+        QString::fromStdString(std::format("Offset, {} to ", issue->at("from").at("bbt").get<std::string>()))));
+    main.click(main.item(row));
+    CHECK(main.rig.nav.selectedTrack() == QString::fromStdString(id));
+    const ProjectController& controller = *main.rig.controller;
+    CHECK(controller.project().document().tempo.toBarBeatTick(controller.positionTicks()).format() ==
+          issue->at("from").at("bbt").get<std::string>());
+    QTest::keyClick(main.window, Qt::Key_Escape);
+    CHECK(processUntil([&] { return MainWindow::find(main.window->contentItem(), "issues") == nullptr; }));
+    main.rig.run("transport.locate", {{"at", 0}});
     MainWindow::settle();
 }
 

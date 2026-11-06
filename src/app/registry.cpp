@@ -781,15 +781,17 @@ void Registry::activate(const QString& id) {
 
 std::optional<Json> Registry::runFromUi(const std::string& id, const Json& params) const {
     const Action* found = action(id);
-    const auto notify = [&](const QString& text) {
+    const auto notify = [&](const QString& text, const QVariantList& issues = {}) {
         if (found != nullptr && found->notifies) {
-            emit noticeRaised(qs(found->title), text);
+            emit noticeRaised(qs(found->title), text, issues);
         }
     };
     const WaitCursor waitCursor{!gesturing_};
     try {
         Json result = run(id, params, ActionSource::Ui);
-        notify(qs(result.value("message", std::string{})));
+        const auto issues = result.find("issues");
+        notify(qs(result.value("message", std::string{})),
+               issues != result.end() && issues->is_array() ? toVariant(*issues).toList() : QVariantList{});
         return result;
     } catch (const AppError& error) {
         qWarning() << error.what();

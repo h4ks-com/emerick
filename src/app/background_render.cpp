@@ -27,7 +27,7 @@ bool BackgroundRender::begin(const char* actionId, const Json& params) {
 }
 
 void BackgroundRender::raiseNotice(const char* actionId, const QString& message) const {
-    emit registry_.noticeRaised(qs(registry_.action(actionId)->title), message);
+    emit registry_.noticeRaised(qs(registry_.action(actionId)->title), message, {});
 }
 
 void BackgroundRender::render(const QString& track, const char* actionId, const std::function<RenderJob()>& prepare,

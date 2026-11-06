@@ -75,7 +75,7 @@ void withEveryAction(const std::function<void(const Registry&)>& check) {
     Console console(rig.registry, lua);
     registerConsoleActions(rig.registry, rig.nav, console);
     ScriptLibrary scripts(rig.registry, console, rig.path("scripts"));
-    registerScriptActions(rig.registry, scripts);
+    registerScriptActions(rig.registry, scripts, rig.nav);
     PluginCatalog plugins({.cacheFolder = rig.path("cache"), .scanner = {}, .folders = {}});
     registerPluginActions(rig.registry, rig.nav, plugins);
     registerInstrumentActions(rig.registry, *rig.controller, rig.nav, plugins);

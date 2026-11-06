@@ -9,6 +9,7 @@
 #include <vector>
 
 #include "emerick/app/console.hpp"
+#include "emerick/app/nav.hpp"
 #include "emerick/app/registry.hpp"
 
 namespace emerick::app {
@@ -66,7 +67,7 @@ private:
 // Copies the example scripts that ship with Emerick into folder when it is missing or empty.
 void copyExampleScripts(const std::filesystem::path& folder);
 
-// script.run, script.list and script.openFolder.
-void registerScriptActions(Registry& registry, ScriptLibrary& library);
+// script.run, script.runFile, script.list and script.openFolder, and the scripts picker script.run opens from the UI.
+void registerScriptActions(Registry& registry, ScriptLibrary& library, Nav& nav);
 
 }  // namespace emerick::app

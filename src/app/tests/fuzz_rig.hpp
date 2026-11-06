@@ -38,7 +38,7 @@ struct FuzzRig : ProjectRig {
         registerConsoleActions(registry, nav, console);
         copyExampleScripts(path("scripts"));
         scripts = std::make_unique<ScriptLibrary>(registry, console, path("scripts"));
-        registerScriptActions(registry, *scripts);
+        registerScriptActions(registry, *scripts, nav);
     }
 
     // An audio track with a clip on a file in the project, a MIDI track with a clip and a marker.

@@ -38,6 +38,7 @@ class Nav : public QObject {
     Q_PROPERTY(bool tunerOpen READ tunerOpen WRITE setTunerOpen NOTIFY changed)
     Q_PROPERTY(bool spectrogramOpen READ spectrogramOpen WRITE setSpectrogramOpen NOTIFY changed)
     Q_PROPERTY(bool healthOpen READ healthOpen WRITE setHealthOpen NOTIFY changed)
+    Q_PROPERTY(bool scriptsOpen READ scriptsOpen WRITE setScriptsOpen NOTIFY changed)
     Q_PROPERTY(bool librariesOpen READ librariesOpen WRITE setLibrariesOpen NOTIFY changed)
     Q_PROPERTY(QString shownLibrary READ shownLibrary WRITE setShownLibrary NOTIFY changed)
     Q_PROPERTY(bool inspectorOpen READ inspectorOpen WRITE setInspectorOpen NOTIFY changed)
@@ -85,6 +86,7 @@ public:
     [[nodiscard]] bool tunerOpen() const { return tunerOpen_; }
     [[nodiscard]] bool spectrogramOpen() const { return spectrogramOpen_; }
     [[nodiscard]] bool healthOpen() const { return healthOpen_; }
+    [[nodiscard]] bool scriptsOpen() const { return scriptsOpen_; }
     [[nodiscard]] bool librariesOpen() const { return librariesOpen_; }
     // The library the libraries dialog scrolls to and marks, or empty.
     [[nodiscard]] QString shownLibrary() const { return shownLibrary_; }
@@ -154,6 +156,7 @@ public:
     void setTunerOpen(bool value) { assign(tunerOpen_, value, &Nav::changed); }
     void setSpectrogramOpen(bool value) { assign(spectrogramOpen_, value, &Nav::changed); }
     void setHealthOpen(bool value) { assign(healthOpen_, value, &Nav::changed); }
+    void setScriptsOpen(bool value) { assign(scriptsOpen_, value, &Nav::changed); }
     void setLibrariesOpen(bool value) { assign(librariesOpen_, value, &Nav::changed); }
     void setShownLibrary(const QString& value) { assign(shownLibrary_, value, &Nav::changed); }
     void setInspectorOpen(bool value) { assign(inspectorOpen_, value, &Nav::changed); }
@@ -273,6 +276,7 @@ public:
             {"tunerOpen", tunerOpen_},
             {"spectrogramOpen", spectrogramOpen_},
             {"healthOpen", healthOpen_},
+            {"scriptsOpen", scriptsOpen_},
             {"librariesOpen", librariesOpen_},
             {"shownLibrary", shownLibrary_.toStdString()},
             {"inspectorOpen", inspectorOpen_},
@@ -329,6 +333,7 @@ private:
     bool tunerOpen_ = false;
     bool spectrogramOpen_ = false;
     bool healthOpen_ = false;
+    bool scriptsOpen_ = false;
     bool librariesOpen_ = false;
     QString shownLibrary_;
     bool inspectorOpen_ = true;

@@ -269,7 +269,7 @@ int run(int argc, char** argv) {
         "/scripts";
     copyExampleScripts(userScripts);
     ScriptLibrary scripts(registry, console, userScripts);
-    registerScriptActions(registry, scripts);
+    registerScriptActions(registry, scripts, nav);
     const auto followProject = [&] { scripts.setProjectFolder(controller.folder() / "scripts"); };
     followProject();
     QObject::connect(&controller, &ProjectController::fileChanged, &scripts, followProject);

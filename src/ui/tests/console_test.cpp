@@ -6,7 +6,10 @@
 #include <QtSystemDetection>
 #include <algorithm>
 #include <catch2/catch_test_macros.hpp>
+#include <filesystem>
+#include <fstream>
 #include <ranges>
+#include <string>
 #include <string_view>
 
 #include "main_window.hpp"
@@ -28,6 +31,24 @@ const ConsoleEntry& lastInfo(const Console& console) {
 }
 
 }  // namespace
+
+TEST_CASE("running a script from the palette opens a picker of the scripts folder, and a pick runs it") {
+    MainWindow& main = MainWindow::instance();
+    std::filesystem::create_directories(main.rig.path("scripts"));
+    std::ofstream(main.rig.path("scripts") / "hello.lua") << "-- title: Say hello\nprint('hello from the picker')\n";
+    main.scripts.rescan();
+
+    main.rig.registry.activate("script.run");
+    REQUIRE(processUntil([&] { return main.item("scripts")->isVisible(); }));
+    CHECK(main.item("script.runFile")->property("text").toString() == "Run script from file");
+    CHECK(main.item("script.openFolder") != nullptr);
+    QQuickItem* hello = main.item("scripts.user.hello");
+    CHECK(hello->property("text").toString() == "Say hello");
+    main.click(hello);
+    CHECK(processUntil([&] { return !main.rig.nav.scriptsOpen(); }));
+    CHECK(std::ranges::contains(main.console.entries(), std::string{"hello from the picker"}, &ConsoleEntry::text));
+    MainWindow::settle();
+}
 
 TEST_CASE("the palette runs text after > as Lua and shows its value inline") {
     MainWindow& main = MainWindow::instance();

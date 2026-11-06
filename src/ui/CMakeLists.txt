@@ -57,6 +57,7 @@ qt_add_qml_module(emerick_ui
         PianoRoll.qml
         RouteCombo.qml
         Ruler.qml
+        ScriptsPanel.qml
         SearchCombo.qml
         SendList.qml
         SettingsPage.qml

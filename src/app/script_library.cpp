@@ -78,6 +78,20 @@ Json describe(const Script& script) {
             {"path", script.path.string()}};
 }
 
+Json runScript(const Registry& registry, const ScriptLibrary& library, const std::string& nameOrPath, bool isPath) {
+    if (const Script* script = library.find(nameOrPath)) {
+        return library.run(*script);
+    }
+    if (isPath) {
+        const std::filesystem::path file = registry.checkedPath(nameOrPath, PathAccess::Read);
+        std::error_code error;
+        if (std::filesystem::is_regular_file(file, error)) {
+            return library.run({.id = nameOrPath, .path = file, .scope = ScriptScope::User, .header = {}});
+        }
+    }
+    throw AppError("no script " + nameOrPath + "; script.list lists the scripts");
+}
+
 }  // namespace
 
 ScriptHeader parseScriptHeader(std::string_view source) {
@@ -206,11 +220,13 @@ void copyExampleScripts(const std::filesystem::path& folder) {
     }
 }
 
-void registerScriptActions(Registry& registry, ScriptLibrary& library) {
+void registerScriptActions(Registry& registry, ScriptLibrary& library, Nav& nav) {
+    registry.addLocation({.id = "scripts", .reveal = [&nav] { nav.setScriptsOpen(true); }});
     registry.addAction(
         {.id = "script.run",
          .title = "Run script",
-         .aliases = {"run lua file"},
+         .description = "Run a script by name or path. With neither, the window shows the scripts to pick from.",
+         .aliases = {"run lua file", "run lua script", "pick script"},
          .category = "Scripts",
          .schema = {{"properties", {{"name", {{"type", "string"}}}, {"path", {{"type", "string"}}}}}},
          .run =
@@ -218,21 +234,27 @@ void registerScriptActions(Registry& registry, ScriptLibrary& library) {
                  const auto name = optionalParam<std::string>(params, "name");
                  const auto path = optionalParam<std::string>(params, "path");
                  if (!name && !path) {
-                     throw AppError("pass name or path; script.list lists the scripts");
-                 }
-                 if (const Script* script = library.find(name ? *name : *path)) {
-                     return library.run(*script);
-                 }
-                 if (path) {
-                     const std::filesystem::path file = registry.checkedPath(*path, PathAccess::Read);
-                     std::error_code error;
-                     if (std::filesystem::is_regular_file(file, error)) {
-                         return library.run({.id = *path, .path = file, .scope = ScriptScope::User, .header = {}});
+                     if (registry.fromAgent()) {
+                         throw AppError("pass name or path; script.list lists the scripts");
                      }
+                     registry.reveal("scripts");
+                     return Json{{"userFolder", library.userFolder().string()}};
                  }
-                 throw AppError("no script " + (name ? *name : *path) + "; script.list lists the scripts");
+                 return runScript(registry, library, name ? *name : *path, path.has_value());
              },
          .runsLua = true});
+    registry.addAction({.id = "script.runFile",
+                        .title = "Run script from file",
+                        .aliases = {"open lua file", "run lua file"},
+                        .category = "Scripts",
+                        .schema = {{"required", {"path"}}, {"properties", {{"path", {{"type", "string"}}}}}},
+                        .run =
+                            [&registry, &library](const Json& params) {
+                                return runScript(registry, library, param<std::string>(params, "path"), true);
+                            },
+                        .menus = {kScriptsMenu},
+                        .dialog = FileDialog{.param = "path", .nameFilter = "Lua scripts (*.lua)"},
+                        .runsLua = true});
     registry.addAction(
         {.id = "script.list", .title = "List scripts", .category = "Scripts", .run = [&library](const Json&) {
              return Json{

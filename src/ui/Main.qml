@@ -373,6 +373,8 @@ ApplicationWindow {
 
     HealthPanel {}
 
+    ScriptsPanel {}
+
     IssuesPanel {
         id: issuesPanel
     }

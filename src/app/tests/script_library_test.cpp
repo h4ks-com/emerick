@@ -45,7 +45,7 @@ TEST_CASE("a script registers as an action in the Scripts menu with its title an
     fixture.rig.registry.addAction(
         {.id = "test.search", .shortcut = "Ctrl+K", .run = [](const Json&) { return Json{}; }});
     ScriptLibrary library(fixture.rig.registry, fixture.console, fixture.userFolder);
-    registerScriptActions(fixture.rig.registry, library);
+    registerScriptActions(fixture.rig.registry, library, fixture.rig.nav);
 
     const Action* script = fixture.rig.registry.action("scripts.user.mute");
     REQUIRE(script != nullptr);
@@ -69,6 +69,24 @@ TEST_CASE("a script registers as an action in the Scripts menu with its title an
     library.rescan();
     CHECK(fixture.rig.registry.action("scripts.user.mute")->title == "Mute every track");
     CHECK(fixture.rig.registry.action("scripts.user.mute")->shortcut == "Ctrl+Alt+U");
+}
+
+TEST_CASE("script.run with no script opens the picker from the UI and asks an agent for a name") {
+    ScriptRig fixture;
+    ScriptLibrary library(fixture.rig.registry, fixture.console, fixture.userFolder);
+    registerScriptActions(fixture.rig.registry, library, fixture.rig.nav);
+
+    CHECK_THROWS_AS(fixture.rig.registry.run("script.run", Json::object(), ActionSource::Mcp), AppError);
+    CHECK_FALSE(fixture.rig.nav.scriptsOpen());
+    fixture.rig.registry.runAction("script.run", {});
+    CHECK(fixture.rig.nav.scriptsOpen());
+
+    writeScript(fixture.rig.path("elsewhere/export.lua"), "print('exported')\n");
+    const Json result =
+        fixture.rig.run("script.runFile", {{"path", fixture.rig.path("elsewhere/export.lua").string()}});
+    CHECK(result.at("output") == "exported\n");
+    CHECK(fixture.rig.registry.action("script.runFile")->dialog.has_value());
+    CHECK_THROWS_AS(fixture.rig.run("script.runFile", {{"path", fixture.rig.path("missing.lua").string()}}), AppError);
 }
 
 TEST_CASE("the folder watcher picks up a new script and drops a deleted one") {

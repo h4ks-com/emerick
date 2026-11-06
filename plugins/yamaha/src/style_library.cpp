@@ -110,11 +110,15 @@ app::Json summaryJson(const StyleSummary& summary) {
                              std::ranges::to<std::vector>()}};
 }
 
+app::Json styleList(std::span<const StyleSummary> summaries) {
+    const app::Json styles = summaries | std::views::transform(summaryJson) | std::ranges::to<std::vector>();
+    return {{"styles", styles}, {"message", std::to_string(styles.size()) + " styles"}};
+}
+
 app::Json styleList(const app::Registry& registry) {
     const auto folders = registry.settingValue(kStyleFoldersSetting).get<std::vector<std::string>>() |
                          std::ranges::to<std::vector<std::filesystem::path>>();
-    const app::Json styles = listStyles(folders) | std::views::transform(summaryJson) | std::ranges::to<std::vector>();
-    return {{"styles", styles}, {"message", std::to_string(styles.size()) + " styles"}};
+    return styleList(listStyles(folders));
 }
 
 std::optional<ArrangerState> arrangerState(const model::Track& track) {

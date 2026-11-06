@@ -391,6 +391,22 @@ PackVoiceNames packVoiceNames(const app::ProjectController& controller, const mo
     return names;
 }
 
+Json listedStyles(const app::Registry& registry, const app::ProjectController& controller, const app::Nav& nav,
+                  const Json& params) {
+    if (params.contains("track")) {
+        const auto summary = loadedStyle(*controller.project().track(styleTrack(controller, nav, params)));
+        if (!summary) {
+            throw AppError("load a style with arranger.style.load first");
+        }
+        return styleList(std::span{&*summary, 1});
+    }
+    if (const auto folder = app::optionalParam<std::string>(params, "folder")) {
+        const std::filesystem::path path = registry.checkedPath(*folder, app::PathAccess::Read);
+        return styleList(listStyles(std::span{&path, 1}));
+    }
+    return styleList(registry);
+}
+
 Json notes(BuiltinArranger& builtin, const app::Registry& registry, const app::ProjectController& controller,
            const app::Nav& nav, const Json& params) {
     const model::TrackId id = styleTrack(controller, nav, params);
@@ -492,14 +508,18 @@ void registerBuiltinArranger(app::Registry& registry, app::ProjectController& co
              },
          .menus = {kYamahaMenu},
          .dialog = app::FileDialog{.param = "path", .nameFilter = "Styles (*.sty *.prs *.sst)"}});
-    registry.addAction({.id = "arranger.style.list",
-                        .title = "List styles",
-                        .description = "Lists the styles in the style folders with their tempo, meter and sections.",
-                        .aliases = {"find style", "style browser"},
-                        .category = "Yamaha",
-                        .run = [&registry](const Json&) { return styleList(registry); },
-                        .menus = {kYamahaMenu},
-                        .notifies = true});
+    registry.addAction(
+        {.id = "arranger.style.list",
+         .title = "List styles",
+         .description = "Lists styles with their path, name, tempo, meter and sections: the style loaded on track (a "
+                        "Style track), the styles in folder, or else the styles in the Style folders setting.",
+         .aliases = {"find style", "style browser"},
+         .category = "Yamaha",
+         .schema = {{"properties", {{"track", {{"type", "string"}}}, {"folder", {{"type", "string"}}}}}},
+         .run = [&registry, &controller,
+                 &nav](const Json& params) { return listedStyles(registry, controller, nav, params); },
+         .menus = {kYamahaMenu},
+         .notifies = true});
     registry.addAction(
         {.id = "arranger.style.notes",
          .title = "List style notes",

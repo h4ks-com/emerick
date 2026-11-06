@@ -61,7 +61,9 @@ bool stylePlays(const arranger::Style& style, Section kind, int variation);
 // empty.
 bool stylePlaysDrums(const arranger::Style& style);
 app::Json summaryJson(const StyleSummary& summary);
-// What arranger.style.list returns: every style in the Style folders setting.
+// What arranger.style.list returns for the styles.
+app::Json styleList(std::span<const StyleSummary> summaries);
+// arranger.style.list's result for every style in the Style folders setting.
 app::Json styleList(const app::Registry& registry);
 
 // The Arranger device's state on a Style track: the style file, the hash of its bytes, Auto fill, and the bytes

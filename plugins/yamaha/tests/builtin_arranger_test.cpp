@@ -429,6 +429,11 @@ TEST_CASE("the style list reads the style folders, and choosing a style loads it
     CHECK(rig.arrangerState().at("style") == rig.demo.string());
     CHECK(rig.arrangerState().at("hash").get<std::string>().size() == 16);
     CHECK(rig.arrangerState().at("autoFill") == true);
+    const Json onTrack = rig.run("arranger.style.list", {{"track", style}}).at("styles");
+    REQUIRE(onTrack.size() == 1);
+    CHECK(onTrack[0].at("name") == "Demo");
+    CHECK(onTrack[0].at("sections") == styles[0].at("sections"));
+    CHECK(rig.run("arranger.style.list", {{"folder", rig.styles.string()}}).at("styles") == styles);
     rig.run("project.undo");
     CHECK(rig.controller->project().redoName() == "play general midi for missing voices");
     rig.run("project.undo");

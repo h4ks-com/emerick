@@ -50,6 +50,8 @@ void waitForPeaks(PeakCache& peaks, const model::Document& document, const std::
     }
 }
 
+}  // namespace
+
 // Feeds frames to ffmpeg on stdin, which muxes them with the mix into the MP4.
 class VideoEncoder {
 public:
@@ -108,7 +110,12 @@ public:
             throw AppError("cannot start " + ffmpeg.string() + ": " + process_.errorString().toStdString());
         }
     }
-    ~VideoEncoder() = default;
+    ~VideoEncoder() {
+        if (process_.state() != QProcess::NotRunning) {
+            process_.kill();
+            process_.waitForFinished(-1);
+        }
+    }
     VideoEncoder(const VideoEncoder&) = delete;
     VideoEncoder& operator=(const VideoEncoder&) = delete;
     VideoEncoder(VideoEncoder&&) = delete;
@@ -142,6 +149,8 @@ private:
     qint64 frameBytes_;
     QProcess process_;
 };
+
+namespace {
 
 // Each track takes a row, and while the lanes are open each further lane whose param the track can automate takes
 // another, as the track list draws them.
@@ -262,15 +271,33 @@ std::filesystem::path findFfmpeg() {
 
 int renderTimelineVideo(ViewEngine& views, Nav& nav, ProjectController& controller, const VideoRequest& request,
                         const std::filesystem::path& mix, const std::filesystem::path& ffmpeg) {
-    const core::TempoMap& tempo = controller.project().document().tempo;
-    TimelineFrames frames(views, nav, controller, request);
-    const double fromSeconds = tempo.ticksToSeconds(request.from);
-    VideoEncoder encoder(ffmpeg, request, mix, fromSeconds, tempo.ticksToSeconds(request.to) - fromSeconds);
-    for (int index = 0; index < frames.count(); ++index) {
-        encoder.write(frames.frame(index));
+    VideoWriter writer(views, nav, controller, request, mix, ffmpeg);
+    while (writer.writeNext()) {
     }
-    encoder.finish();
-    return frames.count();
+    return writer.count();
+}
+
+VideoWriter::VideoWriter(ViewEngine& views, Nav& nav, ProjectController& controller, const VideoRequest& request,
+                         const std::filesystem::path& mix, const std::filesystem::path& ffmpeg)
+    : frames_(views, nav, controller, request) {
+    const core::TempoMap& tempo = controller.project().document().tempo;
+    const double fromSeconds = tempo.ticksToSeconds(request.from);
+    encoder_ = std::make_unique<VideoEncoder>(ffmpeg, request, mix, fromSeconds,
+                                              tempo.ticksToSeconds(request.to) - fromSeconds);
+}
+
+VideoWriter::~VideoWriter() = default;
+
+bool VideoWriter::writeNext() {
+    if (written_ == frames_.count()) {
+        return false;
+    }
+    encoder_->write(frames_.frame(written_));
+    ++written_;
+    if (written_ == frames_.count()) {
+        encoder_->finish();
+    }
+    return true;
 }
 
 }  // namespace emerick::app

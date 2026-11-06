@@ -1,13 +1,16 @@
 #include <QColor>
 #include <QProcess>
 #include <QStandardPaths>
+#include <algorithm>
 #include <catch2/catch_approx.hpp>
 #include <cmath>
 #include <optional>
+#include <ranges>
 #include <string>
 #include <vector>
 
 #include "emerick/app/timeline_video.hpp"
+#include "emerick/app/video_render.hpp"
 #include "main_window.hpp"
 
 using namespace emerick;
@@ -230,4 +233,66 @@ TEST_CASE("a rendered video holds a frame per period and the mix for as long as 
     const double audioSeconds = std::stod(audio->at("duration").get<std::string>());
     CHECK(videoSeconds == Catch::Approx(2.0).margin(0.1));
     CHECK(audioSeconds == Catch::Approx(videoSeconds).margin(0.1));
+}
+
+namespace {
+
+VideoRender& videoRender(MainWindow& main) {
+    auto* video = main.rig.nav.findChild<VideoRender*>();
+    REQUIRE(video != nullptr);
+    return *video;
+}
+
+}  // namespace
+
+TEST_CASE("a video rendered from the window reports its progress and keeps the window drawing") {
+    try {
+        findFfmpeg();
+    } catch (const AppError&) {
+        SKIP("ffmpeg is not installed");
+    }
+    MainWindow& main = MainWindow::instance();
+    if (main.rig.controller->project().document().tracks.empty()) {
+        addClip(main, 20);
+    }
+    VideoRender& video = videoRender(main);
+    const std::filesystem::path file = main.rig.path("window.mp4");
+    std::vector<double> progress;
+    QObject::connect(&video, &VideoRender::progressChanged, [&] { progress.push_back(video.progress()); });
+    video.render({{"path", QString::fromStdString(file.string())},
+                  {"width", 640},
+                  {"height", 360},
+                  {"fps", 10},
+                  {"from", "2.1.1"},
+                  {"to", "3.1.1"}});
+    REQUIRE(video.running());
+    CHECK(main.menu("video.progress")->property("visible").toBool());
+    constexpr int kRenderMs = 120000;
+    REQUIRE(processUntil([&] { return !video.running(); }, kRenderMs));
+    CHECK(std::filesystem::exists(file));
+    REQUIRE(progress.size() > 2);
+    CHECK(std::ranges::is_sorted(progress | std::views::take(progress.size() - 1)));
+    CHECK(progress[progress.size() - 2] == Catch::Approx(1.0));
+    CHECK(main.rig.controller->positionTicks() == 0);
+}
+
+TEST_CASE("cancelling a video render stops it and deletes the unfinished file") {
+    try {
+        findFfmpeg();
+    } catch (const AppError&) {
+        SKIP("ffmpeg is not installed");
+    }
+    MainWindow& main = MainWindow::instance();
+    if (main.rig.controller->project().document().tracks.empty()) {
+        addClip(main, 20);
+    }
+    VideoRender& video = videoRender(main);
+    const double scrollBefore = main.rig.nav.scrollTicks();
+    const std::filesystem::path file = main.rig.path("cancelled.mp4");
+    video.render({{"path", QString::fromStdString(file.string())}, {"width", 640}, {"height", 360}});
+    REQUIRE(processUntil([&] { return video.progress() > 0; }, 30000));
+    CHECK(main.rig.run("video.cancel").at("cancelled") == true);
+    CHECK_FALSE(video.running());
+    CHECK_FALSE(std::filesystem::exists(file));
+    CHECK(main.rig.nav.scrollTicks() == scrollBefore);
 }

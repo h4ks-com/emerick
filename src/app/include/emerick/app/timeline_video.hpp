@@ -78,8 +78,33 @@ private:
 // The ffmpeg beside the app, else on PATH or in Homebrew's folders. Throws AppError when there is none.
 std::filesystem::path findFfmpeg();
 
-// Encodes every frame of the request with mix, a WAV of the project from tick 0, into an H.264 and AAC MP4 at
-// request.file. Returns the frame count.
+class VideoEncoder;
+
+// Encodes the frames of the request with mix, a WAV of the project from tick 0, into an H.264 and AAC MP4 at
+// request.file, one frame per call, so the caller can let the window draw between frames.
+class VideoWriter {
+public:
+    VideoWriter(ViewEngine& views, Nav& nav, ProjectController& controller, const VideoRequest& request,
+                const std::filesystem::path& mix, const std::filesystem::path& ffmpeg);
+    // Stops ffmpeg when the video is not finished.
+    ~VideoWriter();
+    VideoWriter(const VideoWriter&) = delete;
+    VideoWriter& operator=(const VideoWriter&) = delete;
+    VideoWriter(VideoWriter&&) = delete;
+    VideoWriter& operator=(VideoWriter&&) = delete;
+
+    [[nodiscard]] int count() const { return frames_.count(); }
+    [[nodiscard]] int written() const { return written_; }
+    // Encodes the next frame, and after the last one waits for ffmpeg to finish the file. False once it is finished.
+    bool writeNext();
+
+private:
+    TimelineFrames frames_;
+    std::unique_ptr<VideoEncoder> encoder_;
+    int written_ = 0;
+};
+
+// Encodes every frame of the request with mix, as VideoWriter does, in one call. Returns the frame count.
 int renderTimelineVideo(ViewEngine& views, Nav& nav, ProjectController& controller, const VideoRequest& request,
                         const std::filesystem::path& mix, const std::filesystem::path& ffmpeg);
 

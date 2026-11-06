@@ -115,6 +115,7 @@ qt_add_library(emerick_app STATIC
     include/emerick/app/tuner.hpp
     include/emerick/app/timeline_video.hpp
     include/emerick/app/ui_api.hpp
+    include/emerick/app/video_render.hpp
     include/emerick/app/view_engine.hpp
     include/emerick/app/voice_audition.hpp
     insert_actions.cpp

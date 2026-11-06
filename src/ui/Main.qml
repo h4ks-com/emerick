@@ -56,7 +56,9 @@ ApplicationWindow {
     FileDialog {
         id: fileDialog
         property string actionId
-        onAccepted: Registry.runWithFile(actionId, selectedFile)
+        // The window renders a video off its own call stack, so it keeps drawing the progress.
+        onAccepted: actionId === "video.render" ? Video.render({path: Registry.localPath(selectedFile)})
+                                                : Registry.runWithFile(actionId, selectedFile)
     }
     FolderDialog {
         id: folderDialog
@@ -418,6 +420,41 @@ ApplicationWindow {
         anchors.fill: parent
         active: Nav.librariesOpen
         sourceComponent: LibrariesPanel {}
+    }
+
+    Popup {
+        objectName: "video.progress"
+        anchors.centerIn: parent
+        width: Theme.menuWidth
+        padding: Theme.space5
+        modal: true
+        closePolicy: Popup.NoAutoClose
+        visible: Video.running
+        background: GlassPanel {}
+        contentItem: Column {
+            spacing: Theme.space2
+            Label {
+                text: "Render video  " + Math.round(Video.progress * 100) + "%"
+                color: Theme.ink
+                font.pixelSize: Theme.textBody
+                font.features: {"tnum": 1}
+            }
+            Rectangle {
+                width: parent.width
+                implicitHeight: Theme.progressHeight
+                radius: height / 2
+                color: Theme.rule
+                Rectangle {
+                    width: parent.width * Video.progress
+                    height: parent.height
+                    radius: parent.radius
+                    color: Theme.tape
+                }
+            }
+            ChromeButton {
+                objectName: "video.cancel"
+            }
+        }
     }
 
     Popup {

@@ -1,8 +1,9 @@
 import QtQuick
 import QtQuick.Controls.Basic
+import QtQuick.Layouts
 import Emerick.App
 
-// A channel strip per track, left to right in track order, then a strip per bus.
+// A channel strip per track, left to right in track order, then a strip per bus, then the master's output meter.
 DockPanel {
     id: panel
     objectName: "mixer"
@@ -35,8 +36,44 @@ DockPanel {
             id: row
             readonly property real listsHeight: Math.max(0, ...children.map(child => child.listsImplicitHeight ?? 0))
             readonly property real stripHeight: Math.max(flick.height, ...children.map(child => child.minimumHeight ?? 0))
-            Strips { buses: false }
+            Strips {
+                id: trackStrips
+                buses: false
+            }
             Strips { buses: true }
+
+            Rectangle {
+                objectName: "mixer.master"
+                width: Registry.settings["view.stripWidth"]
+                height: row.stripHeight
+                border.width: Theme.hairline
+                border.color: Theme.rule
+                gradient: Gradient {
+                    GradientStop { position: 0; color: Theme.lift }
+                    GradientStop { position: 1; color: Theme.slate }
+                }
+
+                ColumnLayout {
+                    anchors.fill: parent
+                    anchors.margins: Theme.space1
+                    spacing: Theme.space1
+
+                    LevelMeter {
+                        trackId: "master"
+                        Layout.fillHeight: true
+                        Layout.alignment: Qt.AlignHCenter
+                        Layout.topMargin: Theme.faderCapHeight / 2
+                    }
+                    Label {
+                        text: "Master"
+                        color: Theme.ink
+                        font.pixelSize: Theme.textLabel
+                        font.weight: Font.Medium
+                        horizontalAlignment: Text.AlignHCenter
+                        Layout.fillWidth: true
+                    }
+                }
+            }
         }
     }
 
@@ -63,7 +100,7 @@ DockPanel {
 
     Label {
         anchors.centerIn: parent
-        visible: row.width === 0
+        visible: trackStrips.count === 0
         text: "Add a track to mix it"
         color: Theme.inkDim
         font.pixelSize: Theme.textTitle

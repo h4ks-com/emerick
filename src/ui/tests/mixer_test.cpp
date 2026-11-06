@@ -156,13 +156,14 @@ TEST_CASE("dragging a mixer strip's edge resizes every strip within its limits a
     MainWindow::settle();
 }
 
-TEST_CASE("the mixer opens showing whole strips whose faders line up whatever inserts and sends each strip has") {
+TEST_CASE("the mixer opens showing whole strips whose faders line up, with the master strip after every bus") {
     MainWindow& main = MainWindow::instance();
     const std::string plain = main.rig.run("track.addAudio").at("id");
     const std::string busy = main.rig.run("track.addAudio").at("id");
+    std::string lastBus;
     for (const char* bus : {"Room", "Echo"}) {
-        const std::string id = main.rig.run("track.addBus", {{"name", bus}}).at("id");
-        main.rig.run("send.add", {{"track", busy}, {"bus", id}});
+        lastBus = main.rig.run("track.addBus", {{"name", bus}}).at("id");
+        main.rig.run("send.add", {{"track", busy}, {"bus", lastBus}});
     }
     for (const char* type : {"reverb", "delay", "chorus", "gate", "compressor", "limiter"}) {
         main.rig.run("insert.add", {{"track", busy}, {"type", type}});
@@ -185,6 +186,12 @@ TEST_CASE("the mixer opens showing whole strips whose faders line up whatever in
     CHECK(sceneY(plainFader) == Catch::Approx(sceneY(busyFader)));
     CHECK(plainFader->height() == Catch::Approx(busyFader->height()));
     CHECK(plainFader->height() >= 64);
+
+    QQuickItem* master = inMixer(main, "mixer.master");
+    for (const std::string& track : {plain, busy, lastBus}) {
+        QQuickItem* strip = inMixer(main, "track.select:" + qid(track) + ":strip");
+        CHECK(master->mapToItem(mixer, {0, 0}).x() > strip->mapToItem(mixer, {0, 0}).x());
+    }
 
     main.rig.nav.setMixerOpen(false);
     MainWindow::settle();

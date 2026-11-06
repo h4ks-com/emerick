@@ -9,6 +9,8 @@
 #include <ranges>
 #include <utility>
 
+#include "emerick/app/monitor_source.hpp"
+
 namespace emerick::app {
 
 namespace {
@@ -29,6 +31,9 @@ constexpr std::array kScale{ScalePoint{kMeterFloorDb, 0.0}, ScalePoint{-50.0, 0.
 double toDb(float peak) {
     return peak > 0.0F ? std::max(20.0 * std::log10(static_cast<double>(peak)), kMeterFloorDb) : kMeterFloorDb;
 }
+
+// The engine meters the master under an empty track id.
+std::string meterKey(const std::string& trackId) { return trackId == kMasterSource ? std::string{} : trackId; }
 
 QObject* exposed(TrackMeter& meter) {
     QQmlEngine::setObjectOwnership(&meter, QQmlEngine::CppOwnership);
@@ -110,9 +115,11 @@ double TrackMeter::peakDb() const {
     return peak;
 }
 
-QObject* TrackMeters::input(const QString& trackId) { return exposed(meter(inputs_, trackId.toStdString())); }
+QObject* TrackMeters::input(const QString& trackId) { return exposed(meter(inputs_, meterKey(trackId.toStdString()))); }
 
-QObject* TrackMeters::output(const QString& trackId) { return exposed(meter(outputs_, trackId.toStdString())); }
+QObject* TrackMeters::output(const QString& trackId) {
+    return exposed(meter(outputs_, meterKey(trackId.toStdString())));
+}
 
 TrackMeter& TrackMeters::meter(Meters& meters, const std::string& trackId) {
     std::unique_ptr<TrackMeter>& found = meters[trackId];
@@ -160,7 +167,7 @@ void TrackMeters::resetClips() {
 
 void TrackMeters::resetClips(const std::string& trackId) {
     for (Meters* meters : {&inputs_, &outputs_}) {
-        if (const auto found = meters->find(trackId); found != meters->end()) {
+        if (const auto found = meters->find(meterKey(trackId)); found != meters->end()) {
             found->second->resetClip();
         }
     }
@@ -171,8 +178,9 @@ Json TrackMeters::state() const {
     const auto add = [&](const Meters& meters, const char* key) {
         for (const auto& [trackId, trackMeter] : meters) {
             if (!trackMeter->channels().isEmpty()) {
-                state[trackId][key] = {{"peakDb", std::round(trackMeter->peakDb() * kStateDecimals) / kStateDecimals},
-                                       {"clipped", trackMeter->clipped()}};
+                state[trackId.empty() ? kMasterSource : trackId][key] = {
+                    {"peakDb", std::round(trackMeter->peakDb() * kStateDecimals) / kStateDecimals},
+                    {"clipped", trackMeter->clipped()}};
             }
         }
     };

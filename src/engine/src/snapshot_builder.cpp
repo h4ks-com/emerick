@@ -384,6 +384,7 @@ BuiltSnapshot SnapshotBuilder::build(const Session& session, const StreamLayout&
     collectOutputs(snapshot);
     addCycle(snapshot, session);
     connectTaps(snapshot, session);
+    snapshot.masterMeter = meter(outputMeters_, {}, static_cast<std::size_t>(std::max(layout.outputChannels, 0)));
     snapshot.chaseMidi = session.chaseMidi;
     snapshot.clockWhileStopped = session.clockWhileStopped;
     return built;

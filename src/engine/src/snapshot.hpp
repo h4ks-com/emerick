@@ -195,6 +195,7 @@ struct Snapshot {
     std::vector<std::uint8_t> incoming = std::vector<std::uint8_t>(kMaxIncomingMessage);
     MetronomeState metronome;
     std::vector<std::shared_ptr<SignalTap>> masterTaps;
+    std::shared_ptr<LevelMeter> masterMeter;
     // Set while an offline render's pipeline mixes the buses of one block as the tracks play the next.
     bool pipelined = false;
 };

@@ -721,6 +721,11 @@ void publish(RealtimeState& state, const AudioBlock& block) {
             tap->ring.writeMean(block.outputs.first(std::min<std::size_t>(block.outputs.size(), 2)),
                                 static_cast<std::size_t>(block.frames));
         }
+        if (state.current->masterMeter) {
+            for (std::size_t channel = 0; channel < std::min(block.outputs.size(), kMeterChannels); ++channel) {
+                raise(*state.current->masterMeter, channel, peakOf(block.outputs[channel], block.frames));
+            }
+        }
     }
     state.publishedFrame.store(state.frame, std::memory_order_relaxed);
     state.publishedPlaying.store(state.transportPlaying || state.countInLeft > 0, std::memory_order_relaxed);

@@ -138,7 +138,8 @@ public:
     std::vector<LevelReading> takeInputLevels();
     // Reads and resets the deepest gain reduction of every compressor insert.
     std::vector<GainReduction> takeGainReductions();
-    // Reads and resets the post-fader output level of every track with an audio output.
+    // Reads and resets the post-fader output level of every track with an audio output, and of the master under an
+    // empty track id.
     std::vector<LevelReading> takeOutputLevels();
 
     [[nodiscard]] AudioBackend& audio();

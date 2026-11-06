@@ -134,8 +134,9 @@ TEST_CASE("pan with the -3 dB law plays a mono clip hard left at full level and 
     CHECK(last(1) == Approx(std::numbers::sqrt2_v<float> / 2));
     CHECK(last(2) == Approx(std::numbers::sqrt2_v<float> / 2));
     const std::vector<LevelReading> levels = rig.engine.takeOutputLevels();
-    REQUIRE(levels.size() == 1);
-    CHECK(levels[0].peaks[1] == Approx(std::numbers::sqrt2_v<float> / 2));
+    REQUIRE(levels.size() == 2);
+    CHECK(levels[1].trackId == "pad");
+    CHECK(levels[1].peaks[1] == Approx(std::numbers::sqrt2_v<float> / 2));
 }
 
 TEST_CASE("a gain change during playback ramps across a block with no step larger than the ramp") {
@@ -279,7 +280,9 @@ TEST_CASE("a missing or wrong rate clip is skipped and reported while the other 
     CHECK(rig.audio.output("keyboard", 1)[static_cast<std::size_t>(start)] == 1.0F);
 }
 
-TEST_CASE("a playing clip meters its track's post-fader output per channel and leaves the other tracks silent") {
+TEST_CASE(
+    "a playing clip meters its track's post-fader output per channel and the master, and leaves the other tracks "
+    "silent") {
     Rig rig;
     const TempFolder folder;
     writeWav(folder.path / "ones.wav", std::vector<float>(48000, 1.0F));
@@ -294,12 +297,14 @@ TEST_CASE("a playing clip meters its track's post-fader output per channel and l
     rig.audio.process(kBlock);
 
     const std::vector<LevelReading> levels = rig.engine.takeOutputLevels();
-    REQUIRE(levels.size() == 2);
-    CHECK(levels[0].trackId == "pad");
+    REQUIRE(levels.size() == 3);
+    CHECK(levels[0].trackId.empty());
     CHECK(levels[0].peaks == std::vector{0.5F, 0.5F});
-    CHECK_FALSE(levels[0].clipped);
-    CHECK(levels[1].trackId == "quiet");
-    CHECK(levels[1].peaks == std::vector{0.0F});
+    CHECK(levels[1].trackId == "pad");
+    CHECK(levels[1].peaks == std::vector{0.5F, 0.5F});
+    CHECK_FALSE(levels[1].clipped);
+    CHECK(levels[2].trackId == "quiet");
+    CHECK(levels[2].peaks == std::vector{0.0F});
     CHECK(rig.audio.output("interface", 1)[static_cast<std::size_t>(rig.audio.processedFrames() - 1)] == 0.5F);
 }
 

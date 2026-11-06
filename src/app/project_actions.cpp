@@ -9,6 +9,7 @@
 #include <vector>
 
 #include "emerick/app/action_params.hpp"
+#include "emerick/app/monitor_source.hpp"
 #include "emerick/app/project_state.hpp"
 #include "emerick/app/read_only_titles.hpp"
 #include "emerick/app/session_mapping.hpp"
@@ -201,20 +202,24 @@ void registerTransportActions(Registry& registry, ProjectController& controller)
                                 return transportState(controller);
                             },
                         .menus = {kTransportMenu}});
-    registry.addAction({.id = "meters.resetClips",
-                        .title = "Reset clip indicators",
-                        .description = "Clears the clip lights of track, or of every track without it",
-                        .aliases = {"clear clip", "clear overload"},
-                        .category = "Transport",
-                        .schema = {{"properties", {{"track", {{"type", "string"}}}}}},
-                        .run = [&controller](const Json& params) {
-                            if (params.contains("track")) {
-                                controller.meters().resetClips(trackParam(controller.project(), params).value);
-                            } else {
-                                controller.meters().resetClips();
-                            }
-                            return Json{{"meters", controller.meters().state()}};
-                        }});
+    registry.addAction(
+        {.id = "meters.resetClips",
+         .title = "Reset clip indicators",
+         .description =
+             "Clears the clip lights of track (an id, or master), or of every track and the master without it",
+         .aliases = {"clear clip", "clear overload"},
+         .category = "Transport",
+         .schema = {{"properties", {{"track", {{"type", "string"}}}}}},
+         .run = [&controller](const Json& params) {
+             if (params.is_object() && params.contains("track") && params["track"] == kMasterSource) {
+                 controller.meters().resetClips(kMasterSource);
+             } else if (params.contains("track")) {
+                 controller.meters().resetClips(trackParam(controller.project(), params).value);
+             } else {
+                 controller.meters().resetClips();
+             }
+             return Json{{"meters", controller.meters().state()}};
+         }});
 }
 
 void registerZoomActions(Registry& registry, ProjectController& controller, Nav& nav) {

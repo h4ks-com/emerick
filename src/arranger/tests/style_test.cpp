@@ -253,3 +253,16 @@ TEST_CASE("a section's notes count by the part their channel plays on, before an
     CHECK(mainA.at(kPad - kDrums).empty());
     CHECK(partNotes(*findSection(style, Section::Main, 1)).at(0) == std::map<int, int>{{kMainBDrum, 4}});
 }
+
+TEST_CASE(
+    "a song asking for an Intro or Ending the style lacks gets the nearest one, and any other section only itself") {
+    Style style;
+    style.sections = {{.kind = Section::Main, .variation = 0, .length = 1, .events = {}, .rules = {}},
+                      {.kind = Section::Ending, .variation = 1, .length = 2, .events = {}, .rules = {}},
+                      {.kind = Section::Ending, .variation = 2, .length = 3, .events = {}, .rules = {}}};
+
+    CHECK(requestedSection(style, Section::Ending, 0)->variation == 1);
+    CHECK(requestedSection(style, Section::Ending, 2)->variation == 2);
+    CHECK(requestedSection(style, Section::Intro, 0) == nullptr);
+    CHECK(requestedSection(style, Section::Main, 1) == nullptr);
+}

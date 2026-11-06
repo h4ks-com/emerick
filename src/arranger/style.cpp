@@ -5,6 +5,7 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <cstdlib>
 #include <format>
 #include <map>
 #include <numeric>
@@ -245,6 +246,23 @@ const StyleSection* findSection(const Style& style, Section kind, int variation)
         return section.kind == kind && section.variation == variation;
     });
     return found == style.sections.end() ? nullptr : &*found;
+}
+
+const StyleSection* requestedSection(const Style& style, Section kind, int variation) {
+    if (const StyleSection* exact = findSection(style, kind, variation)) {
+        return exact;
+    }
+    if (kind != Section::Intro && kind != Section::Ending) {
+        return nullptr;
+    }
+    const StyleSection* nearest = nullptr;
+    for (const StyleSection& section : style.sections) {
+        if (section.kind == kind && (nearest == nullptr || std::abs(section.variation - variation) <
+                                                               std::abs(nearest->variation - variation))) {
+            nearest = &section;
+        }
+    }
+    return nearest;
 }
 
 std::array<std::map<int, int>, kParts> partNotes(const StyleSection& section) {

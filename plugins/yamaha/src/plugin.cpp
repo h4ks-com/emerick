@@ -167,7 +167,7 @@ core::Ticks sectionsEnd(const model::Track& style, const std::vector<SectionEven
     if (!summary) {
         return 0;
     }
-    const arranger::StyleSection* ending = arranger::findSection(summary->style, Section::Ending, last.variation);
+    const arranger::StyleSection* ending = arranger::requestedSection(summary->style, Section::Ending, last.variation);
     return ending != nullptr ? last.at + (ending->length * core::kTicksPerQuarter / summary->style.ticksPerQuarter) : 0;
 }
 

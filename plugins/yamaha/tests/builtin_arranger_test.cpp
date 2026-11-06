@@ -523,6 +523,35 @@ TEST_CASE("freezing the arranger records each part into a clip, takes the parts 
     CHECK(rig.track(bassId.value).clips.empty());
 }
 
+TEST_CASE("freezing a song that ends on an Ending the style lacks plays the nearest Ending and nothing after it") {
+    ArrangerRig rig;
+    rig.run("arranger.setup");
+    const std::string style = rig.trackOfKind("yamaha.style");
+    rig.run("arranger.style.load", {{"track", style}, {"path", rig.demo.string()}});
+    rig.controller->project().editTrack(
+        model::TrackId{rig.trackOfKind("yamaha.chord")}, "chords",
+        [](model::Track& track) { track.data = Json::parse(R"([{"at":0,"chord":"C"}])"); });
+    rig.controller->project().editTrack(model::TrackId{style}, "sections", [](model::Track& track) {
+        track.data = Json::parse(R"([{"at":0,"kind":"main","variation":0},{"at":7680,"kind":"ending","variation":2}])");
+    });
+    const model::TrackId melody{rig.run("track.addMidi", {{"name", "Melody"}}).at("id")};
+    rig.controller->project().editTrack(melody, "long clip", [](model::Track& track) {
+        track.clips.emplace_back(model::MidiClip{.start = 0, .length = 10 * 3840});
+    });
+
+    rig.run("arranger.freeze");
+    for (const model::Track& track : rig.document().tracks) {
+        for (const model::Clip& clip : track.clips) {
+            const auto& midi = std::get<model::MidiClip>(clip);
+            for (const model::Note& note : midi.notes) {
+                INFO(track.name << " note " << note.pitch << " at " << note.start << " length " << note.length
+                                << " clip length " << midi.length);
+                CHECK(midi.start + note.start + note.length <= 3 * 3840);
+            }
+        }
+    }
+}
+
 TEST_CASE("inspecting an arranger mix leaves out the Style track and finds the parts the style never plays quiet") {
     ArrangerRig rig;
     rig.run("arranger.setup");
@@ -579,6 +608,19 @@ TEST_CASE("an export runs to the end of the style's Ending when the Style lane e
     const Json result = rig.run("export.stems", {{"folder", rig.path("stems").string()}});
     CHECK(result.at("end").at("bbt") == "4.1.0");
     CHECK(rig.run("project.summary", {}).at("lengthBars") == 3);
+}
+
+TEST_CASE("an export runs to the end of the nearest Ending when the Style lane ends on one the style lacks") {
+    ArrangerRig rig;
+    rig.run("arranger.setup");
+    const std::string style = rig.trackOfKind("yamaha.style");
+    rig.run("arranger.style.load", {{"track", style}, {"path", rig.demo.string()}});
+    rig.controller->project().editTrack(model::TrackId{style}, "sections", [](model::Track& track) {
+        track.data = Json::parse(R"([{"at":0,"kind":"main","variation":0},{"at":7680,"kind":"ending","variation":2}])");
+    });
+
+    const Json result = rig.run("export.stems", {{"folder", rig.path("stems").string()}});
+    CHECK(result.at("end").at("bbt") == "4.1.0");
 }
 
 TEST_CASE("a part waiting for Expansion Voices to read its store warns until the store is read") {

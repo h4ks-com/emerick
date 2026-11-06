@@ -120,6 +120,9 @@ public:
 Style parseStyle(std::span<const std::uint8_t> bytes);
 
 const StyleSection* findSection(const Style& style, yamaha::Section kind, int variation);
+// The section a song asking for kind and variation plays. A song that asks for an Intro or Ending the style lacks
+// plays the style's nearest variation of it, so it still starts and ends.
+const StyleSection* requestedSection(const Style& style, yamaha::Section kind, int variation);
 
 // How many times each note starts in a section, by part, as the pattern writes it before any chord transposes it.
 std::array<std::map<int, int>, kParts> partNotes(const StyleSection& section);

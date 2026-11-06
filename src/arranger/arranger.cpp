@@ -73,7 +73,7 @@ void Arranger::setChord(const yamaha::Chord& chord, Ticks at) {
 }
 
 void Arranger::request(Section kind, int variation, Ticks at) {
-    const StyleSection* target = findSection(*style_, kind, variation);
+    const StyleSection* target = requestedSection(*style_, kind, variation);
     switch (kind) {
         case Section::Main:
             requestMain(target, at);

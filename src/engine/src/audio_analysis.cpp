@@ -105,7 +105,7 @@ private:
 };
 
 // The true peak of the frames from first to last of samples, with silence around them.
-double truePeak(std::span<const float> samples, std::size_t first, std::size_t last) {
+double truePeakOf(std::span<const float> samples, std::size_t first, std::size_t last) {
     static const auto kTaps = interpolationTaps();
     double peak = 0;
     for (std::size_t frame = first; frame < last; ++frame) {
@@ -119,6 +119,34 @@ double truePeak(std::span<const float> samples, std::size_t first, std::size_t l
                 }
             }
             peak = std::max(peak, std::abs(sum));
+        }
+    }
+    return peak;
+}
+
+// The larger of peak and truePeakOf from first up to last.
+double truePeak(std::span<const float> samples, std::size_t first, std::size_t last, double peak) {
+    constexpr double kRoundingMargin = 1.000001;
+    static const auto kTaps = interpolationTaps();
+    // Every interpolated sample stays at or below the loudest sample under the taps times the largest sum of tap
+    // magnitudes, so we skip each stretch of frames that bound keeps at or below the peak so far.
+    static const double kGain =
+        kRoundingMargin *
+        std::max(1.0, std::ranges::max(kTaps | std::views::transform([](const auto& phase) {
+                                           return std::ranges::fold_left(
+                                               phase | std::views::transform([](double tap) { return std::abs(tap); }),
+                                               0.0, std::plus{});
+                                       })));
+    constexpr std::size_t kStretch = 256;
+    for (std::size_t from = first; from < last; from += kStretch) {
+        const std::size_t to = std::min(last, from + kStretch);
+        const std::size_t low = from - std::min(from, kTapsPerPhase);
+        const std::size_t high = std::min(samples.size(), to + kTapsPerPhase);
+        const float loudest =
+            std::ranges::fold_left(samples.subspan(low, high - low), 0.0F,
+                                   [](float most, float sample) { return std::max(most, std::abs(sample)); });
+        if (static_cast<double>(loudest) * kGain > peak) {
+            peak = std::max(peak, truePeakOf(samples, from, to));
         }
     }
     return peak;
@@ -264,7 +292,7 @@ struct TrackMeter::State {
     }
 
     [[nodiscard]] double tailPeak(std::size_t channel, std::size_t last) const {
-        return truePeak(tails[channel], nextPeakFrame - tailStart, last - tailStart);
+        return truePeak(tails[channel], nextPeakFrame - tailStart, last - tailStart, interpolatedPeak);
     }
 
     // Measures the true peak of every frame whose interpolation window has arrived, and keeps only what later frames

@@ -251,41 +251,51 @@ public:
         : late_(static_cast<std::size_t>(late)), sink_(&sink) {}
 
     void add(std::vector<std::vector<float>> chunk) {
-        if (chunk.empty()) {
+        if (chunk.empty() || chunk.front().empty()) {
             return;
         }
+        const auto offset = [](std::size_t frames) { return static_cast<std::ptrdiff_t>(frames); };
         const std::size_t dropped = std::min(late_, chunk.front().size());
         late_ -= dropped;
-        held_.resize(chunk.size());
+        for (std::vector<float>& channel : chunk) {
+            channel.erase(channel.begin(), channel.begin() + offset(dropped));
+        }
+        const std::size_t size = chunk.front().size();
+        const auto full = static_cast<std::size_t>(kChunk);
+        if (carried_ == 0 && size == full) {
+            (*sink_)(std::move(chunk));
+            return;
+        }
+        carry_.resize(chunk.size());
+        std::size_t used = 0;
+        while (carried_ + size - used >= full) {
+            const std::size_t take = full - carried_;
+            for (std::size_t channel = 0; channel < chunk.size(); ++channel) {
+                carry_[channel].insert(carry_[channel].end(), chunk[channel].begin() + offset(used),
+                                       chunk[channel].begin() + offset(used + take));
+            }
+            (*sink_)(std::exchange(carry_, std::vector<std::vector<float>>(chunk.size())));
+            used += take;
+            carried_ = 0;
+        }
         for (std::size_t channel = 0; channel < chunk.size(); ++channel) {
-            held_[channel].insert(held_[channel].end(), chunk[channel].begin() + static_cast<std::ptrdiff_t>(dropped),
-                                  chunk[channel].end());
+            carry_[channel].insert(carry_[channel].end(), chunk[channel].begin() + offset(used), chunk[channel].end());
         }
-        while (!held_.empty() && held_.front().size() >= static_cast<std::size_t>(kChunk)) {
-            hand(static_cast<std::size_t>(kChunk));
-        }
+        carried_ += size - used;
     }
 
     void flush() {
-        if (!held_.empty() && !held_.front().empty()) {
-            hand(held_.front().size());
+        if (carried_ > 0) {
+            (*sink_)(std::move(carry_));
+            carried_ = 0;
         }
     }
 
 private:
-    void hand(std::size_t frames) {
-        std::vector<std::vector<float>> chunk;
-        chunk.reserve(held_.size());
-        for (std::vector<float>& channel : held_) {
-            chunk.emplace_back(channel.begin(), channel.begin() + static_cast<std::ptrdiff_t>(frames));
-            channel.erase(channel.begin(), channel.begin() + static_cast<std::ptrdiff_t>(frames));
-        }
-        (*sink_)(std::move(chunk));
-    }
-
     std::size_t late_;
     const OfflineRender::ChunkSink* sink_;
-    std::vector<std::vector<float>> held_;
+    std::vector<std::vector<float>> carry_;
+    std::size_t carried_ = 0;
 };
 
 engine::Frames renderFrames(const engine::Session& session, const model::Document& document, const Registry& registry,

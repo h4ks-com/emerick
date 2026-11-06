@@ -5,6 +5,7 @@
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/generators/catch_generators.hpp>
 #include <cmath>
+#include <complex>
 #include <cstddef>
 #include <numbers>
 #include <vector>
@@ -24,6 +25,25 @@ TEST_CASE("the spectrum of a sine peaks at its bin at its level") {
     CHECK(static_cast<std::size_t>(std::ranges::max_element(db) - db.begin()) == kBin);
     CHECK(db[kBin] == Approx(20 * std::log10(0.5)).margin(0.01));
     CHECK(db[kBin + 10] < -100);
+}
+
+TEST_CASE("the power spectrum of a frame matches its Hann windowed DFT bin by bin") {
+    constexpr std::size_t kSize = 256;
+    std::vector<float> frame(kSize);
+    for (std::size_t i = 0; i < kSize; ++i) {
+        frame[i] = static_cast<float>(std::sin(0.37 * static_cast<double>(i)) +
+                                      (0.2 * std::cos(1.9 * static_cast<double>(i * i % 97))));
+    }
+    const std::vector<double> power = emerick::engine::powerSpectrum(frame);
+    REQUIRE(power.size() == (kSize / 2) + 1);
+    for (std::size_t bin = 0; bin < power.size(); ++bin) {
+        std::complex<double> sum = 0;
+        for (std::size_t i = 0; i < kSize; ++i) {
+            const double angle = 2 * std::numbers::pi * static_cast<double>(i) / static_cast<double>(kSize);
+            sum += (0.5 - (0.5 * std::cos(angle))) * frame[i] * std::polar(1.0, -angle * static_cast<double>(bin));
+        }
+        CHECK(power[bin] == Approx(std::norm(sum)).epsilon(1e-9).margin(1e-9));
+    }
 }
 
 TEST_CASE("the spectrogram reads a full scale sine at 0 dB on its bin, for every window") {

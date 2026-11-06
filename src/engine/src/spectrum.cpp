@@ -4,7 +4,9 @@
 #include <array>
 #include <cmath>
 #include <cstddef>
+#include <deque>
 #include <functional>
+#include <mutex>
 #include <numbers>
 #include <numeric>
 #include <ranges>
@@ -16,9 +18,54 @@ namespace {
 
 constexpr double kFloorDb = -200;
 
-}  // namespace
+// What a transform of one size reuses: each twiddle, exact from its angle, and the Hann window of a frame twice the
+// size, which powerSpectrum packs into a transform of half its size.
+struct FftPlan {
+    std::size_t size = 0;
+    std::vector<std::complex<double>> twiddles;
+    std::vector<std::complex<double>> realTwiddles;
+    std::vector<double> hann;
+};
 
-void fft(std::span<std::complex<double>> data) {
+// The meters measure on threads that last one chunk, so every thread shares the plans. A deque keeps each plan we
+// handed out in place as we add more.
+const FftPlan& planOf(std::size_t size) {
+    static std::mutex mutex;
+    static std::deque<FftPlan> plans;
+    const std::scoped_lock lock(mutex);
+    const auto found = std::ranges::find(plans, size, &FftPlan::size);
+    if (found != plans.end()) {
+        return *found;
+    }
+    FftPlan plan{.size = size, .twiddles = {}, .realTwiddles = {}, .hann = {}};
+    const auto angle = [](std::size_t index, std::size_t of) {
+        return -2 * std::numbers::pi * static_cast<double>(index) / static_cast<double>(of);
+    };
+    plan.twiddles = std::views::iota(std::size_t{0}, size / 2) |
+                    std::views::transform([&](std::size_t index) { return std::polar(1.0, angle(index, size)); }) |
+                    std::ranges::to<std::vector>();
+    plan.realTwiddles =
+        std::views::iota(std::size_t{0}, size + 1) |
+        std::views::transform([&](std::size_t index) { return std::polar(1.0, angle(index, 2 * size)); }) |
+        std::ranges::to<std::vector>();
+    plan.hann =
+        std::views::iota(std::size_t{0}, 2 * size) | std::views::transform([&](std::size_t index) {
+            return 0.5 -
+                   (0.5 * std::cos(2 * std::numbers::pi * static_cast<double>(index) / static_cast<double>(2 * size)));
+        }) |
+        std::ranges::to<std::vector>();
+    plans.push_back(std::move(plan));
+    return plans.back();
+}
+
+// Multiplies with the plain formula, since std::complex's operator* also handles infinite and NaN operands at a cost
+// larger than the multiply.
+std::complex<double> times(std::complex<double> a, std::complex<double> b) {
+    return {(a.real() * b.real()) - (a.imag() * b.imag()), (a.real() * b.imag()) + (a.imag() * b.real())};
+}
+
+// Transforms in place with the plan of the data's size.
+void transform(std::span<std::complex<double>> data, const FftPlan& plan) {
     const std::size_t size = data.size();
     for (std::size_t i = 1, j = 0; i < size; ++i) {
         std::size_t bit = size >> 1U;
@@ -30,33 +77,56 @@ void fft(std::span<std::complex<double>> data) {
             std::swap(data[i], data[j]);
         }
     }
+    const std::vector<std::complex<double>>& twiddles = plan.twiddles;
     for (std::size_t length = 2; length <= size; length <<= 1U) {
-        const std::complex<double> step = std::polar(1.0, -2 * std::numbers::pi / static_cast<double>(length));
+        const std::size_t stride = size / length;
         for (std::size_t start = 0; start < size; start += length) {
-            std::complex<double> twiddle = 1;
             for (std::size_t k = 0; k < length / 2; ++k) {
                 const std::complex<double> even = data[start + k];
-                const std::complex<double> odd = data[start + k + (length / 2)] * twiddle;
+                const std::complex<double> odd = times(data[start + k + (length / 2)], twiddles[k * stride]);
                 data[start + k] = even + odd;
                 data[start + k + (length / 2)] = even - odd;
-                twiddle *= step;
             }
         }
     }
 }
 
-std::vector<double> powerSpectrum(std::span<const float> frame) {
-    const std::size_t size = frame.size();
-    std::vector<std::complex<double>> bins(size);
-    for (std::size_t i = 0; i < size; ++i) {
-        const double hann =
-            0.5 - (0.5 * std::cos(2 * std::numbers::pi * static_cast<double>(i) / static_cast<double>(size)));
-        bins[i] = hann * frame[i];
+// Adds the power of each bin of the Hann windowed real frame to power, through a complex transform of half the frame
+// that holds the even samples as real parts and the odd ones as imaginary parts.
+void addPowerSpectrum(std::span<const float> frame, std::vector<std::complex<double>>& packed,
+                      std::span<double> power) {
+    const std::size_t half = frame.size() / 2;
+    if (half == 0) {
+        return;
     }
-    fft(bins);
-    std::vector<double> power(size / 2 + 1);
-    std::ranges::transform(bins.begin(), bins.begin() + static_cast<std::ptrdiff_t>(power.size()), power.begin(),
-                           [](const std::complex<double>& bin) { return std::norm(bin); });
+    const FftPlan& plan = planOf(half);
+    packed.resize(half);
+    for (std::size_t index = 0; index < half; ++index) {
+        packed[index] = {plan.hann[2 * index] * frame[2 * index], plan.hann[(2 * index) + 1] * frame[(2 * index) + 1]};
+    }
+    transform(packed, plan);
+    for (std::size_t bin = 0; bin <= half; ++bin) {
+        const std::complex<double> here = packed[bin % half];
+        const std::complex<double> mirror = std::conj(packed[(half - bin) % half]);
+        const std::complex<double> even = 0.5 * (here + mirror);
+        const std::complex<double> difference = here - mirror;
+        const std::complex<double> odd{0.5 * difference.imag(), -0.5 * difference.real()};
+        power[bin] += std::norm(even + times(plan.realTwiddles[bin], odd));
+    }
+}
+
+}  // namespace
+
+void fft(std::span<std::complex<double>> data) {
+    if (data.size() >= 2) {
+        transform(data, planOf(data.size()));
+    }
+}
+
+std::vector<double> powerSpectrum(std::span<const float> frame) {
+    std::vector<double> power((frame.size() / 2) + 1);
+    std::vector<std::complex<double>> packed;
+    addPowerSpectrum(frame, packed, power);
     return power;
 }
 
@@ -70,7 +140,7 @@ void SpectrumSum::add(std::span<const float> samples) {
         frame_.insert(frame_.end(), samples.begin(), samples.begin() + static_cast<std::ptrdiff_t>(count));
         samples = samples.subspan(count);
         if (frame_.size() == frameSize_) {
-            std::ranges::transform(sum_, powerSpectrum(frame_), sum_.begin(), std::plus{});
+            addPowerSpectrum(frame_, packed_, sum_);
             frame_.clear();
         }
     }

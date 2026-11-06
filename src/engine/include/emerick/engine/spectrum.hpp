@@ -26,6 +26,7 @@ private:
     std::size_t frameSize_;
     std::vector<float> frame_;
     std::vector<double> sum_;
+    std::vector<std::complex<double>> packed_;
 };
 
 // Returns powerSpectrum summed over consecutive frames of frameSize samples of every channel, the last frame padded

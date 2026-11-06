@@ -2,15 +2,20 @@
 
 #include <algorithm>
 #include <array>
+#include <charconv>
 #include <cmath>
 #include <cstddef>
 #include <format>
+#include <fstream>
 #include <functional>
 #include <future>
 #include <memory>
 #include <ranges>
 #include <span>
+#include <string>
 #include <string_view>
+#include <system_error>
+#include <thread>
 #include <utility>
 #include <vector>
 
@@ -178,6 +183,25 @@ Json levelsJson(const AnalysisRange& range, const std::string& trackId, const Me
     return result;
 }
 
+// The cores this process may use: a container's CPU quota can allow fewer than the machine has.
+std::size_t readAvailableCores() {
+    std::size_t cores = std::max(1U, std::thread::hardware_concurrency());
+    std::ifstream quota("/sys/fs/cgroup/cpu.max");
+    std::string limit;
+    double period = 0;
+    double allowed = 0;
+    if (quota >> limit >> period && period > 0 &&
+        std::from_chars(limit.data(), limit.data() + limit.size(), allowed).ec == std::errc{}) {
+        cores = std::min(cores, std::max<std::size_t>(1, static_cast<std::size_t>(std::ceil(allowed / period))));
+    }
+    return cores;
+}
+
+std::size_t availableCores() {
+    static const std::size_t kCores = readAvailableCores();
+    return kCores;
+}
+
 // The meters of each output a render carries on channels 2i and 2i + 1, fed from the frame the range starts at.
 struct OutputMeters {
     std::ptrdiff_t skip = 0;
@@ -207,15 +231,18 @@ struct OutputMeters {
                 channel.erase(channel.begin(), channel.begin() + first);
             }
         }
-        // Each output's meters run on their own thread, since measuring takes about as long as rendering.
+        // The outputs' meters share the cores the render's two threads leave free.
         const auto shared = std::make_shared<const std::vector<std::vector<float>>>(std::move(chunk));
-        measuring.reserve(meters.size());
-        for (std::size_t index = 0; index < meters.size(); ++index) {
-            measuring.push_back(std::async(std::launch::async, [this, shared, index] {
-                const auto channels = std::span{*shared}.subspan(2 * index, 2);
-                meters[index].add(channels);
-                if (!windows.empty()) {
-                    windows[index].add(channels);
+        const std::size_t threads = std::min(meters.size(), availableCores() > 2 ? availableCores() - 2 : 1);
+        measuring.reserve(threads);
+        for (std::size_t thread = 0; thread < threads; ++thread) {
+            measuring.push_back(std::async(std::launch::async, [this, shared, thread, threads] {
+                for (std::size_t index = thread; index < meters.size(); index += threads) {
+                    const auto channels = std::span{*shared}.subspan(2 * index, 2);
+                    meters[index].add(channels);
+                    if (!windows.empty()) {
+                        windows[index].add(channels);
+                    }
                 }
             }));
         }

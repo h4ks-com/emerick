@@ -40,6 +40,9 @@ Json setLocators(ProjectController& controller, const Json& params) {
         throw AppError("the cycle needs 0 <= start < end, got start " + std::to_string(cycle.start) + " and end " +
                        std::to_string(cycle.end));
     }
+    if (const core::Ticks shortest = tempo.ticksPerBeat() / 4; cycle.end - cycle.start < shortest) {
+        throw AppError("make the cycle at least a 16th note (" + std::to_string(shortest) + " ticks) long");
+    }
     return setCycle(controller, cycle, "set cycle");
 }
 

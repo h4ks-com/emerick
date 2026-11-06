@@ -28,6 +28,14 @@ TEST_CASE(
         return strip->mapToScene({(static_cast<double>(ticks) - scrollTicks) * pixelsPerTick, strip->height() / 2});
     };
 
+    const model::Cycle before = cycleOf(main);
+    const QPointF jitter = at(5 * bar) + QPointF{1, 0};
+    main.send(QEvent::MouseButtonPress, at(5 * bar), Qt::LeftButton, Qt::ControlModifier);
+    main.send(QEvent::MouseMove, jitter, Qt::LeftButton, Qt::ControlModifier);
+    main.send(QEvent::MouseButtonRelease, jitter, Qt::NoButton, Qt::ControlModifier);
+    MainWindow::settle();
+    CHECK(cycleOf(main) == before);
+
     main.send(QEvent::MouseButtonPress, at(bar + 30), Qt::LeftButton, Qt::NoModifier);
     for (const core::Ticks ticks : {bar + 400, 2 * bar, (3 * bar) - 30}) {
         main.send(QEvent::MouseMove, at(ticks), Qt::LeftButton, Qt::NoModifier);

@@ -40,6 +40,8 @@ TEST_CASE("toggle, set and set to clips edit the cycle as undo steps, and the tr
     CHECK(cycleOf(rig).at("start").at("bbt") == "3.1.0");
     CHECK(rig.run("transport.stop").at("cycle").at("end").at("ticks") == 4 * kBar);
     CHECK_THROWS_AS(rig.run("cycle.set", {{"start", 4 * kBar}}), AppError);
+    CHECK_THROWS_AS(rig.run("cycle.set", {{"start", 4 * kBar - 10}}), AppError);
+    CHECK(cycleOf(rig).at("start").at("bbt") == "3.1.0");
     rig.run("cycle.toggle", {{"enabled", false}});
     CHECK(cycleOf(rig).at("enabled") == false);
 

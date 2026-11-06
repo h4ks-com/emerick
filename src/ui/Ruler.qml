@@ -16,6 +16,7 @@ Rectangle {
 
     readonly property var cycle: Project.cycle
     readonly property real cycleHeight: height / 2
+    readonly property real shortestCycle: Project.ticksPerBeat / 4
 
     color: Theme.slate
     clip: true
@@ -95,12 +96,14 @@ Rectangle {
         height: ruler.cycleHeight
         hoverEnabled: true
         property real pressTicks
+        property real pressX
         property bool dragging: false
         ToolTip.text: "Drag to set the cycle locators"
         ToolTip.visible: containsMouse && !pressed && !cycleBody.containsMouse && !startEdge.containsMouse && !endEdge.containsMouse
         ToolTip.delay: Theme.tooltipDelay
         onPressed: mouse => {
             pressTicks = Project.placed(ruler.ticksAt(mouse.x), mouse.modifiers)
+            pressX = mouse.x
             dragging = false
         }
         onPositionChanged: mouse => {
@@ -108,8 +111,8 @@ Rectangle {
                 return
             }
             const at = Project.placed(ruler.ticksAt(mouse.x), mouse.modifiers)
-            dragging = dragging || at !== pressTicks
-            if (dragging && at !== pressTicks) {
+            dragging = dragging || Math.abs(mouse.x - pressX) >= Theme.dragThreshold
+            if (dragging && Math.abs(at - pressTicks) >= ruler.shortestCycle) {
                 ruler.dragCycle({start: Math.min(at, pressTicks), end: Math.max(at, pressTicks), enabled: true})
             }
         }
@@ -185,7 +188,7 @@ Rectangle {
                 return
             }
             const at = Project.placed(ruler.ticksAt(mapToItem(ruler, mouse.x, 0).x), mouse.modifiers)
-            if (isStart ? at < ruler.cycle.end : at > ruler.cycle.start) {
+            if (isStart ? at <= ruler.cycle.end - ruler.shortestCycle : at >= ruler.cycle.start + ruler.shortestCycle) {
                 ruler.dragCycle(isStart ? {start: at} : {end: at})
             }
         }

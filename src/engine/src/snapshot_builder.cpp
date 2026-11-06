@@ -96,6 +96,7 @@ void connectBuses(Snapshot& snapshot, const Session& session, std::vector<Sessio
     snapshot.mixOrder = std::views::iota(std::size_t{0}, count) |
                         std::views::filter([&](std::size_t index) { return sources[index] == 0; }) |
                         std::ranges::to<std::vector>();
+    snapshot.busesFrom = snapshot.mixOrder.size();
     for (std::size_t position = 0; position < snapshot.mixOrder.size(); ++position) {
         forEachBusFed(snapshot.tracks[snapshot.mixOrder[position]], [&](std::size_t bus) {
             if (--sources[bus] == 0) {
@@ -111,6 +112,9 @@ void connectBuses(Snapshot& snapshot, const Session& session, std::vector<Sessio
             snapshot.mixOrder.push_back(index);
             errors.push_back({state.id, "its sends feed back into it, so they stay silent"});
         }
+    }
+    for (const std::size_t index : snapshot.mixOrder | std::views::drop(snapshot.busesFrom)) {
+        snapshot.tracks[index].mixesBehind = true;
     }
 }
 
@@ -348,6 +352,12 @@ BuiltSnapshot SnapshotBuilder::build(const Session& session, const StreamLayout&
             state.mixPointers = state.mix |
                                 std::views::transform([](std::vector<float>& channel) { return channel.data(); }) |
                                 std::ranges::to<std::vector>();
+            if (track.kind == TrackKind::bus) {
+                state.pending = state.mix;
+                state.pendingPointers =
+                    state.pending | std::views::transform([](std::vector<float>& channel) { return channel.data(); }) |
+                    std::ranges::to<std::vector>();
+            }
             addInserts(state, track, layout, built.errors);
         }
         if (track.instrument && track.instrument->activate(layout.sampleRate, layout.maxFrames)) {

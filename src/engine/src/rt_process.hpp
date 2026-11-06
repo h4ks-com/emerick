@@ -16,6 +16,8 @@
 
 namespace emerick::engine {
 
+class RenderPipeline;
+
 inline constexpr std::size_t kCommandCapacity = 1024;
 inline constexpr std::size_t kRetiredCapacity = 64;
 inline constexpr std::size_t kRetiredPreviewCapacity = 8;
@@ -93,6 +95,8 @@ struct RealtimeState {
     std::array<MetronomeVoice, kMetronomeVoices> metronomeVoices{};
     const DrumSounds* voiceSounds = nullptr;
     PreviewSound* preview = nullptr;
+    // Set only for an offline render, which mixes each block's buses on a thread of their own.
+    RenderPipeline* pipeline = nullptr;
 };
 
 void processBlock(RealtimeState& state, const AudioBlock& block);

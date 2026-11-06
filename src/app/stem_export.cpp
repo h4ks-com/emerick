@@ -4,6 +4,7 @@
 #include <chrono>
 #include <cstdio>
 #include <format>
+#include <future>
 #include <memory>
 #include <ranges>
 #include <set>
@@ -243,6 +244,50 @@ void waitForReadAhead(const engine::Engine& engine) {
 
 }  // namespace
 
+// Drops the frames a render's output comes late and hands the sink the rest in chunks of kChunk frames.
+class OutputChunks {
+public:
+    OutputChunks(engine::Frames late, const OfflineRender::ChunkSink& sink)
+        : late_(static_cast<std::size_t>(late)), sink_(&sink) {}
+
+    void add(std::vector<std::vector<float>> chunk) {
+        if (chunk.empty()) {
+            return;
+        }
+        const std::size_t dropped = std::min(late_, chunk.front().size());
+        late_ -= dropped;
+        held_.resize(chunk.size());
+        for (std::size_t channel = 0; channel < chunk.size(); ++channel) {
+            held_[channel].insert(held_[channel].end(), chunk[channel].begin() + static_cast<std::ptrdiff_t>(dropped),
+                                  chunk[channel].end());
+        }
+        while (!held_.empty() && held_.front().size() >= static_cast<std::size_t>(kChunk)) {
+            hand(static_cast<std::size_t>(kChunk));
+        }
+    }
+
+    void flush() {
+        if (!held_.empty() && !held_.front().empty()) {
+            hand(held_.front().size());
+        }
+    }
+
+private:
+    void hand(std::size_t frames) {
+        std::vector<std::vector<float>> chunk;
+        chunk.reserve(held_.size());
+        for (std::vector<float>& channel : held_) {
+            chunk.emplace_back(channel.begin(), channel.begin() + static_cast<std::ptrdiff_t>(frames));
+            channel.erase(channel.begin(), channel.begin() + static_cast<std::ptrdiff_t>(frames));
+        }
+        (*sink_)(std::move(chunk));
+    }
+
+    std::size_t late_;
+    const OfflineRender::ChunkSink* sink_;
+    std::vector<std::vector<float>> held_;
+};
+
 engine::Frames renderFrames(const engine::Session& session, const model::Document& document, const Registry& registry,
                             double sampleRate) {
     const core::Ticks end = exportEnd(session, document);
@@ -387,14 +432,23 @@ std::optional<MixLevels> writeMix(const SpilledAudio& mix, AudioWriter& writer, 
     }
     const engine::LoudnessMatch match = engine::matchLoudness(replay, 2, sampleRate, target->lufs, target->ceilingDbtp);
     engine::TrackMeter meter(2, sampleRate);
+    // We meter each chunk on another thread while the writer encodes it.
+    std::future<void> metering;
     const auto write = [&](std::span<const std::vector<float>> chunk) {
-        meter.add(chunk);
+        auto copy = std::make_shared<const std::vector<std::vector<float>>>(chunk.begin(), chunk.end());
+        if (metering.valid()) {
+            metering.get();
+        }
+        metering = std::async(std::launch::async, [&meter, copy] { meter.add(*copy); });
         writer.write(chunk);
     };
     if (match.gainDb) {
         engine::limitSignal(replay, 2, sampleRate, *match.gainDb, target->ceilingDbtp, write);
     } else {
         replay(write);
+    }
+    if (metering.valid()) {
+        metering.get();
     }
     return MixLevels{.integratedLufs = match.integratedLufs, .truePeakDbtp = meter.levels().truePeakDbtp};
 }
@@ -433,7 +487,8 @@ void OfflineRender::start(engine::Session session, double sampleRate) {
     engine_ = std::make_unique<engine::Engine>(
         std::move(backend),
         std::make_unique<engine::VirtualMidiBackend>(std::vector<std::string>{}, std::vector<std::string>{}),
-        engine::Engine::Options{.sampleRate = sampleRate, .blockFrames = kBlock});
+        engine::Engine::Options{
+            .sampleRate = sampleRate, .blockFrames = kBlock, .recordingDelay = 0, .pipelineBuses = true});
     try {
         engine_->setSession(std::move(session));
     } catch (const std::invalid_argument& error) {
@@ -464,6 +519,21 @@ OfflineRender::~OfflineRender() {
 
 void OfflineRender::process(engine::Frames frames, const ChunkSink& sink, const std::function<void()>& idle,
                             const std::stop_token& stop) {
+    OutputChunks chunks(engine_->outputDelay(), sink);
+    play(frames, [&chunks](std::vector<std::vector<float>> chunk) { chunks.add(std::move(chunk)); }, idle, stop);
+    if (stop.stop_requested()) {
+        return;
+    }
+    for (engine::Frames late = engine_->outputDelay(); late > 0; late -= kBlock) {
+        offline_->process(std::min(kBlock, late));
+        idle();
+    }
+    chunks.add(offline_->takeOutputs());
+    chunks.flush();
+}
+
+void OfflineRender::play(engine::Frames frames, const ChunkSink& sink, const std::function<void()>& idle,
+                         const std::stop_token& stop) {
     // CLAP offers no way to ask a plugin whether it is ready, so we let the instruments settle for a few blocks.
     for (int block = 0; block < kSettleBlocks; ++block) {
         offline_->process(kBlock);
@@ -507,7 +577,7 @@ std::vector<engine::RecordedTake> OfflineRender::recordMidi(const std::vector<st
         engine_->setArmed(id, true);
     }
     engine_->setRecording(true);
-    process(frames, [](const std::vector<std::vector<float>>&) {}, [this] { idleInstruments(); });
+    play(frames, [](const std::vector<std::vector<float>>&) {}, [this] { idleInstruments(); }, {});
     engine_->stop();
     offline_->process(kBlock);
     engine_->finishEndedTakes();

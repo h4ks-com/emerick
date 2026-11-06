@@ -1,9 +1,13 @@
+#include <algorithm>
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 #include <filesystem>
+#include <random>
+#include <ranges>
 #include <string>
 #include <vector>
 
+#include "emerick/engine/effects.hpp"
 #include "emerick/engine/engine.hpp"
 #include "rig.hpp"
 
@@ -148,4 +152,63 @@ TEST_CASE("buses that feed each other in a loop stay silent and report the loop"
     second.outputBus = "first";
     rig.rig.engine.setSession({.tracks = {first, second}});
     CHECK(rig.rig.engine.sessionErrors().size() == 2);
+}
+
+TEST_CASE("mixing the buses a block behind the tracks plays exactly the same samples a block later") {
+    TempFolder folder;
+    std::mt19937 random(3);
+    std::uniform_real_distribution<float> spread(-0.5F, 0.5F);
+    std::vector<float> noise(96000);
+    std::ranges::generate(noise, [&] { return spread(random); });
+    writeWav(folder.path / "noise.wav", noise);
+
+    const auto clip = [&](const std::string& id) {
+        Track track{.id = id, .kind = TrackKind::audio};
+        track.audioClips = {{.path = folder.path / "noise.wav", .start = 0, .length = 3840, .sourceOffset = 0}};
+        return track;
+    };
+    Track vox = clip("vox");
+    vox.outputBus = "group";
+    vox.captureOut = {"interface", {1, 2}};
+    vox.sends = {{.bus = "verb", .gain = 0.7F, .pre = true}, {.bus = "echo", .gain = 0.4F, .pre = false}};
+    vox.automation = {
+        {.target = AutomationTarget::gain, .points = {{.tick = 0, .value = 1.0F}, {.tick = 1920, .value = 0.2F}}}};
+    Track bass = clip("bass");
+    bass.outputBus = "group";
+    bass.pan = -0.5F;
+    Track verb = bus("verb");
+    verb.outputBus = "group";
+    verb.inserts = {
+        {.id = "verb-reverb", .type = EffectType::reverb, .params = defaultParams(effectSpec(EffectType::reverb))}};
+    Track echo = bus("echo");
+    echo.outputBus = "group";
+    echo.sends = {{.bus = "verb", .gain = 0.3F, .pre = false}};
+    echo.inserts = {
+        {.id = "echo-delay", .type = EffectType::delay, .params = defaultParams(effectSpec(EffectType::delay))}};
+    Track group = bus("group");
+    group.automation = {
+        {.target = AutomationTarget::pan, .points = {{.tick = 0, .value = -0.3F}, {.tick = 3840, .value = 0.6F}}}};
+    const Session session{.tracks = {vox, bass, verb, echo, group}};
+
+    constexpr Frames kFrames = 72000;
+    const auto render = [&](bool pipelined) {
+        Rig rig(kBlock, 0, 0, pipelined);
+        rig.engine.setSession(session);
+        playOnceReadAhead(rig);
+        rig.audio.process(kFrames);
+        return std::pair{rig.engine.outputDelay(),
+                         std::vector{rig.audio.output("keyboard", 1), rig.audio.output("keyboard", 2),
+                                     rig.audio.output("interface", 1), rig.audio.output("interface", 2)}};
+    };
+    const auto [noDelay, serial] = render(false);
+    const auto [delay, pipelined] = render(true);
+    CHECK(noDelay == 0);
+    REQUIRE(delay == kBlock);
+    for (std::size_t channel = 0; channel < serial.size(); ++channel) {
+        INFO(channel);
+        const auto late = static_cast<std::ptrdiff_t>(delay);
+        CHECK(std::ranges::max(serial[channel]) > 0.01F);
+        CHECK(std::ranges::equal(serial[channel] | std::views::take(std::ssize(serial[channel]) - late),
+                                 pipelined[channel] | std::views::drop(late)));
+    }
 }

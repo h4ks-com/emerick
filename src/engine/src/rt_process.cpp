@@ -3,41 +3,31 @@
 #include "rt_process.hpp"
 
 #include <algorithm>
+#include <cfenv>
 #include <cmath>
 #include <functional>
 #include <iterator>
 #include <numbers>
+#include <optional>
+#include <ranges>
 #include <span>
+#include <stop_token>
 #include <utility>
 
 #include "clock.hpp"
 #include "emerick/core/midi.hpp"
 #include "emerick/engine/engine.hpp"
+#include "render_pipeline.hpp"
 #include "rt_metronome.hpp"
 #include "rt_midi.hpp"
+
+#ifdef __APPLE__
+#include <pthread/qos.h>
+#endif
 
 namespace emerick::engine {
 
 namespace {
-
-// The timeline frame at an offset into the block, which moves only while the transport runs, from where a count-in
-// ended.
-// A cycle jump at jumpOffset puts the timeline back at jumpFrame from there on.
-struct BlockTime {
-    Frames frame = 0;
-    Frames rollFrom = 0;
-    bool playing = false;
-    Frames jumpOffset = 0;
-    Frames jumpFrame = -1;
-
-    [[nodiscard]] Frames at(Frames offset) const {
-        if (!playing) {
-            return frame;
-        }
-        return jumpFrame >= 0 && offset >= jumpOffset ? jumpFrame + offset - jumpOffset
-                                                      : frame + std::max<Frames>(offset - rollFrom, 0);
-    }
-};
 
 // A rebuilt snapshot starts each track from the gains and trim the old one played, so an edit ramps to its new value.
 void keepRampState(const Snapshot& from, Snapshot& to) {
@@ -65,6 +55,7 @@ void adoptPending(RealtimeState& state) {
         return;
     }
     Snapshot* next = state.pending.exchange(nullptr, std::memory_order_acq_rel);
+    next->pipelined = state.pipeline != nullptr;
     if (state.current != nullptr) {
         keepRampState(*state.current, *next);
         state.retired.try_enqueue(state.current);
@@ -304,10 +295,14 @@ void addRamped(float* destination, const float* source, Frames frames, float fro
 }
 
 // A track with fewer channels than the bus feeds its last channel to the rest, so a mono track reaches both sides.
-void feedBus(TrackState& bus, const TrackState& track, Frames offset, Frames frames, float from, float to) {
+// While an offline render pipelines, the tracks feed the next block of the buses mixing behind them.
+void feedBus(const Snapshot& snapshot, TrackState& bus, const TrackState& track, Frames offset, Frames frames,
+             float from, float to) {
     const auto first = static_cast<std::size_t>(offset);
-    for (std::size_t channel = 0; channel < bus.mix.size(); ++channel) {
-        addRamped(bus.mix[channel].data() + first, track.mix[std::min(channel, track.mix.size() - 1)].data() + first,
+    std::vector<std::vector<float>>& input =
+        snapshot.pipelined && !track.mixesBehind && bus.mixesBehind ? bus.pending : bus.mix;
+    for (std::size_t channel = 0; channel < input.size(); ++channel) {
+        addRamped(input[channel].data() + first, track.mix[std::min(channel, track.mix.size() - 1)].data() + first,
                   frames, from, to);
     }
 }
@@ -316,7 +311,7 @@ void playSends(Snapshot& snapshot, TrackState& track, bool pre, Frames offset, F
     for (SendState& send : track.sends) {
         if (send.pre == pre) {
             const float gain = send.gain * track.muteGain;
-            feedBus(snapshot.tracks[send.bus], track, offset, frames, send.rampFrom, gain);
+            feedBus(snapshot, snapshot.tracks[send.bus], track, offset, frames, send.rampFrom, gain);
             send.rampFrom = gain;
         }
     }
@@ -381,13 +376,13 @@ constexpr Frames kAutomationStep = 32;
 // In mix order, so each bus has every source in its mix before its turn: trims each track, runs its inserts, applies
 // its fader and pan, feeds its sends, meters it, adds it to its outputs or its output bus and clears it for the next
 // block.
-void mixTracks(Snapshot& snapshot, const AudioBlock& block, const BlockTime& time,
-               const InstrumentTransport& transport) {
+void mixTracks(Snapshot& snapshot, const AudioBlock& block, const BlockTime& time, const InstrumentTransport& transport,
+               std::size_t from, std::size_t to) {
     if (block.frames == 0) {
         return;
     }
     const bool soloActive = anySolo(snapshot);
-    for (const std::size_t index : snapshot.mixOrder) {
+    for (const std::size_t index : std::span{snapshot.mixOrder}.subspan(from, to - from)) {
         TrackState& track = snapshot.tracks[index];
         if (!track.mix.empty() && audible(track, soloActive)) {
             if (!track.lanes.empty()) {
@@ -427,7 +422,7 @@ void mixTracks(Snapshot& snapshot, const AudioBlock& block, const BlockTime& tim
                 tap->ring.writeMean(track.mixPointers, static_cast<std::size_t>(block.frames));
             }
             if (track.outputBus) {
-                feedBus(snapshot.tracks[*track.outputBus], track, 0, block.frames, 1.0F, 1.0F);
+                feedBus(snapshot, snapshot.tracks[*track.outputBus], track, 0, block.frames, 1.0F, 1.0F);
             }
         }
         for (std::vector<float>& channel : track.mix) {
@@ -488,10 +483,11 @@ void playPreview(RealtimeState& state, Snapshot& snapshot, Frames frames) {
     const auto length = static_cast<Frames>(preview->channels.front().size());
     const Frames count = std::min(frames, length - preview->position);
     if (TrackState* track = findTrack(snapshot, preview->trackId); track != nullptr) {
-        for (std::size_t channel = 0; channel < track->mix.size(); ++channel) {
+        std::vector<std::vector<float>>& input = snapshot.pipelined && track->mixesBehind ? track->pending : track->mix;
+        for (std::size_t channel = 0; channel < input.size(); ++channel) {
             const float* source =
                 preview->channels[std::min(channel, preview->channels.size() - 1)].data() + preview->position;
-            std::transform(source, source + count, track->mix[channel].data(), track->mix[channel].data(), std::plus{});
+            std::transform(source, source + count, input[channel].data(), input[channel].data(), std::plus{});
         }
     }
     preview->position += count;
@@ -671,13 +667,16 @@ StereoGains panGains(float pan, PanLaw law) {
     return power;
 }
 
-void processBlock(RealtimeState& state, const AudioBlock& block) {
+namespace {
+
+std::optional<std::pair<BlockTime, InstrumentTransport>> playBlock(RealtimeState& state, const AudioBlock& block,
+                                                                   bool tracksOnly) {
     for (float* output : block.outputs) {
         std::fill_n(output, block.frames, 0.0F);
     }
     adoptPending(state);
     if (state.current == nullptr) {
-        return;
+        return std::nullopt;
     }
     Snapshot& snapshot = *state.current;
     if (snapshot.metronome.sounds.get() != state.voiceSounds) {
@@ -705,13 +704,153 @@ void processBlock(RealtimeState& state, const AudioBlock& block) {
     monitorAndRecordAudio(snapshot, block, rollFrom);
     playInstruments(state, snapshot, block, blockStartFrame, time);
     playPreview(state, snapshot, block.frames);
-    mixTracks(snapshot, block, time, instrumentTransport(state, snapshot, time));
-    for (const std::shared_ptr<SignalTap>& tap : snapshot.masterTaps) {
-        tap->ring.writeMean(block.outputs.first(std::min<std::size_t>(block.outputs.size(), 2)),
-                            static_cast<std::size_t>(block.frames));
+    const InstrumentTransport transport = instrumentTransport(state, snapshot, time);
+    mixTracks(snapshot, block, time, transport, 0, tracksOnly ? snapshot.busesFrom : snapshot.mixOrder.size());
+    return std::pair{time, transport};
+}
+
+void publish(RealtimeState& state, const AudioBlock& block) {
+    if (state.current != nullptr) {
+        for (const std::shared_ptr<SignalTap>& tap : state.current->masterTaps) {
+            tap->ring.writeMean(block.outputs.first(std::min<std::size_t>(block.outputs.size(), 2)),
+                                static_cast<std::size_t>(block.frames));
+        }
     }
     state.publishedFrame.store(state.frame, std::memory_order_relaxed);
     state.publishedPlaying.store(state.transportPlaying || state.countInLeft > 0, std::memory_order_relaxed);
+}
+
+// A command, a new snapshot or a preview changes what the buses read, so the buses of the last block finish first.
+bool changesBuses(const RealtimeState& state) {
+    return state.commands.size_approx() > 0 || state.pending.load(std::memory_order_acquire) != nullptr ||
+           state.preview != nullptr || state.pendingPreview.load(std::memory_order_acquire) != nullptr;
+}
+
+}  // namespace
+
+void processBlock(RealtimeState& state, const AudioBlock& block) {
+    RenderPipeline* pipeline = state.pipeline;
+    if (pipeline == nullptr || block.frames == 0) {
+        if (pipeline != nullptr) {
+            pipeline->finish();
+        }
+        playBlock(state, block, false);
+        publish(state, block);
+        return;
+    }
+    if (changesBuses(state)) {
+        pipeline->finish();
+    }
+    AudioBlock tracks = block;
+    tracks.outputs = pipeline->trackOutputs();
+    const auto played = playBlock(state, tracks, true);
+    pipeline->finish();
+    if (played) {
+        pipeline->start(*state.current, tracks, played->first, played->second);
+    } else {
+        pipeline->queueSilence(block.frames);
+    }
+    pipeline->deliver(block.outputs, block.frames);
+    publish(state, block);
+}
+
+RenderPipeline::RenderPipeline() : busThread_([this](const std::stop_token& stop) { mixBuses(stop); }) {}
+
+// NOLINTNEXTLINE(bugprone-exception-escape): a semaphore that cannot wait ends the process.
+RenderPipeline::~RenderPipeline() {
+    wait();
+    busThread_.request_stop();
+    started_.release();
+}
+
+void RenderPipeline::prepare(std::size_t outputs, Frames maxFrames) {
+    finish();
+    maxFrames_ = maxFrames;
+    const auto frames = static_cast<std::size_t>(maxFrames);
+    trackBuffers_.assign(outputs, std::vector<float>(frames));
+    busBuffers_.assign(outputs, std::vector<float>(frames));
+    const auto pointers = [](std::vector<std::vector<float>>& buffers) {
+        return buffers | std::views::transform([](std::vector<float>& buffer) { return buffer.data(); }) |
+               std::ranges::to<std::vector>();
+    };
+    trackPointers_ = pointers(trackBuffers_);
+    busPointers_ = pointers(busBuffers_);
+    queue_.assign(outputs, std::vector<float>(frames));
+    for (std::vector<float>& channel : queue_) {
+        channel.reserve(3 * frames);
+    }
+}
+
+std::span<float* const> RenderPipeline::trackOutputs() { return trackPointers_; }
+
+void RenderPipeline::queueSilence(Frames frames) {
+    for (std::vector<float>& channel : queue_) {
+        channel.resize(channel.size() + static_cast<std::size_t>(frames));
+    }
+}
+
+void RenderPipeline::wait() {
+    if (mixing_) {
+        finished_.acquire();
+        mixing_ = false;
+    }
+}
+
+void RenderPipeline::finish() {
+    if (!mixing_) {
+        return;
+    }
+    wait();
+    const auto frames = static_cast<std::size_t>(busBlock_.block.frames);
+    for (std::size_t channel = 0; channel < queue_.size(); ++channel) {
+        queue_[channel].insert(queue_[channel].end(), busBuffers_[channel].begin(),
+                               busBuffers_[channel].begin() + static_cast<std::ptrdiff_t>(frames));
+    }
+}
+
+void RenderPipeline::start(Snapshot& snapshot, const AudioBlock& block, const BlockTime& time,
+                           const InstrumentTransport& transport) {
+    for (TrackState& track : snapshot.tracks) {
+        if (track.mixesBehind) {
+            std::swap(track.mix, track.pending);
+            std::swap(track.mixPointers, track.pendingPointers);
+        }
+    }
+    std::swap(trackBuffers_, busBuffers_);
+    std::swap(trackPointers_, busPointers_);
+    std::fegetenv(&environment_);
+    busBlock_ = {
+        .snapshot = &snapshot,
+        .block = {.frames = block.frames, .hostTimeNs = block.hostTimeNs, .inputs = {}, .outputs = busPointers_},
+        .time = time,
+        .transport = transport};
+    mixing_ = true;
+    started_.release();
+}
+
+void RenderPipeline::deliver(std::span<float* const> outputs, Frames frames) {
+    const auto count = static_cast<std::ptrdiff_t>(frames);
+    for (std::size_t channel = 0; channel < queue_.size() && channel < outputs.size(); ++channel) {
+        std::vector<float>& queued = queue_[channel];
+        std::copy_n(queued.begin(), count, outputs[channel]);
+        queued.erase(queued.begin(), queued.begin() + count);
+    }
+}
+
+void RenderPipeline::mixBuses(const std::stop_token& stop) {
+#ifdef __APPLE__
+    pthread_set_qos_class_self_np(QOS_CLASS_USER_INITIATED, 0);
+#endif
+    for (;;) {
+        started_.acquire();
+        if (stop.stop_requested()) {
+            return;
+        }
+        std::fesetenv(&environment_);
+        mixTracks(*busBlock_.snapshot, busBlock_.block, busBlock_.time, busBlock_.transport,
+                  busBlock_.snapshot->busesFrom, busBlock_.snapshot->mixOrder.size());
+        finished_.release();
+    }
 }
 
 }  // namespace emerick::engine

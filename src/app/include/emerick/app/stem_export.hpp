@@ -123,6 +123,9 @@ public:
 
 private:
     void start(engine::Session session, double sampleRate);
+    // Plays frames from the start and hands sink each chunk as the engine outputs it, late by its output delay.
+    void play(engine::Frames frames, const ChunkSink& sink, const std::function<void()>& idle,
+              const std::stop_token& stop);
 
     std::vector<std::shared_ptr<engine::Plugin>> instruments_;
     std::vector<InstrumentMessage> chase_;

@@ -131,6 +131,11 @@ struct TrackState {
     // the mix. A bus's sources add into its mix before we process the bus.
     std::vector<std::vector<float>> mix;
     std::vector<float*> mixPointers;
+    // A bus's sources for the next block, which they feed while an offline render's pipeline mixes this block.
+    std::vector<std::vector<float>> pending;
+    std::vector<float*> pendingPointers;
+    // Set for a track that other tracks feed, which an offline render's pipeline mixes a block behind the rest.
+    bool mixesBehind = false;
     std::vector<InsertState> inserts;
     // Set for a track whose plugins delay it less than the slowest track's.
     std::shared_ptr<DelayLine> compensation;
@@ -170,6 +175,8 @@ struct Snapshot {
     std::vector<TrackState> tracks;
     // Track indices with every track before the buses it plays into, so a bus mixes after all its sources.
     std::vector<std::size_t> mixOrder;
+    // Where the tracks that other tracks feed start in mixOrder.
+    std::size_t busesFrom = 0;
     // Track indices with an instrument, each after the track it takes MIDI from, so that MIDI reaches it in the same
     // block.
     std::vector<std::size_t> instrumentOrder;
@@ -187,6 +194,8 @@ struct Snapshot {
     std::vector<std::uint8_t> incoming = std::vector<std::uint8_t>(kMaxIncomingMessage);
     MetronomeState metronome;
     std::vector<std::shared_ptr<SignalTap>> masterTaps;
+    // Set while an offline render's pipeline mixes the buses of one block as the tracks play the next.
+    bool pipelined = false;
 };
 
 inline bool anySolo(const Snapshot& snapshot) { return std::ranges::any_of(snapshot.tracks, &TrackState::solo); }

@@ -53,6 +53,9 @@ public:
         Frames blockFrames = 256;
         // Frames an audio take skips beyond the round trip the device reports, for devices that report it wrong.
         Frames recordingDelay = 0;
+        // Mixes the buses of each block on a thread of their own while the tracks play the next block. A block then
+        // waits for that thread and its output comes out a block late, so only an offline render sets it.
+        bool pipelineBuses = false;
     };
 
     Engine(std::unique_ptr<AudioBackend> audio, std::unique_ptr<MidiBackend> midi, Options options);
@@ -120,6 +123,8 @@ public:
     // True once every locate has reached the audio thread and every clip has its read-ahead filled from there and
     // refilled since it last played.
     [[nodiscard]] bool readAheadReady() const;
+    // Frames the output comes late behind the timeline: a block with pipelineBuses, else 0.
+    [[nodiscard]] Frames outputDelay() const;
     // True once the sender has sent every MIDI message the audio thread queued.
     [[nodiscard]] bool midiFlushed() const;
     // Returns the takes finished since the last call.

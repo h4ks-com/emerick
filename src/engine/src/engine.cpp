@@ -19,6 +19,7 @@
 #include <vector>
 
 #include "clock.hpp"
+#include "render_pipeline.hpp"
 #include "rt_process.hpp"
 #include "snapshot_builder.hpp"
 
@@ -71,7 +72,12 @@ std::vector<LevelReading> takeLevels(const SnapshotBuilder::Meters& meters) {
 
 struct Engine::Impl {
     Impl(std::unique_ptr<AudioBackend> audioBackend, std::unique_ptr<MidiBackend> midiBackend, Options engineOptions)
-        : audio(std::move(audioBackend)), midi(std::move(midiBackend)), options(engineOptions) {}
+        : audio(std::move(audioBackend)), midi(std::move(midiBackend)), options(engineOptions) {
+        if (options.pipelineBuses) {
+            pipeline = std::make_unique<RenderPipeline>();
+            rt.pipeline = pipeline.get();
+        }
+    }
 
     std::unique_ptr<AudioBackend> audio;
     std::unique_ptr<MidiBackend> midi;
@@ -93,6 +99,7 @@ struct Engine::Impl {
     std::vector<SessionError> errors;
     Frames compensation = 0;
     std::uint64_t locatesRequested = 0;
+    std::unique_ptr<RenderPipeline> pipeline;
     RealtimeState rt;
     std::atomic<std::uint64_t> callbacks{0};
     std::uint64_t seenCallbacks = 0;
@@ -104,10 +111,12 @@ struct Engine::Impl {
     PollingSet<MidiOutputPort> sender{std::chrono::microseconds(500)};
     SnapshotBuilder builder{*midi, inbox, reader, writer, sender};
 
+    // NOLINTNEXTLINE(bugprone-exception-escape): a semaphore that cannot wait ends the process.
     ~Impl() {
         if (streamOpen) {
             audio->close();
         }
+        stopBuses();
         writer.pollAll();
         deleteSnapshot(rt.current);
         deleteSnapshot(rt.pending.exchange(nullptr));
@@ -349,7 +358,15 @@ struct Engine::Impl {
         dropSnapshots();
     }
 
+    // The bus thread of an offline render can still mix the current snapshot, so we wait for it before a snapshot goes.
+    void stopBuses() const {
+        if (pipeline) {
+            pipeline->wait();
+        }
+    }
+
     void dropSnapshots() {
+        stopBuses();
         deleteSnapshot(std::exchange(rt.current, nullptr));
         deleteSnapshot(rt.pending.exchange(nullptr, std::memory_order_acq_rel));
         freeRetired();
@@ -359,6 +376,7 @@ struct Engine::Impl {
     // from it first; until we publish one the callback leaves the playhead alone. We keep them until the new snapshot
     // holds their clip streams, so the read-ahead survives.
     void openStream(const StreamRequest& request, const Session& next) {
+        stopBuses();
         std::array<std::unique_ptr<Snapshot>, 2> old{
             std::unique_ptr<Snapshot>{std::exchange(rt.current, nullptr)},
             std::unique_ptr<Snapshot>{rt.pending.exchange(nullptr, std::memory_order_acq_rel)}};
@@ -401,6 +419,9 @@ struct Engine::Impl {
         }
         layout = std::move(next);
         layoutRequest = request;
+        if (pipeline) {
+            pipeline->prepare(static_cast<std::size_t>(layout.outputChannels), layout.maxFrames);
+        }
     }
 };
 
@@ -495,6 +516,8 @@ bool Engine::streamStalled() const { return impl_->stalled; }
 const std::vector<SessionError>& Engine::sessionErrors() const { return impl_->errors; }
 
 Frames Engine::latencyCompensation() const { return impl_->compensation; }
+
+Frames Engine::outputDelay() const { return impl_->pipeline ? impl_->pipeline->delay() : 0; }
 
 bool Engine::readAheadReady() const {
     return impl_->rt.locatesApplied.load(std::memory_order_acquire) == impl_->locatesRequested &&

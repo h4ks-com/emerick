@@ -116,6 +116,10 @@ VideoRender::VideoRender(Registry& registry, ProjectController& controller, Nav&
     frames_.setInterval(0);
     connect(&frames_, &QTimer::timeout, this, &VideoRender::step);
     connect(QCoreApplication::instance(), &QCoreApplication::aboutToQuit, this, &VideoRender::cancel);
+    // The frames draw the live project under the mix rendered at the start, so an edit or another project ends the
+    // render.
+    connect(&controller_, &ProjectController::projectChanged, this, &VideoRender::cancel);
+    connect(&controller_, &ProjectController::projectReplaced, this, &VideoRender::cancel);
 }
 
 VideoRender::~VideoRender() = default;
@@ -127,30 +131,32 @@ double VideoRender::progress() const {
     return static_cast<double>(job_->writer->written()) / job_->writer->count();
 }
 
-void VideoRender::render(const QVariantMap& params) {
+void VideoRender::render(const Json& params) {
     if (running()) {
         return;
     }
-    const Json given = toJson(QVariant{params});
-    emit registry_.actionRan(kVideoRenderAction, given, ActionSource::Ui);
     starting_ = true;
+    params_ = params;
     emit runningChanged();
     // The mix renders on this thread, so we wait for the window to draw the progress first.
-    QTimer::singleShot(kDrawMs, this, [this, given] { start(given); });
+    QTimer::singleShot(kDrawMs, this, &VideoRender::start);
 }
 
-void VideoRender::start(const Json& params) {
+void VideoRender::start() {
+    if (!starting_) {
+        return;
+    }
     try {
-        std::unique_ptr<VideoJob> job = prepareVideo(registry_, controller_, params);
+        std::unique_ptr<VideoJob> job = prepareVideo(registry_, controller_, params_);
         job->writer = std::make_unique<VideoWriter>(views_, nav_, controller_, job->request, job->mix, job->ffmpeg);
         job_ = std::move(job);
         frames_.start();
     } catch (const AppError& error) {
-        emit registry_.noticeRaised(qs(registry_.action(kVideoRenderAction)->title), qs(error.what()));
+        notifyFailure(error.what());
     } catch (const std::filesystem::filesystem_error& error) {
-        emit registry_.noticeRaised(qs(registry_.action(kVideoRenderAction)->title), qs(error.what()));
+        notifyFailure(error.what());
     } catch (const Json::exception& error) {
-        emit registry_.noticeRaised(qs(registry_.action(kVideoRenderAction)->title), qs(error.what()));
+        notifyFailure(error.what());
     }
     starting_ = false;
     emit runningChanged();
@@ -166,11 +172,20 @@ void VideoRender::step() {
         stop();
     } catch (const AppError& error) {
         cancel();
-        emit registry_.noticeRaised(qs(registry_.action(kVideoRenderAction)->title), qs(error.what()));
+        notifyFailure(error.what());
     }
 }
 
+void VideoRender::notifyFailure(const char* what) const {
+    emit registry_.noticeRaised(qs(registry_.action(kVideoRenderAction)->title), qs(what), {});
+}
+
 bool VideoRender::cancel() {
+    if (starting_) {
+        starting_ = false;
+        emit runningChanged();
+        return true;
+    }
     if (job_ == nullptr) {
         return false;
     }
@@ -189,6 +204,9 @@ void VideoRender::stop() {
 }
 
 void registerVideoActions(Registry& registry, ProjectController& controller, Nav& nav, ViewEngine& views) {
+    // Nav is a QObject that lives as long as the views, so it owns the render.
+    auto* video = std::make_unique<VideoRender>(registry, controller, nav, views, &nav).release();
+    qmlRegisterSingletonInstance("Emerick.App", 1, 0, "Video", video);
     registry.addAction(
         {.id = kVideoRenderAction,
          .title = "Render video",
@@ -213,14 +231,17 @@ void registerVideoActions(Registry& registry, ProjectController& controller, Nav
                       {"from", Json::object()},
                       {"to", Json::object()},
                       {"view", {{"type", "string"}, {"enum", {"fit", "current"}}}}}}},
-         .run = [&registry, &controller, &nav,
-                 &views](const Json& params) { return renderVideo(registry, controller, nav, views, params); },
+         .run =
+             [&registry, &controller, &nav, &views, video](const Json& params) {
+                 if (registry.fromUi()) {
+                     video->render(params);
+                     return Json{{"started", true}};
+                 }
+                 return renderVideo(registry, controller, nav, views, params);
+             },
          .menus = {kFileMenu},
          .dialog = FileDialog{
              .param = "path", .mode = FileDialogMode::Save, .nameFilter = "Videos (*.mp4)", .suffix = "mp4"}});
-    // Nav is a QObject that lives as long as the views, so it owns the render.
-    auto* video = std::make_unique<VideoRender>(registry, controller, nav, views, &nav).release();
-    qmlRegisterSingletonInstance("Emerick.App", 1, 0, "Video", video);
     registry.addAction({.id = "video.cancel",
                         .title = "Cancel video render",
                         .description = "Stops the video render the window runs and deletes its unfinished file.",

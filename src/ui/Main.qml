@@ -56,9 +56,7 @@ ApplicationWindow {
     FileDialog {
         id: fileDialog
         property string actionId
-        // The window renders a video off its own call stack, so it keeps drawing the progress.
-        onAccepted: actionId === "video.render" ? Video.render({path: Registry.localPath(selectedFile)})
-                                                : Registry.runWithFile(actionId, selectedFile)
+        onAccepted: Registry.runWithFile(actionId, selectedFile)
     }
     FolderDialog {
         id: folderDialog
@@ -444,7 +442,7 @@ ApplicationWindow {
         contentItem: Column {
             spacing: Theme.space2
             Label {
-                text: "Render video  " + Math.round(Video.progress * 100) + "%"
+                text: "Rendering video " + Math.round(Video.progress * 100) + "%"
                 color: Theme.ink
                 font.pixelSize: Theme.textBody
                 font.features: {"tnum": 1}

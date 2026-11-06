@@ -2,7 +2,6 @@ import QtQuick
 import QtQuick.Controls.Basic
 import Emerick.App
 
-// The Scripts menu as a picker, which script.run opens from the palette.
 Popup {
     id: panel
     anchors.centerIn: parent

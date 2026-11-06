@@ -81,7 +81,7 @@ std::filesystem::path findFfmpeg();
 class VideoEncoder;
 
 // Encodes the frames of the request with mix, a WAV of the project from tick 0, into an H.264 and AAC MP4 at
-// request.file, one frame per call, so the caller can let the window draw between frames.
+// request.file, one frame per call, so the window can draw between frames.
 class VideoWriter {
 public:
     VideoWriter(ViewEngine& views, Nav& nav, ProjectController& controller, const VideoRequest& request,

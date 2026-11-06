@@ -40,7 +40,10 @@ DockPanel {
                 id: trackStrips
                 buses: false
             }
-            Strips { buses: true }
+            Strips {
+                id: busStrips
+                buses: true
+            }
 
             Rectangle {
                 objectName: "mixer.master"
@@ -100,7 +103,7 @@ DockPanel {
 
     Label {
         anchors.centerIn: parent
-        visible: trackStrips.count === 0
+        visible: trackStrips.count + busStrips.count === 0
         text: "Add a track to mix it"
         color: Theme.inkDim
         font.pixelSize: Theme.textTitle

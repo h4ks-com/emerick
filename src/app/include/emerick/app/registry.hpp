@@ -333,6 +333,7 @@ public:
     // Runs call as a request from origin; inside an outer request, the outer origin stays.
     Json runFrom(ActionSource origin, const std::function<Json()>& call) const;
     [[nodiscard]] bool fromAgent() const { return origin_ == ActionSource::Mcp || origin_ == ActionSource::Lua; }
+    [[nodiscard]] bool fromUi() const { return origin_ == ActionSource::Ui; }
     // Canonicalizes both roots, so a missing folder throws std::filesystem::filesystem_error.
     void setAgentRoots(AgentRoots roots);
     void setLimits(Limits limits) { limits_ = limits; }
@@ -405,7 +406,7 @@ signals:
     void menusChanged();
     void fileDialogRequested(const QVariantMap& request);
     void confirmRequested(const QVariantMap& request);
-    // issues are the result's issues, such as mix.inspect's, which the notice lists so a click can go to each one.
+    // issues are the result's issues, which the notice lists so a click can go to each one.
     void noticeRaised(const QString& title, const QString& text, const QVariantList& issues) const;
     void gesturingChanged();
     void actionRan(const std::string& id, const nlohmann::json& params, emerick::app::ActionSource source) const;

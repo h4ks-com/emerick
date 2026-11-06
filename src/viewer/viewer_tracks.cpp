@@ -97,6 +97,17 @@ const model::Track* playingStyle(const model::Document& document, const model::T
 
 bool playsDrums(int channel) { return channel == 9 || channel == 10; }
 
+// A project file can hold anything, so we read a field only when it has the type we expect.
+std::string stringField(const app::Json& object, const char* key) {
+    const auto found = object.find(key);
+    return found != object.end() && found->is_string() ? found->get<std::string>() : std::string{};
+}
+
+std::size_t countField(const app::Json& object, const char* key) {
+    const auto found = object.find(key);
+    return found != object.end() && found->is_number_unsigned() ? found->get<std::size_t>() : 0;
+}
+
 std::string partVoice(const model::Track& track) {
     if (!track.instrument) {
         return {};
@@ -109,17 +120,17 @@ std::string partVoice(const model::Track& track) {
     if (track.instrument->pluginId == app::kVoicesPluginId && state.contains("voice") &&
         state.at("voice").is_object()) {
         const app::Json& voice = state.at("voice");
-        const std::string name = voice.value("name", std::string{});
-        return name.empty() ? std::format("voice {}/{}/{}", voice.value("msb", 0), voice.value("lsb", 0),
-                                          voice.value("program", 0) + 1)
+        const std::string name = stringField(voice, "name");
+        return name.empty() ? std::format("voice {}/{}/{}", countField(voice, "msb"), countField(voice, "lsb"),
+                                          countField(voice, "program") + 1)
                             : name;
     }
     if (track.instrument->pluginId == app::kGeneralMidiPluginId) {
         if (playsDrums(track.midiIn.channel)) {
-            const std::size_t kit = state.value("drumKit", std::size_t{0});
+            const std::size_t kit = countField(state, "drumKit");
             return kit < gm::kDrumKits.size() ? std::format("{} kit", gm::kDrumKits.at(kit).name) : std::string{};
         }
-        const std::size_t sound = state.value("sound", std::size_t{0});
+        const std::size_t sound = countField(state, "sound");
         return sound < gm::kSounds.size() ? std::string{gm::kSounds.at(sound)} : std::string{};
     }
     return track.instrument->name;

@@ -259,12 +259,12 @@ TEST_CASE("a video rendered from the window reports its progress and keeps the w
     const std::filesystem::path file = main.rig.path("window.mp4");
     std::vector<double> progress;
     QObject::connect(&video, &VideoRender::progressChanged, [&] { progress.push_back(video.progress()); });
-    video.render({{"path", QString::fromStdString(file.string())},
-                  {"width", 640},
-                  {"height", 360},
-                  {"fps", 10},
-                  {"from", "2.1.1"},
-                  {"to", "3.1.1"}});
+    main.rig.registry.runAction("video.render", {{"path", QString::fromStdString(file.string())},
+                                                 {"width", 640},
+                                                 {"height", 360},
+                                                 {"fps", 10},
+                                                 {"from", "2.1.1"},
+                                                 {"to", "3.1.1"}});
     REQUIRE(video.running());
     CHECK(main.menu("video.progress")->property("visible").toBool());
     constexpr int kRenderMs = 120000;
@@ -289,7 +289,8 @@ TEST_CASE("cancelling a video render stops it and deletes the unfinished file") 
     VideoRender& video = videoRender(main);
     const double scrollBefore = main.rig.nav.scrollTicks();
     const std::filesystem::path file = main.rig.path("cancelled.mp4");
-    video.render({{"path", QString::fromStdString(file.string())}, {"width", 640}, {"height", 360}});
+    main.rig.registry.runAction("video.render",
+                                {{"path", QString::fromStdString(file.string())}, {"width", 640}, {"height", 360}});
     REQUIRE(processUntil([&] { return video.progress() > 0; }, 30000));
     CHECK(main.rig.run("video.cancel").at("cancelled") == true);
     CHECK_FALSE(video.running());

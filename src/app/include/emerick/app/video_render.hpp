@@ -2,7 +2,6 @@
 
 #include <QObject>
 #include <QTimer>
-#include <QVariantMap>
 #include <memory>
 
 #include "emerick/app/nav.hpp"
@@ -32,7 +31,7 @@ public:
     // The share of the frames encoded, from 0 to 1.
     [[nodiscard]] double progress() const;
     // Takes video.render's params. Does nothing while a render runs; a failure raises a notice.
-    Q_INVOKABLE void render(const QVariantMap& params);
+    void render(const Json& params);
     // Stops the render and deletes the unfinished file. False when no render runs.
     Q_INVOKABLE bool cancel();
 
@@ -41,9 +40,10 @@ signals:
     void progressChanged();
 
 private:
-    void start(const Json& params);
+    void start();
     void step();
     void stop();
+    void notifyFailure(const char* what) const;
 
     Registry& registry_;
     ProjectController& controller_;
@@ -51,6 +51,7 @@ private:
     ViewEngine& views_;
     QTimer frames_;
     bool starting_ = false;
+    Json params_;
     std::unique_ptr<VideoJob> job_;
 };
 

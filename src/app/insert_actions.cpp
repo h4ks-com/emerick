@@ -370,7 +370,8 @@ void registerPluginInsertActions(Registry& registry, ProjectController& controll
                                                                         .bundle = found->bundle.string(),
                                                                         .name = found->descriptor.name,
                                                                         .state = {},
-                                                                        .format = found->descriptor.format}};
+                                                                        .format = found->descriptor.format,
+                                                                        .vendor = found->descriptor.vendor}};
                  const auto index = optionalParam<std::int64_t>(params, "index");
                  editTrack(controller, track, "add " + found->descriptor.name, [&](model::Track& edited) {
                      const auto at = std::clamp<std::int64_t>(index.value_or(std::ssize(edited.inserts)), 0,

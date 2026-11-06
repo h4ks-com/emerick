@@ -233,7 +233,7 @@ QtObject {
     }
 
     // Track icons are Phosphor names and fade icons are our own; an icon we do not bundle shows as a note.
-    readonly property var icons: ["arrows-merge", "automation", "books", "broom", "caret-left", "caret-right", "chart-bar", "circle", "copy", "dots-three", "equalizer", "fade-equalPower", "fade-exponential", "fade-linear", "fade-logarithmic", "fade-sCurve", "file", "gauge", "gear-six", "guitar", "list", "magnet", "magnifying-glass", "metronome", "music-note", "music-notes", "pause", "pencil-simple", "piano-keys", "play", "plus", "repeat", "sidebar-simple", "skip-back", "sliders", "speaker-slash", "squares-four", "stop", "warning-octagon", "waveform", "x"]
+    readonly property var icons: ["arrows-merge", "automation", "books", "broom", "caret-left", "caret-right", "chart-bar", "circle", "copy", "dots-three", "equalizer", "fade-equalPower", "fade-exponential", "fade-linear", "fade-logarithmic", "fade-sCurve", "file", "gauge", "gear-six", "guitar", "list", "magnet", "magnifying-glass", "metronome", "music-note", "music-notes", "pause", "pencil-simple", "piano-keys", "play", "plus", "power", "repeat", "sidebar-simple", "skip-back", "sliders", "speaker-slash", "squares-four", "stop", "warning-octagon", "waveform", "x"]
     function iconSource(name) {
         return "icons/" + (icons.indexOf(name) >= 0 ? name : "music-note") + ".svg"
     }

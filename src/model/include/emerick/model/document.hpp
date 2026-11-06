@@ -131,6 +131,7 @@ struct PluginSlot {
     std::string name;
     std::vector<std::uint8_t> state;
     core::PluginFormat format = core::PluginFormat::clap;
+    std::string vendor;
 
     bool operator==(const PluginSlot&) const = default;
 };

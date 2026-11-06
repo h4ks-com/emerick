@@ -105,6 +105,7 @@ qt_add_qml_module(emerick_ui
         icons/piano-keys.svg
         icons/play.svg
         icons/plus.svg
+        icons/power.svg
         icons/repeat.svg
         icons/sidebar-simple.svg
         icons/skip-back.svg

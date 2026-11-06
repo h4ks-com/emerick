@@ -115,7 +115,7 @@ TEST_CASE("a VST3 insert plays in the mix, takes params by name and choice text,
     CHECK_THROWS_AS(rig.run("insert.setParam", {{"insert", amp}, {"param", "Drive"}, {"value", 1}}), AppError);
     CHECK_THROWS_AS(rig.run("insert.setParam", {{"insert", amp}, {"param", "Gain"}, {"value", 9}}), AppError);
 
-    rig.run("insert.setBypass", {{"insert", amp}, {"value", true}});
+    CHECK(rig.run("insert.setBypass", {{"insert", amp}, {"value", true}}).at("title") == "Emerick Tests Test Gain");
     CHECK(rig.mixAt(24000) == Approx(0.5F).margin(1e-4));
     rig.run("insert.setBypass", {{"insert", amp}, {"value", false}});
     for (int step = 0; step < 3; ++step) {

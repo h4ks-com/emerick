@@ -81,7 +81,9 @@ Json insertState(const model::Insert& insert) {
                {"bypass", insert.bypass},
                {"params", insert.params}};
     if (insert.plugin) {
-        state["title"] = insert.plugin->name;
+        const std::string& vendor = insert.plugin->vendor;
+        state["title"] = vendor.empty() || insert.plugin->name.starts_with(vendor) ? insert.plugin->name
+                                                                                   : vendor + " " + insert.plugin->name;
         state["plugin"] = {{"id", insert.plugin->pluginId},
                            {"format", core::pluginFormatName(insert.plugin->format).id},
                            {"name", insert.plugin->name},

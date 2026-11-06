@@ -88,11 +88,15 @@ nlohmann::json slotToJson(const std::optional<PluginSlot>& slot) {
     if (!slot) {
         return nullptr;
     }
-    return {{"pluginId", slot->pluginId},
-            {"bundle", slot->bundle},
-            {"name", slot->name},
-            {"format", core::pluginFormatName(slot->format).id},
-            {"state", core::toBase64(slot->state)}};
+    nlohmann::json json{{"pluginId", slot->pluginId},
+                        {"bundle", slot->bundle},
+                        {"name", slot->name},
+                        {"format", core::pluginFormatName(slot->format).id},
+                        {"state", core::toBase64(slot->state)}};
+    if (!slot->vendor.empty()) {
+        json["vendor"] = slot->vendor;
+    }
+    return json;
 }
 
 std::optional<PluginSlot> slotFromJson(const nlohmann::json& json) {
@@ -109,7 +113,8 @@ std::optional<PluginSlot> slotFromJson(const nlohmann::json& json) {
     if (!format) {
         throw std::runtime_error("unknown plugin format: " + formatId);
     }
-    return PluginSlot{json.at("pluginId"), json.at("bundle"), json.at("name"), *std::move(state), *format};
+    return PluginSlot{json.at("pluginId"), json.at("bundle"), json.at("name"),
+                      *std::move(state),   *format,           json.value("vendor", "")};
 }
 
 nlohmann::json insertToJson(const Insert& insert) {

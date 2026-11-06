@@ -193,9 +193,10 @@ void Project::updateGesture(std::string name, const std::function<void()>& edits
             collapseSince(first, std::move(name));
         }
     }
+    // Trimming a full history moves next_ back, so we read whether the edits left a step before it.
+    gestureStep_ = next_ != first;
     trimHistory();
     groupChanged_ = false;
-    gestureStep_ = next_ != first;
     if (gestureStep_ && reverted) {
         notify(merged(*reverted, changeOf(history_[next_ - 1])));
     } else if (gestureStep_) {

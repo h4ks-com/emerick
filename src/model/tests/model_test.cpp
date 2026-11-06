@@ -674,6 +674,25 @@ TEST_CASE("a gesture of several edits per update undoes as one step named after 
     CHECK(project.track(second.id)->gainDb == 0.0);
 }
 
+TEST_CASE("a gesture keeps notifying and undoes as one step once the undo history is full") {
+    Project project;
+    const Track track = named("vox");
+    project.addTrack(track);
+    for (std::size_t step = 0; step < kMaxUndoSteps; ++step) {
+        setGain(project, track.id, static_cast<double>(step));
+    }
+    std::vector<Change> heard;
+    project.addListener([&](const Change& change) { heard.push_back(change); });
+
+    for (const double db : {-1.0, -2.0, -3.0}) {
+        project.updateGesture("drag gain", [&] { setGain(project, track.id, db); });
+    }
+    CHECK(heard.size() == 3);
+    CHECK(project.endGesture());
+    project.undo();
+    CHECK(project.track(track.id)->gainDb == static_cast<double>(kMaxUndoSteps - 1));
+}
+
 TEST_CASE("cancelling a gesture reverts its edits and leaves no undo step") {
     Project project;
     const Track track = named("vox");

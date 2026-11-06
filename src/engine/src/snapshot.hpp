@@ -108,6 +108,7 @@ struct TrackState {
     std::vector<int> inputs;
     std::vector<int> outputs;
     std::vector<int> captures;
+    std::vector<int> chainCaptures;
     std::vector<const float*> inputPointers;
     std::shared_ptr<MidiInputPort> midiIn;
     // The index of the track whose instrument's MIDI this track takes in place of midiIn.

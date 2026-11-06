@@ -61,6 +61,9 @@ std::size_t mixChannels(const Track& track, const TrackState& state) {
     if (!state.captures.empty()) {
         return state.captures.size();
     }
+    if (!state.chainCaptures.empty()) {
+        return state.chainCaptures.size();
+    }
     return track.kind == TrackKind::bus || !track.sends.empty() ? kBusChannels : 0;
 }
 
@@ -328,6 +331,7 @@ BuiltSnapshot SnapshotBuilder::build(const Session& session, const StreamLayout&
             state.outputs = channelIndices("track " + track.id, track.audioOut, layout, false);
         }
         state.captures = channelIndices("track " + track.id, track.captureOut, layout, false);
+        state.chainCaptures = channelIndices("track " + track.id, track.chainOut, layout, false);
         state.inputPointers.resize(state.inputs.size());
         state.inChannel = track.midiIn.channel;
         state.outChannel = track.midiOut.channel;

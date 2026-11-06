@@ -7,8 +7,12 @@
 namespace emerick::app {
 
 RenderResult renderNow(RenderJob job) {
-    OfflineRender& render = *job.render;
-    render.process(job.frames, job.sink, [&render] { render.idleInstruments(); });
+    if (job.play) {
+        job.play(job.sink);
+    } else {
+        OfflineRender& render = *job.render;
+        render.process(job.frames, job.sink, [&render] { render.idleInstruments(); });
+    }
     return job.finish();
 }
 

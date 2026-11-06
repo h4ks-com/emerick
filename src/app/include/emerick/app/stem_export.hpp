@@ -99,7 +99,10 @@ public:
         std::vector<std::uint8_t> bytes;
     };
 
-    OfflineRender(engine::Session session, const Registry& registry, const PlaybackContext& context, double sampleRate);
+    // With pipelineBuses, a second thread mixes the buses a block behind the tracks. The render's device takes
+    // inputChannels inputs, which a track listens to live when its audio input names that device.
+    OfflineRender(engine::Session session, const Registry& registry, const PlaybackContext& context, double sampleRate,
+                  bool pipelineBuses = true, int inputChannels = 0);
     // Renders a session whose tracks already hold their instruments.
     OfflineRender(engine::Session session, std::vector<std::shared_ptr<engine::Plugin>> instruments, double sampleRate);
     ~OfflineRender();
@@ -110,22 +113,32 @@ public:
 
     // Takes every output channel of one chunk of a render.
     using ChunkSink = std::function<void(std::vector<std::vector<float>>)>;
+    // Returns every input channel of the next chunk of frames frames.
+    using ChunkFeed = std::function<std::vector<std::vector<float>>(engine::Frames frames)>;
+    // The device a render plays to and takes its inputs from.
+    static constexpr const char* kDevice = "render";
 
     // Renders frames from the start and hands sink each chunk of every output channel in order, calling idle between
-    // blocks, which must have the main thread run idleInstruments before it returns. Stops once stop is requested.
+    // blocks, which must have the main thread run idleInstruments before it returns. Stops once stop is requested. With
+    // feed, the blocks the instruments settle in before the start, and then each chunk, play the inputs feed returns
+    // for them, and settled takes what the settling blocks output.
     void process(engine::Frames frames, const ChunkSink& sink, const std::function<void()>& idle,
-                 const std::stop_token& stop = {});
+                 const std::stop_token& stop = {}, const ChunkFeed& feed = {}, const ChunkSink& settled = {});
     // Runs what the instruments asked of the UI thread, such as loading a voice after a program change.
     void idleInstruments();
+    // Any thread: true while an instrument may have asked for work idleInstruments runs.
+    [[nodiscard]] bool needsIdle() const;
+    // The frames the render delays its tracks by to line them up with its slowest one.
+    [[nodiscard]] engine::Frames latencyCompensation() const { return engine_->latencyCompensation(); }
     // Plays frames from the start on the calling thread, which must be the UI thread, and returns the take of each
     // listed track that recorded MIDI from the track it takes MIDI from.
     std::vector<engine::RecordedTake> recordMidi(const std::vector<std::string>& trackIds, engine::Frames frames);
 
 private:
-    void start(engine::Session session, double sampleRate);
+    void start(engine::Session session, double sampleRate, bool pipelineBuses, int inputChannels);
     // Plays frames from the start and hands sink each chunk as the engine outputs it, late by its output delay.
     void play(engine::Frames frames, const ChunkSink& sink, const std::function<void()>& idle,
-              const std::stop_token& stop);
+              const std::stop_token& stop, const ChunkFeed& feed, const ChunkSink& settled);
 
     std::vector<std::shared_ptr<engine::Plugin>> instruments_;
     std::vector<InstrumentMessage> chase_;
@@ -162,5 +175,17 @@ std::unique_ptr<OfflineRender> tracksRender(const engine::Session& session, cons
 std::unique_ptr<OfflineRender> mixAndTracksRender(const engine::Session& session, const Registry& registry,
                                                   const PlaybackContext& context,
                                                   const std::vector<std::string>& trackIds, double sampleRate);
+
+// The cores this process may use: a container's CPU quota can allow fewer than the machine has.
+std::size_t availableCores();
+
+// UI thread: renders what one render of the session's tracks, all unmuted, would hand sink: the mix of every track
+// that plays audio on channels 1 and 2 and each listed track's own output after it, for frames from the start. Each
+// track nothing feeds plays alone on its own core, with the tracks it takes MIDI from, into a stem of its signal
+// before its fader; then each bus plays alone from the stems that feed it once they exist, and the last render plays
+// every stem through its fader. A loop of buses plays in one render.
+void renderMixAndTracks(const engine::Session& session, const Registry& registry, const PlaybackContext& context,
+                        const std::vector<std::string>& trackIds, double sampleRate, engine::Frames frames,
+                        const OfflineRender::ChunkSink& sink);
 
 }  // namespace emerick::app

@@ -2,11 +2,9 @@
 
 #include <algorithm>
 #include <array>
-#include <charconv>
 #include <cmath>
 #include <cstddef>
 #include <format>
-#include <fstream>
 #include <functional>
 #include <future>
 #include <memory>
@@ -14,8 +12,6 @@
 #include <span>
 #include <string>
 #include <string_view>
-#include <system_error>
-#include <thread>
 #include <utility>
 #include <vector>
 
@@ -183,25 +179,6 @@ Json levelsJson(const AnalysisRange& range, const std::string& trackId, const Me
     return result;
 }
 
-// The cores this process may use: a container's CPU quota can allow fewer than the machine has.
-std::size_t readAvailableCores() {
-    std::size_t cores = std::max(1U, std::thread::hardware_concurrency());
-    std::ifstream quota("/sys/fs/cgroup/cpu.max");
-    std::string limit;
-    double period = 0;
-    double allowed = 0;
-    if (quota >> limit >> period && period > 0 &&
-        std::from_chars(limit.data(), limit.data() + limit.size(), allowed).ec == std::errc{}) {
-        cores = std::min(cores, std::max<std::size_t>(1, static_cast<std::size_t>(std::ceil(allowed / period))));
-    }
-    return cores;
-}
-
-std::size_t availableCores() {
-    static const std::size_t kCores = readAvailableCores();
-    return kCores;
-}
-
 // The meters of each output a render carries on channels 2i and 2i + 1, fed from the frame the range starts at.
 struct OutputMeters {
     std::ptrdiff_t skip = 0;
@@ -268,6 +245,8 @@ struct Measurement {
     std::function<Json(const AnalysisRange&, const engine::Session&, std::vector<Measured>)> report;
     // With the mix, we also append each chunk of the mix to it when it is set.
     std::shared_ptr<SpilledAudio> mix;
+    // With the mix, plays each track and bus on its own core, on the thread that runs the job.
+    bool acrossCores = false;
 };
 
 // UI thread: checks from, to and resolution and sets up one render of the outputs, each track as its stem plays, and
@@ -316,7 +295,15 @@ RenderJob prepareMeasurement(ProjectController& controller, const Registry& regi
             std::ranges::to<std::vector>();
     }
     std::unique_ptr<OfflineRender> render;
-    if (measurement.withMix) {
+    std::function<void(const OfflineRender::ChunkSink&)> play;
+    if (measurement.withMix && measurement.acrossCores) {
+        const auto played =
+            std::make_shared<const std::pair<PlaybackContext, std::vector<std::string>>>(context, trackIds);
+        play = [session, &registry, played, rate = range.sampleRate,
+                frames = range.frameOf(range.to)](const OfflineRender::ChunkSink& sink) {
+            renderMixAndTracks(*session, registry, played->first, played->second, rate, frames, sink);
+        };
+    } else if (measurement.withMix) {
         render = mixAndTracksRender(*session, registry, context, trackIds, range.sampleRate);
     } else if (trackIds.size() == 1) {
         render = trackRender(*session, registry, context, trackIds.front(), range.sampleRate);
@@ -324,6 +311,7 @@ RenderJob prepareMeasurement(ProjectController& controller, const Registry& regi
         render = tracksRender(*session, registry, context, trackIds, range.sampleRate);
     }
     return {.render = std::move(render),
+            .play = std::move(play),
             .frames = range.frameOf(range.to),
             .sink =
                 [meters, mix = measurement.mix](std::vector<std::vector<float>> chunk) {
@@ -361,7 +349,8 @@ RenderJob prepareAnalysis(ProjectController& controller, const Registry& registr
          .report = [trackIds = trackIdsOf(ids)](
                        const AnalysisRange& range, const engine::Session&,
                        const std::vector<Measured>& measured) { return tracksJson(range, trackIds, measured); },
-         .mix = nullptr});
+         .mix = nullptr,
+         .acrossCores = false});
 }
 
 engine::InspectedOutput trackOutput(const engine::Session& session, const std::string& id, Measured measured) {
@@ -454,7 +443,8 @@ RenderJob prepareMixInspection(ProjectController& controller, const Registry& re
                                           std::vector<Measured> measured) {
                  return inspectionJson(range, session, trackIds, std::move(measured));
              },
-         .mix = nullptr});
+         .mix = nullptr,
+         .acrossCores = false});
 }
 
 using FileStamp = std::pair<std::filesystem::path, AudioStamp>;
@@ -647,7 +637,8 @@ const ProjectRender& ProjectRenders::current(ProjectController& controller, cons
                                           render.measured = std::move(measured);
                                           return Json{};
                                       },
-                                  .mix = render->mix}));
+                                  .mix = render->mix,
+                                  .acrossCores = true}));
     last_ = std::move(render);
     return *last_;
 }

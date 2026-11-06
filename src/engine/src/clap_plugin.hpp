@@ -22,6 +22,7 @@ public:
     bool activate(double sampleRate, core::Frames maxFrames) override;
     [[nodiscard]] core::Frames latency() const override;
     bool idle() override;
+    [[nodiscard]] bool needsIdle() const override;
     void setOfflineRendering(bool offline) override;
     [[nodiscard]] std::optional<std::vector<std::uint8_t>> saveState() const override;
     bool loadState(std::span<const std::uint8_t> bytes) override;

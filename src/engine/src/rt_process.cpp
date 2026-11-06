@@ -400,6 +400,12 @@ void mixTracks(Snapshot& snapshot, const AudioBlock& block, const BlockTime& tim
             if (track.compensation) {
                 track.compensation->process(track.mixPointers, block.frames);
             }
+            for (std::size_t channel = 0; channel < track.mix.size() && channel < track.chainCaptures.size();
+                 ++channel) {
+                const float* chain = track.mix[channel].data();
+                float* destination = block.outputs[static_cast<std::size_t>(track.chainCaptures[channel])];
+                std::transform(chain, chain + block.frames, destination, destination, std::plus{});
+            }
             const Frames step = track.lanes.empty() ? block.frames : kAutomationStep;
             for (Frames offset = 0; offset < block.frames; offset += step) {
                 const Frames frames = std::min(step, block.frames - offset);

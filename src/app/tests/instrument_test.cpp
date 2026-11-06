@@ -18,6 +18,9 @@
 #include "emerick/app/instruments.hpp"
 #include "emerick/app/plugin_actions.hpp"
 #include "emerick/app/plugin_catalog.hpp"
+#include "emerick/app/session_mapping.hpp"
+#include "emerick/app/stem_export.hpp"
+#include "emerick/app/track_analysis.hpp"
 #include "emerick/engine/sound_file.hpp"
 #include "emerick/model/json.hpp"
 #include "project_rig.hpp"
@@ -439,6 +442,71 @@ TEST_CASE("analyzing again renders again once a sample beside a sampler's SFZ fi
     writeWav(folder / "sine.wav", sample.channels, sample.sampleRate);
     std::filesystem::last_write_time(folder / "sine.wav", written + std::chrono::seconds{1});
     CHECK(lufs() < loud - 10);
+}
+
+TEST_CASE("rendering each track and bus on its own core hands over exactly the chunks one render does") {
+    InstrumentRig rig;
+    rig.registry.setSetting(kClapFoldersSetting,
+                            Json::array({EMERICK_TEST_CLAP_FOLDER, bundledClapFolder(EMERICK_GM_APP_FOLDER).string()}));
+    const model::TrackId synth = rig.addSynth();
+    addNote(*rig.controller, synth);
+    const model::TrackId piano{
+        rig.run("track.addInstrument", {{"plugin", kGeneralMidiPluginId}}).at("id").get<std::string>()};
+    addNote(*rig.controller, piano);
+    rig.run("project.waitReady", {{"timeout", 10}});
+    const model::TrackId second = rig.addSynth();
+    addNote(*rig.controller, second);
+    const std::string vox = rig.run("track.addAudio", {{"name", "Vox"}}).at("id");
+    std::vector<float> wave(static_cast<std::size_t>(2 * kRate));
+    for (std::size_t frame = 0; frame < wave.size(); ++frame) {
+        wave[frame] = static_cast<float>(0.4 * std::sin(0.031 * static_cast<double>(frame)) *
+                                         std::sin(0.0002 * static_cast<double>(frame)));
+    }
+    writeWav(rig.path("vox.wav"), {wave}, kRate);
+    rig.run("clip.import", {{"track", vox}, {"path", rig.path("vox.wav").string()}, {"at", "1.2.0"}});
+    const std::string verb = rig.run("track.addBus", {{"name", "Verb"}}).at("id");
+    const std::string group = rig.run("track.addBus", {{"name", "Group"}}).at("id");
+    rig.run("insert.add", {{"track", verb}, {"type", "reverb"}});
+    rig.run("insert.add", {{"track", group}, {"type", "compressor"}});
+    const std::string limiter = rig.run("insert.add", {{"track", vox}, {"type", "limiter"}}).at("id");
+    rig.run("send.add", {{"track", vox}, {"bus", verb}, {"db", -6.0}});
+    rig.run("send.add", {{"track", synth.value}, {"bus", verb}, {"db", -3.0}, {"pre", true}});
+    rig.run("send.add", {{"track", piano.value}, {"bus", verb}, {"db", -6.0}});
+    rig.run("track.setOutputBus", {{"track", second.value}, {"bus", group}});
+    rig.run("track.setOutputBus", {{"track", verb}, {"bus", group}});
+    rig.run("track.setPan", {{"track", second.value}, {"value", -0.4}});
+    rig.run("automation.addPoint", {{"track", vox}, {"tick", 0}, {"value", -6.0}});
+    rig.run("automation.addPoint", {{"track", vox}, {"tick", 1920}, {"value", 0.0}});
+    rig.run("automation.addPoint", {{"track", group}, {"param", "pan"}, {"tick", 960}, {"value", 0.5}});
+    rig.run("automation.addPoint", {{"track", vox}, {"param", limiter + ".ceiling"}, {"tick", 0}, {"value", -3.0}});
+    rig.run("track.addMidi", {{"name", "Score"}});
+
+    const model::Document document = liveDocument(*rig.controller);
+    const engine::Session session = toSession(document, rig.registry, rig.controller->folder());
+    const PlaybackContext context = playbackContext(*rig.controller, document);
+    const std::vector<std::string> ids = analyzableTracks(rig.registry, document) |
+                                         std::views::transform(&model::TrackId::value) | std::ranges::to<std::vector>();
+    const auto frames = static_cast<engine::Frames>(3 * kRate);
+    const auto collect = [](std::vector<std::vector<float>>& into) {
+        return [&into](std::vector<std::vector<float>> chunk) {
+            into.resize(chunk.size());
+            for (std::size_t channel = 0; channel < chunk.size(); ++channel) {
+                into[channel].insert(into[channel].end(), chunk[channel].begin(), chunk[channel].end());
+            }
+        };
+    };
+    std::vector<std::vector<float>> alone;
+    const auto render = mixAndTracksRender(session, rig.registry, context, ids, kRate);
+    render->process(frames, collect(alone), [&render] { render->idleInstruments(); });
+    std::vector<std::vector<float>> across;
+    renderMixAndTracks(session, rig.registry, context, ids, kRate, frames, collect(across));
+
+    REQUIRE(across.size() == alone.size());
+    CHECK(std::ranges::max(alone.front()) > 0.05F);
+    for (std::size_t channel = 0; channel < alone.size(); ++channel) {
+        INFO(channel);
+        CHECK(across[channel] == alone[channel]);
+    }
 }
 
 TEST_CASE("sampler.load plays a file of an installed sound library") {

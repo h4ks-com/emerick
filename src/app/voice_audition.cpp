@@ -203,6 +203,7 @@ RenderJob auditionJob(const Audition& audition) {
     }
     auto rendered = std::make_shared<std::vector<std::vector<float>>>(2);
     return {.render = instrumentRender(instrument, std::move(clip), kAuditionTempo, audition.sampleRate),
+            .play = {},
             .frames = noteFrame(audition, count),
             .sink = [rendered](const std::vector<std::vector<float>>& chunk) { appendStereo(*rendered, chunk); },
             .finish =

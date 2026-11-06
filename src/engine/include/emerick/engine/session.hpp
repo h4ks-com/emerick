@@ -125,6 +125,8 @@ struct Track {
     std::string outputBus;
     // The track's own output, after its fader and pan, also plays here, whether it goes to audioOut or a bus.
     AudioRoute captureOut;
+    // The track's signal after its inserts and before its fader, pan and sends also plays here.
+    AudioRoute chainOut;
     std::vector<Send> sends;
     std::vector<Insert> inserts;
     std::vector<AudioClip> audioClips;

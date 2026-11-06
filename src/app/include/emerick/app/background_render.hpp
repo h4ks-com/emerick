@@ -23,6 +23,8 @@ struct RenderResult {
 // sink took into the result, both on the thread that processes it.
 struct RenderJob {
     std::unique_ptr<OfflineRender> render;
+    // Plays the job in place of render on the UI thread, which renderNow runs it on.
+    std::function<void(const OfflineRender::ChunkSink&)> play;
     engine::Frames frames = 0;
     OfflineRender::ChunkSink sink;
     std::function<RenderResult()> finish;

@@ -81,6 +81,9 @@ public:
     // Runs what the plugin asked of the main thread: its callback, a restart and closing its editor. Returns true once
     // after the plugin marked its state changed.
     virtual bool idle() = 0;
+    // Any thread: true while the plugin may have asked for work idle runs other than its timers, which fire by the
+    // clock, so a render calls idle before its next block.
+    [[nodiscard]] virtual bool needsIdle() const { return true; }
     // Tells the plugin an export renders it faster than real time, so it may take as long as it needs per block.
     virtual void setOfflineRendering(bool /*offline*/) {}
     // Nullopt when the plugin keeps no state or fails to save it.

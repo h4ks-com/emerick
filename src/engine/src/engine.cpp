@@ -312,6 +312,7 @@ struct Engine::Impl {
         for (const Track& track : next.tracks) {
             addOnce(request.deviceIds, track.audioOut.deviceId);
             addOnce(request.deviceIds, track.captureOut.deviceId);
+            addOnce(request.deviceIds, track.chainOut.deviceId);
         }
         addOnce(request.deviceIds, next.metronome.audioOut.deviceId);
         for (const Track& track : next.tracks) {

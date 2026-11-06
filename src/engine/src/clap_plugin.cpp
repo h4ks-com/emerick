@@ -244,6 +244,12 @@ bool ClapPlugin::idle() {
     return impl.stateDirty.exchange(false, std::memory_order_relaxed);
 }
 
+bool ClapPlugin::needsIdle() const {
+    const Impl& impl = *impl_;
+    return impl.callbackRequested.load(std::memory_order_relaxed) ||
+           impl.restartRequested.load(std::memory_order_relaxed) || impl.flushRequested.load(std::memory_order_relaxed);
+}
+
 void ClapPlugin::setOfflineRendering(bool offline) {
     if (impl_->proxy->canUseRender()) {
         impl_->proxy->renderSet(offline ? CLAP_RENDER_OFFLINE : CLAP_RENDER_REALTIME);

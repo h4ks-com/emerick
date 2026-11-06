@@ -1,3 +1,5 @@
+#include <QVariant>
+#include <algorithm>
 #include <catch2/catch_test_macros.hpp>
 #include <cmath>
 #include <cstddef>
@@ -55,6 +57,21 @@ TEST_CASE("a monitor refuses a source that names no track") {
     CHECK_THROWS_AS(monitors.rig.run("tuner.setSource", {{"source", "nowhere"}}), AppError);
     CHECK_THROWS_AS(monitors.rig.run("spectrogram.setSource", {{"source", "nowhere"}}), AppError);
     CHECK(monitors.rig.run("spectrogram.setSource", {{"source", "master"}}).at("chosenSource") == "master");
+}
+
+TEST_CASE("each monitor lists the master once beside its tracks") {
+    MonitorRig monitors;
+    monitors.rig.run("track.addAudio", {{"name", "Guitar"}});
+    const auto masters = [](const QVariantList& choices) {
+        return std::ranges::count_if(
+            choices, [](const QVariant& choice) { return choice.toMap().value("name").toString() == "Master"; });
+    };
+    const QVariantList spectrogram = monitors.monitors->spectrogram.sources();
+    CHECK(spectrogram.size() == 2);
+    CHECK(masters(spectrogram) == 1);
+    const QVariantList tuner = monitors.monitors->tuner.sources();
+    CHECK(tuner.size() == 3);
+    CHECK(masters(tuner) == 1);
 }
 
 TEST_CASE("the tuner follows the selected track and hears an armed audio track at its live input") {

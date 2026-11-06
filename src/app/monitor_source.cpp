@@ -50,9 +50,11 @@ Json sourceJson(const std::optional<MonitorSource>& source) {
             {"point", source->point == engine::TapPoint::input ? "input" : "output"}};
 }
 
-QVariantList sourceChoices(const model::Document& document, const QString& defaultName) {
-    QVariantList choices{QVariantMap{{"id", QString{}}, {"name", defaultName}},
-                         QVariantMap{{"id", qs(kMasterSource)}, {"name", QStringLiteral("Master")}}};
+QVariantList sourceChoices(const model::Document& document, SourceRule rule) {
+    QVariantList choices{QVariantMap{{"id", QString{}}, {"name", rule.masterByDefault ? "Master" : "Selected track"}}};
+    if (!rule.masterByDefault) {
+        choices.append(QVariantMap{{"id", qs(kMasterSource)}, {"name", QStringLiteral("Master")}});
+    }
     for (const model::Track& track : document.tracks) {
         choices.append(QVariantMap{{"id", qs(track.id.value)}, {"name", qs(track.name)}});
     }

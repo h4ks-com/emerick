@@ -37,8 +37,8 @@ std::optional<MonitorSource> resolveSource(const model::Document& document, cons
                                            const std::string& selectedTrack, SourceRule rule);
 // The id, the name and the point of a source, or null for none.
 Json sourceJson(const std::optional<MonitorSource>& source);
-// The picker's entries as {id, name}: the default first, then the master, then every track in order.
-QVariantList sourceChoices(const model::Document& document, const QString& defaultName);
+// The picker's entries as {id, name}: the default first, then the master unless it is the default, then every track.
+QVariantList sourceChoices(const model::Document& document, SourceRule rule);
 // Throws AppError when the id names no track and is neither empty nor the master.
 void checkSourceId(const model::Document& document, const std::string& id);
 

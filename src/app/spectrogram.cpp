@@ -12,6 +12,7 @@ namespace emerick::app {
 namespace {
 
 constexpr const char* kTapOwner = "spectrogram";
+constexpr SourceRule kSourceRule{.masterByDefault = true};
 constexpr const char* kCategory = "Settings / Tuner and spectrogram";
 constexpr const char* kLocation = "settings.monitors";
 constexpr double kMinRowsPerSecond = 60.0;
@@ -122,9 +123,7 @@ Spectrogram::Spectrogram(Registry& registry, ProjectController& controller, Nav&
     connect(&registry_, &Registry::settingsChanged, this, &Spectrogram::readSettings);
 }
 
-QVariantList Spectrogram::sources() const {
-    return sourceChoices(controller_.project().document(), QStringLiteral("Master"));
-}
+QVariantList Spectrogram::sources() const { return sourceChoices(controller_.project().document(), kSourceRule); }
 
 double Spectrogram::binHz() const { return sampleRate() / static_cast<double>(settings_.fftSize); }
 
@@ -153,7 +152,7 @@ void Spectrogram::readSettings() {
 
 void Spectrogram::follow() {
     const std::optional<MonitorSource> wanted =
-        nav_.spectrogramOpen() ? resolveSource(controller_.project().document(), chosen_, {}, {.masterByDefault = true})
+        nav_.spectrogramOpen() ? resolveSource(controller_.project().document(), chosen_, {}, kSourceRule)
                                : std::nullopt;
     if (wanted == source_ && (reader_ != nullptr) == wanted.has_value()) {
         return;

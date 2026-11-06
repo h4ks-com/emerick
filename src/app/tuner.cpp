@@ -12,6 +12,7 @@ namespace emerick::app {
 namespace {
 
 constexpr const char* kTapOwner = "tuner";
+constexpr SourceRule kSourceRule{.liveInput = true};
 constexpr double kHoldSeconds = 1.5;
 constexpr double kEaseSeconds = 0.15;
 constexpr double kSameNote = 0.5;
@@ -98,9 +99,7 @@ double Tuner::hz() const {
     return needle_.shown() ? referenceHz() * std::exp2((needle_.semitones() - kA4) / kSemitones) : 0.0;
 }
 
-QVariantList Tuner::sources() const {
-    return sourceChoices(controller_.project().document(), QStringLiteral("Selected track"));
-}
+QVariantList Tuner::sources() const { return sourceChoices(controller_.project().document(), kSourceRule); }
 
 int Tuner::nearestNote() const { return static_cast<int>(std::lround(needle_.semitones())); }
 
@@ -118,9 +117,9 @@ void Tuner::setSource(const std::string& id) {
 
 void Tuner::follow() {
     const std::optional<MonitorSource> wanted =
-        nav_.tunerOpen() ? resolveSource(controller_.project().document(), chosen_, nav_.selectedTrack().toStdString(),
-                                         {.liveInput = true})
-                         : std::nullopt;
+        nav_.tunerOpen()
+            ? resolveSource(controller_.project().document(), chosen_, nav_.selectedTrack().toStdString(), kSourceRule)
+            : std::nullopt;
     if (nav_.tunerOpen() != timer_.isActive()) {
         if (nav_.tunerOpen()) {
             lastTick_ = std::chrono::steady_clock::now();

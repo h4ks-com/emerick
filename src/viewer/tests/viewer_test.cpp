@@ -13,6 +13,7 @@
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 #include <cstddef>
+#include <cstdint>
 #include <format>
 #include <functional>
 #include <nlohmann/json.hpp>
@@ -325,4 +326,44 @@ TEST_CASE("the viewer draws a Chords track's chord names and a Style track's sec
     CHECK(label(chords, 1920) == "G7");
     CHECK(label(style, 0) == "Intro 1");
     CHECK(label(style, 1920) == "Main B");
+}
+
+TEST_CASE("the viewer shows the fills and breaks a style plays and names the voice of each part the style plays live") {
+    ensureApplication();
+    const auto [viewer, view] = shownViewer();
+    const auto bytes = [](const std::string& text) { return std::vector<std::uint8_t>{text.begin(), text.end()}; };
+    model::Document document;
+    model::Track style{.name = "Style", .kind = "yamaha.style"};
+    style.instrument = model::PluginSlot{.pluginId = "org.emerick.arranger",
+                                         .name = "Arranger",
+                                         .state = bytes(R"({"style":"/styles/Pop Ballad.sty"})")};
+    style.data = nlohmann::json::parse(R"([{"at":0,"kind":"main","variation":0},
+        {"at":3840,"kind":"main","variation":1},{"at":9600,"kind":"break","variation":0},
+        {"at":13440,"kind":"ending","variation":0}])");
+    model::Track bass{.name = "Bass", .kind = "midi"};
+    bass.midiIn = {.channel = 11, .sourceTrack = style.id};
+    bass.instrument =
+        model::PluginSlot{.pluginId = "org.emerick.voices",
+                          .name = "Expansion Voices",
+                          .state = bytes(R"({"voice":{"name":"Fingered Bass","msb":0,"lsb":0,"program":33}})")};
+    model::Track drums{.name = "Rhythm 1", .kind = "midi"};
+    drums.midiIn = {.channel = 9, .sourceTrack = style.id};
+    drums.instrument =
+        model::PluginSlot{.pluginId = "org.emerick.gm", .name = "General MIDI", .state = bytes(R"({"drumKit":1})")};
+    document.tracks = {style, bass, drums};
+    REQUIRE(viewer->load(QByteArray::fromStdString(model::toJson(document).dump()), "Style parts").isEmpty());
+
+    const auto label = [&](const model::Track& track, core::Ticks at) -> QString {
+        QQuickItem* item =
+            find(view->rootObject(), QString::fromStdString(std::format("lane.blockLabel:{}:{}", track.id.value, at)));
+        return item != nullptr ? item->property("text").toString() : QString{};
+    };
+    REQUIRE(processUntil([&] { return label(style, 0) == "Main A"; }));
+    CHECK(label(style, 3840) == "Main B (fill)");
+    CHECK(label(style, 7680) == "Main B");
+    CHECK(label(style, 9600) == "Break");
+    CHECK(label(style, 11520) == "Main B");
+    CHECK(label(style, 13440) == "Ending 1");
+    CHECK(label(bass, 0) == "Bass: Fingered Bass played by the Pop Ballad style");
+    CHECK(label(drums, 0) == "Rhythm 1: Room kit played by the Pop Ballad style");
 }

@@ -13,6 +13,7 @@
 #include "emerick/arranger/style.hpp"
 #include "emerick/core/time.hpp"
 #include "emerick/model/document.hpp"
+#include "emerick/yamaha/arranger_state.hpp"
 #include "emerick/yamaha/section.hpp"
 
 namespace emerick::yamaha {
@@ -66,14 +67,6 @@ app::Json styleList(std::span<const StyleSummary> summaries);
 // arranger.style.list's result for every style in the Style folders setting.
 app::Json styleList(const app::Registry& registry);
 
-// The Arranger device's state on a Style track: the style file, the hash of its bytes, Auto fill, and the bytes
-// themselves up to arranger::kEmbeddedStyleLimit, so project.json alone plays the style.
-struct ArrangerState {
-    std::string style;
-    std::string hash;
-    bool autoFill = true;
-    std::vector<std::uint8_t> data;
-};
 // Nullopt when the track plays no Arranger.
 std::optional<ArrangerState> arrangerState(const model::Track& track);
 // The style the state holds, else the one its file holds.

@@ -1,4 +1,5 @@
 add_library(emerick_yamaha_codec
+    src/arranger_state.cpp
     src/chart.cpp
     src/chord.cpp
     src/keyboard_template.cpp

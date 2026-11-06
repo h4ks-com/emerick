@@ -125,19 +125,8 @@ std::optional<ArrangerState> arrangerState(const model::Track& track) {
     if (!track.instrument || track.instrument->pluginId != kArrangerPluginId) {
         return std::nullopt;
     }
-    const app::Json state = app::Json::parse(track.instrument->state, nullptr, false);
-    if (!state.is_object()) {
-        return ArrangerState{};
-    }
-    const auto text = [&](const char* key) {
-        const auto found = state.find(key);
-        return found != state.end() && found->is_string() ? found->get<std::string>() : std::string{};
-    };
-    const auto autoFill = state.find("autoFill");
-    return ArrangerState{.style = text("style"),
-                         .hash = text("hash"),
-                         .autoFill = autoFill == state.end() || !autoFill->is_boolean() || autoFill->get<bool>(),
-                         .data = core::fromBase64(text("data")).value_or(std::vector<std::uint8_t>{})};
+    const std::vector<std::uint8_t>& state = track.instrument->state;
+    return parseArrangerState(std::string{state.begin(), state.end()});
 }
 
 std::vector<std::uint8_t> stateBytes(const ArrangerState& state) {

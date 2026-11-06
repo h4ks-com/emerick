@@ -1,3 +1,10 @@
+add_library(emerick_gm_sounds INTERFACE)
+target_include_directories(emerick_gm_sounds INTERFACE ${CMAKE_CURRENT_SOURCE_DIR})
+
+if(EMERICK_VIEWER)
+    return()
+endif()
+
 add_library(emerick_gm_midi STATIC gm_midi.cpp)
 target_link_libraries(emerick_gm_midi PUBLIC clap PkgConfig::FLUIDSYNTH)
 target_include_directories(emerick_gm_midi PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
@@ -22,9 +29,6 @@ add_custom_command(TARGET emerick_gm POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_if_different ${generaluser_gs_SOURCE_DIR}/GeneralUser-GS.sf2 ${gm_resources}
     COMMAND ${CMAKE_COMMAND} -E copy_if_different ${generaluser_gs_license_SOURCE_DIR}/LICENSE.txt
         ${gm_resources}/GeneralUser-GS-LICENSE.txt)
-
-add_library(emerick_gm_sounds INTERFACE)
-target_include_directories(emerick_gm_sounds INTERFACE ${CMAKE_CURRENT_SOURCE_DIR})
 
 add_library(emerick_gm_clap INTERFACE)
 add_dependencies(emerick_gm_clap emerick_gm)

@@ -4,6 +4,10 @@
 #include <QVariantMap>
 #include <algorithm>
 #include <array>
+#include <cstddef>
+#include <filesystem>
+#include <format>
+#include <optional>
 #include <ranges>
 #include <string>
 #include <utility>
@@ -16,7 +20,10 @@
 #include "emerick/app/track_rows.hpp"
 #include "emerick/app/variant.hpp"
 #include "emerick/model/automation.hpp"
+#include "emerick/yamaha/arranger_state.hpp"
 #include "emerick/yamaha/lane_layout.hpp"
+#include "emerick/yamaha/profile.hpp"
+#include "gm_sounds.hpp"
 
 namespace emerick::viewer {
 
@@ -66,6 +73,84 @@ app::RouteSections routesOf(const model::Track& track) {
 
 app::RowContext rowContext(const model::Document& document) {
     return {.tempo = document.tempo, .sampleRate = kSampleRate, .folder = {}};
+}
+
+yamaha::ArrangerState arrangerStateOf(const model::Track& track) {
+    if (!track.instrument || track.instrument->pluginId != app::kArrangerPluginId) {
+        return {};
+    }
+    return yamaha::parseArrangerState(std::string{track.instrument->state.begin(), track.instrument->state.end()});
+}
+
+std::optional<std::vector<yamaha::LaneBlock>> laneBlocksOf(const model::Document& document, const model::Track& track) {
+    return yamaha::laneBlocks(track.kind, track.data, arrangerStateOf(track).autoFill, document.tempo.ticksPerBar());
+}
+
+// A part track that the arranger plays live holds no clips, since only a frozen part keeps its notes.
+const model::Track* playingStyle(const model::Document& document, const model::Track& track) {
+    if (!track.clips.empty()) {
+        return nullptr;
+    }
+    const model::Track* source = model::findTrack(document, track.midiIn.sourceTrack);
+    return source != nullptr && source->kind == yamaha::kStyleKind ? source : nullptr;
+}
+
+bool playsDrums(int channel) { return channel == 9 || channel == 10; }
+
+std::string partVoice(const model::Track& track) {
+    if (!track.instrument) {
+        return {};
+    }
+    const app::Json state =
+        app::Json::parse(track.instrument->state.begin(), track.instrument->state.end(), nullptr, false);
+    if (!state.is_object()) {
+        return track.instrument->name;
+    }
+    if (track.instrument->pluginId == app::kVoicesPluginId && state.contains("voice") &&
+        state.at("voice").is_object()) {
+        const app::Json& voice = state.at("voice");
+        const std::string name = voice.value("name", std::string{});
+        return name.empty() ? std::format("voice {}/{}/{}", voice.value("msb", 0), voice.value("lsb", 0),
+                                          voice.value("program", 0) + 1)
+                            : name;
+    }
+    if (track.instrument->pluginId == app::kGeneralMidiPluginId) {
+        if (playsDrums(track.midiIn.channel)) {
+            const std::size_t kit = state.value("drumKit", std::size_t{0});
+            return kit < gm::kDrumKits.size() ? std::format("{} kit", gm::kDrumKits.at(kit).name) : std::string{};
+        }
+        const std::size_t sound = state.value("sound", std::size_t{0});
+        return sound < gm::kSounds.size() ? std::string{gm::kSounds.at(sound)} : std::string{};
+    }
+    return track.instrument->name;
+}
+
+// The one block an empty part track draws over the song: its part, the voice it plays and the style that plays it.
+yamaha::LaneBlock partBlock(const model::Document& document, const model::Track& part, const model::Track& style) {
+    core::Ticks from = 0;
+    core::Ticks to = yamaha::kLastBlockTicks;
+    bool any = false;
+    for (const model::Track& track : document.tracks) {
+        for (const yamaha::LaneBlock& block :
+             laneBlocksOf(document, track).value_or(std::vector<yamaha::LaneBlock>{})) {
+            from = any ? std::min(from, block.at) : block.at;
+            to = any ? std::max(to, block.end) : block.end;
+            any = true;
+        }
+    }
+    const std::string name =
+        std::ranges::contains(yamaha::genos2Parts(), part.midiIn.channel, &yamaha::Part::channel)
+            ? std::string{yamaha::genos2Parts().at(static_cast<std::size_t>(part.midiIn.channel - 1)).name}
+            : part.name;
+    const std::string voice = partVoice(part);
+    const std::string styleName = std::filesystem::path(arrangerStateOf(style).style).stem().string();
+    return {.at = from,
+            .end = to,
+            .label = std::format("{}{} played by the {}style", name, voice.empty() ? "" : ": " + voice,
+                                 styleName.empty() ? "" : styleName + " "),
+            .gap = true,
+            .colorIndex = 0,
+            .patternBars = 0};
 }
 
 }  // namespace
@@ -142,15 +227,19 @@ QVariant ViewerTracks::data(const QModelIndex& index, int role) const {
         case Role::clips:
             return app::clipList(track, rowContext(document));
         case Role::trackData:
-            if (const auto blocks = yamaha::laneBlocks(track.kind, track.data)) {
+            if (const auto blocks = laneBlocksOf(document, track)) {
                 return app::toVariant(*blocks);
+            }
+            if (const model::Track* style = playingStyle(document, track)) {
+                return app::toVariant(std::vector{partBlock(document, track, *style)});
             }
             return QVariantMap{};
         case Role::takePreview:
             return QVariantMap{};
         case Role::laneComponent:
-            return yamaha::drawsBlocks(track.kind) ? QStringLiteral("qrc:/qt/qml/Emerick/Viewer/BlockRow.qml")
-                                                   : QString{};
+            return yamaha::drawsBlocks(track.kind) || playingStyle(document, track) != nullptr
+                       ? QStringLiteral("qrc:/qt/qml/Emerick/Viewer/BlockRow.qml")
+                       : QString{};
         case Role::headerComponent:
         case Role::clipType:
             return QString{};

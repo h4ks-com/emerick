@@ -47,6 +47,8 @@ public:
     // A gesture such as a drag is one undo step that each update replaces: we revert the last update's edits and run
     // the new ones, so the document follows the drag. Any other edit, undo or redo ends the gesture first.
     void updateGesture(std::string name, const std::function<void()>& edits);
+    // True while a gesture update runs its edits on the document it just reverted.
+    [[nodiscard]] bool updatingGesture() const { return gestureDepth_ > 0; }
     // Keeps the gesture as one undo step and returns true, or drops it when the document is back where it started.
     bool endGesture();
     void cancelGesture();

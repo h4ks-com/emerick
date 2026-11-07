@@ -31,7 +31,8 @@ model::PluginSlot slotFor(const Registry& registry, PluginCatalog& catalog, cons
                            .bundle = found->bundle.string(),
                            .name = found->descriptor.name,
                            .state = {},
-                           .format = found->descriptor.format};
+                           .format = found->descriptor.format,
+                           .vendor = {}};
     if (id == kGeneralMidiPluginId) {
         const auto soundFont = registry.settingValue(kGeneralMidiSoundFontSetting).get<std::string>();
         slot.state.assign(soundFont.begin(), soundFont.end());
@@ -50,7 +51,13 @@ model::TrackId midiTrack(const Registry& registry, const ProjectController& cont
     return id;
 }
 
-void syncInstruments(ProjectController& controller) { controller.instruments().sync(controller.project().document()); }
+void syncInstruments(ProjectController& controller) {
+    // A gesture update reverts the document before its edits, and loading that reverted state into the live plugins
+    // on every frame of a drag freezes a plugin with a heavy state.
+    if (!controller.project().updatingGesture()) {
+        controller.instruments().sync(controller.project().document());
+    }
+}
 
 namespace {
 

@@ -191,6 +191,28 @@ TEST_CASE("a VST3 insert's window opens at its editor's size, and a gesture in t
     CHECK_FALSE(rig.controller->instruments().editorOpen(model::InsertId{amp}));
 }
 
+TEST_CASE("a drag on a plugin insert param keeps the plugin at the drag's last value between frames") {
+    PluginInsertRig rig;
+    const auto [guitar, amp] = rig.guitarWithGain();
+    const auto dragTo = [&](double value) {
+        double before = 0.0;
+        rig.controller->project().updateGesture("set gain", [&] {
+            before = gainOf(rig, amp);
+            rig.run("insert.setParam", {{"insert", amp}, {"param", "Gain"}, {"value", value}});
+        });
+        return before;
+    };
+    CHECK(dragTo(0.5) == 1.0);
+    CHECK(dragTo(0.25) == 0.5);
+    CHECK(dragTo(0.75) == 0.25);
+    CHECK(rig.controller->project().endGesture());
+    rig.controller->flush();
+    CHECK(gainOf(rig, amp) == 0.75);
+    rig.run("project.undo");
+    rig.controller->flush();
+    CHECK(gainOf(rig, amp) == 1.0);
+}
+
 TEST_CASE("a built-in insert has no plugin window") {
     PluginInsertRig rig;
     const std::string vox = rig.run("track.addAudio").at("id");

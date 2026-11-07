@@ -71,7 +71,7 @@ Json insertResult(const ProjectController& controller, const InsertRef& ref) {
 
 // A script runs its actions without turning the event loop, so we load the plugins its earlier actions added.
 std::shared_ptr<engine::Plugin> livePlugin(ProjectController& controller, const model::Insert& insert) {
-    controller.instruments().sync(controller.project().document());
+    syncInstruments(controller);
     const auto plugin = controller.instruments().find(insert.id);
     if (!plugin) {
         throw AppError((insert.plugin ? insert.plugin->name : insert.type) + " of insert " + insert.id.value +

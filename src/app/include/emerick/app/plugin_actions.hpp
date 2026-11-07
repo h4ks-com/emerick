@@ -2,6 +2,7 @@
 
 #include <filesystem>
 
+#include "emerick/app/dexed.hpp"
 #include "emerick/app/nav.hpp"
 #include "emerick/app/plugin_catalog.hpp"
 #include "emerick/app/project_controller.hpp"
@@ -25,6 +26,10 @@ void registerInstrumentActions(Registry& registry, ProjectController& controller
 void registerPluginInsertActions(Registry& registry, ProjectController& controller, Nav& nav, PluginCatalog& catalog);
 // Adds dexed.programs and dexed.load, which pick the DX7 program a Dexed instrument plays.
 void registerDexedActions(Registry& registry, ProjectController& controller, Nav& nav, PluginCatalog& catalog);
+// The credit {id, name, license, url} of each DX7 cartridge Emerick ships.
+Json shippedCartridgeCredits();
+// The credit of the cartridge when Emerick ships it, else null.
+Json cartridgeCredit(const Dx7Cartridge& cartridge);
 
 // Scans the catalog the first time something asks for its plugins.
 const PluginCatalog& scannedCatalog(const Registry& registry, PluginCatalog& catalog);

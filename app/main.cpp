@@ -32,6 +32,7 @@
 #include "emerick/app/backends.hpp"
 #include "emerick/app/console.hpp"
 #include "emerick/app/core_actions.hpp"
+#include "emerick/app/credits.hpp"
 #include "emerick/app/key_focus.hpp"
 #include "emerick/app/libraries.hpp"
 #include "emerick/app/lua_host.hpp"
@@ -244,6 +245,7 @@ int run(int argc, char** argv) {
     const auto yamaha = emerick::yamaha::registerWith(registry, controller, nav);
     const auto monitors = registerMonitors(registry, controller, nav);
     const auto libraries = registerLibraries(registry, nav, libraryFolder(profileFolder));
+    registerCreditActions(registry, controller, *libraries);
     if (parser.isSet(installLibrary)) {
         return installLibraries(registry, parser.values(installLibrary));
     }

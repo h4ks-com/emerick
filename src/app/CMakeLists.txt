@@ -57,6 +57,7 @@ qt_add_library(emerick_app STATIC
     console_completion.cpp
     control_actions.cpp
     core_actions.cpp
+    credits.cpp
     dexed.cpp
     dexed_actions.cpp
     effect_catalog.cpp
@@ -73,6 +74,7 @@ qt_add_library(emerick_app STATIC
     include/emerick/app/console.hpp
     include/emerick/app/console_completion.hpp
     include/emerick/app/core_actions.hpp
+    include/emerick/app/credits.hpp
     include/emerick/app/dexed.hpp
     include/emerick/app/effect_catalog.hpp
     include/emerick/app/event_wait.hpp
@@ -201,6 +203,7 @@ if(EMERICK_BUILD_TESTS)
         tests/code_highlighter_test.cpp
         tests/control_curve_test.cpp
         tests/console_test.cpp
+        tests/credits_test.cpp
         tests/cycle_test.cpp
         tests/dexed_test.cpp
         tests/devices_test.cpp

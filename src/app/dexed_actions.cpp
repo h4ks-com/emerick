@@ -85,17 +85,43 @@ std::size_t programIndex(const Json& given, const std::vector<std::string>& name
     return static_cast<std::size_t>(number - 1);
 }
 
-Json programList(const std::vector<std::string>& names) {
+Json shippedCartridgeCredit(const QFileInfo& file) {
+    return {{"id", cartridgeId(file)},
+            {"name", file.completeBaseName().toStdString()},
+            {"license", "GPL-3.0"},
+            {"url", "https://github.com/asb2m10/dexed/tree/v1.0.1"}};
+}
+
+Json programList(const std::vector<std::string>& names, const Dx7Cartridge& cartridge) {
     const auto programs =
         std::views::iota(std::size_t{0}, names.size()) |
         std::views::transform([&](std::size_t index) { return Json{{"number", index + 1}, {"name", names[index]}}; }) |
         std::ranges::to<std::vector>();
     return {{"programs", programs},
             {"cartridges", shippedCartridges() | std::views::transform(cartridgeId) | std::ranges::to<std::vector>()},
+            {"credit", cartridgeCredit(cartridge)},
             {"message", std::to_string(names.size()) + " programs"}};
 }
 
 }  // namespace
+
+Json shippedCartridgeCredits() {
+    return shippedCartridges() | std::views::transform(shippedCartridgeCredit) | std::ranges::to<Json::array_t>();
+}
+
+Json cartridgeCredit(const Dx7Cartridge& cartridge) {
+    const QFileInfoList shipped = shippedCartridges();
+    const auto found = std::ranges::find_if(shipped, [&](const QFileInfo& file) {
+        QFile bytes(file.filePath());
+        if (!bytes.open(QIODevice::ReadOnly)) {
+            return false;
+        }
+        const QByteArray read = bytes.readAll();
+        const auto parsed = parseDx7Cartridge(std::vector<std::uint8_t>(read.begin(), read.end()));
+        return parsed && parsed->sysex == cartridge.sysex;
+    });
+    return found == shipped.end() ? Json{} : shippedCartridgeCredit(*found);
+}
 
 void registerDexedActions(Registry& registry, ProjectController& controller, Nav& nav, PluginCatalog& catalog) {
     const Json cartridgeSchema = {
@@ -105,21 +131,22 @@ void registerDexedActions(Registry& registry, ProjectController& controller, Nav
          .title = "List DX7 programs",
          .description =
              "Lists the 32 programs of the cartridge the track's Dexed plays, by number and name, with the "
-             "one it plays, or the programs of a cartridge. Also lists the ids of the cartridges Emerick ships.",
+             "one it plays, or the programs of a cartridge. Also lists the ids of the cartridges Emerick ships, and "
+             "the credit {id, name, license, url} of the cartridge when Emerick ships it.",
          .aliases = {"dx7 patches", "dexed presets", "list fm sounds"},
          .category = "Tracks",
          .schema = {{"properties", {{"track", {{"type", "string"}}}, {"cartridge", cartridgeSchema}}}},
          .run =
              [&registry, &controller, &nav](const Json& params) {
                  if (params.contains("cartridge")) {
-                     Json listed =
-                         programList(dx7ProgramNames(readCartridge(registry, param<std::string>(params, "cartridge"))));
+                     const Dx7Cartridge cartridge = readCartridge(registry, param<std::string>(params, "cartridge"));
+                     Json listed = programList(dx7ProgramNames(cartridge), cartridge);
                      listed["cartridge"] = params.at("cartridge");
                      return listed;
                  }
                  const model::TrackId id = midiTrack(registry, controller, nav, params);
                  const DexedState state = dexedState(controller, *controller.project().track(id));
-                 Json listed = programList(dx7ProgramNames(state.cartridge));
+                 Json listed = programList(dx7ProgramNames(state.cartridge), state.cartridge);
                  listed["track"] = id.value;
                  listed["program"] = state.program + 1;
                  return listed;

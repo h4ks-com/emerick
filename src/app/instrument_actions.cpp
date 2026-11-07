@@ -32,7 +32,7 @@ model::PluginSlot slotFor(const Registry& registry, PluginCatalog& catalog, cons
                            .name = found->descriptor.name,
                            .state = {},
                            .format = found->descriptor.format,
-                           .vendor = {}};
+                           .vendor = found->descriptor.vendor};
     if (id == kGeneralMidiPluginId) {
         const auto soundFont = registry.settingValue(kGeneralMidiSoundFontSetting).get<std::string>();
         slot.state.assign(soundFont.begin(), soundFont.end());

@@ -6,6 +6,7 @@
 #include <vector>
 
 #include "emerick/app/core_actions.hpp"
+#include "emerick/app/credits.hpp"
 
 namespace emerick::app {
 
@@ -41,6 +42,7 @@ Json catalogJson(const PluginCatalog& catalog) {
                                         {"features", described.features},
                                         {"instrument", engine::isInstrument(described)},
                                         {"effect", engine::isEffect(described)},
+                                        {"license", pluginLicense(described.id)},
                                         {"bundle", plugin.bundle.string()}};
                         }) | std::ranges::to<Json::array_t>()},
             {"blocked", blocked | std::views::transform([](const auto& entry) {
@@ -113,8 +115,8 @@ void registerPluginActions(Registry& registry, Nav& nav, PluginCatalog& catalog)
     registry.addAction(
         {.id = "plugins.list",
          .title = "List plugins",
-         .description = "Lists the CLAP and VST3 plugins found and the bundles blocked because they crashed, "
-                        "hung or failed to load.",
+         .description = "Lists the CLAP and VST3 plugins found, with the license of the ones Emerick ships, and the "
+                        "bundles blocked because they crashed, hung or failed to load.",
          .aliases = {"installed plugins", "clap plugins", "vst3 plugins"},
          .category = "Plugins",
          .run = [&registry, &catalog](const Json&) { return catalogJson(scannedCatalog(registry, catalog)); },

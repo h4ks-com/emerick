@@ -24,6 +24,7 @@ add_library(emerick_engine
     src/mix_issues.cpp
     src/note_analysis.cpp
     src/pitch.cpp
+    src/pitch_needle.cpp
     src/plugin.cpp
     src/rt_clap.cpp
     src/rt_metronome.cpp

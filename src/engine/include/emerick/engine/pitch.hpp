@@ -13,6 +13,7 @@ struct PitchReading {
     double hz = 0.0;
     // How periodic the frame is, from 0 for noise to 1 for a steady tone.
     double confidence = 0.0;
+    double meanSquare = 0.0;
 };
 
 // Finds the fundamental of the frame with the McLeod pitch method, from kLowestPitchHz to kHighestPitchHz, or nullopt

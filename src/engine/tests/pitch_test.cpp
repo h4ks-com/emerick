@@ -9,11 +9,14 @@
 #include <complex>
 #include <cstddef>
 #include <functional>
+#include <iterator>
 #include <numbers>
 #include <optional>
 #include <span>
 #include <utility>
 #include <vector>
+
+#include "emerick/engine/pitch_needle.hpp"
 
 using Catch::Approx;
 using namespace emerick::engine;
@@ -46,11 +49,9 @@ double centsBetween(double hz, double expected) { return 1200 * std::log2(hz / e
 
 // A plucked guitar string: stretched partials with a weak, fast fading fundamental, a body resonance, a noisy pick
 // attack and background noise.
-std::vector<float> pluck(double hz, double rate) {
-    constexpr double kPluckPosition = 0.2;
+std::vector<float> pluck(double hz, double rate, double pluckPosition = 0.2, double noiseLevel = 0.01) {
     constexpr double kSeconds = 2.5;
     constexpr double kStretch = 1e-4;
-    constexpr double kNoise = 0.01;
     const auto size = static_cast<std::size_t>(rate * kSeconds);
     unsigned state = 7;
     auto noise = [&state] {
@@ -61,8 +62,7 @@ std::vector<float> pluck(double hz, double rate) {
     for (int n = 1; n * hz < rate / 2.2 && n < 60; ++n) {
         const double partialHz = n * hz * std::sqrt(1 + (kStretch * n * n));
         const double body = 1 + std::exp(-std::pow(std::log(partialHz / 100) / 0.15, 2));
-        const double level =
-            std::abs(std::sin(n * std::numbers::pi * kPluckPosition)) / n * body * (n == 1 ? 0.3 : 1.0);
+        const double level = std::abs(std::sin(n * std::numbers::pi * pluckPosition)) / n * body * (n == 1 ? 0.3 : 1.0);
         const double decay = 0.6 + (0.004 * partialHz) + (n == 1 ? 1.5 : 0.0);
         partials.emplace_back(std::polar(level, std::numbers::pi * noise()),
                               std::polar(std::exp(-decay / rate), 2 * std::numbers::pi * partialHz / rate));
@@ -76,10 +76,23 @@ std::vector<float> pluck(double hz, double rate) {
             value *= step;
         }
         sum *= std::min(t / 0.004, 1.0);
-        sum += (0.5 * noise() * std::exp(-t / 0.008)) + (kNoise * noise());
+        sum += (0.5 * noise() * std::exp(-t / 0.008)) + (noiseLevel * noise());
         samples[i] = static_cast<float>(0.4 * sum);
     }
     return samples;
+}
+
+// Feeds every reading the tuner takes of the samples to a needle and returns the note it shows after each one, or -1.
+std::vector<int> shownNotes(std::span<const float> samples, double rate) {
+    const std::size_t frame = std::bit_ceil(static_cast<std::size_t>(rate * 0.064));
+    const std::size_t hop = frame / 4;
+    PitchNeedle needle;
+    std::vector<int> notes;
+    for (std::size_t end = frame; end <= samples.size(); end += hop) {
+        needle.feed(detectPitch(samples.subspan(end - frame, frame), rate), static_cast<double>(hop) / rate, 440.0);
+        notes.push_back(needle.shown() ? static_cast<int>(std::lround(needle.semitones())) : -1);
+    }
+    return notes;
 }
 
 }  // namespace
@@ -119,6 +132,42 @@ TEST_CASE("a plucked guitar string reads its own note from the attack to the fad
         if (seconds > 0.3) {
             CHECK(std::abs(centsBetween(reading->hz, hz)) < 8.0);
         }
+    }
+}
+
+TEST_CASE("the needle keeps a plucked string's note when its fading fundamental lets the reading jump to an overtone") {
+    struct Pluck {
+        double hz;
+        double pluckPosition;
+    };
+    const Pluck string = GENERATE(Pluck{82.41, 0.5}, Pluck{82.41, 0.33}, Pluck{110.0, 0.25}, Pluck{110.0, 0.33},
+                                  Pluck{146.83, 0.33}, Pluck{164.81, 0.33});
+    CAPTURE(string.hz, string.pluckPosition);
+    const std::vector<float> samples = pluck(string.hz, kRate, string.pluckPosition, 0.003);
+    const int expected = nearestNote(string.hz, 440.0).midiNote;
+    const std::vector<int> notes = shownNotes(samples, kRate);
+    for (std::size_t i = 0; i < notes.size(); ++i) {
+        if (notes[i] != -1) {
+            CAPTURE(i);
+            CHECK(notes[i] == expected);
+        }
+    }
+}
+
+TEST_CASE("the needle moves to a fresh pluck within 150 ms, even an octave up") {
+    const double next = GENERATE(110.0, 164.81, 220.0, 247.22);
+    CAPTURE(next);
+    std::vector<float> samples = pluck(110.0, kRate, 0.33, 0.003);
+    samples.resize(static_cast<std::size_t>(kRate * 1.5));
+    const std::size_t plucked = samples.size();
+    std::ranges::copy(pluck(next, kRate), std::back_inserter(samples));
+    const std::vector<int> notes = shownNotes(samples, kRate);
+    const std::size_t hop = 1024;
+    const std::size_t settled = ((plucked + static_cast<std::size_t>(kRate * 0.15)) / hop) - 3;
+    CHECK(notes[(plucked / hop) - 4] == 45);
+    for (std::size_t i = settled; i < notes.size(); ++i) {
+        CAPTURE(i);
+        CHECK(notes[i] == nearestNote(next, 440.0).midiNote);
     }
 }
 

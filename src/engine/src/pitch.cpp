@@ -134,11 +134,12 @@ double refinedPeriod(std::span<const double> nsdf, const Peak& period) {
 }  // namespace
 
 std::optional<PitchReading> detectPitch(std::span<const float> frame, double sampleRate) {
-    double meanSquare = 0.0;
+    double sumOfSquares = 0.0;
     for (const float sample : frame) {
-        meanSquare += static_cast<double>(sample) * static_cast<double>(sample);
+        sumOfSquares += static_cast<double>(sample) * static_cast<double>(sample);
     }
-    if (frame.size() < 4 || meanSquare / static_cast<double>(frame.size()) < kSilentMeanSquare) {
+    const double meanSquare = sumOfSquares / static_cast<double>(frame.size());
+    if (frame.size() < 4 || meanSquare < kSilentMeanSquare) {
         return std::nullopt;
     }
     const auto minLag = static_cast<std::size_t>(sampleRate / kHighestPitchHz);
@@ -154,7 +155,9 @@ std::optional<PitchReading> detectPitch(std::span<const float> frame, double sam
     if (period.value < kMinConfidence) {
         return std::nullopt;
     }
-    return PitchReading{.hz = sampleRate / refinedPeriod(nsdf, period), .confidence = std::min(period.value, 1.0)};
+    return PitchReading{.hz = sampleRate / refinedPeriod(nsdf, period),
+                        .confidence = std::min(period.value, 1.0),
+                        .meanSquare = meanSquare};
 }
 
 NoteReading nearestNote(double hz, double referenceHz) {

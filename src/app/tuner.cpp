@@ -13,9 +13,6 @@ namespace {
 
 constexpr const char* kTapOwner = "tuner";
 constexpr SourceRule kSourceRule{.liveInput = true};
-constexpr double kHoldSeconds = 1.5;
-constexpr double kEaseSeconds = 0.15;
-constexpr double kSameNote = 0.5;
 constexpr double kFrameSeconds = 0.064;
 constexpr int kHopsPerFrame = 4;
 constexpr int kTickMs = 33;
@@ -53,30 +50,6 @@ struct PitchFrames {
 };
 
 }  // namespace
-
-void PitchNeedle::feed(const std::optional<engine::PitchReading>& reading, double seconds, double referenceHz) {
-    if (!reading) {
-        pending_.reset();
-        silentSeconds_ += seconds;
-        if (silentSeconds_ > kHoldSeconds) {
-            shown_ = false;
-        }
-        return;
-    }
-    silentSeconds_ = 0.0;
-    confidence_ = reading->confidence;
-    const double target = kA4 + (kSemitones * std::log2(reading->hz / referenceHz));
-    if (shown_ && std::abs(target - semitones_) < kSameNote) {
-        semitones_ += (target - semitones_) * (1.0 - std::exp(-seconds / kEaseSeconds));
-        pending_.reset();
-    } else if (pending_ && std::abs(target - *pending_) < kSameNote) {
-        semitones_ = target;
-        shown_ = true;
-        pending_.reset();
-    } else {
-        pending_ = target;
-    }
-}
 
 Tuner::Tuner(Registry& registry, ProjectController& controller, Nav& nav, QObject* parent)
     : QObject(parent), registry_(registry), controller_(controller), nav_(nav) {
@@ -147,9 +120,8 @@ void Tuner::follow() {
                            .sampleRate = sampleRate};
         reader_ = std::make_unique<TapReader>(tap, [this, frames](std::span<const float> samples) mutable {
             frames.add(samples, [this](const std::optional<engine::PitchReading>& reading) {
-                const std::scoped_lock lock(latestMutex_);
-                latest_.reading = reading;
-                ++latest_.count;
+                const std::scoped_lock lock(readingsMutex_);
+                readings_.push_back(reading);
             });
         });
         controller_.setTap(kTapOwner, std::move(tap));
@@ -161,15 +133,16 @@ void Tuner::follow() {
 void Tuner::tick() {
     const auto now = std::chrono::steady_clock::now();
     const double seconds = std::chrono::duration<double>(now - std::exchange(lastTick_, now)).count();
-    Latest latest;
+    std::vector<std::optional<engine::PitchReading>> readings;
     {
-        const std::scoped_lock lock(latestMutex_);
-        latest = latest_;
+        const std::scoped_lock lock(readingsMutex_);
+        readings.swap(readings_);
     }
-    if (latest.count != seen_) {
-        seen_ = latest.count;
+    if (!readings.empty()) {
         lastReading_ = now;
-        needle_.feed(latest.reading, seconds, referenceHz());
+        for (const std::optional<engine::PitchReading>& reading : readings) {
+            needle_.feed(reading, seconds / static_cast<double>(readings.size()), referenceHz());
+        }
     } else if (now - lastReading_ > kSilentAfter) {
         needle_.feed(std::nullopt, seconds, referenceHz());
     }

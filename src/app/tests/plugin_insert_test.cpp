@@ -191,6 +191,26 @@ TEST_CASE("a VST3 insert's window opens at its editor's size, and a gesture in t
     CHECK_FALSE(rig.controller->instruments().editorOpen(model::InsertId{amp}));
 }
 
+TEST_CASE("each plugin insert opens its own window, and closing or removing one leaves the others open") {
+    PluginInsertRig rig;
+    const auto [guitar, amp] = rig.guitarWithGain();
+    const std::string boost =
+        rig.run("insert.add", {{"track", guitar}, {"plugin", kGain}, {"format", "vst3"}}).at("id");
+    const std::string trim = rig.run("insert.add", {{"track", guitar}, {"plugin", kGain}, {"format", "vst3"}}).at("id");
+    const auto open = [&](const std::string& insert) {
+        return rig.controller->instruments().editorOpen(model::InsertId{insert});
+    };
+    for (const std::string& insert : {amp, boost, trim}) {
+        CHECK(rig.run("insert.openPluginWindow", {{"insert", insert}}).at("windowOpen") == true);
+    }
+    CHECK((open(amp) && open(boost) && open(trim)));
+    rig.run("insert.closePluginWindow", {{"insert", amp}});
+    CHECK((!open(amp) && open(boost) && open(trim)));
+    rig.run("insert.remove", {{"insert", boost}});
+    rig.controller->flush();
+    CHECK((!open(boost) && open(trim)));
+}
+
 TEST_CASE("a drag on a plugin insert param keeps the plugin at the drag's last value between frames") {
     PluginInsertRig rig;
     const auto [guitar, amp] = rig.guitarWithGain();

@@ -78,6 +78,15 @@ std::string missingMessage(const model::PluginSlot& slot, bool insert, const std
            (insert ? "insert" : "track") + " keeps its settings (" + reason + ")";
 }
 
+// The app's main window, which every plugin window floats over, so closing one plugin window leaves the others open.
+QWindow* mainWindow() {
+    QWindow* window = QGuiApplication::focusWindow();
+    while (window != nullptr && window->transientParent() != nullptr) {
+        window = window->transientParent();
+    }
+    return window;
+}
+
 // Centers the window on its screen, each further open window a step down and right, and keeps its top left corner on
 // the screen when it is larger.
 void placeOnScreen(QWindow& window, int alreadyOpen) {
@@ -323,7 +332,7 @@ void Instruments::showPluginEditor(const std::string& key, const std::string& ti
     window->setTitle(qs(title));
     // A tool window floats over the app's windows, as plugin windows do in other DAWs.
     window->setFlag(Qt::Tool);
-    window->setTransientParent(QGuiApplication::focusWindow());
+    window->setTransientParent(mainWindow());
     // Qt hands out the native view of a window as an integer, and the plugin embeds into that view.
     const auto size =
         instrument.embedEditor(reinterpret_cast<void*>(window->winId()));  // NOLINT(performance-no-int-to-ptr)

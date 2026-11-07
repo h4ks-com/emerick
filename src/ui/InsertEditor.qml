@@ -19,7 +19,7 @@ Popup {
     closePolicy: Popup.CloseOnEscape
     Component.onCompleted: open()
     onClosed: if (Nav.editingInserts.includes(insertId)) Registry.runAction("insert.closeEditor", {insert: insertId})
-    background: GlassPanel {}
+    background: GlassPanel { color: Theme.slate }
 
     contentItem: Item {
         implicitWidth: content.implicitWidth

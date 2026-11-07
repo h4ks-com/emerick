@@ -97,11 +97,11 @@ TEST_CASE("clicking the gap between two insert slots adds the picked effect ther
     MainWindow& main = MainWindow::instance();
     const std::string vox = main.rig.run("track.addAudio").at("id");
     main.rig.run("insert.add", {{"track", vox}, {"type", "delay"}});
-    main.rig.run("insert.add", {{"track", vox}, {"type", "reverb"}});
+    const std::string reverb = main.rig.run("insert.add", {{"track", vox}, {"type", "reverb"}}).at("id");
     main.rig.run("insert.closeEditor");
     MainWindow::settle();
 
-    QQuickItem* gap = main.item("insert.add:" + qid(vox) + ":at:1");
+    QQuickItem* gap = main.item("insert.add:" + qid(vox) + ":before:" + qid(reverb));
     main.hover(gap);
     CHECK(processUntil([&] { return gap->property("containsMouse").toBool(); }));
     main.click(gap);

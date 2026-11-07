@@ -93,6 +93,21 @@ TEST_CASE("a Dexed state takes a cartridge and a program, which it keeps through
     CHECK(picked->voice[160] == 7);
     CHECK(picked->xml.contains(R"(opSwitch="111111")"));
     CHECK(picked->xml.contains(R"(cutoff="1.0")"));
+
+    const auto withProgram = [&](std::string_view program) {
+        std::vector<std::uint8_t> bytes = dexedStateWith(blank, cartridge, 2);
+        const auto at =
+            static_cast<std::ptrdiff_t>(std::string(bytes.begin(), bytes.end()).find(R"(currentProgram="2")") + 16);
+        bytes.erase(bytes.begin() + at);
+        bytes.insert(bytes.begin() + at, program.begin(), program.end());
+        const std::size_t length = bytes.size() - 9;
+        for (std::size_t byte = 0; byte < 4; ++byte) {
+            bytes.at(4 + byte) = static_cast<std::uint8_t>(length >> (8 * byte));
+        }
+        return parseDexedState(bytes);
+    };
+    CHECK(withProgram("17").value().program == 17);
+    CHECK_FALSE(withProgram("40").has_value());
 }
 
 TEST_CASE("dexed.load picks a DX7 program by name, which the saved project and an export play") {

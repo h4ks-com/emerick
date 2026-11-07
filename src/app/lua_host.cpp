@@ -45,6 +45,7 @@ struct Budget {
     std::optional<std::chrono::milliseconds> timeout;
     std::chrono::steady_clock::time_point deadline;
     std::string stopped;
+    bool running = false;
 };
 
 Budget& budgetOf(lua_State* state) {
@@ -79,11 +80,15 @@ lua_State* mainThread(lua_State* state) {
     return main;
 }
 
-// A pcall in the script catches one error, so after a limit we raise again on every instruction until it ends.
+// A pcall in the script catches one error, so after a limit we raise again on every instruction of each thread the
+// hook reaches until the script ends.
 void stopRunawayScript(lua_State* state, lua_Debug* /*debug*/) {
     Budget& budget = budgetOf(state);
+    if (!budget.running) {
+        return;
+    }
     if (budget.stopped.empty()) {
-        budget.instructions += kHookInstructions;
+        budget.instructions += lua_gethookcount(state);
         if (budget.instructions >= kInstructionLimit) {
             budget.stopped = std::format("script ran over {} instructions", kInstructionLimit);
         } else if (budget.timeout && std::chrono::steady_clock::now() > budget.deadline) {
@@ -91,37 +96,11 @@ void stopRunawayScript(lua_State* state, lua_Debug* /*debug*/) {
         } else {
             return;
         }
-        lua_sethook(state, stopRunawayScript, LUA_MASKCOUNT, 1);
         lua_sethook(mainThread(state), stopRunawayScript, LUA_MASKCOUNT, 1);
     }
+    lua_sethook(state, stopRunawayScript, LUA_MASKCOUNT, 1);
     lua_pushstring(state, budget.stopped.c_str());
     lua_error(state);
-}
-
-// Lua hooks are per thread, so we put every coroutine under the hook of the script that creates it.
-void inheritHook(lua_State* creator, lua_State* thread) {
-    if (lua_gethook(creator) != nullptr) {
-        lua_sethook(thread, stopRunawayScript, LUA_MASKCOUNT, kHookInstructions);
-    }
-}
-
-int createHookedCoroutine(lua_State* state) {
-    lua_pushvalue(state, lua_upvalueindex(1));
-    lua_insert(state, 1);
-    lua_call(state, lua_gettop(state) - 1, 1);
-    inheritHook(state, lua_tothread(state, -1));
-    return 1;
-}
-
-// The function coroutine.wrap returns holds its coroutine as its first upvalue.
-int wrapHookedCoroutine(lua_State* state) {
-    lua_pushvalue(state, lua_upvalueindex(1));
-    lua_insert(state, 1);
-    lua_call(state, lua_gettop(state) - 1, 1);
-    lua_getupvalue(state, -1, 1);
-    inheritHook(state, lua_tothread(state, -1));
-    lua_pop(state, 1);
-    return 1;
 }
 
 // Bytecode can crash the VM, so we load only text chunks.
@@ -157,9 +136,9 @@ void openSafeLibraries(sol::state& lua) {
     }
     lua["os"] = pureOs;
     replaceWithWrapper(lua.globals(), "load", loadText);
-    const sol::table coroutine = lua["coroutine"];
-    replaceWithWrapper(coroutine, "create", createHookedCoroutine);
-    replaceWithWrapper(coroutine, "wrap", wrapHookedCoroutine);
+    // A new thread copies its creator's hook, so a hook set on the main thread before any script runs reaches every
+    // coroutine, even one a script keeps from an earlier run.
+    lua_sethook(lua.lua_state(), stopRunawayScript, LUA_MASKCOUNT, kHookInstructions);
 }
 
 class RunBudget {
@@ -171,9 +150,10 @@ public:
         budget.timeout = limits.luaTimeout;
         budget.deadline = std::chrono::steady_clock::now() + limits.luaTimeout.value_or(std::chrono::milliseconds{});
         budget.stopped.clear();
+        budget.running = true;
         lua_sethook(state_, stopRunawayScript, LUA_MASKCOUNT, kHookInstructions);
     }
-    ~RunBudget() { lua_sethook(state_, nullptr, 0, 0); }
+    ~RunBudget() { budgetOf(state_).running = false; }
     RunBudget(const RunBudget&) = delete;
     RunBudget& operator=(const RunBudget&) = delete;
     RunBudget(RunBudget&&) = delete;

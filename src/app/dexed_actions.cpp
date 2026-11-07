@@ -14,6 +14,7 @@
 #include <vector>
 
 #include "emerick/app/action_params.hpp"
+#include "emerick/app/credits.hpp"
 #include "emerick/app/dexed.hpp"
 #include "emerick/app/plugin_actions.hpp"
 #include "emerick/app/project_actions.hpp"
@@ -88,7 +89,7 @@ std::size_t programIndex(const Json& given, const std::vector<std::string>& name
 Json shippedCartridgeCredit(const QFileInfo& file) {
     return {{"id", cartridgeId(file)},
             {"name", file.completeBaseName().toStdString()},
-            {"license", "GPL-3.0"},
+            {"license", pluginLicense(kDexedPluginId)},
             {"url", "https://github.com/asb2m10/dexed/tree/v1.0.1"}};
 }
 

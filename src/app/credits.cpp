@@ -12,6 +12,7 @@
 #include <string_view>
 #include <utility>
 
+#include "emerick/app/dexed.hpp"
 #include "emerick/app/params.hpp"
 #include "emerick/app/plugin_actions.hpp"
 #include "emerick/app/track_rows.hpp"
@@ -21,11 +22,12 @@ namespace emerick::app {
 
 namespace {
 
+constexpr std::string_view kGpl3 = "GPL-3.0";
 constexpr std::array<std::pair<std::string_view, std::string_view>, 4> kPluginLicenses{{
-    {"org.emerick.", "GPL-3.0"},
-    {"com.digital-suburban.dexed", "GPL-3.0"},
-    {"michaelwillis.dragonfly.", "GPL-3.0"},
-    {"com.airwindows.consolidated", "GPL-3.0"},
+    {"org.emerick.", kGpl3},
+    {kDexedPluginId, kGpl3},
+    {"michaelwillis.dragonfly.", kGpl3},
+    {"com.airwindows.consolidated", kGpl3},
 }};
 
 Json generalUserCredit() {

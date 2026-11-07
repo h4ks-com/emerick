@@ -12,9 +12,9 @@
  #endif
  
  
-+/* maximum number of steps for one match */
++/* maximum number of steps for one call */
 +#if !defined(MAXMATCHSTEPS)
-+#define MAXMATCHSTEPS	10000000UL
++#define MAXMATCHSTEPS	100000000UL
 +#endif
 +
 +

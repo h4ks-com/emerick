@@ -194,7 +194,8 @@ std::optional<DexedState> parseDexedState(std::span<const std::uint8_t> bytes) {
     const auto voice = attribute(state.xml, kProgramAttribute).and_then(fromJuceBase64);
     const auto program = attribute(state.xml, kCurrentProgramAttribute);
     if (!sysex || sysex->size() != kCartridgeSize || !voice || voice->size() < kUnpackedVoiceSize || !program ||
-        std::from_chars(program->data(), program->data() + program->size(), state.program).ec != std::errc{}) {
+        std::from_chars(program->data(), program->data() + program->size(), state.program).ec != std::errc{} ||
+        state.program >= kDx7Programs) {
         return std::nullopt;
     }
     state.cartridge.sysex = *sysex;

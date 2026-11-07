@@ -30,8 +30,8 @@ using emerick::sampler::kParamCount;
 using emerick::sampler::kProblemParam;
 
 constexpr std::uint32_t kDefaultBlock = 1024;
-// sfizz renders exports at sample quality 10 by default, which costs twice the time of 3 on a busy drum kit for a
-// difference about 27 dB under its peak, so we keep exports at 3, still above live playback's 2.
+// sfizz renders exports at sample quality 10 by default, which takes twice as long as 3 on a busy kit for no audible
+// gain.
 constexpr int kRenderSampleQuality = 3;
 constexpr int kAllNotesOff = 123;
 constexpr int kBendCenter = 8192;

@@ -16,8 +16,7 @@
 
 namespace emerick::app {
 
-// We give every field a default so callers' designated initializers can skip it; this check calls those defaults
-// redundant. NOLINTBEGIN(readability-redundant-member-init)
+// Every field has a default so designated initializers can skip it. NOLINTBEGIN(readability-redundant-member-init)
 
 struct KeyMapping {
     int gmNote = 0;
@@ -41,8 +40,8 @@ struct DrumPiece {
 };
 
 // One .sfz of a library and the General MIDI sounds or drum kits it stands in for. An empty file is the library's main
-// .sfz. A client shifts notes up by transpose, maps General MIDI drum notes through keys, sends controls, then the
-// kitControls of the kit it plays, and can play each piece on its own track.
+// .sfz. Its notes sound right shifted up by transpose semitones, General MIDI drum notes play through keys, controls
+// and then the kitControls of the chosen kit set its starting controllers, and each piece plays alone on its own track.
 struct LibraryProgram {
     std::string file = {};
     std::vector<std::string> gmSounds = {};

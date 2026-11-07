@@ -61,7 +61,7 @@ TEST_CASE("a backtracking pattern fails fast and plain patterns still match") {
     }
     CHECK(fixture.lua.eval("local n = 0 for _ in string.rep('ab ', 1e6):gmatch('%a+') do n = n + 1 end return n")
               .at("result") == 1'000'000);
-    CHECK(fixture.lua.eval("return (string.rep('a', 1e6):gsub('a', 'b')):sub(-3)").at("result") == "bbb");
+    CHECK(fixture.lua.eval("return (string.rep('a', 6e6):gsub('.', 'b')):sub(-3)").at("result") == "bbb");
 }
 
 TEST_CASE("a script reads the clock and formats dates with os") {
@@ -91,9 +91,12 @@ TEST_CASE("a coroutine yields and resumes") {
 
 TEST_CASE("a runaway coroutine stops the whole script") {
     Fixture fixture;
-    for (const char* script : {"coroutine.resume(coroutine.create(function() while true do end end)) while true do end",
-                               "while true do coroutine.resume(coroutine.create(function() while true do end end)) end",
-                               "while true do pcall(coroutine.wrap(function() while true do end end)) end"}) {
+    for (const char* script :
+         {"coroutine.resume(coroutine.create(function() while true do end end)) while true do end",
+          "while true do coroutine.resume(coroutine.create(function() while true do end end)) end",
+          "while true do pcall(coroutine.wrap(function() while true do end end)) end",
+          "coroutine.wrap(function() coroutine.resume(coroutine.create(function() while true do end "
+          "end)) while true do pcall(function() for i = 1, 1e6 do end end) end end)()"}) {
         const Json result = fixture.lua.eval(script);
         CHECK(result.at("ok") == false);
         CHECK(result.at("error").get<std::string>().find("instructions") != std::string::npos);
@@ -103,6 +106,9 @@ TEST_CASE("a runaway coroutine stops the whole script") {
         fixture.lua.eval("while true do coroutine.resume(coroutine.create(function() while true do end end)) end");
     CHECK(timedOut.at("error").get<std::string>().find("script ran longer than 50 ms") != std::string::npos);
     CHECK(fixture.lua.eval("return coroutine.wrap(function() return 1 end)()").at("result") == 1);
+    fixture.registry.setLimits({});
+    CHECK(fixture.lua.eval("kept = coroutine.create(function() while true do end end)").at("ok") == true);
+    CHECK(fixture.lua.eval("coroutine.resume(kept) while true do end").at("ok") == false);
 }
 
 TEST_CASE("a script cannot take more memory than its budget") {

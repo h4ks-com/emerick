@@ -177,7 +177,7 @@ ColumnLayout {
             // The gap reaches into the slots' edges so a thin spacing is still easy to hit.
             MouseArea {
                 id: gap
-                objectName: "insert.add:" + list.trackId + ":at:" + row.index
+                objectName: "insert.add:" + list.trackId + ":before:" + row.modelData.id
                 visible: !Registry.readOnly
                 hoverEnabled: true
                 width: parent.width

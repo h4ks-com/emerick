@@ -52,8 +52,8 @@ model::TrackId midiTrack(const Registry& registry, const ProjectController& cont
 }
 
 void syncInstruments(ProjectController& controller) {
-    // A gesture update reverts the document before its edits, and loading that reverted state into the live plugins
-    // on every frame of a drag freezes a plugin with a heavy state.
+    // A gesture update reverts the document on every frame, so we skip reloading that state into heavy plugins mid
+    // drag.
     if (!controller.project().updatingGesture()) {
         controller.instruments().sync(controller.project().document());
     }

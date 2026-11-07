@@ -87,8 +87,6 @@ QWindow* mainWindow() {
     return window;
 }
 
-// Centers the window on its screen, each further open window a step down and right, and keeps its top left corner on
-// the screen when it is larger.
 void placeOnScreen(QWindow& window, int alreadyOpen) {
     const QRect area = window.screen()->availableGeometry();
     const int step = kWindowCascade * alreadyOpen;

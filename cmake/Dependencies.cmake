@@ -149,9 +149,14 @@ list(APPEND CMAKE_MODULE_PATH ${catch2_SOURCE_DIR}/extras)
 
 # Package managers already ship Lua 5.5, which sol2 does not support, so we build 5.4 from source. We take it from
 # Lua's GitHub repository, which keeps the sources in one folder, with its tests and amalgamation beside them.
+# Lua patterns backtrack in C, where no hook can stop them, so we patch the matcher to give up after a fixed number
+# of steps. The ceiling keeps git from treating the source folder as part of a repository around the build folder.
+find_package(Git REQUIRED)
 FetchContent_Declare(lua
     URL https://github.com/lua/lua/archive/refs/tags/v5.4.8.tar.gz
-    URL_HASH SHA256=d85b70a65f43c5d2254944d58d625e822c8e2e10d9c6a3bd9b5b657e46376a19)
+    URL_HASH SHA256=d85b70a65f43c5d2254944d58d625e822c8e2e10d9c6a3bd9b5b657e46376a19
+    PATCH_COMMAND ${CMAKE_COMMAND} -E env GIT_CEILING_DIRECTORIES=${FETCHCONTENT_BASE_DIR}
+        ${GIT_EXECUTABLE} apply ${CMAKE_CURRENT_LIST_DIR}/lua-pattern-steps.patch)
 FetchContent_MakeAvailable(lua)
 
 # The General MIDI instrument plays GeneralUser GS v2.0.3, which its license lets us redistribute.

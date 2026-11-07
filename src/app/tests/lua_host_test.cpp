@@ -51,6 +51,19 @@ TEST_CASE("the sandbox removes file, process and module access") {
     CHECK(fixture.lua.eval("return (('a-b'):gsub('-', '+'))").at("result") == "a+b");
 }
 
+TEST_CASE("a backtracking pattern fails fast and plain patterns still match") {
+    Fixture fixture;
+    for (const char* call : {"s:find(p)", "s:match(p)", "s:gmatch(p)()", "s:gsub(p, '')"}) {
+        const Json result = fixture.lua.eval(
+            std::string{"local s, p = string.rep('a', 22), string.rep('a*', 22) .. 'b' return "} + call);
+        CHECK(result.at("ok") == false);
+        CHECK(result.at("error").get<std::string>().find("pattern too complex") != std::string::npos);
+    }
+    CHECK(fixture.lua.eval("local n = 0 for _ in string.rep('ab ', 1e6):gmatch('%a+') do n = n + 1 end return n")
+              .at("result") == 1'000'000);
+    CHECK(fixture.lua.eval("return (string.rep('a', 1e6):gsub('a', 'b')):sub(-3)").at("result") == "bbb");
+}
+
 TEST_CASE("a script reads the clock and formats dates with os") {
     Fixture fixture;
     const Json result = fixture.lua.eval(

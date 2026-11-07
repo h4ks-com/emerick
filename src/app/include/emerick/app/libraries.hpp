@@ -16,20 +16,65 @@
 
 namespace emerick::app {
 
+// We give every field a default so callers' designated initializers can skip it; this check calls those defaults
+// redundant. NOLINTBEGIN(readability-redundant-member-init)
+
+struct KeyMapping {
+    int gmNote = 0;
+    int note = 0;
+};
+
+struct ControlValue {
+    int cc = 0;
+    int value = 0;
+};
+
+struct KitControls {
+    std::string kit = {};
+    std::vector<ControlValue> controls = {};
+};
+
+struct DrumPiece {
+    std::string name = {};
+    std::string file = {};
+    std::vector<int> gmNotes = {};
+};
+
+// One .sfz of a library and the General MIDI sounds or drum kits it stands in for. An empty file is the library's main
+// .sfz. A client shifts notes up by transpose, maps General MIDI drum notes through keys, sends controls, then the
+// kitControls of the kit it plays, and can play each piece on its own track.
+struct LibraryProgram {
+    std::string file = {};
+    std::vector<std::string> gmSounds = {};
+    int transpose = 0;
+    std::vector<std::string> gmKits = {};
+    std::vector<KeyMapping> keys = {};
+    std::vector<ControlValue> controls = {};
+    std::vector<KitControls> kitControls = {};
+    std::vector<DrumPiece> pieces = {};
+};
+
 // A sound library Emerick downloads on request. The archive is a .tar.gz with one top folder, which every platform's
 // tar extracts; sfz names its main .sfz, or the folder of .sfz files, inside that folder.
 struct Library {
-    std::string id;
-    std::string name;
-    std::string description;
-    std::string url;
-    std::string sha256;
+    std::string id = {};
+    std::string name = {};
+    std::string description = {};
+    std::string url = {};
+    std::string sha256 = {};
     std::int64_t size = 0;
-    std::string license;
-    std::string sfz;
+    std::string license = {};
+    std::string sfz = {};
+    std::vector<LibraryProgram> programs = {};
 };
 
+// NOLINTEND(readability-redundant-member-init)
+
 std::vector<Library> curatedLibraries();
+
+// The library ids to install, with "all" standing for every library in the catalog.
+std::vector<std::string> libraryIdsToInstall(const std::vector<std::string>& given,
+                                             const std::vector<Library>& catalog);
 
 // EMERICK_LIBRARY_DIR, else the libraries folder of a --profile run, else the user's app data folder.
 std::filesystem::path libraryFolder(const QString& profileFolder);

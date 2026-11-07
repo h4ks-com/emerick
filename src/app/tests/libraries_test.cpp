@@ -6,11 +6,13 @@
 #include <QTemporaryDir>
 #include <QUrl>
 #include <QtEnvironmentVariables>
+#include <algorithm>
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_string.hpp>
 #include <filesystem>
 #include <fstream>
 #include <memory>
+#include <ranges>
 #include <string>
 #include <vector>
 
@@ -160,4 +162,47 @@ TEST_CASE("a profile run keeps its libraries in the profile unless EMERICK_LIBRA
     } else {
         qputenv("EMERICK_LIBRARY_DIR", saved);
     }
+}
+
+TEST_CASE("library.list names each program's General MIDI sounds and a drum kit's keys, controls and pieces") {
+    ensureApplication();
+    const QTemporaryDir dir;
+    Registry registry{dir.filePath("settings.ini")};
+    Nav nav;
+    const auto libraries = registerLibraries(registry, nav, dir.filePath("libraries").toStdString());
+    const Json listed = registry.run("library.list").at("libraries");
+    const auto program = [&](const std::string& library, const std::string& sound) {
+        const Json& found = *std::ranges::find(listed, Json(library), [](const Json& entry) { return entry.at("id"); });
+        return *std::ranges::find_if(found.at("programs"), [&](const Json& entry) {
+            return std::ranges::contains(entry.at("gmSounds"), Json(sound));
+        });
+    };
+    CHECK(program("vsco2-ce", "Trumpet").at("file") == "TrumpetSusVib.sfz");
+    CHECK(program("salamander-grand-piano", "Acoustic Grand Piano").at("file") == "");
+    const Json bass = program("black-and-blue-basses", "Electric Bass (finger)");
+    CHECK(bass.at("file") == "Programs/03-babyblue_all.sfz");
+    CHECK(bass.at("transpose") == 12);
+    CHECK(std::ranges::fold_left(listed, std::size_t{0}, [](std::size_t count, const Json& library) {
+              return std::ranges::fold_left(library.at("programs"), count, [](std::size_t sum, const Json& entry) {
+                  return sum + entry.at("gmSounds").size();
+              });
+          }) == 45);
+
+    const Json kit = listed[2].at("programs").at(0);
+    CHECK(kit.at("gmKits").size() == 5);
+    CHECK(std::ranges::contains(kit.at("keys"), Json{{"gmNote", 50}, {"note", 47}}));
+    CHECK(std::ranges::contains(kit.at("controls"), Json{{"cc", 17}, {"value", 84}}));
+    CHECK(kit.at("kitControls").at(0) ==
+          Json{{"kit", "Brush"},
+               {"controls", {{{"cc", 25}, {"value", 80}}, {{"cc", 26}, {"value", 80}}, {{"cc", 27}, {"value", 80}}}}});
+    CHECK(kit.at("pieces").at(0) == Json{{"name", "kick"}, {"file", "Programs/03-kick.sfz"}, {"gmNotes", {35, 36}}});
+    CHECK(kit.at("pieces").size() == 5);
+}
+
+TEST_CASE("installing all libraries installs every library in the catalog") {
+    const std::vector<Library> catalog = curatedLibraries();
+    const auto ids = libraryIdsToInstall({"all"}, catalog);
+    CHECK(ids == (catalog | std::views::transform(&Library::id) | std::ranges::to<std::vector>()));
+    CHECK(ids.size() == 15);
+    CHECK(libraryIdsToInstall({"meatbass"}, catalog) == std::vector<std::string>{"meatbass"});
 }

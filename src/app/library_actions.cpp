@@ -56,8 +56,16 @@ std::unique_ptr<Libraries> registerLibraries(Registry& registry, Nav& nav, std::
     registry.addAction(
         {.id = "library.list",
          .title = "List sound libraries",
-         .description = "Lists the sound libraries Emerick can download, with whether each is installed, where, and "
-                        "its main .sfz or folder of .sfz files.",
+         .description =
+             "Lists the sound libraries Emerick can download, with whether each is installed, where, its license, "
+             "its main .sfz or folder of .sfz files, and its programs. A program is {file, gmSounds, transpose, "
+             "gmKits, "
+             "keys, controls, kitControls, pieces}: file is the .sfz to pass to sampler.load, empty for the main one; "
+             "gmSounds names the General MIDI sounds it stands in for; transpose is the semitones to shift notes up. "
+             "A drum kit program names the General MIDI kits it stands in for in gmKits, maps General MIDI drum notes "
+             "to its own in keys [{gmNote, note}], starts at controls [{cc, value}], then applies the controls of the "
+             "kit played from kitControls [{kit, controls}], and splits into pieces [{name, file, gmNotes}] to play "
+             "each drum on its own track.",
          .aliases = {"sample libraries", "sfz libraries", "installed libraries"},
          .category = "Libraries",
          .run = [&owned](const Json&) {

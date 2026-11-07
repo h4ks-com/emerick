@@ -95,9 +95,10 @@ bool runsWithoutWindow(int argc, char** argv) {
 }
 
 int installLibraries(const Registry& registry, const QStringList& ids) {
-    for (const QString& id : ids) {
+    const auto given = ids | std::views::transform(&QString::toStdString) | std::ranges::to<std::vector>();
+    for (const std::string& id : libraryIdsToInstall(given, curatedLibraries())) {
         try {
-            const Json installed = registry.run("library.install", {{"library", id.toStdString()}, {"wait", true}});
+            const Json installed = registry.run("library.install", {{"library", id}, {"wait", true}});
             std::cout << installed.at("name").get<std::string>() << " in " << installed.at("path").get<std::string>()
                       << '\n';
         } catch (const AppError& error) {
@@ -183,7 +184,8 @@ int run(int argc, char** argv) {
     const QCommandLineOption bundledPluginsOnly(
         "bundled-plugins-only", "Load and scan only the plugins the app ships, never system or user plugin folders.");
     const QCommandLineOption installLibrary(
-        "install-library", "Install this sound library with no window and exit; repeat it for more libraries.", "id");
+        "install-library",
+        "Install this sound library with no window and exit; repeat it for more libraries, or pass all.", "id");
     parser.addOptions({headlessOption, scriptOption, mcpPort, mcpBindAny, noLuaMcp, audio, midi, profile, agentReadRoot,
                        agentWriteRoot, luaTimeout, luaMemory, maxRender, bundledPluginsOnly, installLibrary});
     parser.addPositionalArgument("args", "Arguments the script reads from its arg table.", "[-- args...]");

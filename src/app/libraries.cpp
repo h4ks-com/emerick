@@ -34,6 +34,30 @@ const Library& findLibrary(const std::vector<Library>& catalog, const std::strin
 
 constexpr qint64 kProgressIntervalMs = 100;
 
+Json controlsJson(const std::vector<ControlValue>& controls) {
+    return controls | std::views::transform([](const ControlValue& control) {
+               return Json{{"cc", control.cc}, {"value", control.value}};
+           }) |
+           std::ranges::to<Json::array_t>();
+}
+
+Json programJson(const LibraryProgram& program) {
+    return {{"file", program.file},
+            {"gmSounds", program.gmSounds},
+            {"transpose", program.transpose},
+            {"gmKits", program.gmKits},
+            {"keys", program.keys | std::views::transform([](const KeyMapping& key) {
+                         return Json{{"gmNote", key.gmNote}, {"note", key.note}};
+                     }) | std::ranges::to<Json::array_t>()},
+            {"controls", controlsJson(program.controls)},
+            {"kitControls", program.kitControls | std::views::transform([](const KitControls& kit) {
+                                return Json{{"kit", kit.kit}, {"controls", controlsJson(kit.controls)}};
+                            }) | std::ranges::to<Json::array_t>()},
+            {"pieces", program.pieces | std::views::transform([](const DrumPiece& piece) {
+                           return Json{{"name", piece.name}, {"file", piece.file}, {"gmNotes", piece.gmNotes}};
+                       }) | std::ranges::to<Json::array_t>()}};
+}
+
 }  // namespace
 
 std::filesystem::path libraryFolder(const QString& profileFolder) {
@@ -244,7 +268,9 @@ Json Libraries::state(const Library& library) const {
             {"received", downloading ? download->second->received() : 0},
             {"error", error == errors_.end() ? std::string{} : error->second},
             {"path", (folder_ / library.id).string()},
-            {"sfz", (folder_ / library.id / library.sfz).string()}};
+            {"sfz", (folder_ / library.id / library.sfz).string()},
+            {"url", library.url},
+            {"programs", library.programs | std::views::transform(programJson) | std::ranges::to<Json::array_t>()}};
 }
 
 Json Libraries::listJson() const {

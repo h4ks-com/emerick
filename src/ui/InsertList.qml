@@ -42,7 +42,7 @@ ColumnLayout {
                 text: modelData.title
                 hint: !Registry.readOnly ? "Drag to reorder it, right-click to move or remove it"
                       : modelData.plugin ? modelData.plugin.format.toUpperCase() + " plugin" : "Built-in effect"
-                active: Nav.editingInsert === modelData.id
+                active: Nav.editingInserts.includes(modelData.id)
                 activeColor: Theme.inkDim
                 opacity: modelData.bypass ? Theme.mutedOpacity * 1.5 : 1
                 textSize: Theme.textSmall

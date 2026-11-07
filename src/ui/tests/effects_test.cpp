@@ -39,7 +39,7 @@ TEST_CASE("a mixer strip adds a Channel EQ from its empty slot, and dragging a b
     REQUIRE(processUntil([&] { return !picker->property("visible").toBool(); }));
     REQUIRE(trackOf(main, vox).inserts.size() == 1);
     const std::string eq = trackOf(main, vox).inserts.front().id.value;
-    CHECK(main.rig.nav.editingInsert().toStdString() == eq);
+    CHECK(main.rig.nav.editingInserts() == QStringList{qid(eq)});
     MainWindow::settle();
     CHECK(main.item("insert.edit:" + qid(eq))->property("text").toString() == "Channel EQ");
     CHECK(main.item("eqGraph.level:0")->property("text").toString() == "0");
@@ -62,8 +62,8 @@ TEST_CASE("a mixer strip adds a Channel EQ from its empty slot, and dragging a b
     CHECK(paramOf(main, vox, "peak2Freq") == 1000.0);
     CHECK(main.rig.controller->project().undoName() == undoBefore);
 
-    main.click(main.item("insert.closeEditor"));
-    CHECK(processUntil([&] { return main.rig.nav.editingInsert().isEmpty(); }));
+    main.click(main.item("insert.closeEditor:" + qid(eq)));
+    CHECK(processUntil([&] { return main.rig.nav.editingInserts().isEmpty(); }));
     main.rig.nav.setMixerOpen(false);
     MainWindow::settle();
 }
@@ -137,17 +137,17 @@ TEST_CASE("an insert slot hides its tooltip once a drag starts") {
 TEST_CASE("the insert editor's title bar shows an open hand and moves the editor while dragged") {
     MainWindow& main = MainWindow::instance();
     const std::string vox = main.rig.run("track.addAudio").at("id");
-    main.rig.run("insert.add", {{"track", vox}, {"type", "reverb"}});
+    const std::string verb = main.rig.run("insert.add", {{"track", vox}, {"type", "reverb"}}).at("id");
     MainWindow::settle();
 
-    QQuickItem* title = main.item("insertEditor.titleBar");
+    QQuickItem* title = main.item("insertEditor.titleBar:" + qid(verb));
     const auto cursors = title->findChildren<QObject*>() | std::views::transform([](QObject* handler) {
                              return handler->property("cursorShape").toInt();
                          });
     CHECK(std::ranges::contains(cursors, Qt::OpenHandCursor));
     const QPointF before = title->mapToScene({0, 0});
     main.drag(title, QPointF{-60, -40});
-    const QPointF moved = main.item("insertEditor.titleBar")->mapToScene({0, 0}) - before;
+    const QPointF moved = main.item("insertEditor.titleBar:" + qid(verb))->mapToScene({0, 0}) - before;
     CHECK(moved.x() == Catch::Approx(-60).margin(2));
     CHECK(moved.y() == Catch::Approx(-40).margin(2));
     main.rig.run("insert.closeEditor");
@@ -167,5 +167,30 @@ TEST_CASE("a delay knob turns its param live, and a double click sets its defaul
     QTest::mouseDClick(main.window, Qt::LeftButton, Qt::NoModifier, center.toPoint());
     CHECK(processUntil([&] { return paramOf(main, vox, "feedback") == 30.0; }));
     main.rig.run("insert.closeEditor");
+    MainWindow::settle();
+}
+
+TEST_CASE(
+    "two insert editors show at once, a click raises one, Escape closes it and removing an insert closes the other") {
+    MainWindow& main = MainWindow::instance();
+    const std::string vox = main.rig.run("track.addAudio").at("id");
+    const std::string eq = main.rig.run("insert.add", {{"track", vox}, {"type", "eq"}}).at("id");
+    const std::string comp = main.rig.run("insert.add", {{"track", vox}, {"type", "compressor"}}).at("id");
+    MainWindow::settle();
+    CHECK(main.rig.nav.editingInserts() == QStringList{qid(eq), qid(comp)});
+
+    QQuickItem* eqTitle = main.item("insertEditor.titleBar:" + qid(eq));
+    QQuickItem* compTitle = main.item("insertEditor.titleBar:" + qid(comp));
+    CHECK(main.item("insert.setParam:" + qid(eq) + ":peak2") != nullptr);
+    CHECK(main.item("insert.setParam:" + qid(comp) + ":ratio:knob") != nullptr);
+    CHECK(eqTitle->mapToScene({0, 0}) != compTitle->mapToScene({0, 0}));
+
+    main.click(eqTitle);
+    CHECK(processUntil([&] { return main.rig.nav.editingInserts().back() == qid(eq); }));
+    QTest::keyClick(main.window, Qt::Key_Escape);
+    CHECK(processUntil([&] { return main.rig.nav.editingInserts() == QStringList{qid(comp)}; }));
+
+    main.rig.run("insert.remove", {{"insert", comp}});
+    CHECK(processUntil([&] { return main.rig.nav.editingInserts().isEmpty(); }));
     MainWindow::settle();
 }

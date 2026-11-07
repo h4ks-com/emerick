@@ -916,6 +916,15 @@ QVariantMap ProjectController::routeDevices() const {
 void keepViewWithProject(ProjectController& controller, Nav& nav) {
     controller.setViewStore([&nav] { return viewState(nav); },
                             [&nav](const nlohmann::json& view) { applyViewState(nav, view); });
+    const auto closeRemovedEditors = [&controller, &nav] {
+        nav.setEditingInserts(nav.editingInserts() | std::views::filter([&](const QString& insert) {
+                                  return model::trackWithInsert(controller.project().document(),
+                                                                model::InsertId{insert.toStdString()}) != nullptr;
+                              }) |
+                              std::ranges::to<QStringList>());
+    };
+    QObject::connect(&controller, &ProjectController::projectChanged, &nav, closeRemovedEditors);
+    QObject::connect(&controller, &ProjectController::projectReplaced, &nav, closeRemovedEditors);
 }
 
 }  // namespace emerick::app

@@ -168,7 +168,7 @@ TEST_CASE("the mixer opens showing whole strips whose faders line up, with the m
     for (const char* type : {"reverb", "delay", "chorus", "gate", "compressor", "limiter"}) {
         main.rig.run("insert.add", {{"track", busy}, {"type", type}});
     }
-    main.rig.nav.setEditingInsert({});
+    main.rig.nav.setEditingInserts({});
     main.rig.nav.setMixerOpen(true);
     MainWindow::settle();
     main.window->grabWindow();

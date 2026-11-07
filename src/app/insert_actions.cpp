@@ -222,7 +222,7 @@ void registerInsertEditor(Registry& registry, ProjectController& controller, Nav
                         .run =
                             [&controller, &nav](const Json& params) {
                                 const InsertRef ref = insertParam(controller, params);
-                                nav.setEditingInsert(qs(ref.insert.value));
+                                nav.openEditor(qs(ref.insert.value));
                                 return insertResult(controller, ref);
                             },
                         .windowOnly = true});
@@ -264,10 +264,16 @@ void registerInsertEditor(Registry& registry, ProjectController& controller, Nav
                         }});
     registry.addAction({.id = "insert.closeEditor",
                         .title = "Close insert editor",
+                        .description = "Closes the editor of the insert, or every insert editor without it.",
                         .aliases = {"hide effect"},
                         .category = kCategory,
-                        .run = [&nav](const Json&) {
-                            nav.setEditingInsert({});
+                        .schema = {{"properties", {{"insert", {{"type", "string"}}}}}},
+                        .run = [&nav](const Json& params) {
+                            if (const auto insert = optionalParam<std::string>(params, "insert")) {
+                                nav.closeEditor(qs(*insert));
+                            } else {
+                                nav.setEditingInserts({});
+                            }
                             return Json::object();
                         }});
 }
@@ -307,7 +313,7 @@ void registerInsertActions(Registry& registry, ProjectController& controller, Na
                      edited.inserts.insert(edited.inserts.begin() + at, insert);
                  });
                  if (!registry.fromAgent()) {
-                     nav.setEditingInsert(qs(insert.id.value));
+                     nav.openEditor(qs(insert.id.value));
                  }
                  return insertResult(controller, {track, insert.id});
              },
@@ -380,7 +386,7 @@ void registerPluginInsertActions(Registry& registry, ProjectController& controll
                  });
                  controller.instruments().sync(controller.project().document());
                  if (!registry.fromAgent()) {
-                     nav.setEditingInsert(qs(insert.id.value));
+                     nav.openEditor(qs(insert.id.value));
                  }
                  return insertResult(controller, {track, insert.id});
              },

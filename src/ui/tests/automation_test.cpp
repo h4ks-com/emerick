@@ -126,7 +126,7 @@ TEST_CASE("a gain lane gives the dB near 0 more room than the floor, and a cutof
     CHECK(lanes.gain()->points.back().value == Approx(-3.0).margin(0.5));
 
     const std::string filter = lanes.main.rig.run("insert.add", {{"track", lanes.track}, {"type", "filter"}}).at("id");
-    lanes.main.rig.nav.setEditingInsert({});
+    lanes.main.rig.nav.setEditingInserts({});
     lanes.main.rig.run("automation.showLane", {{"track", lanes.track}, {"param", filter + ".cutoff"}});
     REQUIRE(processUntil([&] {
         return lanes.main.item("automation.showLane:" + qid(lanes.track))->property("text") == "Filter Cutoff";

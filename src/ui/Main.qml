@@ -414,7 +414,40 @@ ApplicationWindow {
         }
     }
 
-    InsertEditor {}
+    // We keep a ListModel in step with Nav so an open editor keeps its place when another opens, closes or rises.
+    ListModel {
+        id: openEditors
+        function sync() {
+            for (let row = count - 1; row >= 0; --row) {
+                if (!Nav.editingInserts.includes(get(row).insertId))
+                    remove(row)
+            }
+            for (const insert of Nav.editingInserts) {
+                let found = false
+                for (let row = 0; row < count; ++row)
+                    found = found || get(row).insertId === insert
+                if (!found)
+                    append({insertId: insert})
+            }
+        }
+    }
+    Connections {
+        target: Nav
+        function onChanged() { openEditors.sync() }
+    }
+    Instantiator {
+        model: openEditors
+        delegate: InsertEditor {
+            parent: window.contentItem
+        }
+        onObjectAdded: (index, editor) => {
+            const before = objectAt(index - 1)
+            if (before) {
+                editor.x = before.x + Theme.space5 * 2
+                editor.y = before.y + Theme.space5 * 2
+            }
+        }
+    }
 
     Loader {
         active: Nav.tunerOpen

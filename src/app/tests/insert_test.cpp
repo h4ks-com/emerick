@@ -86,9 +86,9 @@ TEST_CASE("the insert editor opens on the insert, and a duplicated track gets it
     const std::string vox = rig.run("track.addAudio").at("id");
     const std::string eq = rig.run("insert.add", {{"track", vox}, {"type", "eq"}}).at("id");
     rig.run("insert.edit", {{"insert", eq}});
-    CHECK(rig.nav.editingInsert().toStdString() == eq);
+    CHECK(rig.nav.editingInserts() == QStringList{qs(eq)});
     rig.run("insert.closeEditor");
-    CHECK(rig.nav.editingInsert().isEmpty());
+    CHECK(rig.nav.editingInserts().isEmpty());
     CHECK_NOTHROW(rig.registry.run("insert.closeEditor", {}, ActionSource::Lua));
 
     const std::string copy = rig.run("track.duplicate", {{"track", vox}}).at("id");
@@ -101,12 +101,37 @@ TEST_CASE("adding an insert opens its editor for a click, and leaves it closed f
     const std::string vox = rig.run("track.addAudio").at("id");
     rig.registry.run("insert.add", {{"track", vox}, {"type", "delay"}}, ActionSource::Lua);
     rig.registry.run("insert.add", {{"track", vox}, {"type", "reverb"}}, ActionSource::Mcp);
-    CHECK(rig.nav.editingInsert().isEmpty());
+    CHECK(rig.nav.editingInserts().isEmpty());
     const std::string limiter =
         rig.registry.run("insert.add", {{"track", vox}, {"type", "limiter"}}, ActionSource::Ui).at("id");
-    CHECK(rig.nav.editingInsert().toStdString() == limiter);
+    CHECK(rig.nav.editingInserts() == QStringList{qs(limiter)});
     rig.registry.run("insert.closeEditor", {}, ActionSource::Lua);
-    CHECK(rig.nav.editingInsert().isEmpty());
+    CHECK(rig.nav.editingInserts().isEmpty());
+}
+
+TEST_CASE("several insert editors stay open, each closes alone, and removing an insert closes its editor") {
+    ProjectRig rig;
+    const std::string vox = rig.run("track.addAudio").at("id");
+    const std::string eq = rig.run("insert.add", {{"track", vox}, {"type", "eq"}}).at("id");
+    const std::string comp = rig.run("insert.add", {{"track", vox}, {"type", "compressor"}}).at("id");
+    const std::string verb = rig.run("insert.add", {{"track", vox}, {"type", "reverb"}}).at("id");
+    rig.run("insert.closeEditor");
+    rig.run("insert.edit", {{"insert", eq}});
+    rig.run("insert.edit", {{"insert", comp}});
+    rig.run("insert.edit", {{"insert", verb}});
+    rig.run("insert.edit", {{"insert", eq}});
+    CHECK(rig.nav.editingInserts() == QStringList{qs(comp), qs(verb), qs(eq)});
+    CHECK(rig.nav.toJson().at("editingInserts") == Json{comp, verb, eq});
+
+    rig.run("insert.closeEditor", {{"insert", comp}});
+    CHECK(rig.nav.editingInserts() == QStringList{qs(verb), qs(eq)});
+
+    rig.run("insert.remove", {{"insert", verb}});
+    CHECK(processUntil([&] { return rig.nav.editingInserts() == QStringList{qs(eq)}; }));
+
+    rig.run("insert.edit", {{"insert", comp}});
+    rig.run("insert.closeEditor");
+    CHECK(rig.nav.editingInserts().isEmpty());
 }
 
 TEST_CASE("stems and the mix play each track's inserts before its fader") {

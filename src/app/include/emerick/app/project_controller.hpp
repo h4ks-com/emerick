@@ -205,7 +205,7 @@ public:
     [[nodiscard]] QVariantMap instrumentsInfo() const;
     // The cycle's enabled flag and locators in ticks.
     [[nodiscard]] QVariantMap cycle() const;
-    [[nodiscard]] QVariantMap routeDevices() const;
+    [[nodiscard]] QVariantMap routeDevices() const { return routeDevices_; }
     // The tracks whose instrument sends MIDI, as entries of the MIDI input picker named "track / instrument".
     [[nodiscard]] QVariantList midiSources() const;
     // A position as bar.beat.tick, or with duration a length counted from zero, as the number fields show them.
@@ -267,6 +267,7 @@ private:
     [[nodiscard]] bool autosaves() const;
     [[nodiscard]] bool changedOnDisk() const;
     void rememberDiskTime();
+    void listRouteDevices();
     void setEdited(bool value);
     void scheduleFlush();
     void settleTakes();
@@ -334,6 +335,8 @@ private:
     bool lastStalled_ = false;
     std::optional<core::Ticks> displayPosition_;
     QVariantMap trackErrors_;
+    // QML reads the device lists on every project change, so we build them only when the devices change.
+    QVariantMap routeDevices_;
     QVariantList healthIssues_;
     std::optional<std::chrono::steady_clock::time_point> lastActive_;
     bool warm_ = false;

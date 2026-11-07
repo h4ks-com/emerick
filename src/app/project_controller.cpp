@@ -120,6 +120,7 @@ ProjectController::ProjectController(const Registry& registry, std::unique_ptr<e
             releaseAutomation();
         }
     });
+    listRouteDevices();
     createUntitled();
     publish();
     connect(&timer_, &QTimer::timeout, this, &ProjectController::poll);
@@ -351,7 +352,12 @@ void ProjectController::refreshDevices() {
     if (engine_.audioDevices() != before || engine_.midiPorts() != portsBefore) {
         scheduleFlush();
     }
+    listRouteDevices();
     emit devicesChanged();
+}
+
+void ProjectController::listRouteDevices() {
+    routeDevices_ = toVariant(app::routeDevices(devicesState(*this))).toMap();
 }
 
 void ProjectController::waitForEngine(const std::function<bool()>& reached) {
@@ -907,10 +913,6 @@ QVariantList ProjectController::fadeCurve(const QString& shape, double curve) { 
 
 double ProjectController::curveThroughMidpoint(const QString& shape, double gain) {
     return fadeCurveThroughMidpoint(shape, gain);
-}
-
-QVariantMap ProjectController::routeDevices() const {
-    return toVariant(app::routeDevices(devicesState(*this))).toMap();
 }
 
 void keepViewWithProject(ProjectController& controller, Nav& nav) {

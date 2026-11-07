@@ -69,6 +69,23 @@ TEST_CASE("devices.refresh lists the devices again and tells the route pickers")
     CHECK(devices.at("audio").at(1).at("sampleRates") == Json::array({44100.0}));
 }
 
+TEST_CASE("a drag on an insert param reads the route devices built when the devices last changed") {
+    ProjectRig rig;
+    const std::string vox = rig.run("track.addAudio").at("id");
+    const std::string chorus = rig.run("insert.add", {{"track", vox}, {"type", "chorus"}}).at("id");
+    const QVariantMap listed = rig.controller->routeDevices();
+    for (int frame = 1; frame <= 60; ++frame) {
+        rig.controller->project().updateGesture("set depth", [&] {
+            rig.run("insert.setParam", {{"insert", chorus}, {"param", "depth"}, {"value", frame}});
+        });
+        rig.controller->flush();
+        CHECK(rig.controller->routeDevices().isSharedWith(listed));
+    }
+    CHECK(rig.controller->project().endGesture());
+    rig.run("devices.refresh");
+    CHECK_FALSE(rig.controller->routeDevices().isSharedWith(listed));
+}
+
 TEST_CASE("a device change reported on another thread lists the devices again on the UI thread") {
     ProjectRig rig;
     int changes = 0;

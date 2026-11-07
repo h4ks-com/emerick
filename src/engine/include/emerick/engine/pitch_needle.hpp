@@ -26,11 +26,11 @@ private:
     bool shown_ = false;
     double semitones_ = 0.0;
     double confidence_ = 0.0;
-    double meanSquare_ = 0.0;
     double silentSeconds_ = 0.0;
     std::size_t readingsSincePluck_ = 0;
     std::optional<double> pending_;
     std::vector<double> recent_;
+    std::vector<double> energies_;
 };
 
 }  // namespace emerick::engine

@@ -106,8 +106,12 @@ void Tuner::follow() {
     }
     source_ = wanted;
     needle_ = {};
+    reader_.reset();
+    {
+        const std::scoped_lock lock(readingsMutex_);
+        readings_.clear();
+    }
     if (!wanted) {
-        reader_.reset();
         controller_.setTap(kTapOwner, nullptr);
     } else {
         auto tap = std::make_shared<engine::SignalTap>(wanted->trackId, wanted->point);

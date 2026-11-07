@@ -171,6 +171,33 @@ TEST_CASE("the needle moves to a fresh pluck within 150 ms, even an octave up") 
     }
 }
 
+TEST_CASE("the needle moves to a softer note an octave or a twelfth above a ringing string") {
+    const double next = GENERATE(329.63, 493.88);
+    CAPTURE(next);
+    std::vector<float> samples = pluck(164.81, kRate, 0.33, 0.003);
+    const std::size_t played = static_cast<std::size_t>(kRate * 1.0);
+    samples.resize(played);
+    double ringing = 0.0;
+    for (std::size_t i = played - 4096; i < played; ++i) {
+        ringing += static_cast<double>(samples[i]) * static_cast<double>(samples[i]);
+    }
+    std::vector<float> soft = pluck(next, kRate);
+    double attack = 0.0;
+    for (std::size_t i = 0; i < 4096; ++i) {
+        attack += static_cast<double>(soft[i]) * static_cast<double>(soft[i]);
+    }
+    const auto scale = static_cast<float>(std::sqrt(1.5 * ringing / attack));
+    std::ranges::transform(soft, std::back_inserter(samples), [&](float sample) { return sample * scale; });
+    const std::vector<int> notes = shownNotes(samples, kRate);
+    const std::size_t hop = 1024;
+    CHECK(notes[(played / hop) - 4] == 52);
+    for (std::size_t i = (played + static_cast<std::size_t>(kRate * 0.2)) / hop;
+         i < (played + static_cast<std::size_t>(kRate)) / hop; ++i) {
+        CAPTURE(i);
+        CHECK(notes[i] == nearestNote(next, 440.0).midiNote);
+    }
+}
+
 TEST_CASE("silence and noise hold no pitch") {
     CHECK_FALSE(detectPitch(std::vector<float>(kFrame), kRate));
     std::vector<float> noise(kFrame);

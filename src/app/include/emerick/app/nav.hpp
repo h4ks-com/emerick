@@ -173,7 +173,7 @@ public:
         assign(pianoRollClip_, value, &Nav::changed);
     }
     void setEditingInserts(const QStringList& value) { assign(editingInserts_, value, &Nav::changed); }
-    Q_INVOKABLE void openEditor(const QString& insert) {
+    void openEditor(const QString& insert) {
         QStringList open = editingInserts_;
         open.removeAll(insert);
         open.append(insert);

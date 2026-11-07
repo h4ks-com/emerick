@@ -1,13 +1,18 @@
 #include "emerick/engine/pitch.hpp"
 
+#include <algorithm>
+#include <bit>
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/generators/catch_generators.hpp>
 #include <cmath>
+#include <complex>
 #include <cstddef>
 #include <functional>
 #include <numbers>
 #include <optional>
+#include <span>
+#include <utility>
 #include <vector>
 
 using Catch::Approx;
@@ -39,6 +44,44 @@ std::function<double(double)> sawtooth(double hz) {
 
 double centsBetween(double hz, double expected) { return 1200 * std::log2(hz / expected); }
 
+// A plucked guitar string: stretched partials with a weak, fast fading fundamental, a body resonance, a noisy pick
+// attack and background noise.
+std::vector<float> pluck(double hz, double rate) {
+    constexpr double kPluckPosition = 0.2;
+    constexpr double kSeconds = 2.5;
+    constexpr double kStretch = 1e-4;
+    constexpr double kNoise = 0.01;
+    const auto size = static_cast<std::size_t>(rate * kSeconds);
+    unsigned state = 7;
+    auto noise = [&state] {
+        state = (state * 1103515245U) + 12345U;
+        return static_cast<double>((state >> 8U) % 2001) / 1000.0 - 1.0;
+    };
+    std::vector<std::pair<std::complex<double>, std::complex<double>>> partials;
+    for (int n = 1; n * hz < rate / 2.2 && n < 60; ++n) {
+        const double partialHz = n * hz * std::sqrt(1 + (kStretch * n * n));
+        const double body = 1 + std::exp(-std::pow(std::log(partialHz / 100) / 0.15, 2));
+        const double level =
+            std::abs(std::sin(n * std::numbers::pi * kPluckPosition)) / n * body * (n == 1 ? 0.3 : 1.0);
+        const double decay = 0.6 + (0.004 * partialHz) + (n == 1 ? 1.5 : 0.0);
+        partials.emplace_back(std::polar(level, std::numbers::pi * noise()),
+                              std::polar(std::exp(-decay / rate), 2 * std::numbers::pi * partialHz / rate));
+    }
+    std::vector<float> samples(size);
+    for (std::size_t i = 0; i < size; ++i) {
+        const double t = static_cast<double>(i) / rate;
+        double sum = 0;
+        for (auto& [value, step] : partials) {
+            sum += value.imag();
+            value *= step;
+        }
+        sum *= std::min(t / 0.004, 1.0);
+        sum += (0.5 * noise() * std::exp(-t / 0.008)) + (kNoise * noise());
+        samples[i] = static_cast<float>(0.4 * sum);
+    }
+    return samples;
+}
+
 }  // namespace
 
 TEST_CASE("a sine from the low E string to 1 kHz reads within a cent") {
@@ -55,6 +98,28 @@ TEST_CASE("a sawtooth full of harmonics reads its fundamental within a cent") {
     const std::optional<PitchReading> reading = detectPitch(tone(hz, sawtooth(hz)), kRate);
     REQUIRE(reading);
     CHECK(std::abs(centsBetween(reading->hz, hz)) < 1.0);
+}
+
+TEST_CASE("a plucked guitar string reads its own note from the attack to the fade") {
+    const double hz =
+        GENERATE(82.41, 98.0, 110.0, 130.81, 138.59, 146.83, 155.56, 196.0, 246.94, 311.13, 329.63, 349.23, 659.26);
+    const double rate = GENERATE(44100.0, 48000.0);
+    CAPTURE(hz, rate);
+    const std::vector<float> samples = pluck(hz, rate);
+    const std::size_t frame = std::bit_ceil(static_cast<std::size_t>(rate * 0.064));
+    const int expected = nearestNote(hz, 440.0).midiNote;
+    for (std::size_t end = frame; end <= samples.size(); end += frame) {
+        const double seconds = static_cast<double>(end) / rate;
+        const std::optional<PitchReading> reading = detectPitch(std::span(samples).subspan(end - frame, frame), rate);
+        if (!reading || seconds < 0.1) {
+            continue;
+        }
+        CAPTURE(seconds, reading->hz);
+        CHECK(nearestNote(reading->hz, 440.0).midiNote == expected);
+        if (seconds > 0.3) {
+            CHECK(std::abs(centsBetween(reading->hz, hz)) < 8.0);
+        }
+    }
 }
 
 TEST_CASE("silence and noise hold no pitch") {

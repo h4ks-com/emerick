@@ -14,8 +14,9 @@ namespace emerick::engine {
 
 namespace {
 
-// The first key maximum this close to the highest one is the period, which keeps us off the octaves below it.
-constexpr double kPeakShare = 0.9;
+// We take the first key maximum this close to the highest one as the period, and ask this much because a plucked
+// string's fading fundamental lifts the half period peak to about 0.9 of the full one.
+constexpr double kPeakShare = 0.97;
 constexpr double kMinConfidence = 0.8;
 constexpr double kSilentMeanSquare = 1e-7;
 constexpr int kSemitones = 12;
@@ -100,7 +101,7 @@ std::vector<Peak> keyMaxima(std::span<const double> nsdf, std::size_t minLag) {
             best = 0;
         }
     }
-    if (best >= minLag && best + 1 < nsdf.size()) {
+    if (best >= minLag && nsdf[best] >= nsdf[best + 1]) {
         peaks.push_back(refinedPeak(nsdf, best));
     }
     return peaks;
@@ -122,6 +123,9 @@ double refinedPeriod(std::span<const double> nsdf, const Peak& period) {
         if (nsdf[lag] > nsdf[best]) {
             best = lag;
         }
+    }
+    if (best == from || best == to) {
+        return period.lag;
     }
     const Peak far = refinedPeak(nsdf, best);
     return far.value >= kPeakShare * period.value ? far.lag / static_cast<double>(repeats) : period.lag;

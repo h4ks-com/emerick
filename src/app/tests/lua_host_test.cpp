@@ -41,13 +41,55 @@ struct Fixture {
 TEST_CASE("the sandbox removes file, process and module access") {
     Fixture fixture;
     const Json result = fixture.lua.eval(
-        "return {io == nil, os == nil, package == nil, debug == nil, dofile == nil, loadfile == nil, require == nil, "
-        "coroutine == nil}");
+        "return {io == nil, package == nil, debug == nil, dofile == nil, loadfile == nil, require == nil, "
+        "unpack == nil, os.execute == nil, os.remove == nil, os.rename == nil, os.tmpname == nil, os.getenv == nil, "
+        "os.exit == nil, os.setlocale == nil}");
     CHECK(result.at("ok") == true);
-    CHECK(result.at("result") == Json::array({true, true, true, true, true, true, true, true}));
+    CHECK(result.at("result") == Json(std::vector(14, true)));
     CHECK(fixture.lua.eval("return string.upper('ok')").at("result") == "OK");
     CHECK(fixture.lua.eval("return ('E7(#9)'):match('^([A-G])([#b]?)')").at("result") == "E");
     CHECK(fixture.lua.eval("return (('a-b'):gsub('-', '+'))").at("result") == "a+b");
+}
+
+TEST_CASE("a script reads the clock and formats dates with os") {
+    Fixture fixture;
+    const Json result = fixture.lua.eval(
+        "return {math.type(os.time()), os.clock() >= 0, os.date('!%Y', 0), os.difftime(os.time(), os.time() - 5)}");
+    CHECK(result.at("result") == Json::array({"integer", true, "1970", 5.0}));
+}
+
+TEST_CASE("load runs a text chunk and refuses bytecode") {
+    Fixture fixture;
+    CHECK(fixture.lua.eval("x = 2 return load('return x * 21')()").at("result") == 42);
+    CHECK(fixture.lua.eval("return load('return y', 'chunk', 't', {y = 7})()").at("result") == 7);
+    const Json bytecode = fixture.lua.eval("return select(2, load(string.dump(function() return 1 end), 'b', 'b'))");
+    CHECK(bytecode.at("result").get<std::string>().find("attempt to load a binary chunk") != std::string::npos);
+}
+
+TEST_CASE("a coroutine yields and resumes") {
+    Fixture fixture;
+    const Json result = fixture.lua.eval(
+        "local co = coroutine.create(function(a) local b = coroutine.yield(a + 1) return b * 2 end) "
+        "local _, first = coroutine.resume(co, 1) local _, second = coroutine.resume(co, 10) "
+        "local gen = coroutine.wrap(function() for i = 1, 3 do coroutine.yield(i) end end) "
+        "return {first, second, gen() + gen() + gen(), coroutine.status(co)}");
+    CHECK(result.at("result") == Json::array({2, 20, 6, "dead"}));
+}
+
+TEST_CASE("a runaway coroutine stops the whole script") {
+    Fixture fixture;
+    for (const char* script : {"coroutine.resume(coroutine.create(function() while true do end end)) while true do end",
+                               "while true do coroutine.resume(coroutine.create(function() while true do end end)) end",
+                               "while true do pcall(coroutine.wrap(function() while true do end end)) end"}) {
+        const Json result = fixture.lua.eval(script);
+        CHECK(result.at("ok") == false);
+        CHECK(result.at("error").get<std::string>().find("instructions") != std::string::npos);
+    }
+    fixture.registry.setLimits({.luaTimeout = std::chrono::milliseconds{50}});
+    const Json timedOut =
+        fixture.lua.eval("while true do coroutine.resume(coroutine.create(function() while true do end end)) end");
+    CHECK(timedOut.at("error").get<std::string>().find("script ran longer than 50 ms") != std::string::npos);
+    CHECK(fixture.lua.eval("return coroutine.wrap(function() return 1 end)()").at("result") == 1);
 }
 
 TEST_CASE("a script cannot take more memory than its budget") {

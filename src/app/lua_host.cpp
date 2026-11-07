@@ -35,9 +35,9 @@ constexpr int kMaxDepth = 64;
 constexpr int kStackPerLevel = 8;
 constexpr int kHookInstructions = 10'000;
 constexpr int kInstructionLimit = 100'000'000;
-constexpr std::array kRemovedGlobals{"dofile", "loadfile", "load", "require"};
-// Lua patterns backtrack without a bound and run in C, where the instruction hook never fires, so scripts get only
-// plain string.find.
+constexpr std::array kRemovedGlobals{"dofile", "loadfile", "require"};
+constexpr std::array kPureOsFunctions{"time", "clock", "date", "difftime"};
+
 struct Budget {
     std::size_t used = 0;
     std::size_t limit = Limits{}.luaMemoryBytes;
@@ -72,6 +72,13 @@ void* limitedAlloc(void* budgetPointer, void* block, std::size_t oldSize, std::s
     return moved;
 }
 
+lua_State* mainThread(lua_State* state) {
+    lua_rawgeti(state, LUA_REGISTRYINDEX, LUA_RIDX_MAINTHREAD);
+    lua_State* main = lua_tothread(state, -1);
+    lua_pop(state, 1);
+    return main;
+}
+
 // A pcall in the script catches one error, so after a limit we raise again on every instruction until it ends.
 void stopRunawayScript(lua_State* state, lua_Debug* /*debug*/) {
     Budget& budget = budgetOf(state);
@@ -85,9 +92,74 @@ void stopRunawayScript(lua_State* state, lua_Debug* /*debug*/) {
             return;
         }
         lua_sethook(state, stopRunawayScript, LUA_MASKCOUNT, 1);
+        lua_sethook(mainThread(state), stopRunawayScript, LUA_MASKCOUNT, 1);
     }
     lua_pushstring(state, budget.stopped.c_str());
     lua_error(state);
+}
+
+// Lua hooks are per thread, so we put every coroutine under the hook of the script that creates it.
+void inheritHook(lua_State* creator, lua_State* thread) {
+    if (lua_gethook(creator) != nullptr) {
+        lua_sethook(thread, stopRunawayScript, LUA_MASKCOUNT, kHookInstructions);
+    }
+}
+
+int createHookedCoroutine(lua_State* state) {
+    lua_pushvalue(state, lua_upvalueindex(1));
+    lua_insert(state, 1);
+    lua_call(state, lua_gettop(state) - 1, 1);
+    inheritHook(state, lua_tothread(state, -1));
+    return 1;
+}
+
+// The function coroutine.wrap returns holds its coroutine as its first upvalue.
+int wrapHookedCoroutine(lua_State* state) {
+    lua_pushvalue(state, lua_upvalueindex(1));
+    lua_insert(state, 1);
+    lua_call(state, lua_gettop(state) - 1, 1);
+    lua_getupvalue(state, -1, 1);
+    inheritHook(state, lua_tothread(state, -1));
+    lua_pop(state, 1);
+    return 1;
+}
+
+// Bytecode can crash the VM, so we load only text chunks.
+int loadText(lua_State* state) {
+    lua_settop(state, std::max(lua_gettop(state), 3));
+    lua_pushliteral(state, "t");
+    lua_replace(state, 3);
+    lua_pushvalue(state, lua_upvalueindex(1));
+    lua_insert(state, 1);
+    lua_call(state, lua_gettop(state) - 1, LUA_MULTRET);
+    return lua_gettop(state);
+}
+
+void replaceWithWrapper(const sol::table& table, const char* name, lua_CFunction wrapper) {
+    lua_State* state = table.lua_state();
+    table.push();
+    lua_getfield(state, -1, name);
+    lua_pushcclosure(state, wrapper, 1);
+    lua_setfield(state, -2, name);
+    lua_pop(state, 1);
+}
+
+void openSafeLibraries(sol::state& lua) {
+    lua.open_libraries(sol::lib::base, sol::lib::string, sol::lib::table, sol::lib::math, sol::lib::utf8,
+                       sol::lib::coroutine, sol::lib::os);
+    for (const char* name : kRemovedGlobals) {
+        lua[name] = sol::lua_nil;
+    }
+    const sol::table os = lua["os"];
+    sol::table pureOs = lua.create_table();
+    for (const char* name : kPureOsFunctions) {
+        pureOs.raw_set(name, os.raw_get<sol::object>(name));
+    }
+    lua["os"] = pureOs;
+    replaceWithWrapper(lua.globals(), "load", loadText);
+    const sol::table coroutine = lua["coroutine"];
+    replaceWithWrapper(coroutine, "create", createHookedCoroutine);
+    replaceWithWrapper(coroutine, "wrap", wrapHookedCoroutine);
 }
 
 class RunBudget {
@@ -357,10 +429,7 @@ struct LuaHost::State {
 
 LuaHost::LuaHost(Registry& registry, const UiApi& ui) : registry_(&registry), state_(std::make_unique<State>()) {
     sol::state& lua = state_->lua;
-    lua.open_libraries(sol::lib::base, sol::lib::string, sol::lib::table, sol::lib::math, sol::lib::utf8);
-    for (const char* name : kRemovedGlobals) {
-        lua[name] = sol::lua_nil;
-    }
+    openSafeLibraries(lua);
     lua.set_exception_handler(errorWithLocation);
 
     lua["print"] = [this](sol::variadic_args args, sol::this_state current) {

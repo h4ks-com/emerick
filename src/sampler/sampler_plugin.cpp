@@ -30,6 +30,9 @@ using emerick::sampler::kParamCount;
 using emerick::sampler::kProblemParam;
 
 constexpr std::uint32_t kDefaultBlock = 1024;
+// sfizz renders exports at sample quality 10 by default, which costs twice the time of 3 on a busy drum kit for a
+// difference about 27 dB under its peak, so we keep exports at 3, still above live playback's 2.
+constexpr int kRenderSampleQuality = 3;
 constexpr int kAllNotesOff = 123;
 constexpr int kBendCenter = 8192;
 constexpr std::uint8_t kStatusMask = 0xF0;
@@ -91,6 +94,7 @@ Instrument loadInstrument(const std::string& path) {
         return {.synth = nullptr, .problem = "The SFZ file " + path + " is gone. Run sampler.load with its new path."};
     }
     auto synth = std::make_unique<sfz::Sfizz>();
+    synth->setSampleQuality(sfz::Sfizz::ProcessFreewheeling, kRenderSampleQuality);
     if (!synth->loadSfzFile(path) || synth->getNumRegions() == 0) {
         return {.synth = nullptr, .problem = "The SFZ file " + path + " plays no samples. Load another SFZ file."};
     }

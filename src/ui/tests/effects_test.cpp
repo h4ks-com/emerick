@@ -68,10 +68,11 @@ TEST_CASE("a mixer strip adds a Channel EQ from its empty slot, and dragging a b
     MainWindow::settle();
 }
 
-TEST_CASE("an insert slot bypasses from its power button, adds an effect before itself, and reorders by drag") {
+TEST_CASE("an insert slot bypasses from its power button, removes from its remove button, and reorders by drag") {
     MainWindow& main = MainWindow::instance();
     const std::string vox = main.rig.run("track.addAudio").at("id");
     const std::string delay = main.rig.run("insert.add", {{"track", vox}, {"type", "delay"}}).at("id");
+    const std::string eq = main.rig.run("insert.add", {{"track", vox}, {"type", "eq"}}).at("id");
     const std::string verb = main.rig.run("insert.add", {{"track", vox}, {"type", "reverb"}}).at("id");
     main.rig.run("insert.closeEditor");
     MainWindow::settle();
@@ -79,16 +80,9 @@ TEST_CASE("an insert slot bypasses from its power button, adds an effect before 
     main.click(main.item("insert.setBypass:" + qid(delay) + ":slot"));
     CHECK(processUntil([&] { return trackOf(main, vox).inserts.front().bypass; }));
 
-    QQuickItem* addBefore = main.item("insert.add:" + qid(vox) + ":before:" + qid(verb));
-    QQuickItem* list = addBefore->parentItem()->parentItem()->parentItem();
-    main.click(addBefore);
-    auto* picker = MainWindow::find(list, "insert.add:" + qid(vox))->property("menu").value<QObject*>();
-    REQUIRE(processUntil([&] { return picker->property("opened").toBool(); }));
-    QMetaObject::invokeMethod(menuItem(picker, "Channel EQ")->property("action").value<QObject*>(), "trigger");
-    REQUIRE(processUntil([&] { return !picker->property("visible").toBool(); }));
-    REQUIRE(trackOf(main, vox).inserts.size() == 3);
-    CHECK(trackOf(main, vox).inserts[1].type == "eq");
-    main.rig.run("insert.closeEditor");
+    main.click(main.item("insert.remove:" + qid(eq) + ":slot"));
+    REQUIRE(processUntil([&] { return trackOf(main, vox).inserts.size() == 2; }));
+    CHECK(trackOf(main, vox).inserts[1].id.value == verb);
     MainWindow::settle();
 
     QQuickItem* first = main.item("insert.edit:" + qid(delay));
@@ -97,6 +91,47 @@ TEST_CASE("an insert slot bypasses from its power button, adds an effect before 
     main.drag(last, QPointF{0, -rows});
     CHECK(processUntil([&] { return trackOf(main, vox).inserts.front().id.value == verb; }));
     MainWindow::settle();
+}
+
+TEST_CASE("clicking the gap between two insert slots adds the picked effect there") {
+    MainWindow& main = MainWindow::instance();
+    const std::string vox = main.rig.run("track.addAudio").at("id");
+    main.rig.run("insert.add", {{"track", vox}, {"type", "delay"}});
+    main.rig.run("insert.add", {{"track", vox}, {"type", "reverb"}});
+    main.rig.run("insert.closeEditor");
+    MainWindow::settle();
+
+    QQuickItem* gap = main.item("insert.add:" + qid(vox) + ":at:1");
+    main.hover(gap);
+    CHECK(processUntil([&] { return gap->property("containsMouse").toBool(); }));
+    main.click(gap);
+    auto* picker = main.item("insert.add:" + qid(vox))->property("menu").value<QObject*>();
+    REQUIRE(processUntil([&] { return picker->property("opened").toBool(); }));
+    QMetaObject::invokeMethod(menuItem(picker, "Channel EQ")->property("action").value<QObject*>(), "trigger");
+    REQUIRE(processUntil([&] { return !picker->property("visible").toBool(); }));
+    REQUIRE(trackOf(main, vox).inserts.size() == 3);
+    CHECK(trackOf(main, vox).inserts[1].type == "eq");
+    main.rig.run("insert.closeEditor");
+    MainWindow::settle();
+}
+
+TEST_CASE("an insert slot hides its tooltip once a drag starts") {
+    MainWindow& main = MainWindow::instance();
+    const std::string vox = main.rig.run("track.addAudio").at("id");
+    const std::string delay = main.rig.run("insert.add", {{"track", vox}, {"type", "delay"}}).at("id");
+    main.rig.run("insert.add", {{"track", vox}, {"type", "reverb"}});
+    main.rig.run("insert.closeEditor");
+    MainWindow::settle();
+
+    QQuickItem* slot = main.item("insert.edit:" + qid(delay));
+    CHECK_FALSE(slot->property("tipDismissed").toBool());
+    const QPointF from = slot->mapToScene({slot->width() / 2, slot->height() / 2});
+    main.send(QEvent::MouseButtonPress, from, Qt::LeftButton, Qt::NoModifier);
+    main.send(QEvent::MouseMove, from + QPointF{0, 8}, Qt::LeftButton, Qt::NoModifier);
+    CHECK(slot->property("tipDismissed").toBool());
+    main.send(QEvent::MouseButtonRelease, from + QPointF{0, 8}, Qt::NoButton, Qt::NoModifier);
+    MainWindow::settle();
+    CHECK(slot->property("tipDismissed").toBool());
 }
 
 TEST_CASE("the insert editor's title bar shows an open hand and moves the editor while dragged") {

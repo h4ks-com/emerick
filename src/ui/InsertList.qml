@@ -4,8 +4,8 @@ import QtQuick.Layouts
 import Emerick.App
 
 // A track's insert slots in signal order, after Logic's: click a slot to open its editor, drag it to reorder it,
-// right-click it to move or remove it, hover it for its power button and the plus that adds an effect before it, and
-// click the empty slot to add one at the end.
+// right-click it to move or remove it, hover it for its remove and power buttons, click the gap above a slot to add an
+// effect there, and click the empty slot to add one at the end.
 ColumnLayout {
     id: list
     required property string trackId
@@ -63,6 +63,7 @@ ColumnLayout {
                     readonly property bool active: Math.abs(offset) >= Theme.dragThreshold
                     readonly property point translation: Qt.point(0, offset)
                     onPressed: mouse => {
+                        slot.tipDismissed = true
                         pressY = mapToItem(null, mouse.x, mouse.y).y
                         offset = 0
                     }
@@ -146,6 +147,18 @@ ColumnLayout {
                 }
             }
 
+            ChromeButton {
+                objectName: "insert.remove:" + row.modelData.id + ":slot"
+                visible: !Registry.readOnly
+                opacity: hover.hovered ? 1 : 0
+                actionId: "insert.remove"
+                params: ({insert: row.modelData.id})
+                iconName: "x"
+                iconColor: Theme.inkDim
+                anchors.left: parent.left
+                implicitWidth: Theme.headerButton
+                implicitHeight: Theme.headerButton
+            }
 
             ChromeButton {
                 objectName: "insert.setBypass:" + row.modelData.id + ":slot"
@@ -156,27 +169,35 @@ ColumnLayout {
                 hint: row.modelData.bypass ? "Turn it on" : "Turn it off"
                 iconName: "power"
                 iconColor: row.modelData.bypass ? Theme.inkDim : Theme.ink
-                anchors.left: parent.left
+                anchors.right: parent.right
                 implicitWidth: Theme.headerButton
                 implicitHeight: Theme.headerButton
             }
 
-            ChromeButton {
-                id: addBefore
-                objectName: "insert.add:" + list.trackId + ":before:" + row.modelData.id
+            // The gap reaches into the slots' edges so a thin spacing is still easy to hit.
+            MouseArea {
+                id: gap
+                objectName: "insert.add:" + list.trackId + ":at:" + row.index
                 visible: !Registry.readOnly
-                opacity: hover.hovered ? 1 : 0
-                actionId: "insert.add"
-                hint: "Add it before this insert"
-                iconName: "plus"
-                iconColor: Theme.inkDim
-                run: () => {
+                hoverEnabled: true
+                width: parent.width
+                height: list.spacing + Theme.space1
+                y: -(list.spacing + height) / 2
+                onClicked: {
                     list.addIndex = row.index
-                    picker.popup(addBefore, 0, addBefore.height)
+                    picker.popup(gap, 0, gap.height)
                 }
-                anchors.right: parent.right
-                implicitWidth: Theme.headerButton
-                implicitHeight: Theme.headerButton
+                ToolTip.text: "Add effect here"
+                ToolTip.visible: containsMouse && !picker.opened
+                ToolTip.delay: Theme.tooltipDelay
+
+                Rectangle {
+                    visible: gap.containsMouse
+                    width: parent.width
+                    height: Theme.selectionWidth
+                    anchors.verticalCenter: parent.verticalCenter
+                    color: Theme.tape
+                }
             }
         }
     }

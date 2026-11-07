@@ -2,6 +2,7 @@
 
 #include <QGuiApplication>
 #include <QObject>
+#include <QScreen>
 #include <algorithm>
 #include <charconv>
 #include <cmath>
@@ -27,6 +28,7 @@ namespace {
 
 constexpr int kQtLargestWindow = (1 << 24) - 1;
 constexpr double kSwitchOn = 0.5;
+constexpr int kWindowCascade = 32;
 
 // The channels the track's notes play and its MIDI input takes, empty when its input takes every channel and it has no
 // notes.
@@ -74,6 +76,15 @@ std::string lowered(std::string_view text) {
 std::string missingMessage(const model::PluginSlot& slot, bool insert, const std::string& reason) {
     return "Install " + slot.name + (insert ? " or remove the insert" : " or load another instrument") + "; the " +
            (insert ? "insert" : "track") + " keeps its settings (" + reason + ")";
+}
+
+// Centers the window on its screen, each further open window a step down and right, and keeps its top left corner on
+// the screen when it is larger.
+void placeOnScreen(QWindow& window, int alreadyOpen) {
+    const QRect area = window.screen()->availableGeometry();
+    const int step = kWindowCascade * alreadyOpen;
+    window.setPosition(area.x() + std::max(0, (area.width() - window.width()) / 2 + step),
+                       area.y() + std::max(0, (area.height() - window.height()) / 2 + step));
 }
 
 }  // namespace
@@ -308,9 +319,6 @@ void Instruments::showPluginEditor(const std::string& key, const std::string& ti
         live.window->requestActivate();
         return;
     }
-    if (instrument.openFloatingEditor(title)) {
-        return;
-    }
     auto window = std::make_unique<QWindow>();
     window->setTitle(qs(title));
     // A tool window floats over the app's windows, as plugin windows do in other DAWs.
@@ -320,10 +328,16 @@ void Instruments::showPluginEditor(const std::string& key, const std::string& ti
     const auto size =
         instrument.embedEditor(reinterpret_cast<void*>(window->winId()));  // NOLINT(performance-no-int-to-ptr)
     if (!size) {
+        if (instrument.openFloatingEditor(title)) {
+            return;
+        }
         throw AppError(instrument.name() + " cannot open its editor in a window; it keeps playing without one");
     }
+    const auto otherWindows =
+        std::ranges::count_if(live_ | std::views::values, [](const Live& other) { return other.window != nullptr; });
     live.window = std::move(window);
     fitWindow(live, *size);
+    placeOnScreen(*live.window, static_cast<int>(otherWindows));
     QWindow* shown = live.window.get();
     QObject::connect(shown, &QWindow::visibleChanged, shown, [this, shown](bool visible) {
         if (Live* open = withWindow(shown); !visible && open != nullptr) {

@@ -85,8 +85,8 @@ public:
     bool takeParamsChanged() { return std::exchange(paramsChanged_, false); }
     // The document with each slot's state read from its live instrument, as a project saves it.
     [[nodiscard]] model::Document withStates(model::Document document) const;
-    // Opens the plugin's own editor window, or a window that embeds its editor. Throws AppError when it has none or
-    // its editor does not open.
+    // Opens a window of its own for each plugin that embeds its editor, or else the plugin's own floating window.
+    // Throws AppError when it has none or its editor does not open.
     void showEditor(const model::TrackId& id, const std::string& title);
     void showEditor(const model::InsertId& id, const std::string& title);
     void closeEditor(const model::InsertId& id);

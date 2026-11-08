@@ -92,6 +92,7 @@ WORKDIR /src/service
 COPY service/pyproject.toml service/uv.lock ./
 RUN uv sync --frozen --no-dev --no-install-project
 COPY service/ ./
+COPY VERSION /src/VERSION
 RUN uv sync --frozen --no-dev --no-editable
 
 FROM ubuntu:24.04 AS runtime

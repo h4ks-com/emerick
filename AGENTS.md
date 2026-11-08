@@ -34,6 +34,7 @@ Emerick is a small native DAW in C++23 and Qt 6.11 QML. It records and plays aud
 - `make docker-build` build the image (Qt 6.11, builds the `release` preset, then a slim runtime with the service)
 - `make e2e` build the Docker image and drive the headless app and the service over MCP
 - `make service-check` ruff, pyright strict and pytest for the session service in `service/`
+- `make release VERSION=x.y.z` set the version in `VERSION`, its only home, push it to main, wait for green CI and create the GitHub release `vx.y.z`; `NOTES` (text or a file) replaces the generated notes
 - `docker run --rm -p 127.0.0.1:8080:8080 emerick` run the Emerick service, which starts one headless app per session (`service/README.md`)
 - `docker run --rm -p 127.0.0.1:8888:8888 emerick app` run one headless app; `.mcp.json` registers it as the `emerick` MCP server
 

@@ -1,6 +1,6 @@
 [project]
 name = "emerick-service"
-version = "0.0.22"
+dynamic = ["version"]
 description = "Runs headless Emerick sessions for agents over MCP"
 license = "GPL-3.0-or-later"
 requires-python = ">=3.12"
@@ -28,11 +28,15 @@ dev = [
 ]
 
 [build-system]
-requires = ["uv_build>=0.9,<1"]
-build-backend = "uv_build"
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
 
-[tool.uv.build-backend]
-module-root = ""
+[tool.hatch.version]
+path = "../VERSION"
+pattern = "(?P<version>.+)"
+
+[tool.uv]
+cache-keys = [{ file = "pyproject.toml" }, { file = "../VERSION" }]
 
 [tool.ruff]
 line-length = 120

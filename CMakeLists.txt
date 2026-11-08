@@ -1,5 +1,8 @@
 cmake_minimum_required(VERSION 3.28)
-project(emerick VERSION 0.0.22 LANGUAGES C CXX)
+file(READ VERSION emerick_version)
+string(STRIP "${emerick_version}" emerick_version)
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS VERSION)
+project(emerick VERSION ${emerick_version} LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)

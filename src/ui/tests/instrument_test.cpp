@@ -116,3 +116,32 @@ TEST_CASE("the inspector shows the General MIDI drum params only on a drum track
         [&] { return !shows(drums, kSound) && shows(drums, kDrumKit) && shows(drums, kDrumsEverywhere); }));
     MainWindow::settle();
 }
+
+TEST_CASE("the row below the last track adds each kind of track and stays out of the track list") {
+    const QTemporaryDir cache;
+    PluginCatalog catalog(
+        {.cacheFolder = cache.path().toStdString(), .scanner = EMERICK_PLUGIN_SCANNER, .folders = {}});
+    auto* main = new MainWindow([&catalog](ProjectRig& rig) {
+        registerPluginActions(rig.registry, rig.nav, catalog);
+        registerInstrumentActions(rig.registry, *rig.controller, rig.nav, catalog);
+        rig.registry.setSetting(kClapFoldersSetting, Json::array({bundledClapFolder(EMERICK_GM_APP_FOLDER).string()}));
+    });
+    const auto& tracks = main->rig.controller->project().document().tracks;
+    const auto lastKind = [&] { return tracks.empty() ? std::string{} : tracks.back().kind; };
+    main->click(main->item("track.addAudio"));
+    CHECK(processUntil([&] { return tracks.size() == 1 && lastKind() == "audio"; }));
+    main->click(main->item("track.addMidi"));
+    CHECK(processUntil([&] { return tracks.size() == 2 && lastKind() == "midi"; }));
+    main->click(main->item("track.addBus"));
+    CHECK(processUntil([&] { return tracks.size() == 3 && lastKind() == "bus"; }));
+    QObject* instruments = main->menu("track.addInstrument:menu");
+    QMetaObject::invokeMethod(menuItem(instruments, "General MIDI")->property("action").value<QObject*>(), "trigger");
+    CHECK(processUntil([&] { return tracks.size() == 4 && tracks.back().instrument.has_value(); }));
+
+    QQuickItem* list = main->item("tracks.list");
+    QQuickItem* row = main->item("tracks.addRow");
+    CHECK(list->property("count").toInt() == 4);
+    CHECK(row->height() > main->rig.nav.trackHeight());
+    CHECK(processUntil([&] { return row->y() == 4 * main->rig.nav.trackHeight(); }));
+    MainWindow::settle();
+}

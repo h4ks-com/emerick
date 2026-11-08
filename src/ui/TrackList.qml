@@ -261,6 +261,61 @@ Rectangle {
         cacheBuffer: Nav.trackHeight * 4
         model: Tracks
         ScrollBar.vertical: ScrollBar {}
+        footer: Item {
+            objectName: "tracks.addRow"
+            width: ListView.view.width
+            height: Math.round(Nav.trackHeight * Theme.addRowScale)
+            Rectangle {
+                width: area.headerWidth
+                height: parent.height
+                color: Theme.slate
+                Row {
+                    visible: !Registry.readOnly
+                    anchors.left: parent.left
+                    anchors.leftMargin: Theme.colorStripe + Theme.space2
+                    anchors.verticalCenter: parent.verticalCenter
+                    spacing: Theme.space1
+                    ChromeButton {
+                        objectName: "track.addAudio"
+                        iconName: "waveform"
+                        iconColor: Theme.inkDim
+                    }
+                    ChromeButton {
+                        objectName: "track.addInstrument"
+                        visible: info.title !== undefined
+                        iconName: "music-notes"
+                        iconColor: Theme.inkDim
+                        menu: instruments
+                        GlassMenu {
+                            id: instruments
+                            objectName: "track.addInstrument:menu"
+                            Instantiator {
+                                model: Registry.actionInfo("track.addInstrument").choices
+                                delegate: ActionMenuItem {
+                                    required property var modelData
+                                    objectName: "track.addInstrument:" + modelData.id
+                                    actionId: "track.addInstrument"
+                                    title: modelData.title
+                                    params: modelData.params
+                                }
+                                onObjectAdded: (index, object) => instruments.insertItem(index, object)
+                                onObjectRemoved: (index, object) => instruments.removeItem(object)
+                            }
+                        }
+                    }
+                    ChromeButton {
+                        objectName: "track.addMidi"
+                        iconName: "piano-keys"
+                        iconColor: Theme.inkDim
+                    }
+                    ChromeButton {
+                        objectName: "track.addBus"
+                        iconName: "arrows-merge"
+                        iconColor: Theme.inkDim
+                    }
+                }
+            }
+        }
         delegate: Item {
             id: row
             required property int index
@@ -705,25 +760,11 @@ Rectangle {
         restoreMode: Binding.RestoreNone
     }
 
-    Column {
+    Label {
         anchors.centerIn: parent
         visible: list.count === 0 && !Registry.readOnly
-        spacing: Theme.space3
-        Label {
-            anchors.horizontalCenter: parent.horizontalCenter
-            text: "Add a track to start recording"
-            color: Theme.inkDim
-            font.pixelSize: Theme.textTitle
-        }
-        Row {
-            anchors.horizontalCenter: parent.horizontalCenter
-            spacing: Theme.space2
-            ChromeButton {
-                objectName: "track.addAudio"
-            }
-            ChromeButton {
-                objectName: "track.addMidi"
-            }
-        }
+        text: "Add a track to start recording"
+        color: Theme.inkDim
+        font.pixelSize: Theme.textTitle
     }
 }

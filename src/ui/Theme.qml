@@ -103,6 +103,7 @@ QtObject {
 
     readonly property int rulerHeight: 28
     readonly property int markerLaneHeight: 20
+    readonly property real addRowScale: 1.5
     readonly property int markerListRows: 8
     readonly property real markerListShare: 0.25
     readonly property int colorStripe: 4

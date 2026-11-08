@@ -242,14 +242,6 @@ ApplicationWindow {
             anchors.verticalCenter: parent.verticalCenter
             spacing: Theme.space1
             ChromeButton {
-                objectName: "track.addAudio"
-                iconName: "waveform"
-            }
-            ChromeButton {
-                objectName: "track.addMidi"
-                iconName: "piano-keys"
-            }
-            ChromeButton {
                 objectName: "view.toggleTuner"
                 iconName: "gauge"
                 active: Nav.tunerOpen

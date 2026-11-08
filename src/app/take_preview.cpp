@@ -170,7 +170,7 @@ void ProjectController::updatePreview(const std::string& trackId, engine::TakePr
         freezeChunk(preview.live, *preview.frozen, *type, chunk, context);
         froze = true;
     }
-    if (!heard && !froze && preview.track && !holdsNotes(*preview.track)) {
+    if (!heard && !froze && type->laneComponent.empty() && preview.track && !holdsNotes(*preview.track)) {
         emit takePreviewChanged(QString::fromStdString(trackId), false);
         return;
     }

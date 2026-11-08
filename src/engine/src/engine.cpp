@@ -253,6 +253,19 @@ struct Engine::Impl {
         }
     }
 
+    // The system can leave a stream that combines devices with a longer delay after an overload, and only a fresh
+    // stream brings it back down.
+    void panic() {
+        if (streamOpen) {
+            audio->close();
+            streamOpen = false;
+            push({.type = Command::Type::panic});
+            openStream(requestFor(session), session);
+            return;
+        }
+        push({.type = Command::Type::panic});
+    }
+
     void play() {
         if (!streamOpen) {
             openStream(requestFor(session), session);
@@ -483,7 +496,7 @@ void Engine::playPreview(std::string_view trackId, std::vector<std::vector<float
 
 bool Engine::previewPlaying() const { return impl_->previewPlaying(); }
 
-void Engine::panic() { impl_->push({.type = Command::Type::panic}); }
+void Engine::panic() { impl_->panic(); }
 
 void Engine::setRecording(bool on) { impl_->push({.type = Command::Type::record, .on = on}); }
 

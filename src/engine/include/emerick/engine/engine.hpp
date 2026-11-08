@@ -99,7 +99,8 @@ public:
     // it.
     void previewMetronome();
     // Sends Stop to the clock ports, releases the notes the tracks hold, and sends sustain off, all sound off and all
-    // notes off on every channel of every output port the session uses. It works while stopped.
+    // notes off on every channel of every output port the session uses, then reopens an open stream. It works while
+    // stopped.
     void panic();
     void setRecording(bool on);
     void setMute(std::string_view trackId, bool mute);

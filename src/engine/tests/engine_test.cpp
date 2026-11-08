@@ -308,6 +308,25 @@ TEST_CASE("a reopened stream drops the snapshot built for the old devices") {
     CHECK(audio.loudestOpenBlock == 0.0F);
 }
 
+TEST_CASE("panic reopens an open stream, which resets the delay a combined device built up") {
+    auto owner = std::make_unique<EagerBackend>();
+    const EagerBackend& audio = *owner;
+    Engine engine(std::move(owner),
+                  std::make_unique<VirtualMidiBackend>(std::vector<std::string>{}, std::vector<std::string>{}),
+                  {kRate, kBlock});
+    engine.panic();
+    CHECK(audio.opens == 0);
+
+    Track monitored{.id = "vox", .kind = TrackKind::audio, .monitor = true};
+    monitored.audioIn = {"interface", {1}};
+    monitored.audioOut = {"keyboard", {1, 2}};
+    engine.setSession({.tempo = kTempo, .tracks = {monitored}});
+    engine.panic();
+
+    CHECK(audio.opens == 2);
+    CHECK(engine.layout().devices.size() == 2);
+}
+
 TEST_CASE("a session on a device that cannot run at the engine's rate throws and keeps the open stream") {
     auto owner = std::make_unique<EagerBackend>();
     const EagerBackend& audio = *owner;

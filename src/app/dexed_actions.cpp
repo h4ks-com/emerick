@@ -161,6 +161,11 @@ void registerDexedActions(Registry& registry, ProjectController& controller, Nav
                         "load first, which starts at program 1. The track's saved Dexed settings keep both.",
          .aliases = {"dx7 patch", "load syx", "pick fm sound", "dexed cartridge"},
          .category = "Tracks",
+         .appliesTo =
+             [&registry, &controller, &nav](const Json& params) {
+                 midiTrack(registry, controller, nav, params);
+                 return true;
+             },
          .schema = {{"properties",
                      {{"track", {{"type", "string"}}},
                       {"program",

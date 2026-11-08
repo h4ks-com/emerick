@@ -815,6 +815,18 @@ std::optional<Json> Registry::runFromUi(const std::string& id, const Json& param
     return std::nullopt;
 }
 
+bool Registry::appliesTo(const QString& id, const QVariantMap& params) const {
+    const Action* found = action(id.toStdString());
+    if (found == nullptr || !found->appliesTo) {
+        return true;
+    }
+    try {
+        return found->appliesTo(params.isEmpty() ? Json::object() : toJson(QVariant{params}));
+    } catch (const AppError&) {
+        return false;
+    }
+}
+
 QVariant Registry::runAction(const QString& id, const QVariantMap& params) const {
     const std::optional<Json> result = runFromUi(id.toStdString(), toJson(QVariant{params}));
     return result ? toVariant(*result) : QVariant{};

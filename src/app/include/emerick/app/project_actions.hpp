@@ -71,6 +71,9 @@ Json clipResults(const ProjectController& controller, const std::vector<model::C
 // The kind of clip a track type holds; a plugin lane holds none.
 enum class ClipType : std::uint8_t { none, audio, midi };
 ClipType clipTypeOf(const TrackType* type);
+ClipType clipTypeOf(const model::Clip& clip);
+// Whether every clip targetClips finds is of type.
+bool targetClipsAre(const ProjectController& controller, const Nav& nav, const Json& params, ClipType type);
 bool trackTakesClip(const Registry& registry, const model::Track& track, const model::Clip& clip);
 // Deletes the clips as one undo step.
 void deleteClips(ProjectController& controller, const std::vector<model::ClipId>& ids);

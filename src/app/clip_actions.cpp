@@ -342,11 +342,20 @@ ClipType clipTypeOf(const TrackType* type) {
     return type->routes.midi ? ClipType::midi : ClipType::none;
 }
 
+ClipType clipTypeOf(const model::Clip& clip) {
+    return std::visit(core::Overloaded{[](const model::AudioClip&) { return ClipType::audio; },
+                                       [](const model::MidiClip&) { return ClipType::midi; }},
+                      clip);
+}
+
 bool trackTakesClip(const Registry& registry, const model::Track& track, const model::Clip& clip) {
-    const ClipType type = std::visit(core::Overloaded{[](const model::AudioClip&) { return ClipType::audio; },
-                                                      [](const model::MidiClip&) { return ClipType::midi; }},
-                                     clip);
-    return clipTypeOf(registry.trackType(track.kind)) == type;
+    return clipTypeOf(registry.trackType(track.kind)) == clipTypeOf(clip);
+}
+
+bool targetClipsAre(const ProjectController& controller, const Nav& nav, const Json& params, ClipType type) {
+    return std::ranges::all_of(targetClips(controller, nav, params), [&](const model::ClipId& id) {
+        return clipTypeOf(*controller.project().findClip(id)->clip) == type;
+    });
 }
 
 void registerClipActions(Registry& registry, ProjectController& controller, Nav& nav) {

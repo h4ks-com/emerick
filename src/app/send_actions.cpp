@@ -176,10 +176,15 @@ void removeTrack(ProjectController& controller, const model::TrackId& id) {
 }
 
 void registerSendActions(Registry& registry, ProjectController& controller, Nav& nav) {
+    const auto onAudio = [&registry, &controller, &nav](const Json& params) {
+        sourceParam(registry, controller, nav, params);
+        return true;
+    };
     registry.addAction({.id = "send.add",
                         .title = "Add send",
                         .aliases = {"send to bus", "aux send"},
                         .category = "Tracks / Sends",
+                        .appliesTo = onAudio,
                         .schema = {{"required", {"bus"}},
                                    {"properties",
                                     {{"track", {{"type", "string"}}},
@@ -198,6 +203,7 @@ void registerSendActions(Registry& registry, ProjectController& controller, Nav&
                         .title = "Set track output bus",
                         .aliases = {"route to bus", "output to bus"},
                         .category = "Tracks / Routing",
+                        .appliesTo = onAudio,
                         .schema = {{"required", {"bus"}},
                                    {"properties", {{"track", {{"type", "string"}}}, {"bus", {{"type", "string"}}}}}},
                         .run =
@@ -224,6 +230,7 @@ void registerSendActions(Registry& registry, ProjectController& controller, Nav&
          .title = "Create bus and send selected tracks to it",
          .aliases = {"new aux from selection", "send to new bus"},
          .category = "Tracks / Sends",
+         .appliesTo = onAudio,
          .schema =
              {{"properties",
                {{"track", {{"type", "string"}}}, {"tracks", {{"type", "array"}}}, {"name", {{"type", "string"}}}}}},

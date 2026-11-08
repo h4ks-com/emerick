@@ -193,6 +193,10 @@ void registerPianoRollActions(Registry& registry, ProjectController& controller,
                         .title = kEditClipKeys.title,
                         .aliases = {"edit MIDI clip", "show notes"},
                         .category = "MIDI",
+                        .appliesTo =
+                            [&controller, &nav](const Json& params) {
+                                return params.contains("clip") || firstSelectedMidiClip(controller, nav).has_value();
+                            },
                         .schema = {{"properties", {{"clip", {{"type", "string"}}}}}},
                         .run =
                             [&controller, &nav](const Json& params) {
@@ -235,6 +239,12 @@ void registerPianoRollActions(Registry& registry, ProjectController& controller,
                                        "long unless length says otherwise.",
                         .aliases = {"new MIDI region", "empty clip"},
                         .category = "MIDI",
+                        .appliesTo =
+                            [&registry, &controller, &nav](const Json& params) {
+                                const model::Track* track =
+                                    controller.project().track(targetTrack(controller, nav, params));
+                                return clipTypeOf(registry.trackType(track->kind)) == ClipType::midi;
+                            },
                         .schema = {{"properties",
                                     {{"track", {{"type", "string"}}},
                                      {"at", Json::object()},

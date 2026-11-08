@@ -111,6 +111,8 @@ void registerClipLoopActions(Registry& registry, ProjectController& controller, 
          .aliases = {"loop region", "repeat region", "unloop clip"},
          .category = "Clips",
          .shortcut = "L",
+         .appliesTo = [&controller,
+                       &nav](const Json& params) { return targetClipsAre(controller, nav, params, ClipType::midi); },
          .schema = {{"properties", {{"clip", {{"type", "string"}}}, {"value", {{"type", "boolean"}}}}}},
          .run = [&controller, &nav](const Json& params) { return loopClips(controller, nav, params); },
          .menus = {kEditMenu, kClipContextMenu}});

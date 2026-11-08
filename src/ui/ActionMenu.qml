@@ -11,11 +11,18 @@ GlassMenu {
     property var params
 
     // We refresh what changes with the project when the menu opens, because rebuilding a native menu loses its items.
+    // We hide the actions that cannot act on the menu's target, such as Load instrument on an audio track.
     onAboutToShow: {
         for (let at = 0; at < count; ++at) {
             const item = itemAt(at)
+            const actionId = item instanceof ActionMenuItem ? item.actionId : menuAt(at)?.objectName ?? ""
             if (item instanceof ActionMenuItem) {
                 item.available = Registry.actionInfo(item.actionId).enabled
+            }
+            if (actionId !== "" && !actionId.startsWith("menu.")) {
+                const shown = Registry.appliesTo(actionId, actionMenu.params ?? {})
+                item.visible = shown
+                item.height = shown ? item.implicitHeight : 0
             }
         }
     }

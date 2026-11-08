@@ -307,6 +307,11 @@ void registerLaneActions(Registry& registry, ProjectController& controller, Nav&
                         .description = "Deletes every point of the lane of param, by default the lane the track shows.",
                         .aliases = {"delete automation", "remove automation"},
                         .category = kCategory,
+                        .appliesTo =
+                            [&registry, &controller, &nav](const Json& params) {
+                                targetLane(registry, controller, nav, params);
+                                return true;
+                            },
                         .schema = {{"properties", {{"track", {{"type", "string"}}}, {"param", {{"type", "string"}}}}}},
                         .run =
                             [&registry, &controller, &nav](const Json& params) {

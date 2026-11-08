@@ -186,3 +186,51 @@ TEST_CASE("the track menu lists SFZ and DX7 loading under their instrument, and 
     QTest::keyClick(main->window, Qt::Key_Escape);
     MainWindow::settle();
 }
+
+TEST_CASE("the track menu shows only the entries that act on the clicked track's kind") {
+    const QTemporaryDir cache;
+    PluginCatalog catalog(
+        {.cacheFolder = cache.path().toStdString(), .scanner = EMERICK_PLUGIN_SCANNER, .folders = {}});
+    auto* main = new MainWindow([&catalog](ProjectRig& rig) {
+        registerPluginActions(rig.registry, rig.nav, catalog);
+        registerInstrumentActions(rig.registry, *rig.controller, rig.nav, catalog);
+    });
+    const auto shownTitles = [&](const std::string& track) {
+        main->click(main->item(QString::fromStdString("track.move:" + track)), Qt::RightButton);
+        QObject* menu = main->menu("menu.trackContext");
+        REQUIRE(processUntil([&] { return menu->property("opened").toBool(); }));
+        std::vector<QString> titles;
+        for (int index = 0; index < menu->property("count").toInt(); ++index) {
+            QQuickItem* item = nullptr;
+            QMetaObject::invokeMethod(menu, "itemAt", Q_RETURN_ARG(QQuickItem*, item), Q_ARG(int, index));
+            if (item->isVisible()) {
+                titles.push_back(item->property("text").toString());
+            }
+        }
+        QTest::keyClick(main->window, Qt::Key_Escape);
+        MainWindow::settle();
+        return titles;
+    };
+    const auto shows = [](const std::vector<QString>& titles, const char* title) {
+        return std::ranges::find(titles, QString{title}) != titles.end();
+    };
+    const std::string audio = main->rig.run("track.addAudio").at("id");
+    const std::string midi = main->rig.run("track.addMidi").at("id");
+    MainWindow::settle();
+
+    const auto audioTitles = shownTitles(audio);
+    for (const char* title :
+         {"Load instrument", "Remove instrument", "Show instrument editor", "List instrument settings"}) {
+        CHECK_FALSE(shows(audioTitles, title));
+    }
+    CHECK(shows(audioTitles, "Add send"));
+    CHECK(shows(audioTitles, "Set input for all audio tracks"));
+
+    const auto midiTitles = shownTitles(midi);
+    for (const char* title : {"Add send", "Set track output bus", "Set input for all audio tracks", "Remove instrument",
+                              "Clear automation lane"}) {
+        CHECK_FALSE(shows(midiTitles, title));
+    }
+    CHECK(shows(midiTitles, "Load instrument"));
+    CHECK(shows(midiTitles, "Arm track for recording"));
+}

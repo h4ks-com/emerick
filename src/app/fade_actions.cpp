@@ -129,11 +129,15 @@ void registerFadeActions(Registry& registry, ProjectController& controller, Nav&
                        [&](model::AudioClip& audio) { setFade(audio, params); });
              return clipResult(controller, id);
          }});
+    const auto onAudioClips = [&controller, &nav](const Json& params) {
+        return targetClipsAre(controller, nav, params, ClipType::audio);
+    };
     const auto shapeAction = [&](const char* id, const char* title, const char* key, const char* alias) {
         registry.addAction({.id = id,
                             .title = title,
                             .aliases = {alias},
                             .category = "Clips",
+                            .appliesTo = onAudioClips,
                             .schema = {{"required", {"shape"}},
                                        {"properties", {{"clip", {{"type", "string"}}}, {"shape", shapeSchema()}}}},
                             .run =
@@ -161,6 +165,7 @@ void registerFadeActions(Registry& registry, ProjectController& controller, Nav&
                                        "same track, with equal power fades over the overlap.",
                         .aliases = {"x-fade", "crossfade clips"},
                         .category = "Clips",
+                        .appliesTo = onAudioClips,
                         .schema = {{"properties", {{"clip", {{"type", "string"}}}}}},
                         .run =
                             [&controller, &nav](const Json& params) {
@@ -177,6 +182,7 @@ void registerFadeActions(Registry& registry, ProjectController& controller, Nav&
                         .title = "Reset clip fades",
                         .aliases = {"remove fades", "clear fade in", "clear fade out"},
                         .category = "Clips",
+                        .appliesTo = onAudioClips,
                         .schema = {{"properties", {{"clip", {{"type", "string"}}}}}},
                         .run =
                             [&controller, &nav](const Json& params) {

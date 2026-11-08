@@ -26,16 +26,18 @@ struct TrackFlag {
     std::string_view shortcut;
     bool model::Track::* field;
     void (ProjectController::*live)(const model::TrackId&, bool);
+    // A bus has no input, so it takes only the flags that act on its output.
+    bool needsInput = false;
 };
 
-constexpr std::array kTrackFlags{
-    TrackFlag{kMuteKeys.id, kMuteKeys.title, "silence track", kMuteKeys.shortcut, &model::Track::mute,
-              &ProjectController::setLiveMute},
-    TrackFlag{kSoloKeys.id, kSoloKeys.title, "listen alone", kSoloKeys.shortcut, &model::Track::solo,
-              &ProjectController::setLiveSolo},
-    TrackFlag{"track.setArm", "Arm track for recording", "record enable", "Alt+R", &model::Track::armed,
-              &ProjectController::setLiveArmed},
-    TrackFlag{"track.setMonitor", "Monitor track input", "input monitoring", "", &model::Track::monitor, nullptr}};
+constexpr std::array kTrackFlags{TrackFlag{kMuteKeys.id, kMuteKeys.title, "silence track", kMuteKeys.shortcut,
+                                           &model::Track::mute, &ProjectController::setLiveMute},
+                                 TrackFlag{kSoloKeys.id, kSoloKeys.title, "listen alone", kSoloKeys.shortcut,
+                                           &model::Track::solo, &ProjectController::setLiveSolo},
+                                 TrackFlag{"track.setArm", "Arm track for recording", "record enable", "Alt+R",
+                                           &model::Track::armed, &ProjectController::setLiveArmed, true},
+                                 TrackFlag{"track.setMonitor", "Monitor track input", "input monitoring", "",
+                                           &model::Track::monitor, nullptr, true}};
 
 constexpr double kMaxRecordDelayMs = 1000.0;
 constexpr double kMaxTrimDb = 24.0;
@@ -126,6 +128,12 @@ void registerTrackFlags(Registry& registry, ProjectController& controller, const
              .aliases = {std::string{flag.alias}},
              .category = "Tracks",
              .shortcut = std::string{flag.shortcut},
+             .appliesTo =
+                 [&registry, &controller, &nav, flag](const Json& params) {
+                     const TrackType* type =
+                         registry.trackType(controller.project().track(targetTrack(controller, nav, params))->kind);
+                     return !flag.needsInput || (type != nullptr && !type->routes.bus);
+                 },
              .schema = {{"properties",
                          {{"track", {{"type", "string"}}},
                           {"value", {{"type", "boolean"}}},

@@ -113,6 +113,9 @@ struct Action {
     // More keys for the same action, such as Delete beside Backspace.
     std::vector<std::string> extraShortcuts = {};
     std::function<bool()> enabled = {};
+    // Whether the action can act on the target the params name, such as a MIDI track for Load instrument; menus hide
+    // it otherwise. A predicate that throws an AppError, as a resolver of the target does, answers no.
+    std::function<bool(const Json& params)> appliesTo = {};
     Json schema = {};
     std::function<Json(const Json& params)> run = {};
     std::string location = {};
@@ -389,6 +392,7 @@ public:
     // The UI runs actions through here. An action with a file dialog or a confirm question asks the user first and
     // runs from the answer. A menu passes its params, such as the clicked track, and the dialog's answer joins them.
     Q_INVOKABLE void activate(const QString& id, const QVariantMap& params = {});
+    Q_INVOKABLE bool appliesTo(const QString& id, const QVariantMap& params) const;
     // QML gets an empty value for a failed action; we log the failure.
     Q_INVOKABLE QVariant runAction(const QString& id, const QVariantMap& params) const;
     // Runs each {id, params} call as one undo step named name, such as a drag across toggles or an edit of every

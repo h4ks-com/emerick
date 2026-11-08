@@ -179,6 +179,15 @@ void registerAudioDefault(Registry& registry, ProjectController& controller, con
          .aliases = {direction == Direction::input ? "apply input to all audio tracks"
                                                    : "apply output to all audio tracks"},
          .category = "Tracks / Routing",
+         .appliesTo =
+             [&registry, &controller](const Json& params) {
+                 if (!params.contains("track")) {
+                     return true;
+                 }
+                 const model::Track* track = controller.project().track(trackParam(controller.project(), params));
+                 const TrackType* type = registry.trackType(track->kind);
+                 return type != nullptr && type->routes.audio;
+             },
          .schema = {{"properties", {{"device", {{"type", "string"}}}, {"channels", {{"type", "array"}}}}}},
          .run =
              [&registry, &controller, entry](const Json& params) {

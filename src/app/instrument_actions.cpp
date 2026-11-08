@@ -151,6 +151,14 @@ void reportSamplers(Registry& registry, const ProjectController& controller) {
 void registerInstrumentActions(Registry& registry, ProjectController& controller, Nav& nav, PluginCatalog& catalog,
                                const std::filesystem::path& libraryFolder) {
     const auto choices = [&registry, &catalog] { return instrumentChoices(registry, catalog); };
+    const auto onMidiTrack = [&registry, &controller, &nav](const Json& params) {
+        midiTrack(registry, controller, nav, params);
+        return true;
+    };
+    const auto onInstrument = [&registry, &controller, &nav](const Json& params) {
+        instrumentTrack(registry, controller, nav, params);
+        return true;
+    };
     registry.addAction(
         {.id = "track.addInstrument",
          .title = "Add instrument track",
@@ -180,6 +188,7 @@ void registerInstrumentActions(Registry& registry, ProjectController& controller
              "from its own defaults.",
          .aliases = {"change instrument", "replace instrument", "pick synth"},
          .category = "Tracks",
+         .appliesTo = onMidiTrack,
          .schema = {{"required", {"plugin"}},
                     {"properties",
                      {{"plugin", pluginSchema()}, {"format", formatSchema()}, {"track", {{"type", "string"}}}}}},
@@ -201,6 +210,7 @@ void registerInstrumentActions(Registry& registry, ProjectController& controller
          .description = "Clears the MIDI track's instrument, so the track plays only to its MIDI output.",
          .aliases = {"unload instrument", "clear instrument", "no instrument"},
          .category = "Tracks",
+         .appliesTo = onInstrument,
          .schema = {{"properties", {{"track", {{"type", "string"}}}}}},
          .run =
              [&registry, &controller, &nav](const Json& params) {
@@ -214,6 +224,7 @@ void registerInstrumentActions(Registry& registry, ProjectController& controller
                         .description = "Opens the window of the track's instrument.",
                         .aliases = {"open plugin window", "plugin gui", "edit instrument"},
                         .category = "Tracks",
+                        .appliesTo = onInstrument,
                         .schema = {{"properties", {{"track", {{"type", "string"}}}}}},
                         .run =
                             [&registry, &controller, &nav](const Json& params) {
@@ -231,6 +242,7 @@ void registerInstrumentActions(Registry& registry, ProjectController& controller
                             "choice of a stepped param, such as each General MIDI sound.",
                         .aliases = {"plugin params", "instrument parameters", "list sounds"},
                         .category = "Tracks",
+                        .appliesTo = onInstrument,
                         .schema = {{"properties", {{"track", {{"type", "string"}}}}}},
                         .run =
                             [&registry, &controller, &nav](const Json& params) {
@@ -282,6 +294,7 @@ void registerInstrumentActions(Registry& registry, ProjectController& controller
                         "the file's path.",
          .aliases = {"open sfz", "load sfz", "sampler file", "load sound library"},
          .category = "Tracks",
+         .appliesTo = onMidiTrack,
          .schema = {{"properties",
                      {{"track", {{"type", "string"}}},
                       {"path", {{"type", "string"}, {"description", "an .sfz file"}}},

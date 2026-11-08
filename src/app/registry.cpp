@@ -704,6 +704,9 @@ QVariantMap Registry::menus() const {
         if (entry.submenu) {
             item.insert("choices", menuChoices(entry));
         }
+        if (entry.checked) {
+            item.insert("checked", entry.checked());
+        }
         for (const std::string& menu : entry.menus) {
             item.insert("bindsShortcut", inMenuBar(menu) && menuBindsShortcut(entry));
             const auto slash = menu.rfind('/');
@@ -745,6 +748,9 @@ QVariantMap Registry::actionInfo(const QString& id) const {
     QVariantMap info{{"title", qs(found->title)}, {"shortcut", qs(found->shortcut)}, {"enabled", isEnabled(*found)}};
     if (found->submenu) {
         info.insert("choices", menuChoices(*found));
+    }
+    if (found->checked) {
+        info.insert("checked", found->checked());
     }
     return info;
 }

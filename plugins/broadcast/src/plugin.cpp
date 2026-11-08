@@ -240,7 +240,7 @@ namespace {
 
 void requireEnabled(const Broadcasts& broadcasts) {
     if (!broadcasts.enabled()) {
-        throw app::AppError("turn on broadcasting in Settings / Plugins first");
+        throw app::AppError("turn on broadcasting in Plugins / Broadcasting first");
     }
 }
 
@@ -264,8 +264,22 @@ app::Json saveSchema() {
               {"description", text}}}};
 }
 
+constexpr const char* kBroadcastMenu = "Plugins/Broadcasting";
+
 void registerActions(app::Registry& registry, Broadcasts& broadcasts) {
     const auto shown = [&broadcasts] { return broadcasts.enabled(); };
+    registry.addAction({.id = "broadcast.toggle",
+                        .title = "Enable broadcasting",
+                        .description = "Turns broadcasting on or off, the same as the broadcast.enabled setting.",
+                        .aliases = {"icecast", "stream live"},
+                        .category = "Broadcast",
+                        .run =
+                            [&registry, &broadcasts](const app::Json&) {
+                                registry.setSetting(kEnabledSetting, !broadcasts.enabled());
+                                return app::Json{{"enabled", broadcasts.enabled()}};
+                            },
+                        .menus = {kBroadcastMenu},
+                        .checked = shown});
     const auto named = [&broadcasts](app::Json (Broadcasts::*act)(const std::string&)) {
         return [&broadcasts, act](const app::Json& params) {
             requireEnabled(broadcasts);
@@ -285,7 +299,7 @@ void registerActions(app::Registry& registry, Broadcasts& broadcasts) {
                  broadcasts.setPanelOpen(true);
                  return app::Json::object();
              },
-         .menus = {app::kTransportMenu},
+         .menus = {kBroadcastMenu},
          .windowOnly = true});
     registry.addAction({.id = "broadcast.save",
                         .title = "Save broadcast",
@@ -334,14 +348,15 @@ void registerActions(app::Registry& registry, Broadcasts& broadcasts) {
 
 std::unique_ptr<Broadcasts> registerWith(app::Registry& registry, app::ProjectController& controller, app::Nav& nav) {
     app::addSettingsSection(registry, nav, {.key = "broadcast", .title = "Broadcast", .group = app::kPluginsGroup});
-    registry.addSetting({.id = kEnabledSetting,
-                         .title = "Enable broadcasting",
-                         .aliases = {"icecast", "stream live"},
-                         .category = "Settings / Broadcast",
-                         .type = app::SettingType::Boolean,
-                         .defaultValue = false,
-                         .hint = "Turn on to stream the master to Icecast servers from Transport / Show broadcasts",
-                         .location = "settings.broadcast"});
+    registry.addSetting(
+        {.id = kEnabledSetting,
+         .title = "Enable broadcasting",
+         .aliases = {"icecast", "stream live"},
+         .category = "Settings / Broadcast",
+         .type = app::SettingType::Boolean,
+         .defaultValue = false,
+         .hint = "Turn on to stream the master to Icecast servers from Plugins / Broadcasting / Show broadcasts",
+         .location = "settings.broadcast"});
     auto broadcasts = std::make_unique<Broadcasts>(registry, controller);
     registerActions(registry, *broadcasts);
     registry.addOverlay("qrc:/qt/qml/Emerick/Broadcast/BroadcastPanel.qml");

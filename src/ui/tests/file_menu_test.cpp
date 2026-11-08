@@ -1,3 +1,5 @@
+#include <QCoreApplication>
+#include <QEvent>
 #include <catch2/catch_test_macros.hpp>
 
 #include "emerick/model/json.hpp"
@@ -82,4 +84,28 @@ TEST_CASE("the File menu's shortcut saves the project and the title drops the ed
     QTest::keyClick(main.window, Qt::Key_S, Qt::ControlModifier);
     CHECK(processUntil([&] { return !main.rig.controller->edited(); }, 1000));
     CHECK(main.window->title() == "Untitled 1");
+}
+
+TEST_CASE("a menu marks a command that turns something on while it is on") {
+    MainWindow& main = MainWindow::instance();
+    static bool on = false;
+    main.rig.registry.addAction({.id = "test.toggleMarking",
+                                 .title = "Enable marking",
+                                 .run =
+                                     [](const Json&) {
+                                         on = !on;
+                                         return Json::object();
+                                     },
+                                 .menus = {kViewMenu},
+                                 .checked = [] { return on; }});
+    QObject* view = main.menu("menu.view");
+    CHECK(processUntil([&] { return view->property("marks").toBool(); }));
+    QObject* toggle = menuItem(view, "Enable marking");
+    CHECK_FALSE(toggle->property("marked").toBool());
+
+    main.rig.run("test.toggleMarking");
+    emit main.rig.registry.menusChanged();
+    CHECK(processUntil([&] { return menuItem(view, "Enable marking")->property("marked").toBool(); }));
+    // The rebuilt menu deletes its old items later, and they must go before the app does.
+    QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
 }

@@ -128,6 +128,8 @@ struct Action {
     std::function<std::vector<MenuChoice>()> submenu = {};
     // The id of the submenu choice the target of these params has now, which its menu marks.
     std::function<std::string(const Json& params)> current = {};
+    // A command that turns something on or off, which its menu marks while it is on.
+    std::function<bool()> checked = {};
     // The action log skips a quiet action and logs the actions it runs instead, as for the console's own actions.
     bool quiet = false;
     // An action that runs Lua, which MCP refuses when it serves without lua.eval.

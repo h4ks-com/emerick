@@ -9,6 +9,7 @@ GlassMenu {
     id: actionMenu
     required property string menuName
     property var params
+    marks: (Registry.menus[menuName] ?? []).some(entry => entry.checked !== undefined)
 
     // We refresh what changes with the project when the menu opens, because rebuilding a native menu loses its items.
     // We hide the actions that cannot act on the menu's target, such as Load instrument on an audio track.
@@ -17,7 +18,9 @@ GlassMenu {
             const item = itemAt(at)
             const actionId = item instanceof ActionMenuItem ? item.actionId : menuAt(at)?.objectName ?? ""
             if (item instanceof ActionMenuItem) {
-                item.available = Registry.actionInfo(item.actionId).enabled
+                const info = Registry.actionInfo(item.actionId)
+                item.available = info.enabled
+                item.marked = info.checked ?? false
             }
             if (actionId !== "" && !actionId.startsWith("menu.")) {
                 const shown = Registry.appliesTo(actionId, actionMenu.params ?? {})
@@ -44,6 +47,7 @@ GlassMenu {
                     title: modelData.title
                     shortcut: modelData.shortcut
                     available: modelData.enabled
+                    marked: modelData.checked ?? false
                     bindsShortcut: modelData.bindsShortcut
                     params: actionMenu.paramsWith(undefined)
                 }

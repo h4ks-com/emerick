@@ -128,23 +128,28 @@ bool listsAction(const QVariantList& items, const QString& id) {
 TEST_CASE("broadcasting starts off, hidden from menus and the palette, and its actions refuse until it is on") {
     BroadcastRig broadcast;
     auto& registry = broadcast.rig.registry;
-    CHECK_FALSE(listsAction(registry.menus().value("Transport").toList(), "broadcast.show"));
+    const auto broadcasting = [&registry] { return registry.menus().value("Plugins/Broadcasting").toList(); };
+    CHECK(listsAction(registry.menus().value("Plugins").toList(), "Plugins/Broadcasting"));
+    REQUIRE(listsAction(broadcasting(), "broadcast.toggle"));
+    CHECK(broadcasting().front().toMap().value("checked") == false);
+    CHECK_FALSE(listsAction(broadcasting(), "broadcast.show"));
     CHECK_FALSE(listsAction(registry.palette("broadcast"), "broadcast.show"));
     CHECK(broadcast.rig.run("broadcast.list").at("enabled") == false);
     try {
         broadcast.rig.run("broadcast.start", {{"name", "Home"}});
         FAIL("broadcast.start ran while broadcasting was off");
     } catch (const app::AppError& error) {
-        CHECK(std::string{error.what()} == "turn on broadcasting in Settings / Plugins first");
+        CHECK(std::string{error.what()} == "turn on broadcasting in Plugins / Broadcasting first");
     }
 
     broadcast.enableAndSave();
-    CHECK(listsAction(registry.menus().value("Transport").toList(), "broadcast.show"));
+    CHECK(broadcasting().front().toMap().value("checked") == true);
+    CHECK(listsAction(broadcasting(), "broadcast.show"));
     CHECK(listsAction(registry.palette("show broadcasts"), "broadcast.show"));
     CHECK(broadcast.rig.run("broadcast.list").at("broadcasts").size() == 1);
     CHECK_THROWS_AS(broadcast.rig.run("broadcast.stop", {{"name", "Nowhere"}}), app::AppError);
 
-    registry.setSetting(broadcast::kEnabledSetting, false);
+    CHECK(broadcast.rig.run("broadcast.toggle") == Json{{"enabled", false}});
     CHECK(broadcast.rig.run("broadcast.list") == Json{{"enabled", false}, {"broadcasts", Json::array()}});
 }
 

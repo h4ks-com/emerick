@@ -152,7 +152,6 @@ void registerDexedActions(Registry& registry, ProjectController& controller, Nav
                  listed["program"] = state.program + 1;
                  return listed;
              },
-         .menus = {kTrackContextMenu},
          .notifies = true});
     registry.addAction(
         {.id = "dexed.load",
@@ -201,7 +200,6 @@ void registerDexedActions(Registry& registry, ProjectController& controller, Nav
                  syncInstruments(controller);
                  return result;
              },
-         .menus = {kTrackContextMenu},
          .dialog = FileDialog{.param = "cartridge", .nameFilter = "DX7 cartridges (*.syx)"}});
 }
 

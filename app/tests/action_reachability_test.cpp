@@ -31,6 +31,9 @@ const std::set<std::string> kUnreachable = {
     "script.list",        "script.run",   "transport.setClockOut", "yamaha.chart.text",
 };
 
+// Listings for agents, which menus leave out.
+const std::set<std::string> kAgentOnly = {"dexed.programs"};
+
 std::string qmlSource() {
     std::string source;
     for (const char* folder : {"src/ui", "plugins"}) {
@@ -64,7 +67,9 @@ bool namedInQml(const std::string& id, const std::string& qml) {
 
 bool reachable(const Action& action, const std::string& qml, const Registry& registry) {
     return !action.menus.empty() || !action.shortcut.empty() || !action.extraShortcuts.empty() ||
-           namedInQml(action.id, qml) || std::ranges::contains(registry.allSettings(), action.id, &Setting::action);
+           namedInQml(action.id, qml) || std::ranges::contains(registry.allSettings(), action.id, &Setting::action) ||
+           std::ranges::contains(kInstrumentActions, action.id, &InstrumentAction::actionId) ||
+           kAgentOnly.contains(action.id);
 }
 
 void withEveryAction(const std::function<void(const Registry&)>& check) {

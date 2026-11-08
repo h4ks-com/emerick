@@ -56,12 +56,14 @@ ApplicationWindow {
     FileDialog {
         id: fileDialog
         property string actionId
-        onAccepted: Registry.runWithFile(actionId, selectedFile)
+        property var params
+        onAccepted: Registry.runWithFile(actionId, selectedFile, params)
     }
     FolderDialog {
         id: folderDialog
         property string actionId
-        onAccepted: Registry.runWithFile(actionId, selectedFolder)
+        property var params
+        onAccepted: Registry.runWithFile(actionId, selectedFolder, params)
     }
     // macOS draws an application modal alert as its own window, whose corners stay clean where a sheet's are cut.
     MessageDialog {
@@ -91,11 +93,13 @@ ApplicationWindow {
         function onFileDialogRequested(request) {
             if (request.mode === App.Folder) {
                 folderDialog.actionId = request.id
+                folderDialog.params = request.params
                 folderDialog.title = request.title
                 folderDialog.open()
                 return
             }
             fileDialog.actionId = request.id
+            fileDialog.params = request.params
             fileDialog.title = request.title
             fileDialog.fileMode = request.mode === App.Save ? FileDialog.SaveFile : FileDialog.OpenFile
             fileDialog.nameFilters = request.nameFilter ? [request.nameFilter] : []

@@ -216,17 +216,23 @@ private:
     bool shown_;
 };
 
-QVariantList menuChoices(const Action& action) {
-    QVariantList choices;
-    for (const MenuChoice& choice : action.submenu()) {
-        choices.append(QVariantMap{{"id", qs(choice.id)},
-                                   {"title", qs(choice.title)},
-                                   {"params", toVariant(choice.params)},
-                                   {"icon", qs(choice.icon)},
-                                   {"color", choice.color}});
+QVariantList menuChoices(const std::vector<MenuChoice>& choices) {
+    QVariantList result;
+    for (const MenuChoice& choice : choices) {
+        result.append(
+            QVariantMap{{"id", qs(choice.id)},
+                        {"title", qs(choice.title)},
+                        {"params", toVariant(choice.params)},
+                        {"icon", qs(choice.icon)},
+                        {"color", choice.color},
+                        {"action", qs(choice.action)},
+                        {"choices", menuChoices(choice.choices)},
+                        {"row", static_cast<int>(choice.choices.empty() ? MenuRow::Command : MenuRow::Submenu)}});
     }
-    return choices;
+    return result;
 }
+
+QVariantList menuChoices(const Action& action) { return menuChoices(action.submenu()); }
 
 }  // namespace
 
@@ -754,22 +760,23 @@ QVariantList Registry::settingsAt(const QString& location) const {
     return result;
 }
 
-void Registry::activate(const QString& id) {
+void Registry::activate(const QString& id, const QVariantMap& params) {
     const Action* found = action(id.toStdString());
-    if (found != nullptr && found->dialog) {
+    if (found != nullptr && found->dialog && !params.contains(qs(found->dialog->param))) {
         emit fileDialogRequested({{"id", id},
                                   {"mode", static_cast<int>(found->dialog->mode)},
                                   {"title", qs(found->title)},
                                   {"nameFilter", qs(found->dialog->nameFilter)},
-                                  {"suffix", qs(found->dialog->suffix)}});
+                                  {"suffix", qs(found->dialog->suffix)},
+                                  {"params", params}});
         return;
     }
-    if (found != nullptr && !found->confirm.empty()) {
+    if (found != nullptr && !found->confirm.empty() && params.isEmpty()) {
         emit confirmRequested({{"id", id}, {"title", qs(found->title)}, {"text", qs(found->confirm)}});
         return;
     }
     if (found != nullptr) {
-        runFromUi(id.toStdString(), Json::object());
+        runFromUi(id.toStdString(), params.isEmpty() ? Json::object() : toJson(QVariant{params}));
         return;
     }
     try {
@@ -894,13 +901,14 @@ void Registry::runActions(const QString& name, const QVariantList& calls) const 
     }
 }
 
-QVariant Registry::runWithFile(const QString& id, const QUrl& file) const {
+QVariant Registry::runWithFile(const QString& id, const QUrl& file, QVariantMap params) const {
     const Action* found = action(id.toStdString());
     if (found == nullptr || !found->dialog) {
         qWarning() << "action" << id << "has no file dialog";
         return {};
     }
-    return runAction(id, {{qs(found->dialog->param), file.toLocalFile()}});
+    params.insert(qs(found->dialog->param), file.toLocalFile());
+    return runAction(id, params);
 }
 
 bool Registry::setSettingValue(const QString& id, const QVariant& value) {

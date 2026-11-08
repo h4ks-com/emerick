@@ -96,6 +96,10 @@ struct MenuChoice {
     // A choice that picks an icon or a track color shows it beside its title.
     std::string icon = {};
     int color = -1;
+    // The action the choice runs when it is another than its menu's, such as sampler.load under Emerick Sampler.
+    std::string action = {};
+    // A choice with choices shows them as its own submenu.
+    std::vector<MenuChoice> choices = {};
 };
 
 struct Action {
@@ -383,8 +387,8 @@ public:
     Q_INVOKABLE QVariantList sections(const QString& parent) const;
     Q_INVOKABLE QVariantList settingsAt(const QString& location) const;
     // The UI runs actions through here. An action with a file dialog or a confirm question asks the user first and
-    // runs from the answer.
-    Q_INVOKABLE void activate(const QString& id);
+    // runs from the answer. A menu passes its params, such as the clicked track, and the dialog's answer joins them.
+    Q_INVOKABLE void activate(const QString& id, const QVariantMap& params = {});
     // QML gets an empty value for a failed action; we log the failure.
     Q_INVOKABLE QVariant runAction(const QString& id, const QVariantMap& params) const;
     // Runs each {id, params} call as one undo step named name, such as a drag across toggles or an edit of every
@@ -396,8 +400,8 @@ public:
     Q_INVOKABLE void updateGesture(const QString& name, const QVariantList& calls);
     Q_INVOKABLE void endGesture();
     Q_INVOKABLE void cancelGesture();
-    // Runs the action with the file a dialog picked as its dialog param.
-    Q_INVOKABLE QVariant runWithFile(const QString& id, const QUrl& file) const;
+    // Runs the action with params and the file a dialog picked as its dialog param.
+    Q_INVOKABLE QVariant runWithFile(const QString& id, const QUrl& file, QVariantMap params = {}) const;
     // The path of a file URL, such as one dropped from the Finder, to pass as an action's path param.
     Q_INVOKABLE static QString localPath(const QUrl& file) { return file.toLocalFile(); }
     Q_INVOKABLE bool setSettingValue(const QString& id, const QVariant& value);

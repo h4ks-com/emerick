@@ -77,6 +77,20 @@ std::vector<MenuChoice> instrumentChoices(const Registry& registry, PluginCatalo
            std::ranges::to<std::vector>();
 }
 
+std::vector<MenuChoice> loadChoices(const Registry& registry, PluginCatalog& catalog) {
+    return instrumentChoices(registry, catalog) | std::views::transform([&registry](MenuChoice choice) {
+               const auto* extra = std::ranges::find(kInstrumentActions, choice.id, &InstrumentAction::pluginId);
+               if (extra != kInstrumentActions.end()) {
+                   const std::string actionId{extra->actionId};
+                   choice.choices = {
+                       {.id = choice.id, .title = "Load " + choice.title, .params = choice.params},
+                       {.id = actionId, .title = registry.action(actionId)->title, .params = {}, .action = actionId}};
+               }
+               return choice;
+           }) |
+           std::ranges::to<std::vector>();
+}
+
 model::TrackId instrumentTrack(const Registry& registry, const ProjectController& controller, const Nav& nav,
                                const Json& params) {
     const model::TrackId id = midiTrack(registry, controller, nav, params);
@@ -175,7 +189,7 @@ void registerInstrumentActions(Registry& registry, ProjectController& controller
                  return loadInstrument(registry, controller, id, slotFor(registry, catalog, params));
              },
          .menus = {kTrackContextMenu},
-         .submenu = choices,
+         .submenu = [&registry, &catalog] { return loadChoices(registry, catalog); },
          .current =
              [&controller, &nav](const Json& params) {
                  const model::Track* track = controller.project().track(targetTrack(controller, nav, params));
@@ -290,7 +304,6 @@ void registerInstrumentActions(Registry& registry, ProjectController& controller
                  return loadSampler(registry, controller, catalog, id,
                                     registry.checkedPath(param<std::string>(params, "path"), PathAccess::Read));
              },
-         .menus = {kTrackContextMenu},
          .dialog = FileDialog{.param = "path", .nameFilter = "SFZ instruments (*.sfz)"}});
     registerDexedActions(registry, controller, nav, catalog);
     reportSamplers(registry, controller);

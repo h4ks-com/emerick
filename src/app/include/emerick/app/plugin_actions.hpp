@@ -1,6 +1,8 @@
 #pragma once
 
+#include <array>
 #include <filesystem>
+#include <string_view>
 
 #include "emerick/app/dexed.hpp"
 #include "emerick/app/nav.hpp"
@@ -14,6 +16,16 @@ namespace emerick::app {
 inline constexpr const char* kClapFoldersSetting = "plugins.clapFolders";
 inline constexpr const char* kVst3FoldersSetting = "plugins.vst3Folders";
 inline constexpr const char* kGeneralMidiSoundFontSetting = "plugins.generalMidiSoundFont";
+
+// An action that loads a sound into one instrument, which the instrument's Load instrument submenu lists after loading
+// the instrument itself.
+struct InstrumentAction {
+    std::string_view pluginId;
+    std::string_view actionId;
+};
+inline constexpr std::array kInstrumentActions{
+    InstrumentAction{.pluginId = kSamplerPluginId, .actionId = "sampler.load"},
+    InstrumentAction{.pluginId = kDexedPluginId, .actionId = "dexed.load"}};
 
 // The Plugins settings section with the user's CLAP folders, and the actions that rescan and list CLAP plugins.
 void registerPluginActions(Registry& registry, Nav& nav, PluginCatalog& catalog);

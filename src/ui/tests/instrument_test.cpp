@@ -145,3 +145,44 @@ TEST_CASE("the row below the last track adds each kind of track and stays out of
     CHECK(processUntil([&] { return row->y() == 4 * main->rig.nav.trackHeight(); }));
     MainWindow::settle();
 }
+
+TEST_CASE("the track menu lists SFZ and DX7 loading under their instrument, and a file entry asks for the file") {
+    const QTemporaryDir cache;
+    PluginCatalog catalog(
+        {.cacheFolder = cache.path().toStdString(), .scanner = EMERICK_PLUGIN_SCANNER, .folders = {}});
+    auto* main = new MainWindow([&catalog](ProjectRig& rig) {
+        registerPluginActions(rig.registry, rig.nav, catalog);
+        registerInstrumentActions(rig.registry, *rig.controller, rig.nav, catalog);
+        rig.registry.setSetting(kClapFoldersSetting, Json::array({bundledClapFolder(EMERICK_GM_APP_FOLDER).string()}));
+    });
+    const std::string id = main->rig.run("track.addInstrument", {{"plugin", kGeneralMidiPluginId}}).at("id");
+    MainWindow::settle();
+    main->click(main->item(QString::fromStdString("track.move:" + id)), Qt::RightButton);
+    QObject* menu = main->menu("menu.trackContext");
+    REQUIRE(processUntil([&] { return menu->property("opened").toBool(); }));
+    const auto titles = itemTitles(menu);
+    for (const char* moved : {"Load SFZ instrument", "List DX7 programs", "Load DX7 program"}) {
+        CHECK(std::ranges::find(titles, QString{moved}) == titles.end());
+    }
+
+    const QString dexedMenu = QString{"instrument.load:"} + kDexedPluginId;
+    const QString samplerMenu = QString{"instrument.load:"} + kSamplerPluginId;
+    CHECK(itemTitles(main->menu(dexedMenu)) == std::vector<QString>{"Load Dexed", "Load DX7 program"});
+    CHECK(itemTitles(main->menu(samplerMenu)) == std::vector<QString>{"Load Emerick Sampler", "Load SFZ instrument"});
+
+    QVariantMap asked;
+    QObject::connect(&main->rig.registry, &Registry::fileDialogRequested,
+                     [&](const QVariantMap& request) { asked = request; });
+    QMetaObject::invokeMethod(
+        menuItem(main->menu(samplerMenu), "Load SFZ instrument")->property("action").value<QObject*>(), "trigger");
+    CHECK(asked.value("id") == "sampler.load");
+    CHECK(asked.value("params").toMap().value("track") == QString::fromStdString(id));
+
+    main->click(main->item(QString::fromStdString("track.move:" + id)), Qt::RightButton);
+    REQUIRE(processUntil([&] { return menu->property("opened").toBool(); }));
+    QMetaObject::invokeMethod(menuItem(main->menu(dexedMenu), "Load Dexed")->property("action").value<QObject*>(),
+                              "trigger");
+    CHECK(main->rig.controller->project().track(model::TrackId{id})->instrument->pluginId == kDexedPluginId);
+    QTest::keyClick(main->window, Qt::Key_Escape);
+    MainWindow::settle();
+}

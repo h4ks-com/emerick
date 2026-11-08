@@ -60,17 +60,46 @@ GlassMenu {
                     }
                     Instantiator {
                         model: submenu.choices
-                        delegate: ActionMenuItem {
-                            required property var modelData
-                            objectName: submenu.modelData.id + ":" + modelData.id
-                            actionId: submenu.modelData.id
-                            title: modelData.title
-                            iconName: modelData.icon ?? ""
-                            swatch: modelData.color ?? -1
-                            marked: modelData.id === submenu.current
-                            params: actionMenu.paramsWith(modelData.params)
+                        delegate: DelegateChooser {
+                            role: "row"
+                            DelegateChoice {
+                                roleValue: App.Command
+                                ActionMenuItem {
+                                    required property var modelData
+                                    objectName: submenu.modelData.id + ":" + modelData.id
+                                    actionId: modelData.action || submenu.modelData.id
+                                    title: modelData.title
+                                    iconName: modelData.icon ?? ""
+                                    swatch: modelData.color ?? -1
+                                    marked: modelData.id === submenu.current
+                                    params: actionMenu.paramsWith(modelData.params)
+                                }
+                            }
+                            DelegateChoice {
+                                roleValue: App.Submenu
+                                GlassMenu {
+                                    id: nested
+                                    required property var modelData
+                                    objectName: submenu.modelData.id + ":" + modelData.id
+                                    title: modelData.title
+                                    marks: submenu.marks
+                                    Instantiator {
+                                        model: nested.modelData.choices
+                                        delegate: ActionMenuItem {
+                                            required property var modelData
+                                            objectName: nested.objectName + ":" + modelData.id
+                                            actionId: modelData.action || submenu.modelData.id
+                                            title: modelData.title
+                                            marked: modelData.id === submenu.current
+                                            params: actionMenu.paramsWith(modelData.params)
+                                        }
+                                        onObjectAdded: (index, object) => nested.insertItem(index, object)
+                                    }
+                                }
+                            }
                         }
-                        onObjectAdded: (index, object) => submenu.insertItem(index, object)
+                        onObjectAdded: (index, object) => object instanceof Menu ? submenu.insertMenu(index, object)
+                                                                                 : submenu.insertItem(index, object)
                     }
                 }
             }

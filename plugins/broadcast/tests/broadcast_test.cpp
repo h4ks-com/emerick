@@ -267,7 +267,9 @@ TEST_CASE("an ffmpeg that stops reading drops audio and counts it, and never blo
     BroadcastRig broadcast("stall");
     broadcast.enableAndSave();
     broadcast.rig.run("broadcast.start", {{"name", "Home"}});
-    CHECK(waitFor([&] { return broadcast.status().at("droppedFrames").get<int>() > 0; }));
+    // The drop needs about a second of audio in real time beyond the pipe's own buffer, which a slow runner takes
+    // longer to produce.
+    CHECK(waitFor([&] { return broadcast.status().at("droppedFrames").get<int>() > 0; }, std::chrono::seconds{20}));
     const auto before = std::chrono::steady_clock::now();
     broadcast.rig.run("broadcast.stop", {{"name", "Home"}});
     CHECK(std::chrono::steady_clock::now() - before < std::chrono::seconds{1});

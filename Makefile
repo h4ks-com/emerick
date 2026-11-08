@@ -1,5 +1,5 @@
 .PHONY: configure build test run run-release format format-check lint lint-changed quality quality-full fix tidy-fix check-fast docker-build e2e \
-	service-check service-run viewer-wasm release clean
+	service-check service-run viewer-wasm release publish clean
 
 SOURCES := $(shell git ls-files --cached --others --exclude-standard '*.cpp' '*.hpp')
 # The files changed since the last push to main, including unpushed commits, uncommitted edits and new files.
@@ -105,6 +105,9 @@ service-run: build
 
 release:
 	./scripts/release.sh $(VERSION)
+
+publish:
+	./scripts/publish.sh
 
 clean:
 	rm -rf build/dev build/release

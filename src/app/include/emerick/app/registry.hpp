@@ -136,6 +136,8 @@ struct Action {
     bool windowOnly = false;
     // A UI run tells the user the outcome: the result's message, or the error text when it fails.
     bool notifies = false;
+    // String params, such as a password, that the action log and every error show masked.
+    std::vector<std::string> secretParams = {};
 };
 
 struct Marker {

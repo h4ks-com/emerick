@@ -2,6 +2,8 @@
 
 #include <QCoreApplication>
 #include <QCursor>
+#include <QFile>
+#include <QFileInfo>
 #include <QGuiApplication>
 #include <QKeySequence>
 #include <QRegularExpression>
@@ -89,6 +91,24 @@ QVariantList utf16Ranges(const std::string& title, const std::vector<core::Match
 
 bool isEnabled(const Action& entry) { return !entry.enabled || entry.enabled(); }
 bool isShown(const Action& entry) { return !entry.shown || entry.shown(); }
+
+Json withSecretsMasked(const Action& entry, Json params) {
+    for (const std::string& key : entry.secretParams) {
+        if (params.is_object() && params.contains(key)) {
+            params[key] = "********";
+        }
+    }
+    return params;
+}
+
+// The usual wrong type error echoes the value, so we check secrets first with an error that leaves it out.
+void checkSecretParams(const Action& entry, const Json& params) {
+    for (const std::string& key : entry.secretParams) {
+        if (params.is_object() && params.contains(key) && !params[key].is_string() && !params[key].is_null()) {
+            throw AppError("param " + key + " must be a string");
+        }
+    }
+}
 
 class NestedRun {
 public:
@@ -389,6 +409,7 @@ Json Registry::run(const std::string& id, const Json& params, ActionSource sourc
         throw AppError("action " + id + " needs a window, and this run is headless");
     }
     const Json given = params.is_null() ? Json::object() : params;
+    checkSecretParams(*found, given);
     const RequestOrigin origin{origin_, source};
     const bool logged = runDepth_ == 0 && !found->quiet;
     // We copy the handler, because a script action can add or remove actions while it runs.
@@ -408,7 +429,7 @@ Json Registry::run(const std::string& id, const Json& params, ActionSource sourc
         }
     }
     if (logged) {
-        emit actionRan(id, given, source);
+        emit actionRan(id, withSecretsMasked(*found, given), source);
     }
     return result.is_null() ? Json::object() : result;
 }
@@ -524,6 +545,10 @@ Json Registry::privateValue(const std::string& key) const {
 
 void Registry::setPrivateValue(const std::string& key, const Json& value) {
     store_->setValue("private/" + qs(key), qs(value.dump()));
+    store_->sync();
+    if (QFileInfo{store_->fileName()}.isFile()) {
+        QFile::setPermissions(store_->fileName(), QFileDevice::ReadOwner | QFileDevice::WriteOwner);
+    }
 }
 
 Json Registry::state(const std::string& name) const {
@@ -888,7 +913,9 @@ void Registry::endGesture() {
     }
     if (!undoSteps_.endGesture || undoSteps_.endGesture()) {
         for (const Call& call : gestureCalls_) {
-            emit actionRan(call.id, call.params, ActionSource::Ui);
+            const Action* entry = action(call.id);
+            emit actionRan(call.id, entry != nullptr ? withSecretsMasked(*entry, call.params) : call.params,
+                           ActionSource::Ui);
         }
     }
     gestureCalls_.clear();

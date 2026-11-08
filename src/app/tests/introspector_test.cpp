@@ -32,6 +32,7 @@ Window {
         Rectangle { objectName: "test.hidden"; width: 10; height: 10; visible: false }
         Item { Label { objectName: "test.label"; text: "Inner" } }
         ComboBox { objectName: "test.picker"; model: ["One", "Two"] }
+        TextField { objectName: "test.password"; text: "hunter2"; echoMode: TextInput.Password }
     }
 }
 )";
@@ -87,6 +88,13 @@ TEST_CASE("find matches objectName or text") {
     CHECK(findItems("press").at(0).at("objectName") == "test.button");
     CHECK(findItems("test.f").at(0).at("objectName") == "test.field");
     CHECK(findItems("nothing here").empty());
+}
+
+TEST_CASE("a password field never shows its text to find or describe") {
+    const Fixture fixture;
+    CHECK(findItems("hunter2").empty());
+    CHECK_FALSE(describeItem("test.password").contains("text"));
+    CHECK(describeItem("test.field").at("text") == "before");
 }
 
 TEST_CASE("properties read and write through QMetaObject") {

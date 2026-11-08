@@ -9,6 +9,7 @@
 #include <QQuickWindow>
 #include <algorithm>
 #include <array>
+#include <string_view>
 
 #include "emerick/app/event_wait.hpp"
 
@@ -56,6 +57,12 @@ Json rect(const QRectF& geometry) {
     return {{"x", geometry.x()}, {"y", geometry.y()}, {"width", geometry.width()}, {"height", geometry.height()}};
 }
 
+// A field whose echo mode is not Normal, such as a password field, keeps its text to itself.
+bool hidesText(const QQuickItem* item) {
+    const QVariant mode = item->property("echoMode");
+    return mode.isValid() && mode.toInt() != 0;
+}
+
 Json node(const QQuickItem* item) {
     Json result{{"type", cleanType(item).toStdString()},
                 {"visible", item->isVisible()},
@@ -65,6 +72,9 @@ Json node(const QQuickItem* item) {
         result["objectName"] = item->objectName().toStdString();
     }
     for (const char* name : kReadProperties) {
+        if (std::string_view{name} == "text" && hidesText(item)) {
+            continue;
+        }
         if (item->metaObject()->indexOfProperty(name) >= 0) {
             result[name] = toJson(item->property(name));
         }
@@ -155,7 +165,8 @@ Json findItems(const QString& query) {
     Json result = Json::array();
     for (const QQuickItem* candidate : allItems()) {
         if (candidate->objectName().contains(query, Qt::CaseInsensitive) ||
-            textContains(candidate->property("text"), query) || textContains(candidate->property("title"), query)) {
+            (!hidesText(candidate) && textContains(candidate->property("text"), query)) ||
+            textContains(candidate->property("title"), query)) {
             result.push_back(node(candidate));
         }
     }

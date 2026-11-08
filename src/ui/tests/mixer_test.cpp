@@ -67,6 +67,24 @@ TEST_CASE("X opens the mixer, whose strips mute, solo, arm and set gain through 
     MainWindow::settle();
 }
 
+TEST_CASE("the mixer asks for a track only while the project has neither a track nor a bus") {
+    MainWindow& main = MainWindow::instance();
+    while (!main.rig.controller->project().document().tracks.empty()) {
+        main.rig.run("track.remove", {{"track", main.rig.controller->project().document().tracks.front().id.value}});
+    }
+    main.rig.nav.setMixerOpen(true);
+    MainWindow::settle();
+    QQuickItem* empty = inMixer(main, "mixer.empty");
+    CHECK(empty->isVisible());
+
+    const std::string bus = main.rig.run("track.addBus", {{"name", "Mix"}}).at("id");
+    MainWindow::settle();
+    CHECK_FALSE(empty->isVisible());
+    CHECK(inMixer(main, "track.setGain:" + qid(bus))->isVisible());
+    main.rig.nav.setMixerOpen(false);
+    MainWindow::settle();
+}
+
 TEST_CASE("a mixer strip trim knob trims the track in one undo step, and a double click resets it to 0 dB") {
     MainWindow& main = MainWindow::instance();
     const std::string vox = main.rig.run("track.addAudio").at("id");

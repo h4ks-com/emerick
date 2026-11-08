@@ -40,10 +40,7 @@ DockPanel {
                 id: trackStrips
                 buses: false
             }
-            Strips {
-                id: busStrips
-                buses: true
-            }
+            Strips { buses: true }
 
             Rectangle {
                 objectName: "mixer.master"
@@ -102,8 +99,10 @@ DockPanel {
     }
 
     Label {
+        objectName: "mixer.empty"
         anchors.centerIn: parent
-        visible: trackStrips.count + busStrips.count === 0
+        // Each Strips repeater holds a delegate per row of Tracks, buses included, so one count covers the project.
+        visible: trackStrips.count === 0
         text: "Add a track to mix it"
         color: Theme.inkDim
         font.pixelSize: Theme.textTitle

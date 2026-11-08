@@ -165,8 +165,10 @@ void ProjectController::updatePreview(const std::string& trackId, engine::TakePr
     const core::Ticks chunk = kChunkBars * tempo.ticksPerBar();
     bool froze = false;
     // Lane kinds such as chords decode a take with state that runs across it, so we only chunk clip kinds, whose
-    // notes stand alone. We freeze a chunk a bar after the playhead leaves it, so late events still land in it.
-    while (type->laneComponent.empty() && now >= preview.live.startTick + chunk + tempo.ticksPerBar()) {
+    // notes stand alone. The writer thread can deliver events long after the playhead passed them, but always in
+    // order, so we freeze a chunk only once an event after it arrived.
+    while (type->laneComponent.empty() && !preview.live.midiEvents.empty() &&
+           preview.live.midiEvents.back().tick >= chunk) {
         freezeChunk(preview.live, *preview.frozen, *type, chunk, context);
         froze = true;
     }

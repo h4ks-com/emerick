@@ -218,7 +218,10 @@ TEST_CASE("a long MIDI take's preview updates carry only the live notes, and eac
         rig.audio->process(beat - beat / 2);
         processUntil([] { return false; }, 5);
     }
-    REQUIRE(processUntil([&] { return frozenUpdates >= kBars - 4; }));
+    REQUIRE(processUntil([&] {
+        const TakePreview* shown = rig.controller->takePreview(id);
+        return shown != nullptr && shown->live.startTick - shown->start == (kBars - 1) * tempo.ticksPerBar();
+    }));
 
     // The live chunk spans less than two bars, so it never holds more than eight notes.
     CHECK(mostLiveNotes <= 8);

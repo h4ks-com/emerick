@@ -1,9 +1,13 @@
+#include <QObject>
+#include <QtLogging>
 #include <catch2/catch_test_macros.hpp>
+#include <cstdint>
 #include <ranges>
 #include <string>
 #include <vector>
 
 #include "../src/lane_blocks.hpp"
+#include "../src/midi_listener.hpp"
 #include "emerick/app/registry.hpp"
 #include "emerick/yamaha/chart.hpp"
 #include "midi_file.hpp"
@@ -268,4 +272,18 @@ TEST_CASE("the lanes draw chords with N.C. as a gap and sections in their colors
     CHECK(sections.at(0).toMap().value("colorIndex").toInt() == 2);
     CHECK(sections.at(1).toMap().value("colorIndex").toInt() == 7);
     CHECK(LaneBlocks::chordBlocks(app::toVariant(Json{{"bad", 1}})).isEmpty());
+}
+
+TEST_CASE("listening on a port the keyboard does not offer gives no input and logs nothing") {
+    YamahaRig rig;
+    QObject context;
+    static int warnings = 0;
+    warnings = 0;
+    const QtMessageHandler previous = qInstallMessageHandler(
+        [](QtMsgType type, const QMessageLogContext&, const QString&) { warnings += type == QtWarningMsg ? 1 : 0; });
+    const auto ignore = [](const std::vector<std::uint8_t>&) {};
+    CHECK(listenOnPort(*rig.controller, "Switched Off Keyboard", context, ignore) == nullptr);
+    CHECK(listenOnPort(*rig.controller, app::test::kMidiPort, context, ignore) != nullptr);
+    qInstallMessageHandler(previous);
+    CHECK(warnings == 0);
 }

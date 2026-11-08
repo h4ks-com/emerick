@@ -90,7 +90,6 @@ std::vector<MidiPortInfo> LibremidiBackend::ports() {
 std::unique_ptr<MidiInput> LibremidiBackend::openInput(const std::string& portId, MidiReceive receive) {
     const auto port = findPort(impl_->observer.get_input_ports(), portId);
     if (!port) {
-        portListChanged();
         throw std::invalid_argument("unknown MIDI port " + portId);
     }
     return std::make_unique<LibremidiInput>(*port, std::move(receive));
@@ -99,7 +98,6 @@ std::unique_ptr<MidiInput> LibremidiBackend::openInput(const std::string& portId
 std::unique_ptr<MidiOutput> LibremidiBackend::openOutput(const std::string& portId) {
     const auto port = findPort(impl_->observer.get_output_ports(), portId);
     if (!port) {
-        portListChanged();
         throw std::invalid_argument("unknown MIDI port " + portId);
     }
     return std::make_unique<LibremidiOutput>(*port);

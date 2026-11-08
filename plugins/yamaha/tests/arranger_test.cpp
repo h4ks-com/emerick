@@ -398,3 +398,31 @@ TEST_CASE("a muted Chords track sends no chords and a muted Style track presses 
     CHECK(processUntil([&] { return stopPressed(); }));
     rig.run("transport.stop");
 }
+
+TEST_CASE("a Chords take in progress keeps only its sysex for the preview, so dense Style data costs it nothing") {
+    YamahaRig rig;
+    rig.run("yamaha.setupArranger");
+    const model::TrackId chords = rig.controller->project().document().tracks.at(0).id;
+    rig.run("track.armAll", {{"value", false}});
+    rig.run("track.setArm", {{"track", chords.value}, {"value", true}});
+
+    rig.run("transport.record");
+    rig.audio->process(kBlock);
+    const auto now = [&] { return rig.audio->hostTimeAt(rig.audio->processedFrames()); };
+    for (std::uint8_t channel = 8; channel < 16; ++channel) {
+        rig.midi->inject(kMidiPort, Bytes{static_cast<std::uint8_t>(0xB0 | channel), 11, 100}, now());
+        rig.midi->inject(kMidiPort, Bytes{static_cast<std::uint8_t>(0x90 | channel), 48, 90}, now());
+    }
+    rig.midi->inject(kMidiPort, Bytes{0xF0, 0x43, 0x7E, 0x02, 0x32, 0x08, 0x7F, 0x7F, 0xF7}, now());
+    rig.audio->process(4800);
+    REQUIRE(processUntil([&] {
+        const app::TakePreview* preview = rig.controller->takePreview(chords);
+        return preview != nullptr && preview->track && preview->track->data.size() == 1;
+    }));
+
+    CHECK(rig.controller->takePreview(chords)->live.midiEvents.size() == 1);
+    rig.run("transport.stop");
+    rig.audio->process(kBlock);
+    REQUIRE(rig.waitForTakes(1) == 1);
+    CHECK(rig.track(chords.value).data.size() == 1);
+}

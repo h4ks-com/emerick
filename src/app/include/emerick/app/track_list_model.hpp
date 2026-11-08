@@ -61,6 +61,7 @@ public:
         automationParams,
         recordDelayMs,
         takePreview,
+        takeFrozen,
         inspectorComponent,
         fileDrop,
     };
@@ -104,6 +105,7 @@ private:
 
     [[nodiscard]] const model::MidiClip* midiClipWithId(const QString& id) const;
     [[nodiscard]] QVariantMap previewEntry(const model::TrackId& id, ClipType type) const;
+    bool freezeNotes(const model::TrackId& id);
     [[nodiscard]] RowContext rowContext() const;
     [[nodiscard]] bool isBus(const model::TrackId& id) const;
 
@@ -115,14 +117,14 @@ private:
     std::size_t listener_;
     int revision_ = 0;
 
-    // The notes of a take's frozen chunks, as previewEntry lists them, and the lowest and highest key among them.
+    // The notes of a take's frozen chunks, as the takeFrozen role lists them, and their lowest and highest key.
     struct FrozenNotes {
         std::uint64_t take = 0;
         std::size_t clips = 0;
         QVariantList segments;
         std::pair<int, int> keys{std::numeric_limits<int>::max(), std::numeric_limits<int>::min()};
     };
-    mutable std::map<std::string, FrozenNotes> frozenNotes_;
+    std::map<std::string, FrozenNotes> frozenNotes_;
 };
 
 }  // namespace emerick::app

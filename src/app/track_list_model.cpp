@@ -45,47 +45,60 @@ void widenKeys(std::pair<int, int>& keys, const model::MidiClip& clip) {
 
 }  // namespace
 
-// The take in progress on a clip lane, as the tracks area draws it, or an empty map. We keep the frozen chunks' notes
-// in segments of a few chunks, so an update converts only the live chunk's notes and a freeze repaints one segment.
+// We keep the frozen chunks' notes in segments of a few chunks, so a freeze repaints one segment, and we list them in
+// their own role, so a tick that only grows the live chunk sends none of them.
+bool TrackListModel::freezeNotes(const model::TrackId& id) {
+    const TakePreview* preview = controller_.takePreview(id);
+    if (preview == nullptr) {
+        return frozenNotes_.erase(id.value) > 0;
+    }
+    FrozenNotes& frozen = frozenNotes_[id.value];
+    bool changed = false;
+    if (frozen.take != preview->take) {
+        frozen = FrozenNotes{};
+        frozen.take = preview->take;
+        changed = true;
+    }
+    if (!preview->frozen) {
+        return changed;
+    }
+    const std::vector<model::Clip>& clips = preview->frozen->clips;
+    for (; frozen.clips < clips.size(); ++frozen.clips) {
+        const model::MidiClip* midi = midiClip(clips, frozen.clips);
+        if (midi == nullptr) {
+            continue;
+        }
+        const core::Ticks at = midi->start - preview->start;
+        if (frozen.clips % kChunksPerSegment == 0) {
+            frozen.segments.append(QVariantMap{{"start", QVariant::fromValue(at)}, {"notes", QVariantList{}}});
+        }
+        QVariantMap segment = frozen.segments.last().toMap();
+        const core::Ticks from = segment["start"].toLongLong();
+        QVariantList notes = segment["notes"].toList();
+        notes.append(noteList(*midi, at - from));
+        segment["notes"] = notes;
+        segment["length"] = QVariant::fromValue(at + midi->length - from);
+        frozen.segments.last() = segment;
+        widenKeys(frozen.keys, *midi);
+        changed = true;
+    }
+    return changed;
+}
+
+// The take in progress on a clip lane, as the tracks area draws it, or an empty map.
 QVariantMap TrackListModel::previewEntry(const model::TrackId& id, ClipType type) const {
     const TakePreview* preview = controller_.takePreview(id);
     if (preview == nullptr || type == ClipType::none) {
         return {};
     }
     const core::Ticks liveFrom = preview->live.startTick - preview->start;
-    FrozenNotes& frozen = frozenNotes_[id.value];
-    if (frozen.take != preview->take) {
-        frozen = FrozenNotes{};
-        frozen.take = preview->take;
-    }
-    if (preview->frozen) {
-        const std::vector<model::Clip>& clips = preview->frozen->clips;
-        for (; frozen.clips < clips.size(); ++frozen.clips) {
-            const model::MidiClip* midi = midiClip(clips, frozen.clips);
-            if (midi == nullptr) {
-                continue;
-            }
-            const core::Ticks at = midi->start - preview->start;
-            if (frozen.clips % kChunksPerSegment == 0) {
-                frozen.segments.append(QVariantMap{{"start", QVariant::fromValue(at)}, {"notes", QVariantList{}}});
-            }
-            QVariantMap segment = frozen.segments.last().toMap();
-            const core::Ticks from = segment["start"].toLongLong();
-            QVariantList notes = segment["notes"].toList();
-            notes.append(noteList(*midi, at - from));
-            segment["notes"] = notes;
-            segment["length"] = QVariant::fromValue(at + midi->length - from);
-            frozen.segments.last() = segment;
-            widenKeys(frozen.keys, *midi);
-        }
-    }
-    std::pair<int, int> keys = frozen.keys;
+    const auto frozen = frozenNotes_.find(id.value);
+    std::pair<int, int> keys = frozen == frozenNotes_.end() ? FrozenNotes{}.keys : frozen->second.keys;
     QVariantMap entry{{"type", clipTypeName(type)},
                       {"start", QVariant::fromValue(preview->start)},
                       {"length", QVariant::fromValue(preview->length)},
                       {"file", qs(preview->audioFile.string())},
                       {"frames", QVariant::fromValue(preview->frames)},
-                      {"frozen", frozen.segments},
                       {"liveFrom", QVariant::fromValue(liveFrom)},
                       {"notes", QVariantList{}}};
     if (const model::MidiClip* live = preview->track ? midiClip(preview->track->clips, 0) : nullptr) {
@@ -199,19 +212,20 @@ TrackListModel::TrackListModel(ProjectController& controller, const Registry& re
 
 void TrackListModel::takePreviewChanged(const QString& trackId, bool trackDataChanged) {
     const model::TrackId id{trackId.toStdString()};
-    if (controller_.takePreview(id) == nullptr) {
-        frozenNotes_.erase(id.value);
-    }
+    const bool frozenChanged = freezeNotes(id);
     const auto row = std::ranges::find(rows_, id);
     if (row == rows_.end()) {
         return;
     }
     const QModelIndex at = index(static_cast<int>(row - rows_.begin()));
-    if (trackDataChanged) {
-        emit dataChanged(at, at, {static_cast<int>(Role::takePreview), static_cast<int>(Role::trackData)});
-    } else {
-        emit dataChanged(at, at, {static_cast<int>(Role::takePreview)});
+    QList<int> roles{static_cast<int>(Role::takePreview)};
+    if (frozenChanged) {
+        roles.append(static_cast<int>(Role::takeFrozen));
     }
+    if (trackDataChanged) {
+        roles.append(static_cast<int>(Role::trackData));
+    }
+    emit dataChanged(at, at, roles);
 }
 
 TrackListModel::~TrackListModel() { project_.removeListener(listener_); }
@@ -313,6 +327,10 @@ QVariant TrackListModel::data(const QModelIndex& index, int role) const {
             return track.recordDelayMs;
         case Role::takePreview:
             return previewEntry(track.id, clipTypeOf(type));
+        case Role::takeFrozen: {
+            const auto frozen = frozenNotes_.find(track.id.value);
+            return frozen == frozenNotes_.end() ? QVariantList{} : frozen->second.segments;
+        }
         case Role::inspectorComponent:
             return qs(type != nullptr ? type->inspectorComponent : std::string{});
         case Role::fileDrop:
@@ -325,7 +343,7 @@ QVariant TrackListModel::data(const QModelIndex& index, int role) const {
 }
 
 QHash<int, QByteArray> TrackListModel::roleNames() const {
-    static constexpr std::array<std::pair<Role, const char*>, 38> kNames{
+    static constexpr std::array<std::pair<Role, const char*>, 39> kNames{
         {{Role::id, "trackId"},
          {Role::name, "name"},
          {Role::kind, "kind"},
@@ -362,6 +380,7 @@ QHash<int, QByteArray> TrackListModel::roleNames() const {
          {Role::automationParams, "automationParams"},
          {Role::recordDelayMs, "recordDelayMs"},
          {Role::takePreview, "takePreview"},
+         {Role::takeFrozen, "takeFrozen"},
          {Role::inspectorComponent, "inspectorComponent"},
          {Role::fileDrop, "fileDrop"}}};
     QHash<int, QByteArray> names;

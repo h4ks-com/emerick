@@ -221,6 +221,8 @@ struct TrackType {
     // True when toEngine reads other tracks of the document, so the track converts again on every change.
     bool readsOtherTracks = false;
     std::function<void(model::Track&, const engine::RecordedTake&, const TakeContext&)> fromTake = {};
+    // True when fromTake reads only a take's sysex, so the preview of a take in progress keeps only its sysex.
+    bool takesSysexOnly = false;
     // Names along the timeline, such as chords, that a MIDI export writes as markers.
     std::function<std::vector<Marker>(const model::Track&)> markers = {};
     // Warnings for this track or the tracks it feeds, each keyed by the track id whose header shows it.

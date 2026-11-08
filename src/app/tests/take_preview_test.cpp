@@ -1,5 +1,6 @@
 #include <sndfile.h>
 
+#include <QVariantMap>
 #include <algorithm>
 #include <catch2/catch_test_macros.hpp>
 #include <cstdlib>
@@ -8,6 +9,7 @@
 #include <variant>
 #include <vector>
 
+#include "emerick/app/track_list_model.hpp"
 #include "emerick/engine/sound_file.hpp"
 #include "project_rig.hpp"
 
@@ -181,4 +183,46 @@ TEST_CASE("a track's record delay moves its next take later by the delay's frame
     CHECK(rig.controller->project().track(model::TrackId{id})->recordDelayMs == -4.0);
     CHECK(rig.controller->project().track(model::TrackId{other})->recordDelayMs == -4.0);
     CHECK(rig.controller->project().undoName() == "set track record delay");
+}
+
+TEST_CASE("a long MIDI take's preview updates carry only the live notes, and each frozen bar is sent once") {
+    ProjectRig rig;
+    const model::TrackId id{rig.run("track.addMidi", {{"name", "Keys"}}).at("id").get<std::string>()};
+    rig.run("track.setArm", {{"track", id.value}, {"value", true}});
+    TrackListModel model{*rig.controller, rig.registry};
+    const auto preview = static_cast<int>(TrackListModel::Role::takePreview);
+    const auto frozen = static_cast<int>(TrackListModel::Role::takeFrozen);
+    qsizetype mostLiveNotes = 0;
+    int frozenUpdates = 0;
+    QObject::connect(&model, &TrackListModel::dataChanged,
+                     [&](const QModelIndex& row, const QModelIndex&, const QList<int>& roles) {
+                         if (roles.contains(preview)) {
+                             const QVariantMap entry = model.data(row, preview).toMap();
+                             CHECK_FALSE(entry.contains("frozen"));
+                             mostLiveNotes = std::max(mostLiveNotes, entry.value("notes").toList().size());
+                         }
+                         frozenUpdates += roles.contains(frozen) ? 1 : 0;
+                     });
+    rig.run("transport.record");
+    rig.clock.stop();
+    const core::TempoMap& tempo = rig.controller->project().document().tempo;
+    const core::Frames beat = tempo.ticksToFrames(tempo.ticksPerBeat(), kRate);
+    constexpr int kBars = 24;
+    for (int at = 0; at < kBars * 4; ++at) {
+        const auto pitch = static_cast<std::uint8_t>(60 + at % 12);
+        rig.midi->inject(kMidiPort, std::vector<std::uint8_t>{0x90, pitch, 100},
+                         rig.audio->hostTimeAt(rig.audio->processedFrames()));
+        rig.audio->process(beat / 2);
+        rig.midi->inject(kMidiPort, std::vector<std::uint8_t>{0x80, pitch, 0},
+                         rig.audio->hostTimeAt(rig.audio->processedFrames()));
+        rig.audio->process(beat - beat / 2);
+        processUntil([] { return false; }, 5);
+    }
+    REQUIRE(processUntil([&] { return frozenUpdates >= kBars - 4; }));
+
+    // The live chunk spans less than two bars, so it never holds more than eight notes.
+    CHECK(mostLiveNotes <= 8);
+    CHECK(frozenUpdates <= kBars);
+    rig.clock.start(1);
+    rig.run("transport.stop");
 }

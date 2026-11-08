@@ -116,7 +116,8 @@ void route(Snapshot& snapshot, const RealtimeState& state, const MidiFrom& from,
             rememberNote(track, bytes);
         }
     }
-    if (!state.taking) {
+    // Clock and active sensing carry no music, and a keyboard sends them all the time.
+    if (!state.taking || bytes[0] >= core::midi::kClock) {
         return;
     }
     const auto record = [&](TrackState& track) {

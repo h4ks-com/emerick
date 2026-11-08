@@ -53,6 +53,7 @@ public:
         automation,
         automationParams,
         takePreview,
+        takeFrozen,
     };
 
     explicit ViewerTracks(const ViewerProject& project, QObject* parent = nullptr);

@@ -7,6 +7,7 @@
 #include <set>
 #include <string>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "emerick/app/project_controller.hpp"
@@ -17,7 +18,7 @@ namespace emerick::app {
 namespace {
 
 // A take's preview freezes in chunks of this many bars, so an update only redoes the chunk the playhead is in.
-constexpr core::Ticks kChunkBars = 4;
+constexpr core::Ticks kChunkBars = 1;
 
 // We carry held notes into the next chunk as note ons at tick 0, so it keeps drawing them.
 std::vector<engine::MidiEvent> heldNotes(const std::vector<engine::MidiEvent>& events) {
@@ -80,6 +81,16 @@ void freezeChunk(engine::RecordedTake& live, model::Track& frozen, const TrackTy
     live.startTick += chunk;
 }
 
+// A held note reaches the end of the live clip and grows with it, so the preview redraws it while no event arrives.
+bool holdsNotes(const model::Track& track) {
+    return std::ranges::any_of(track.clips, [](const model::Clip& clip) {
+        const auto* midi = std::get_if<model::MidiClip>(&clip);
+        return midi != nullptr && std::ranges::any_of(midi->notes, [&](const model::Note& note) {
+                   return note.start + note.length >= midi->length;
+               });
+    });
+}
+
 }  // namespace
 
 const TakePreview* ProjectController::takePreview(const model::TrackId& id) const {
@@ -131,30 +142,42 @@ void ProjectController::updatePreview(const std::string& trackId, engine::TakePr
         return;
     }
     preview.heardMidi = preview.heardMidi || !progress.midiEvents.empty();
+    const TrackType* type = track == nullptr ? nullptr : registry_.trackType(track->kind);
+    const bool sysexOnly = type != nullptr && type->takesSysexOnly;
+    bool heard = false;
     for (engine::MidiEvent& event : progress.midiEvents) {
+        if (sysexOnly && event.bytes.front() != core::midi::kSysexStart) {
+            continue;
+        }
         event.tick -= preview.live.startTick - preview.start;
         preview.live.midiEvents.push_back(std::move(event));
+        heard = true;
     }
     const core::Ticks now = engine_.position().ticks;
     preview.length = std::max<core::Ticks>(now - preview.start, 0);
-    const TrackType* type = track == nullptr ? nullptr : registry_.trackType(track->kind);
-    std::optional<model::Track> previous = std::exchange(preview.track, std::nullopt);
-    if (type != nullptr && type->fromTake && preview.frozen && preview.heardMidi) {
-        const TakeContext context{
-            .tempo = tempo, .folder = folder_, .stopTicks = preview.start + preview.length, .sampleRate = rate};
-        const core::Ticks chunk = kChunkBars * tempo.ticksPerBar();
-        // Lane kinds such as chords decode a take with state that runs across it, so we only chunk clip kinds, whose
-        // notes stand alone. We freeze a chunk a bar after the playhead leaves it, so late events still land in it.
-        while (type->laneComponent.empty() && now >= preview.live.startTick + chunk + tempo.ticksPerBar()) {
-            freezeChunk(preview.live, *preview.frozen, *type, chunk, context);
-        }
-        model::Track shown = liveTrack(*preview.frozen);
-        if (applyTake(*type, shown, preview.live, context)) {
-            preview.track = std::move(shown);
-        }
+    if (type == nullptr || !type->fromTake || !preview.frozen || !preview.heardMidi) {
+        const bool dataChanged = std::exchange(preview.track, std::nullopt).has_value();
+        emit takePreviewChanged(QString::fromStdString(trackId), dataChanged);
+        return;
     }
-    const bool dataChanged =
-        previous.has_value() != preview.track.has_value() || (previous && previous->data != preview.track->data);
+    const TakeContext context{
+        .tempo = tempo, .folder = folder_, .stopTicks = preview.start + preview.length, .sampleRate = rate};
+    const core::Ticks chunk = kChunkBars * tempo.ticksPerBar();
+    bool froze = false;
+    // Lane kinds such as chords decode a take with state that runs across it, so we only chunk clip kinds, whose
+    // notes stand alone. We freeze a chunk a bar after the playhead leaves it, so late events still land in it.
+    while (type->laneComponent.empty() && now >= preview.live.startTick + chunk + tempo.ticksPerBar()) {
+        freezeChunk(preview.live, *preview.frozen, *type, chunk, context);
+        froze = true;
+    }
+    if (!heard && !froze && preview.track && !holdsNotes(*preview.track)) {
+        emit takePreviewChanged(QString::fromStdString(trackId), false);
+        return;
+    }
+    model::Track shown = liveTrack(*preview.frozen);
+    const bool applied = applyTake(*type, shown, preview.live, context);
+    const bool dataChanged = preview.track.has_value() != applied || (applied && preview.track->data != shown.data);
+    preview.track = applied ? std::optional{std::move(shown)} : std::nullopt;
     emit takePreviewChanged(QString::fromStdString(trackId), dataChanged);
 }
 

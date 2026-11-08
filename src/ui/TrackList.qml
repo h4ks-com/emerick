@@ -286,6 +286,7 @@ Rectangle {
             required property var automation
             required property var automationParams
             required property var takePreview
+            required property var takeFrozen
             readonly property var shownLanes: Nav.automationLanes[trackId] ?? ["gain"]
             readonly property string automationParam: shownLanes[0]
             readonly property var shownParam: automationParams.find(param => param.id === automationParam) ?? null
@@ -375,7 +376,8 @@ Rectangle {
                         objectName: "takePreview:" + row.trackId
                         visible: row.laneComponent === "" && row.takePreview.type !== undefined
                         take: visible ? row.takePreview : {type: "", start: 0, length: 0, file: "", frames: 0, notes: [],
-                                                          frozen: [], liveFrom: 0, lowKey: -1, highKey: -1}
+                                                          liveFrom: 0, lowKey: -1, highKey: -1}
+                        frozen: visible ? row.takeFrozen : []
                         title: row.name + "   Take " + (row.clips.length + 1)
                         pixelsPerTick: area.pixelsPerTick
                         viewFrom: area.scrollTicks

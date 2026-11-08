@@ -182,3 +182,28 @@ TEST_CASE("recording a track that takes a device's MIDI records what the device 
     CHECK(takes[0].trackId == "recorded");
     CHECK(takes[0].midiEvents == std::vector<MidiEvent>{{0, kSysex}, {480, {0x90, 60, 100}}, {720, {0x80, 60, 0}}});
 }
+
+TEST_CASE("a take leaves out the clock and active sensing a keyboard sends") {
+    Rig rig;
+    Track recorded{.id = "recorded", .kind = TrackKind::midi, .armed = true};
+    recorded.midiIn = {kPort1, 0};
+    rig.engine.setSession({.tempo = kTempo, .tracks = {recorded}});
+    rig.engine.setRecording(true);
+    rig.engine.play();
+    rig.audio.process(kBlock);
+    for (const Bytes& bytes : {Bytes{0xF8}, Bytes{0xFE}, Bytes{0x90, 60, 100}, Bytes{0xF8}}) {
+        rig.midi.inject(kPort1, bytes, rig.audio.hostTimeAt(rig.audio.processedFrames()));
+        rig.audio.process(kBlock);
+    }
+    rig.engine.stop();
+    rig.audio.process(kBlock);
+    std::vector<RecordedTake> takes;
+    REQUIRE(waitFor([&] {
+        takes = rig.engine.takeRecordings();
+        return !takes.empty();
+    }));
+
+    REQUIRE(takes.size() == 1);
+    REQUIRE(takes[0].midiEvents.size() == 1);
+    CHECK(takes[0].midiEvents[0].bytes == Bytes{0x90, 60, 100});
+}

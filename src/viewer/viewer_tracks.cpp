@@ -247,6 +247,8 @@ QVariant ViewerTracks::data(const QModelIndex& index, int role) const {
             return QVariantMap{};
         case Role::takePreview:
             return QVariantMap{};
+        case Role::takeFrozen:
+            return QVariantList{};
         case Role::laneComponent:
             return yamaha::drawsBlocks(track.kind) || playingStyle(document, track) != nullptr
                        ? QStringLiteral("qrc:/qt/qml/Emerick/Viewer/BlockRow.qml")
@@ -267,7 +269,7 @@ QVariant ViewerTracks::data(const QModelIndex& index, int role) const {
 }
 
 QHash<int, QByteArray> ViewerTracks::roleNames() const {
-    static constexpr std::array<std::pair<Role, const char*>, 33> kNames{{{Role::id, "trackId"},
+    static constexpr std::array<std::pair<Role, const char*>, 34> kNames{{{Role::id, "trackId"},
                                                                           {Role::name, "name"},
                                                                           {Role::icon, "icon"},
                                                                           {Role::colorIndex, "colorIndex"},
@@ -299,7 +301,8 @@ QHash<int, QByteArray> ViewerTracks::roleNames() const {
                                                                           {Role::automationMode, "automationMode"},
                                                                           {Role::automation, "automation"},
                                                                           {Role::automationParams, "automationParams"},
-                                                                          {Role::takePreview, "takePreview"}}};
+                                                                          {Role::takePreview, "takePreview"},
+                                                                          {Role::takeFrozen, "takeFrozen"}}};
     QHash<int, QByteArray> names;
     for (const auto& [role, name] : kNames) {
         names.insert(static_cast<int>(role), name);

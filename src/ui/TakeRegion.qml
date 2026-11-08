@@ -6,6 +6,7 @@ Item {
     id: region
 
     required property var take
+    required property var frozen
     required property string title
     property real pixelsPerTick
     property real viewFrom
@@ -60,10 +61,10 @@ Item {
             // Each frozen segment draws once into its own texture, and only the live chunk repaints as notes arrive.
             // We count the segments rather than list them, so a new segment keeps the items of the others.
             Repeater {
-                model: region.take.frozen.length
+                model: region.frozen.length
                 delegate: ClipNotes {
                     required property int index
-                    readonly property var segment: region.take.frozen[index] ?? {start: 0, length: 0, notes: []}
+                    readonly property var segment: region.frozen[index] ?? {start: 0, length: 0, notes: []}
                     objectName: "takeFrozenNotes:" + index
                     x: segment.start * region.pixelsPerTick
                     width: segment.length * region.pixelsPerTick

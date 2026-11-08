@@ -326,6 +326,7 @@ void registerTrackKinds(app::Registry& registry, const app::ProjectController& c
                  Chart chart = chartFromTake(rawEvents(take), context.tempo, chartOptions(registry));
                  mergeTake(track, std::move(chart.chords), take.startTick, context.stopTicks);
              },
+         .takesSysexOnly = true,
          .markers =
              [](const model::Track& track) {
                  return playableEvents<ChordEvent>(track) | std::views::transform([](const ChordEvent& event) {
@@ -365,6 +366,7 @@ void registerTrackKinds(app::Registry& registry, const app::ProjectController& c
                  Chart chart = chartFromTake(rawEvents(take), context.tempo, chartOptions(registry));
                  mergeTake(track, std::move(chart.sections), take.startTick, context.stopTicks);
              },
+         .takesSysexOnly = true,
          .markers =
              [](const model::Track& track) {
                  return playableEvents<SectionEvent>(track) | std::views::transform([](const SectionEvent& event) {

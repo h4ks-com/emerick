@@ -94,6 +94,10 @@ void stopRunawayScript(lua_State* state, lua_Debug* /*debug*/) {
         } else if (budget.timeout && std::chrono::steady_clock::now() > budget.deadline) {
             budget.stopped = std::format("script ran longer than {} ms", budget.timeout->count());
         } else {
+            // A coroutine a stopped run reached keeps the every-instruction hook, so we give it the usual count back.
+            if (lua_gethookcount(state) == 1) {
+                lua_sethook(state, stopRunawayScript, LUA_MASKCOUNT, kHookInstructions);
+            }
             return;
         }
         lua_sethook(mainThread(state), stopRunawayScript, LUA_MASKCOUNT, 1);

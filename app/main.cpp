@@ -51,6 +51,7 @@
 #include "emerick/app/track_list_model.hpp"
 #include "emerick/app/ui_api.hpp"
 #include "emerick/app/view_engine.hpp"
+#include "emerick/broadcast/plugin.hpp"
 #include "emerick/engine/plugin.hpp"
 #include "emerick/yamaha/plugin.hpp"
 
@@ -242,6 +243,7 @@ int run(int argc, char** argv) {
     registerPluginActions(registry, nav, plugins);
     registerInstrumentActions(registry, controller, nav, plugins, libraryFolder(profileFolder));
     const auto yamaha = emerick::yamaha::registerWith(registry, controller, nav);
+    const auto broadcasts = emerick::broadcast::registerWith(registry, controller, nav);
     const auto monitors = registerMonitors(registry, controller, nav);
     const auto libraries = registerLibraries(registry, nav, libraryFolder(profileFolder));
     registerCreditActions(registry, controller, *libraries);

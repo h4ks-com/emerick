@@ -17,6 +17,7 @@
 #include "emerick/app/plugin_actions.hpp"
 #include "emerick/app/script_library.hpp"
 #include "emerick/app/ui_api.hpp"
+#include "emerick/broadcast/plugin.hpp"
 #include "emerick/yamaha/plugin.hpp"
 #include "project_rig.hpp"
 
@@ -85,6 +86,7 @@ void withEveryAction(const std::function<void(const Registry&)>& check) {
     registerPluginActions(rig.registry, rig.nav, plugins);
     registerInstrumentActions(rig.registry, *rig.controller, rig.nav, plugins);
     const auto yamaha = emerick::yamaha::registerWith(rig.registry, *rig.controller, rig.nav);
+    const auto broadcasts = emerick::broadcast::registerWith(rig.registry, *rig.controller, rig.nav);
     const auto monitors = registerMonitors(rig.registry, *rig.controller, rig.nav);
     const auto libraries = registerLibraries(rig.registry, rig.nav, rig.path("libraries"));
     check(rig.registry);

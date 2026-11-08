@@ -25,11 +25,11 @@ add_custom_target(emerick_bundled_plugins ALL
         ${PROJECT_SOURCE_DIR}/LICENSE ${notices_folder})
 add_dependencies(emerick_bundled_plugins emerick)
 target_link_libraries(emerick PRIVATE Qt6::Gui Qt6::Qml Qt6::Quick emerick_app emerick_uiplugin emerick_yamaha_plugin
-    emerick_yamaha_pluginplugin)
+    emerick_yamaha_pluginplugin emerick_broadcast_plugin emerick_broadcast_pluginplugin)
 
 if(EMERICK_BUILD_TESTS)
     emerick_test(emerick_reachability_tests tests/action_reachability_test.cpp)
     target_include_directories(emerick_reachability_tests PRIVATE ${PROJECT_SOURCE_DIR}/src/app/tests)
-    target_link_libraries(emerick_reachability_tests PRIVATE emerick_yamaha_plugin)
+    target_link_libraries(emerick_reachability_tests PRIVATE emerick_yamaha_plugin emerick_broadcast_plugin)
     target_compile_definitions(emerick_reachability_tests PRIVATE EMERICK_SOURCE_DIR="${PROJECT_SOURCE_DIR}")
 endif()

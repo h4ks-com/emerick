@@ -793,6 +793,13 @@ std::optional<Json> Registry::runFromUi(const std::string& id, const Json& param
             emit noticeRaised(qs(found->title), text, issues);
         }
     };
+    // A gesture runs its calls every frame, so we tell the user about its first failure only.
+    const auto fail = [&](const char* text) {
+        qWarning() << text;
+        if (!gesturing_ || !std::exchange(gestureFailed_, true)) {
+            emit noticeRaised(found != nullptr ? qs(found->title) : qs(id), qs(text), {});
+        }
+    };
     const WaitCursor waitCursor{!gesturing_};
     try {
         Json result = run(id, params, ActionSource::Ui);
@@ -801,11 +808,9 @@ std::optional<Json> Registry::runFromUi(const std::string& id, const Json& param
                issues != result.end() && issues->is_array() ? toVariant(*issues).toList() : QVariantList{});
         return result;
     } catch (const AppError& error) {
-        qWarning() << error.what();
-        notify(qs(error.what()));
+        fail(error.what());
     } catch (const Json::exception& error) {
-        qWarning() << error.what();
-        notify(qs(error.what()));
+        fail(error.what());
     }
     return std::nullopt;
 }
@@ -883,6 +888,7 @@ void Registry::cancelGesture() {
 
 void Registry::setGesturing(bool value) {
     if (std::exchange(gesturing_, value) != value) {
+        gestureFailed_ = false;
         emit gesturingChanged();
     }
 }
@@ -917,6 +923,8 @@ bool Registry::setSettingValue(const QString& id, const QVariant& value) {
         return true;
     } catch (const AppError& error) {
         qWarning() << error.what();
+        const Setting* found = setting(id.toStdString());
+        emit noticeRaised(found != nullptr ? qs(found->title) : id, qs(error.what()), {});
         return false;
     }
 }

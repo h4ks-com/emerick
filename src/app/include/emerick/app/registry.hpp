@@ -447,6 +447,7 @@ private:
     bool gesturePending_ = false;
     bool gestureCancelled_ = false;
     bool gesturing_ = false;
+    mutable bool gestureFailed_ = false;
     QTimer gestureFrame_;
 };
 

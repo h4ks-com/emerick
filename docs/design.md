@@ -89,3 +89,4 @@ A level meter shows a track's post-fader, post-pan output, or its input while th
 - Every control has a name an agent and Cmd+K can find. No unlabeled icon buttons; icons carry a tooltip that equals their action title.
 - Motion only answers the user: a panel slides open, a clip snaps. No ambient animation.
 - Copy is plain and imperative: "Record", "Add audio track", "Export stems". Empty states name the action that fills them.
+- An action the user runs that fails shows its error in the notice dialog; a drag shows its first error only.

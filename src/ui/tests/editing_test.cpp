@@ -451,3 +451,16 @@ TEST_CASE("a long marker list leaves most of a short inspector to the track sett
     main.rig.nav.setMarkerListOpen(false);
     MainWindow::settle();
 }
+
+TEST_CASE("an action the UI runs that fails shows its error in the notice dialog") {
+    MainWindow& main = MainWindow::instance();
+    const std::string keys = main.rig.run("track.addMidi").at("id");
+    const std::string bus = main.rig.run("track.addBus").at("id");
+    main.rig.registry.runAction("send.add", {{"track", qid(keys)}, {"bus", qid(bus)}});
+    QObject* notice = main.menu("dialog.notice");
+    CHECK(processUntil([&] { return notice->property("visible").toBool(); }));
+    CHECK(notice->property("title").toString() == "Add send");
+    CHECK(notice->property("text").toString().contains("audio"));
+    QMetaObject::invokeMethod(notice, "close");
+    MainWindow::settle();
+}

@@ -192,6 +192,56 @@ TEST_CASE("an added lane draws its line in its own row below the track, and its 
     MainWindow::settle();
 }
 
+TEST_CASE("in Read the mixer fader and the header gain set the gain and add no lane, and in Touch both write one") {
+    MainWindow& main = MainWindow::instance();
+    main.rig.nav.setAutomationOpen(false);
+    const std::string track = onlyTrack(main);
+    main.rig.nav.setTrackHeight(kMaxTrackHeight);
+    main.rig.nav.setMixerOpen(true);
+    MainWindow::settle();
+    const auto& edited = *main.rig.controller->project().track(model::TrackId{track});
+    const auto handleOf = [&](const char* view) {
+        QQuickItem* found = nullptr;
+        processUntil([&] {
+            found = MainWindow::find(main.item(view), "track.setGain:" + qid(track));
+            return found != nullptr;
+        });
+        REQUIRE(found != nullptr);
+        return found->property("handle").value<QQuickItem*>();
+    };
+    const auto dragBoth = [&] {
+        double gain = edited.gainDb;
+        main.drag(handleOf("mixer"), {0, -30});
+        CHECK(edited.gainDb != gain);
+        gain = edited.gainDb;
+        main.drag(handleOf("tracks"), {-30, 0});
+        CHECK(edited.gainDb != gain);
+    };
+
+    for (const bool playing : {false, true}) {
+        if (playing) {
+            main.rig.run("transport.play");
+        }
+        dragBoth();
+        CHECK(edited.automation.empty());
+        CHECK_FALSE(main.rig.nav.automationOpen());
+        CHECK_FALSE(main.rig.nav.automationLanes().contains(qid(track)));
+    }
+
+    main.rig.run("automation.setMode", {{"track", track}, {"mode", "touch"}});
+    MainWindow::settle();
+    main.drag(handleOf("mixer"), {0, -30});
+    CHECK(model::findLane(edited, "gain") != nullptr);
+    main.rig.run("automation.clearLane", {{"track", track}, {"param", "gain"}});
+    const double gain = edited.gainDb;
+    main.drag(handleOf("tracks"), {-30, 0});
+    CHECK(model::findLane(edited, "gain") != nullptr);
+    CHECK(edited.gainDb == gain);
+    main.rig.run("transport.stop");
+    main.rig.nav.setMixerOpen(false);
+    MainWindow::settle();
+}
+
 TEST_CASE("dragging a track header lands on the row under the pointer below a track with lanes open") {
     Lanes lanes;
     const std::string second = lanes.main.rig.run("track.addAudio").at("id");

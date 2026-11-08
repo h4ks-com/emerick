@@ -195,7 +195,8 @@ void registerPianoRollActions(Registry& registry, ProjectController& controller,
                         .category = "MIDI",
                         .appliesTo =
                             [&controller, &nav](const Json& params) {
-                                return params.contains("clip") || firstSelectedMidiClip(controller, nav).has_value();
+                                return params.contains("clip") ? targetClipsAre(controller, nav, params, ClipType::midi)
+                                                               : firstSelectedMidiClip(controller, nav).has_value();
                             },
                         .schema = {{"properties", {{"clip", {{"type", "string"}}}}}},
                         .run =

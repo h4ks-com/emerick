@@ -263,8 +263,9 @@ Rectangle {
         ScrollBar.vertical: ScrollBar {}
         footer: Item {
             objectName: "tracks.addRow"
+            visible: !Registry.readOnly
             width: ListView.view.width
-            height: Math.round(Nav.trackHeight * Theme.addRowScale)
+            height: visible ? Math.round(Nav.trackHeight * Theme.addRowScale) : 0
             Rectangle {
                 width: area.headerWidth
                 height: parent.height

@@ -294,7 +294,6 @@ void registerInstrumentActions(Registry& registry, ProjectController& controller
                         "the file's path.",
          .aliases = {"open sfz", "load sfz", "sampler file", "load sound library"},
          .category = "Tracks",
-         .appliesTo = onMidiTrack,
          .schema = {{"properties",
                      {{"track", {{"type", "string"}}},
                       {"path", {{"type", "string"}, {"description", "an .sfz file"}}},

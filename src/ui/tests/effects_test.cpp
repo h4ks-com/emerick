@@ -187,6 +187,12 @@ TEST_CASE(
 
     main.click(eqTitle);
     CHECK(processUntil([&] { return main.rig.nav.editingInserts().back() == qid(eq); }));
+    int ran = 0;
+    const QMetaObject::Connection counting = QObject::connect(&main.rig.registry, &Registry::actionRan, [&] { ++ran; });
+    main.click(eqTitle);
+    MainWindow::settle();
+    QObject::disconnect(counting);
+    CHECK(ran == 0);
     QTest::keyClick(main.window, Qt::Key_Escape);
     CHECK(processUntil([&] { return main.rig.nav.editingInserts() == QStringList{qid(comp)}; }));
 

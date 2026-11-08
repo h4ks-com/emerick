@@ -172,7 +172,8 @@ Popup {
             PointHandler {
                 acceptedButtons: Qt.LeftButton | Qt.RightButton
                 onActiveChanged: if (active) {
-                    Registry.runAction("insert.edit", {insert: editor.insertId})
+                    if (Nav.editingInserts[Nav.editingInserts.length - 1] !== editor.insertId)
+                        Registry.runAction("insert.edit", {insert: editor.insertId})
                     editor.forceActiveFocus()
                 }
             }

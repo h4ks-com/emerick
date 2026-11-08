@@ -510,14 +510,23 @@ ApplicationWindow {
             objectName: "about"
             spacing: Theme.space2
             Label {
-                text: "Emerick " + Qt.application.version
+                text: "Emerick"
                 color: Theme.ink
                 font.pixelSize: Theme.textTitle
+            }
+            Label {
+                objectName: "about.version"
+                text: "Version " + Qt.application.version
+                color: Theme.ink
+                font.pixelSize: Theme.textLabel
             }
             Label {
                 text: "A small DAW for recording instruments. GPL-3.0-or-later."
                 color: Theme.inkDim
                 font.pixelSize: Theme.textLabel
+            }
+            ChromeButton {
+                objectName: "app.openRepository"
             }
         }
     }

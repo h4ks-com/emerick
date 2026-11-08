@@ -1,7 +1,9 @@
 #include "emerick/app/core_actions.hpp"
 
 #include <QCoreApplication>
+#include <QDesktopServices>
 #include <QTimer>
+#include <QUrl>
 #include <algorithm>
 #include <array>
 #include <memory>
@@ -222,6 +224,16 @@ void registerCoreActions(Registry& registry, Nav& nav, const Backends& backends)
                                 return Json{{"name", "Emerick"}, {"version", appVersion()}};
                             },
                         .menus = {kHelpMenu}});
+    registry.addAction({.id = "app.openRepository",
+                        .title = "Open Emerick on GitHub",
+                        .aliases = {"source code", "website", "report a bug"},
+                        .category = "General",
+                        .run =
+                            [](const Json&) {
+                                QDesktopServices::openUrl(QUrl("https://github.com/h4ks-com/emerick"));
+                                return Json::object();
+                            },
+                        .windowOnly = true});
     registry.addAction({.id = "app.quit",
                         .title = "Quit Emerick",
                         .aliases = {"exit", "close app"},

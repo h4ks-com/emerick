@@ -1,10 +1,12 @@
 #include "emerick/app/qml_exposure.hpp"
 
+#include <QCoreApplication>
 #include <memory>
 
 #include "emerick/app/clip_notes.hpp"
 #include "emerick/app/code_highlighter.hpp"
 #include "emerick/app/control_curve.hpp"
+#include "emerick/app/core_actions.hpp"
 #include "emerick/app/effect_catalog.hpp"
 #include "emerick/app/enums.hpp"
 #include "emerick/app/spectrogram_view.hpp"
@@ -17,6 +19,7 @@ namespace emerick::app {
 
 void exposeToQml(QQmlEngine& engine, Registry& registry, Nav& nav, ProjectController& controller,
                  TrackListModel& tracks, PeakCache& peaks, Console* console, Monitors* monitors, Libraries* libraries) {
+    QCoreApplication::setApplicationVersion(appVersion());
     qmlRegisterUncreatableMetaObject(emerick::app::staticMetaObject, "Emerick.App", 1, 0, "App",
                                      "App only holds enums");
     qmlRegisterSingletonInstance("Emerick.App", 1, 0, "Registry", &registry);

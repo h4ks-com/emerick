@@ -63,6 +63,18 @@ TEST_CASE("Escape closes the project health panel and the About panel") {
     MainWindow::settle();
 }
 
+TEST_CASE("the About panel shows the version that state.get reports and a link to the repository") {
+    MainWindow& main = MainWindow::instance();
+    main.rig.run("app.about");
+    REQUIRE(processUntil([&] { return main.item("about")->isVisible(); }));
+    const auto version = main.rig.registry.state("app").at("version").get<std::string>();
+    CHECK(main.item("about.version")->property("text").toString() == QString::fromStdString("Version " + version));
+    CHECK(main.item("app.openRepository")->property("text").toString() == "Open Emerick on GitHub");
+    QTest::keyClick(main.window, Qt::Key_Escape);
+    CHECK(processUntil([&] { return !main.rig.nav.aboutOpen(); }));
+    MainWindow::settle();
+}
+
 TEST_CASE("the File menu's shortcut saves the project and the title drops the edited dot") {
     MainWindow& main = MainWindow::instance();
     main.rig.run("track.addMidi");

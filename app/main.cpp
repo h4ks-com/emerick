@@ -154,7 +154,6 @@ int run(int argc, char** argv) {
     QGuiApplication application(argc, argv);
     QGuiApplication::setApplicationName("Emerick");
     QGuiApplication::setOrganizationName("Emerick");
-    QGuiApplication::setApplicationVersion(appVersion());
     QGuiApplication::setWindowIcon(QIcon(":/icons/emerick.png"));
 
     QCommandLineParser parser;

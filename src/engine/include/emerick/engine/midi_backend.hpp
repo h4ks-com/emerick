@@ -20,6 +20,8 @@ struct MidiPortInfo {
     bool operator==(const MidiPortInfo&) const = default;
 };
 
+std::string missingMidiPort(std::string_view portId, bool input);
+
 // Timestamps are steady clock nanoseconds, the clock AudioBlock::hostTimeNs uses.
 using MidiReceive = std::function<void(std::span<const std::uint8_t> bytes, std::int64_t timestampNs)>;
 
@@ -89,6 +91,10 @@ public:
     [[nodiscard]] std::vector<MidiPortInfo> ports() override;
     std::unique_ptr<MidiInput> openInput(const std::string& portId, MidiReceive receive) override;
     std::unique_ptr<MidiOutput> openOutput(const std::string& portId) override;
+
+    // Opened ports stay open, as a CoreMIDI port does when its device goes away.
+    void unplugInput(std::string_view portId);
+    void unplugOutput(std::string_view portId);
 
     void inject(std::string_view portId, std::span<const std::uint8_t> bytes, std::int64_t timestampNs);
     [[nodiscard]] std::vector<SentMidi> sent(std::string_view portId) const;

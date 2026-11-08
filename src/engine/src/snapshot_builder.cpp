@@ -312,7 +312,9 @@ BuiltSnapshot SnapshotBuilder::build(const Session& session, const StreamLayout&
     snapshot.panLaw = session.panLaw;
     snapshot.sendStart = session.sendStart;
     for (const std::string& id : session.clockPorts) {
-        snapshot.clockPorts.push_back(outputPort(id));
+        if (auto port = outputPort(id)) {
+            snapshot.clockPorts.push_back(std::move(port));
+        }
     }
     for (const Track& track : session.tracks) {
         TrackState state;
@@ -339,12 +341,17 @@ BuiltSnapshot SnapshotBuilder::build(const Session& session, const StreamLayout&
         state.claimsSysex = track.claimsSysex;
         if (!track.midiIn.portId.empty()) {
             state.midiIn = inputPort(track.midiIn.portId);
-            if (std::ranges::find(snapshot.inputs, state.midiIn) == snapshot.inputs.end()) {
+            if (!state.midiIn) {
+                built.errors.push_back({track.id, missingMidiPort(track.midiIn.portId, true)});
+            } else if (std::ranges::find(snapshot.inputs, state.midiIn) == snapshot.inputs.end()) {
                 snapshot.inputs.push_back(state.midiIn);
             }
         }
         if (!track.midiOut.portId.empty()) {
             state.midiOut = outputPort(track.midiOut.portId);
+            if (!state.midiOut) {
+                built.errors.push_back({track.id, missingMidiPort(track.midiOut.portId, false)});
+            }
         }
         if (const std::size_t channels = mixChannels(track, state); channels > 0) {
             state.outputMeter = meter(outputMeters_, track.id, channels);
@@ -467,6 +474,9 @@ void SnapshotBuilder::addMetronome(Snapshot& snapshot, const Session& session, c
     const bool midi = settings.mode == MetronomeMode::midiClick || settings.mode == MetronomeMode::midiGroove;
     if (midi && !settings.midiOut.portId.empty()) {
         metronome.midiOut = outputPort(settings.midiOut.portId);
+        if (!metronome.midiOut) {
+            errors.push_back({kMetronomeId, missingMidiPort(settings.midiOut.portId, false)});
+        }
     }
     metronome.sounds = drumSounds(settings, layout.sampleRate, errors);
 }
@@ -616,16 +626,29 @@ void SnapshotBuilder::addRecorder(TrackState& state, const Track& track, const S
     });
 }
 
+// A port can vanish between the app's device list and this open, so we skip it and the track plays unrouted.
 std::shared_ptr<MidiInputPort> SnapshotBuilder::inputPort(const std::string& id) {
-    return cached(inputs_, id, [&] { return std::make_shared<MidiInputPort>(midi_, id); });
+    try {
+        return cached(inputs_, id, [&] { return std::make_shared<MidiInputPort>(midi_, id); });
+    } catch (const std::invalid_argument&) {
+        return nullptr;
+    } catch (const std::runtime_error&) {
+        return nullptr;
+    }
 }
 
 std::shared_ptr<MidiOutputPort> SnapshotBuilder::outputPort(const std::string& id) {
-    return cached(outputs_, id, [&] {
-        auto port = std::make_shared<MidiOutputPort>(midi_, id);
-        sender_.add(port);
-        return port;
-    });
+    try {
+        return cached(outputs_, id, [&] {
+            auto port = std::make_shared<MidiOutputPort>(midi_, id);
+            sender_.add(port);
+            return port;
+        });
+    } catch (const std::invalid_argument&) {
+        return nullptr;
+    } catch (const std::runtime_error&) {
+        return nullptr;
+    }
 }
 
 void SnapshotBuilder::prune() {

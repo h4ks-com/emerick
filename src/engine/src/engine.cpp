@@ -402,7 +402,15 @@ struct Engine::Impl {
         if (layout.maxFrames > closedFrames) {
             old = {};
         }
-        publishSnapshot(next);
+        try {
+            publishSnapshot(next);
+        } catch (const std::invalid_argument&) {
+            closeStream();
+            throw;
+        } catch (const std::runtime_error&) {
+            closeStream();
+            throw;
+        }
     }
 
     // The stream stays closed, so the idle block keeps applying commands to the snapshots we took away.

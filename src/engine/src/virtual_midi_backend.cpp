@@ -42,6 +42,7 @@ VirtualMidiBackend::VirtualMidiBackend(std::vector<std::string> inputs, std::vec
     : inputs_(std::move(inputs)), outputs_(std::move(outputs)) {}
 
 std::vector<MidiPortInfo> VirtualMidiBackend::ports() {
+    const std::scoped_lock lock(mutex_);
     std::vector<MidiPortInfo> result;
     result.reserve(inputs_.size() + outputs_.size());
     for (const std::string& name : inputs_) {
@@ -54,18 +55,37 @@ std::vector<MidiPortInfo> VirtualMidiBackend::ports() {
 }
 
 std::unique_ptr<MidiInput> VirtualMidiBackend::openInput(const std::string& portId, MidiReceive receive) {
+    const std::scoped_lock lock(mutex_);
     if (std::ranges::find(inputs_, portId) == inputs_.end()) {
+        portListChanged();
         throw std::invalid_argument("unknown MIDI input " + portId);
     }
-    const std::scoped_lock lock(mutex_);
     return std::make_unique<Input>(*this, receivers_.emplace(portId, std::move(receive)));
 }
 
 std::unique_ptr<MidiOutput> VirtualMidiBackend::openOutput(const std::string& portId) {
+    const std::scoped_lock lock(mutex_);
     if (std::ranges::find(outputs_, portId) == outputs_.end()) {
+        portListChanged();
         throw std::invalid_argument("unknown MIDI output " + portId);
     }
     return std::make_unique<Output>(*this, portId);
+}
+
+void VirtualMidiBackend::unplugInput(std::string_view portId) {
+    {
+        const std::scoped_lock lock(mutex_);
+        std::erase(inputs_, portId);
+    }
+    portListChanged();
+}
+
+void VirtualMidiBackend::unplugOutput(std::string_view portId) {
+    {
+        const std::scoped_lock lock(mutex_);
+        std::erase(outputs_, portId);
+    }
+    portListChanged();
 }
 
 void VirtualMidiBackend::inject(std::string_view portId, std::span<const std::uint8_t> bytes,

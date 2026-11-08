@@ -5,6 +5,8 @@
 #include <cstdlib>
 #include <new>
 #include <ranges>
+#include <stdexcept>
+#include <string>
 #include <vector>
 
 #include "emerick/engine/plugin.hpp"
@@ -181,6 +183,45 @@ TEST_CASE("recording a track that takes a device's MIDI records what the device 
     REQUIRE(takes.size() == 1);
     CHECK(takes[0].trackId == "recorded");
     CHECK(takes[0].midiEvents == std::vector<MidiEvent>{{0, kSysex}, {480, {0x90, 60, 100}}, {720, {0x80, 60, 0}}});
+}
+
+TEST_CASE(
+    "a MIDI port that vanished before the snapshot opened it leaves its tracks unrouted and the transport moving") {
+    Rig rig;
+    rig.midi.unplugInput(kPort1);
+    rig.midi.unplugOutput(kPort1);
+    rig.engine.refreshDevices();
+    const std::vector<Track> tracks = std::views::iota(0, 18) | std::views::transform([](int index) {
+                                          Track track{.id = "keys" + std::to_string(index), .kind = TrackKind::midi};
+                                          track.midiIn = {.portId = kPort1, .channel = index % 16};
+                                          track.midiOut = {.portId = kPort1, .channel = index % 16};
+                                          return track;
+                                      }) |
+                                      std::ranges::to<std::vector>();
+
+    rig.engine.setSession({.tempo = kTempo, .tracks = tracks, .clockPorts = {kPort1}});
+    rig.engine.play();
+    rig.audio.process(kBeatFrames);
+
+    CHECK(rig.engine.streamOpen());
+    CHECK(rig.engine.position().frames >= kBeatFrames);
+    CHECK(rig.engine.sessionErrors().size() == 36);
+    CHECK(rig.engine.sessionErrors().front().message ==
+          "the MIDI input " + kPort1 + " is missing, so the track plays as if routed to none until it returns");
+    CHECK(rig.engine.devicesChanged());
+}
+
+TEST_CASE("a snapshot that fails to build as the stream opens leaves the stream closed") {
+    Rig rig;
+    Track vox{.id = "vox"};
+    vox.audioOut = {"keyboard", {1, 2}};
+    rig.engine.setSession({.tempo = kTempo, .tracks = {vox}});
+    rig.engine.play();
+    REQUIRE(rig.engine.streamOpen());
+
+    vox.audioOut = {"interface", {7, 8}};
+    CHECK_THROWS_AS(rig.engine.setSession({.tempo = kTempo, .tracks = {vox}}), std::invalid_argument);
+    CHECK_FALSE(rig.engine.streamOpen());
 }
 
 TEST_CASE("a take leaves out the clock and active sensing a keyboard sends") {

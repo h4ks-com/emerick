@@ -10,6 +10,7 @@
 #include <chrono>
 #include <filesystem>
 #include <memory>
+#include <stdexcept>
 #include <string>
 #include <thread>
 #include <vector>
@@ -71,11 +72,31 @@ public:
         return virtual_->ports();
     }
     std::unique_ptr<engine::MidiInput> openInput(const std::string& portId, engine::MidiReceive receive) override {
-        return virtual_->openInput(portId, std::move(receive));
+        try {
+            return virtual_->openInput(portId, std::move(receive));
+        } catch (const std::invalid_argument&) {
+            portListChanged();
+            throw;
+        }
     }
     std::unique_ptr<engine::MidiOutput> openOutput(const std::string& portId) override {
-        return virtual_->openOutput(portId);
+        try {
+            return virtual_->openOutput(portId);
+        } catch (const std::invalid_argument&) {
+            portListChanged();
+            throw;
+        }
     }
+
+    // Without notify the port vanishes the way an unplug libremidi never reported does.
+    void unplug(const std::string& portId, bool notify) {
+        virtual_->unplugInput(portId);
+        virtual_->unplugOutput(portId);
+        if (notify) {
+            portListChanged();
+        }
+    }
+    void unplugInput(const std::string& portId) { virtual_->unplugInput(portId); }
 
     int listings = 0;
 

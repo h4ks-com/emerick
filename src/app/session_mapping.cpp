@@ -230,8 +230,7 @@ std::vector<engine::SessionError> dropUnusableDevices(engine::Session& session,
         if (route.portId.empty() || plugged(route.portId, input)) {
             return;
         }
-        errors.push_back({owner, std::string{"the MIDI "} + (input ? "input " : "output ") + route.portId +
-                                     " is missing, so the track plays as if routed to none until it returns"});
+        errors.push_back({owner, engine::missingMidiPort(route.portId, input)});
         route.portId.clear();
     };
     std::erase_if(session.clockPorts, [&](const std::string& port) { return !plugged(port, false); });

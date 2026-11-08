@@ -10,6 +10,11 @@ constexpr std::size_t kMidiRingBytes = std::size_t{1} << 18;
 
 }  // namespace
 
+std::string missingMidiPort(std::string_view portId, bool input) {
+    return std::string{"the MIDI "} + (input ? "input " : "output ") + std::string{portId} +
+           " is missing, so the track plays as if routed to none until it returns";
+}
+
 MidiInputPort::MidiInputPort(MidiBackend& backend, const std::string& portId)
     : ring(kMidiRingBytes),
       input(backend.openInput(portId, [this](std::span<const std::uint8_t> bytes, std::int64_t timestampNs) {

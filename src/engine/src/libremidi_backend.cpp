@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <libremidi/libremidi.hpp>
+#include <optional>
 #include <stdexcept>
 
 #include "emerick/engine/midi_backend.hpp"
@@ -12,12 +13,9 @@ namespace emerick::engine {
 namespace {
 
 template <class Port>
-Port findPort(const std::vector<Port>& ports, const std::string& portId) {
+std::optional<Port> findPort(const std::vector<Port>& ports, const std::string& portId) {
     const auto found = std::ranges::find(ports, portId, &Port::display_name);
-    if (found == ports.end()) {
-        throw std::invalid_argument("unknown MIDI port " + portId);
-    }
-    return *found;
+    return found == ports.end() ? std::nullopt : std::optional{*found};
 }
 
 class LibremidiInput final : public MidiInput {
@@ -59,15 +57,22 @@ private:
 
 struct LibremidiBackend::Impl {
     libremidi::observer observer;
+    // We watch removals of every kind of port, because a removed CoreMIDI endpoint no longer reads as hardware.
+    libremidi::observer removals;
 };
 
 LibremidiBackend::LibremidiBackend()
     : impl_(std::make_unique<Impl>(libremidi::observer{libremidi::observer_configuration{
-          .input_added = [this](const libremidi::input_port&) { portListChanged(); },
-          .input_removed = [this](const libremidi::input_port&) { portListChanged(); },
-          .output_added = [this](const libremidi::output_port&) { portListChanged(); },
-          .output_removed = [this](const libremidi::output_port&) { portListChanged(); },
-          .notify_in_constructor = 0U}})) {}
+                                       .input_added = [this](const libremidi::input_port&) { portListChanged(); },
+                                       .input_removed = [this](const libremidi::input_port&) { portListChanged(); },
+                                       .output_added = [this](const libremidi::output_port&) { portListChanged(); },
+                                       .output_removed = [this](const libremidi::output_port&) { portListChanged(); },
+                                       .notify_in_constructor = 0U}},
+                                   libremidi::observer{libremidi::observer_configuration{
+                                       .input_removed = [this](const libremidi::input_port&) { portListChanged(); },
+                                       .output_removed = [this](const libremidi::output_port&) { portListChanged(); },
+                                       .track_any = 1U,
+                                       .notify_in_constructor = 0U}})) {}
 
 LibremidiBackend::~LibremidiBackend() = default;
 
@@ -83,11 +88,21 @@ std::vector<MidiPortInfo> LibremidiBackend::ports() {
 }
 
 std::unique_ptr<MidiInput> LibremidiBackend::openInput(const std::string& portId, MidiReceive receive) {
-    return std::make_unique<LibremidiInput>(findPort(impl_->observer.get_input_ports(), portId), std::move(receive));
+    const auto port = findPort(impl_->observer.get_input_ports(), portId);
+    if (!port) {
+        portListChanged();
+        throw std::invalid_argument("unknown MIDI port " + portId);
+    }
+    return std::make_unique<LibremidiInput>(*port, std::move(receive));
 }
 
 std::unique_ptr<MidiOutput> LibremidiBackend::openOutput(const std::string& portId) {
-    return std::make_unique<LibremidiOutput>(findPort(impl_->observer.get_output_ports(), portId));
+    const auto port = findPort(impl_->observer.get_output_ports(), portId);
+    if (!port) {
+        portListChanged();
+        throw std::invalid_argument("unknown MIDI port " + portId);
+    }
+    return std::make_unique<LibremidiOutput>(*port);
 }
 
 }  // namespace emerick::engine

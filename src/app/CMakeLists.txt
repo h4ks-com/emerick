@@ -239,6 +239,7 @@ if(EMERICK_BUILD_TESTS)
         tests/timeline_video_test.cpp
         tests/track_hooks_test.cpp
         tests/transport_test.cpp
+        tests/unplugged_midi_test.cpp
         tests/voice_audition_test.cpp)
     target_link_libraries(emerick_app_tests
         PRIVATE emerick_app emerick_test_clap emerick_test_vst3 emerick_gm_clap emerick_voices_clap emerick_sampler_clap Qt6::Network Qt6::Qml Qt6::QuickControls2 PkgConfig::SNDFILE libremidi)

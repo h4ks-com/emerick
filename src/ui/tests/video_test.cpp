@@ -297,3 +297,37 @@ TEST_CASE("cancelling a video render stops it and deletes the unfinished file") 
     CHECK_FALSE(std::filesystem::exists(file));
     CHECK(main.rig.nav.scrollTicks() == scrollBefore);
 }
+
+TEST_CASE("a pan law change keeps a video render going and an edit stops it with a notice") {
+    try {
+        findFfmpeg();
+    } catch (const AppError&) {
+        SKIP("ffmpeg is not installed");
+    }
+    MainWindow& main = MainWindow::instance();
+    if (main.rig.controller->project().document().tracks.empty()) {
+        addClip(main, 20);
+    }
+    VideoRender& video = videoRender(main);
+    std::vector<QString> notices;
+    const QMetaObject::Connection noticed =
+        QObject::connect(&main.rig.registry, &Registry::noticeRaised,
+                         [&](const QString&, const QString& text, const QVariantList&) { notices.push_back(text); });
+    const std::filesystem::path file = main.rig.path("edited.mp4");
+    main.rig.registry.runAction("video.render",
+                                {{"path", QString::fromStdString(file.string())}, {"width", 640}, {"height", 360}});
+    REQUIRE(processUntil([&] { return video.progress() > 0; }, 30000));
+    main.rig.controller->panLawChanged(engine::PanLaw::linear);
+    main.rig.controller->panLawChanged(engine::PanLaw::compensated);
+    MainWindow::settle();
+    CHECK(video.running());
+    CHECK(notices.empty());
+
+    main.rig.run("track.addBus", {{"name", "Edit"}});
+    MainWindow::settle();
+    QObject::disconnect(noticed);
+    CHECK_FALSE(video.running());
+    CHECK_FALSE(std::filesystem::exists(file));
+    REQUIRE(notices.size() == 1);
+    CHECK(notices.front().contains("project changed"));
+}

@@ -117,9 +117,17 @@ VideoRender::VideoRender(Registry& registry, ProjectController& controller, Nav&
     connect(&frames_, &QTimer::timeout, this, &VideoRender::step);
     connect(QCoreApplication::instance(), &QCoreApplication::aboutToQuit, this, &VideoRender::cancel);
     // The frames draw the live project under the mix rendered at the start, so an edit or another project ends the
-    // render.
-    connect(&controller_, &ProjectController::projectChanged, this, &VideoRender::cancel);
-    connect(&controller_, &ProjectController::projectReplaced, this, &VideoRender::cancel);
+    // render. The controller dies before the Nav that owns us, so we never remove the listener.
+    controller_.project().addListener([this](const model::Change&) {
+        QMetaObject::invokeMethod(this, &VideoRender::cancelForChange, Qt::QueuedConnection);
+    });
+    connect(&controller_, &ProjectController::projectReplaced, this, &VideoRender::cancelForChange);
+}
+
+void VideoRender::cancelForChange() {
+    if (cancel()) {
+        notifyFailure("The project changed during the render, so render it again.");
+    }
 }
 
 VideoRender::~VideoRender() = default;

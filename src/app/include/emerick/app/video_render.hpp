@@ -43,6 +43,7 @@ private:
     void start();
     void step();
     void stop();
+    void cancelForChange();
     void notifyFailure(const char* what) const;
 
     Registry& registry_;

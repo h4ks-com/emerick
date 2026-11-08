@@ -143,6 +143,26 @@ TEST_CASE("a warm engine keeps its routed outputs open while stopped, and a sess
     CHECK_FALSE(rig.audio.isOpen());
 }
 
+TEST_CASE("a tap that holds the stream keeps it open while stopped and writes the master in stereo") {
+    Rig rig;
+    auto tap = std::make_shared<SignalTap>();
+    tap->stereo = true;
+    tap->holdsStream = true;
+    Session held{.tempo = kTempo};
+    held.taps = {tap};
+    rig.engine.setSession(held);
+    CHECK(rig.audio.isOpen());
+    rig.audio.process(kBlock);
+    rig.engine.releaseIdleStream();
+    CHECK(rig.audio.isOpen());
+    CHECK(tap->ring.readable() == 2 * static_cast<std::size_t>(kBlock));
+
+    rig.engine.setSession({.tempo = kTempo});
+    rig.audio.process(kBlock);
+    rig.engine.releaseIdleStream();
+    CHECK_FALSE(rig.audio.isOpen());
+}
+
 TEST_CASE("only armed or monitored tracks open their input device, after every output device") {
     Rig rig;
     Track vox{.id = "vox", .kind = TrackKind::audio, .armed = true};

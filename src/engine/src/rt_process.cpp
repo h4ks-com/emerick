@@ -718,8 +718,13 @@ std::optional<std::pair<BlockTime, InstrumentTransport>> playBlock(RealtimeState
 void publish(RealtimeState& state, const AudioBlock& block) {
     if (state.current != nullptr) {
         for (const std::shared_ptr<SignalTap>& tap : state.current->masterTaps) {
-            tap->ring.writeMean(block.outputs.first(std::min<std::size_t>(block.outputs.size(), 2)),
-                                static_cast<std::size_t>(block.frames));
+            const auto frames = static_cast<std::size_t>(block.frames);
+            if (tap->stereo && !block.outputs.empty()) {
+                tap->ring.writeStereo(block.outputs.front(),
+                                      block.outputs[std::min<std::size_t>(block.outputs.size(), 2) - 1], frames);
+            } else {
+                tap->ring.writeMean(block.outputs.first(std::min<std::size_t>(block.outputs.size(), 2)), frames);
+            }
         }
         if (state.current->masterMeter) {
             for (std::size_t channel = 0; channel < std::min(block.outputs.size(), kMeterChannels); ++channel) {

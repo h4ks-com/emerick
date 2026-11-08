@@ -44,6 +44,19 @@ public:
         return count;
     }
 
+    // Writes left and right interleaved for each of the frames, and returns how many whole frames fit.
+    std::size_t writeStereo(const float* left, const float* right, std::size_t frames) {
+        const std::size_t head = head_.load(std::memory_order_relaxed);
+        const std::size_t space = data_.size() - (head - tail_.load(std::memory_order_acquire));
+        const std::size_t count = std::min(frames, space / 2);
+        for (std::size_t frame = 0; frame < count; ++frame) {
+            data_[(head + (2 * frame)) & mask_] = left[frame];
+            data_[(head + (2 * frame) + 1) & mask_] = right[frame];
+        }
+        head_.store(head + (2 * count), std::memory_order_release);
+        return count;
+    }
+
     std::size_t write(std::span<const float> samples) {
         const std::array channels{samples.data()};
         return writeMean(channels, samples.size());
@@ -78,6 +91,10 @@ struct SignalTap {
     std::string trackId;
     TapPoint point = TapPoint::output;
     SampleRing ring{kRingSamples};
+    // A stereo master tap writes left and right interleaved in place of their mean.
+    bool stereo = false;
+    // The engine keeps its stream open while a session holds such a tap, so the tapped signal keeps flowing.
+    bool holdsStream = false;
 };
 
 }  // namespace emerick::engine

@@ -45,7 +45,7 @@ std::optional<std::size_t> profileIndex(const app::Json& profiles, const std::st
 Broadcasts::Broadcasts(app::Registry& registry, app::ProjectController& controller)
     : registry_(registry), controller_(controller) {
     refresh_.setInterval(kRefreshInterval);
-    connect(&refresh_, &QTimer::timeout, this, &Broadcasts::changed);
+    connect(&refresh_, &QTimer::timeout, this, &Broadcasts::tick);
     connect(&controller_, &app::ProjectController::fileChanged, this, [this] {
         for (const auto& broadcaster : running_ | std::views::values) {
             broadcaster->setTitle(controller_.name().toStdString());
@@ -64,14 +64,36 @@ app::Json Broadcasts::storedProfiles() const {
     return stored.is_array() ? stored : app::Json::array();
 }
 
+Profile Broadcasts::profileNamed(const std::string& name) const {
+    const app::Json profiles = storedProfiles();
+    const auto index = profileIndex(profiles, name);
+    if (!index) {
+        throw app::AppError("no broadcast " + name + "; run broadcast.list for their names");
+    }
+    return profileFromStore(profiles[*index]);
+}
+
+Status Broadcasts::statusOf(const std::string& name) const {
+    if (const auto running = running_.find(name); running != running_.end()) {
+        return running->second->status();
+    }
+    Status status;
+    if (const auto failed = failed_.find(name); failed != failed_.end()) {
+        status.state = State::error;
+        status.lastError = failed->second;
+    }
+    return status;
+}
+
 app::Json Broadcasts::listJson() const {
     app::Json broadcasts = app::Json::array();
-    for (const app::Json& stored : storedProfiles()) {
-        const Profile profile = profileFromStore(stored);
-        const auto running = running_.find(profile.name);
-        app::Json entry = maskedProfile(profile);
-        entry.update(statusJson(running != running_.end() ? running->second->status() : Status{}));
-        broadcasts.push_back(std::move(entry));
+    if (enabled()) {
+        for (const app::Json& stored : storedProfiles()) {
+            const Profile profile = profileFromStore(stored);
+            app::Json entry = maskedProfile(profile);
+            entry.update(statusJson(statusOf(profile.name)));
+            broadcasts.push_back(std::move(entry));
+        }
     }
     return {{"enabled", enabled()}, {"broadcasts", std::move(broadcasts)}};
 }
@@ -79,6 +101,9 @@ app::Json Broadcasts::listJson() const {
 QVariantList Broadcasts::list() const { return app::toVariant(listJson()["broadcasts"]).toList(); }
 
 void Broadcasts::setPanelOpen(bool open) {
+    if (open) {
+        errorSeen_ = true;
+    }
     if (std::exchange(panelOpen_, open) != open) {
         emit changed();
     }
@@ -89,6 +114,9 @@ QString Broadcasts::badge() const {
         return std::ranges::any_of(running_ | std::views::values,
                                    [&](const auto& broadcaster) { return broadcaster->status().state == state; });
     };
+    if (!failed_.empty() && !errorSeen_) {
+        return "error";
+    }
     if (anyIn(State::live)) {
         return "live";
     }
@@ -114,59 +142,82 @@ app::Json Broadcasts::save(const app::Json& params) {
 }
 
 app::Json Broadcasts::remove(const std::string& name) {
-    app::Json profiles = storedProfiles();
-    const auto index = profileIndex(profiles, name);
-    if (!index) {
-        throw app::AppError("no broadcast " + name + "; run broadcast.list for their names");
-    }
     stop(name);
-    profiles.erase(*index);
+    app::Json profiles = storedProfiles();
+    if (const auto index = profileIndex(profiles, name)) {
+        profiles.erase(*index);
+    }
     registry_.setPrivateValue(kProfilesKey, profiles);
     emit changed();
     return {{"removed", name}};
 }
 
 app::Json Broadcasts::start(const std::string& name) {
-    const app::Json profiles = storedProfiles();
-    const auto index = profileIndex(profiles, name);
-    if (!index) {
-        throw app::AppError("no broadcast " + name + "; save one with broadcast.save first");
-    }
+    const Profile profile = profileNamed(name);
     if (registry_.headless() && qEnvironmentVariable("EMERICK_BROADCAST") != QStringLiteral("1")) {
         throw app::AppError("a headless run broadcasts only with EMERICK_BROADCAST=1");
     }
     if (!running_.contains(name)) {
-        const std::filesystem::path ffmpeg = ffmpeg_ ? *ffmpeg_ : app::findFfmpeg();
         auto tap = std::make_shared<engine::SignalTap>();
         tap->stereo = true;
         tap->holdsStream = true;
-        controller_.setTap(kTapOwner + name, tap);
-        running_[name] = std::make_unique<Broadcaster>(profileFromStore(profiles[*index]), ffmpeg,
-                                                       controller_.engine().layout().sampleRate, std::move(tap),
-                                                       controller_.name().toStdString());
+        launch(profile, tap);
+        controller_.setTap(kTapOwner + name, std::move(tap));
+        failed_.erase(name);
         refresh_.start();
         emit changed();
     }
-    app::Json result = maskedProfile(profileFromStore(profiles[*index]));
-    result.update(statusJson(running_.at(name)->status()));
+    app::Json result = maskedProfile(profile);
+    result.update(statusJson(statusOf(name)));
     return result;
 }
 
+void Broadcasts::launch(const Profile& profile, std::shared_ptr<engine::SignalTap> tap) {
+    const std::filesystem::path ffmpeg = ffmpeg_ ? *ffmpeg_ : app::findFfmpeg();
+    running_[profile.name] = std::make_unique<Broadcaster>(profile, ffmpeg, controller_.engine().layout().sampleRate,
+                                                           std::move(tap), controller_.name().toStdString());
+}
+
 app::Json Broadcasts::stop(const std::string& name) {
+    static_cast<void>(profileNamed(name));
+    release(name);
+    failed_.erase(name);
+    emit changed();
+    return {{"stopped", name}};
+}
+
+void Broadcasts::release(const std::string& name) {
     if (running_.erase(name) > 0) {
         controller_.setTap(kTapOwner + name, nullptr);
-        if (running_.empty()) {
-            refresh_.stop();
-        }
-        emit changed();
     }
-    return {{"stopped", name}};
+    if (running_.empty()) {
+        refresh_.stop();
+    }
 }
 
 void Broadcasts::stopAll() {
     while (!running_.empty()) {
-        stop(running_.begin()->first);
+        release(std::string{running_.begin()->first});
     }
+    failed_.clear();
+}
+
+// A refused source stops for good, so we let the stream go and keep its error; a new sample rate needs a new encoder.
+void Broadcasts::tick() {
+    const double rate = controller_.engine().layout().sampleRate;
+    for (const std::string& name : running_ | std::views::keys | std::ranges::to<std::vector>()) {
+        const Status status = running_.at(name)->status();
+        if (status.state == State::error) {
+            failed_[name] = status.lastError;
+            errorSeen_ = panelOpen_;
+            release(name);
+        } else if (controller_.engine().streamOpen() && running_.at(name)->sampleRate() != rate) {
+            auto tap = running_.at(name)->tap();
+            running_.erase(name);
+            launch(profileNamed(name), std::move(tap));
+        }
+    }
+    emit changed();
 }
 
 void Broadcasts::followSettings() {
@@ -243,10 +294,12 @@ void registerActions(app::Registry& registry, Broadcasts& broadcasts) {
                         .category = "Broadcast",
                         .shown = shown,
                         .schema = saveSchema(),
-                        .run = [&broadcasts](const app::Json& params) {
-                            requireEnabled(broadcasts);
-                            return broadcasts.save(params);
-                        }});
+                        .run =
+                            [&broadcasts](const app::Json& params) {
+                                requireEnabled(broadcasts);
+                                return broadcasts.save(params);
+                            },
+                        .secretParams = {"password"}});
     registry.addAction({.id = "broadcast.remove",
                         .title = "Remove broadcast",
                         .category = "Broadcast",

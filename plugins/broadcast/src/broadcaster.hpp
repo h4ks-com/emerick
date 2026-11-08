@@ -52,9 +52,11 @@ public:
 
     [[nodiscard]] Status status() const { return status_->read(); }
     [[nodiscard]] const std::shared_ptr<engine::SignalTap>& tap() const { return tap_; }
+    [[nodiscard]] double sampleRate() const { return sampleRate_; }
     void setTitle(const std::string& title);
 
 private:
+    double sampleRate_;
     std::shared_ptr<engine::SignalTap> tap_;
     std::shared_ptr<SharedStatus> status_;
     QThread thread_;

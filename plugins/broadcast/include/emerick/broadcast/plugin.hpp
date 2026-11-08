@@ -12,10 +12,13 @@
 #include "emerick/app/nav.hpp"
 #include "emerick/app/project_controller.hpp"
 #include "emerick/app/registry.hpp"
+#include "emerick/engine/signal_tap.hpp"
 
 namespace emerick::broadcast {
 
 class Broadcaster;
+struct Profile;
+struct Status;
 
 inline constexpr const char* kEnabledSetting = "broadcast.enabled";
 
@@ -24,7 +27,7 @@ class Broadcasts : public QObject {
     Q_OBJECT
     Q_PROPERTY(QVariantList list READ list NOTIFY changed)
     Q_PROPERTY(bool panelOpen READ panelOpen WRITE setPanelOpen NOTIFY changed)
-    // live while any broadcast is live, retrying while any retries and none is live, else empty.
+    // error while a refused broadcast is unseen, live while any is live, retrying while any retries, else empty.
     Q_PROPERTY(QString badge READ badge NOTIFY changed)
 
 public:
@@ -55,11 +58,20 @@ signals:
 
 private:
     [[nodiscard]] app::Json storedProfiles() const;
+    // Throws AppError when no profile has the name.
+    [[nodiscard]] Profile profileNamed(const std::string& name) const;
+    [[nodiscard]] Status statusOf(const std::string& name) const;
+    void launch(const Profile& profile, std::shared_ptr<engine::SignalTap> tap);
+    void release(const std::string& name);
+    void tick();
     void followSettings();
 
     app::Registry& registry_;
     app::ProjectController& controller_;
     std::map<std::string, std::unique_ptr<Broadcaster>, std::less<>> running_;
+    // The last error of each broadcast the server refused, which the panel shows until it starts or stops again.
+    std::map<std::string, std::string, std::less<>> failed_;
+    bool errorSeen_ = true;
     std::optional<std::filesystem::path> ffmpeg_;
     bool panelOpen_ = false;
     bool wasEnabled_ = false;

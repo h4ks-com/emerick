@@ -4,16 +4,18 @@ import Emerick.App
 import Emerick.Ui
 import Emerick.Broadcast
 
-// Beside the transport counter while a broadcast is live or retrying; a click shows the broadcasts.
+// Beside the transport counter while a broadcast is live, retrying or refused; a click shows the broadcasts.
 AbstractButton {
     id: badge
     readonly property bool shown: Broadcasts.badge !== ""
-    readonly property color tint: Broadcasts.badge === "live" ? Theme.rec : Theme.tape
+    readonly property color tint: Broadcasts.badge === "retrying" ? Theme.tape : Theme.rec
     objectName: "broadcast.show"
     implicitWidth: row.implicitWidth
     implicitHeight: row.implicitHeight
     onClicked: Registry.activate("broadcast.show")
-    ToolTip.text: Broadcasts.badge === "live" ? "Show broadcasts" : "Show broadcasts, one is reconnecting"
+    ToolTip.text: Broadcasts.badge === "live" ? "Show broadcasts"
+                  : Broadcasts.badge === "error" ? "Show broadcasts, a server refused one"
+                  : "Show broadcasts, one is reconnecting"
     ToolTip.visible: hovered
     ToolTip.delay: Theme.tooltipDelay
     contentItem: Row {
@@ -27,7 +29,7 @@ AbstractButton {
             color: badge.tint
         }
         Label {
-            text: "Live"
+            text: Broadcasts.badge === "error" ? "Error" : "Live"
             color: badge.tint
             font.pixelSize: Theme.textSmall
         }

@@ -27,6 +27,8 @@ constexpr int kHttpServerError = 500;
 constexpr int kKillWaitMs = 2000;
 // A connection that stayed up this long starts the backoff over when it drops.
 constexpr auto kLongRun = std::chrono::seconds{30};
+constexpr auto kAnswerTimeout = std::chrono::seconds{10};
+constexpr auto kStallTimeout = std::chrono::seconds{10};
 
 int statusCode(const QByteArray& response) {
     const QList<QByteArray> parts = response.left(response.indexOf('\r')).split(' ');
@@ -53,6 +55,10 @@ public:
         retryTimer_ = std::make_unique<QTimer>();
         retryTimer_->setSingleShot(true);
         connect(retryTimer_.get(), &QTimer::timeout, this, [this] { connectToServer(); });
+        answerTimer_ = std::make_unique<QTimer>();
+        answerTimer_->setSingleShot(true);
+        connect(answerTimer_.get(), &QTimer::timeout, this,
+                [this] { fail("the server did not answer within 10 s", true); });
         connectToServer();
     }
 
@@ -60,6 +66,7 @@ public:
         closeConnection();
         drainTimer_.reset();
         retryTimer_.reset();
+        answerTimer_.reset();
         metadata_ = nullptr;
         update([](Status& status) {
             status.state = State::idle;
@@ -92,6 +99,7 @@ private:
                 [this] { fail("the server closed the connection", true); });
         open(*socket_);
         socket_->write(QByteArray::fromStdString(sourceRequest(profile_)));
+        answerTimer_->start(kAnswerTimeout);
     }
 
     void open(QSslSocket& socket) const {
@@ -123,6 +131,7 @@ private:
     }
 
     void startEncoder() {
+        answerTimer_->stop();
         encoder_ = std::make_unique<QProcess>();
         connect(encoder_.get(), &QProcess::readyReadStandardOutput, this, [this] {
             const QByteArray encoded = encoder_->readAllStandardOutput();
@@ -169,7 +178,22 @@ private:
         metadata_->write(QByteArray::fromStdString(metadataRequest(profile_, title_)));
     }
 
+    // A socket that stays backed up this long has stalled, so we reconnect.
+    void checkStall() {
+        if (!encoder_ || socket_->bytesToWrite() <= kMaxBacklogBytes) {
+            backedUpSince_.reset();
+            return;
+        }
+        const auto now = std::chrono::steady_clock::now();
+        if (!backedUpSince_) {
+            backedUpSince_ = now;
+        } else if (now - *backedUpSince_ > kStallTimeout) {
+            fail("the connection stalled", true);
+        }
+    }
+
     void drain() {
+        checkStall();
         std::array<float, kChunkSamples> chunk{};
         while (const std::size_t count = tap_->ring.read(chunk)) {
             if (!encoder_ || encoder_->state() != QProcess::Running) {
@@ -187,6 +211,10 @@ private:
 
     // A signal of the socket or the process can be what brought us here, so we delete them once it returns.
     void closeConnection() {
+        backedUpSince_.reset();
+        if (answerTimer_) {
+            answerTimer_->stop();
+        }
         if (encoder_) {
             encoder_->disconnect(this);
             encoder_->kill();
@@ -227,6 +255,8 @@ private:
     std::shared_ptr<SharedStatus> status_;
     std::unique_ptr<QTimer> drainTimer_;
     std::unique_ptr<QTimer> retryTimer_;
+    std::unique_ptr<QTimer> answerTimer_;
+    std::optional<std::chrono::steady_clock::time_point> backedUpSince_;
     std::unique_ptr<QSslSocket> socket_;
     std::unique_ptr<QSslSocket> metadata_;
     std::unique_ptr<QProcess> encoder_;
@@ -236,7 +266,8 @@ private:
 
 Broadcaster::Broadcaster(Profile profile, std::filesystem::path ffmpeg, double sampleRate,
                          std::shared_ptr<engine::SignalTap> tap, std::string title)
-    : tap_(std::move(tap)),
+    : sampleRate_(sampleRate),
+      tap_(std::move(tap)),
       status_(std::make_shared<SharedStatus>()),
       worker_(std::make_unique<Worker>(std::move(profile), std::move(ffmpeg), sampleRate, tap_, std::move(title),
                                        status_)) {

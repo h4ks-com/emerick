@@ -9,6 +9,8 @@ import Emerick.Broadcast
 Popup {
     id: panel
     property var editing: null
+    // The list rebuilds its rows on every refresh, so we keep the remove confirmation by name.
+    property string confirmingRemove: ""
     property string format: "opus"
     property int bitrate: 128
     property bool tls: false
@@ -22,7 +24,7 @@ Popup {
         Broadcasts.panelOpen = false
         editing = null
     }
-    background: GlassPanel {}
+    background: GlassPanel { color: Theme.slate }
 
     function edit(profile) {
         editing = profile
@@ -52,7 +54,7 @@ Popup {
     }
 
     function stateColor(state) {
-        return state === "live" ? Theme.rec : state === "idle" ? Theme.inkDim : Theme.tape
+        return state === "live" || state === "error" ? Theme.rec : state === "idle" ? Theme.inkDim : Theme.tape
     }
 
     component Field: TextField {
@@ -127,7 +129,7 @@ Popup {
                 id: row
                 required property var modelData
                 readonly property bool running: modelData.state !== "idle"
-                property bool confirming: false
+                readonly property bool confirming: panel.confirmingRemove === modelData.name
                 width: ListView.view.width
                 spacing: Theme.space2
                 Rectangle {
@@ -193,7 +195,7 @@ Popup {
                     run: () => {
                         if (row.confirming)
                             Registry.runAction("broadcast.remove", {name: row.modelData.name})
-                        row.confirming = !row.confirming
+                        panel.confirmingRemove = row.confirming ? "" : row.modelData.name
                     }
                 }
             }

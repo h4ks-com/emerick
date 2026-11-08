@@ -19,7 +19,7 @@ target_link_libraries(emerick_broadcast_plugin PUBLIC emerick_app PRIVATE Qt6::N
 emerick_target(emerick_broadcast_plugin)
 
 if(EMERICK_BUILD_TESTS)
-    emerick_test(emerick_broadcast_tests tests/broadcast_test.cpp)
+    emerick_test(emerick_broadcast_tests tests/broadcast_test.cpp tests/hostile_params_test.cpp)
     target_include_directories(emerick_broadcast_tests PRIVATE src ${PROJECT_SOURCE_DIR}/src/app/tests)
     target_link_libraries(emerick_broadcast_tests PRIVATE emerick_broadcast_plugin Qt6::Network)
     target_compile_definitions(emerick_broadcast_tests PRIVATE

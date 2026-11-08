@@ -1,4 +1,5 @@
 #include <QByteArray>
+#include <QFileInfo>
 #include <QHostAddress>
 #include <QTcpServer>
 #include <QTcpSocket>
@@ -16,7 +17,10 @@
 #include <thread>
 #include <vector>
 
+#include "emerick/app/console.hpp"
 #include "emerick/app/core_actions.hpp"
+#include "emerick/app/lua_host.hpp"
+#include "emerick/app/ui_api.hpp"
 #include "emerick/broadcast/plugin.hpp"
 #include "profile.hpp"
 #include "project_rig.hpp"
@@ -138,6 +142,10 @@ TEST_CASE("broadcasting starts off, hidden from menus and the palette, and its a
     CHECK(listsAction(registry.menus().value("Transport").toList(), "broadcast.show"));
     CHECK(listsAction(registry.palette("show broadcasts"), "broadcast.show"));
     CHECK(broadcast.rig.run("broadcast.list").at("broadcasts").size() == 1);
+    CHECK_THROWS_AS(broadcast.rig.run("broadcast.stop", {{"name", "Nowhere"}}), app::AppError);
+
+    registry.setSetting(broadcast::kEnabledSetting, false);
+    CHECK(broadcast.rig.run("broadcast.list") == Json{{"enabled", false}, {"broadcasts", Json::array()}});
 }
 
 TEST_CASE("a profile keeps its password in the settings store and masks it everywhere else") {
@@ -154,6 +162,24 @@ TEST_CASE("a profile keeps its password in the settings store and masks it every
     broadcast.rig.run("broadcast.save", {{"name", "Home"}, {"bitrate", 192}});
     CHECK(registry.privateValue("broadcast.profiles").dump().contains(kPassword));
     CHECK(broadcast.status().at("bitrate") == 192);
+    const auto permissions = QFileInfo{broadcast.rig.dir.filePath("settings.ini")}.permissions();
+    CHECK((permissions & (QFileDevice::ReadGroup | QFileDevice::ReadOther)) == QFileDevice::Permissions{});
+}
+
+TEST_CASE("the action log and errors show a password masked") {
+    BroadcastRig broadcast;
+    const app::UiApi ui(broadcast.rig.registry);
+    app::LuaHost lua(broadcast.rig.registry, ui);
+    const app::Console console(broadcast.rig.registry, lua);
+    broadcast.enableAndSave();
+    CHECK(console.recent(100).dump().contains("broadcast.save"));
+    CHECK_FALSE(console.recent(100).dump().contains(kPassword));
+    try {
+        broadcast.rig.run("broadcast.save", {{"name", "Home"}, {"password", 31415926}});
+        FAIL("broadcast.save took a number as its password");
+    } catch (const app::AppError& error) {
+        CHECK(std::string{error.what()} == "param password must be a string");
+    }
 }
 
 TEST_CASE("saving and reopening a project writes none of a broadcast profile into the project's files") {
@@ -255,6 +281,13 @@ TEST_CASE("a server that refuses the source stops with its answer and never show
     REQUIRE(waitFor([&] { return broadcast.status().at("state") == "error"; }));
     CHECK(broadcast.status().at("lastError") == "the server answered HTTP/1.1 401 Authentication Required");
     CHECK(broadcast.arguments().empty());
+    CHECK(waitFor([&] { return !broadcast.rig.controller->engine().streamOpen(); }));
+    CHECK(broadcast.broadcasts->badge() == "error");
+    broadcast.broadcasts->setPanelOpen(true);
+    CHECK(broadcast.broadcasts->badge().isEmpty());
+    CHECK(broadcast.status().at("state") == "error");
+    broadcast.rig.run("broadcast.stop", {{"name", "Home"}});
+    CHECK(broadcast.status().at("state") == "idle");
 }
 
 TEST_CASE("turning broadcasting off stops every broadcast") {
@@ -263,6 +296,6 @@ TEST_CASE("turning broadcasting off stops every broadcast") {
     broadcast.rig.run("broadcast.start", {{"name", "Home"}});
     REQUIRE(waitFor([&] { return broadcast.status().at("state") == "live"; }));
     broadcast.rig.registry.setSetting(broadcast::kEnabledSetting, false);
-    CHECK(broadcast.status().at("state") == "idle");
     CHECK(broadcast.broadcasts->badge().isEmpty());
+    CHECK(waitFor([&] { return !broadcast.rig.controller->engine().streamOpen(); }));
 }

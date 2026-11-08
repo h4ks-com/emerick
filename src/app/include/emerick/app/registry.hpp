@@ -113,6 +113,8 @@ struct Action {
     // More keys for the same action, such as Delete beside Backspace.
     std::vector<std::string> extraShortcuts = {};
     std::function<bool()> enabled = {};
+    // Menus and the palette leave the action out while this answers no, as for a plugin the user turned off.
+    std::function<bool()> shown = {};
     // Whether the action can act on the target the params name, such as a MIDI track for Load instrument; menus hide
     // it otherwise. A predicate that throws an AppError, as a resolver of the target does, answers no.
     std::function<bool(const Json& params)> appliesTo = {};
@@ -307,6 +309,9 @@ class Registry : public QObject {
     Q_PROPERTY(bool gesturing READ gesturing NOTIFY gesturingChanged)
     // The views hide every edit while this is on, as the browser viewer's registry has it.
     Q_PROPERTY(bool readOnly READ readOnly CONSTANT)
+    // QML files plugins add: overlays the window loads, such as a panel, and badges beside the transport counter.
+    Q_PROPERTY(QStringList overlays READ overlays CONSTANT)
+    Q_PROPERTY(QStringList transportBadges READ transportBadges CONSTANT)
 
 public:
     // An empty path uses the platform's default QSettings store.
@@ -322,6 +327,14 @@ public:
     void addWarnings(DocumentWarnings warnings);
     void addLoadingTracks(LoadingTracks loading);
     void setUndoSteps(UndoSteps steps);
+    void addOverlay(const std::string& url) { overlays_.append(QString::fromStdString(url)); }
+    void addTransportBadge(const std::string& url) { transportBadges_.append(QString::fromStdString(url)); }
+    [[nodiscard]] QStringList overlays() const { return overlays_; }
+    [[nodiscard]] QStringList transportBadges() const { return transportBadges_; }
+    // A value a plugin keeps in the settings store that no setting lists, such as a password, so settings.get never
+    // shows it; null while none is stored.
+    [[nodiscard]] Json privateValue(const std::string& key) const;
+    void setPrivateValue(const std::string& key, const Json& value);
 
     [[nodiscard]] const Action* action(const std::string& id) const;
     [[nodiscard]] const Setting* setting(const std::string& id) const;
@@ -431,6 +444,8 @@ private:
     std::map<std::string, std::function<Json()>> stateProviders_;
     std::vector<DocumentWarnings> warnings_;
     std::vector<LoadingTracks> loadingTracks_;
+    QStringList overlays_;
+    QStringList transportBadges_;
     // Runs the action and logs its failure, as every UI call does.
     std::optional<Json> runFromUi(const std::string& id, const Json& params) const;
     void runGesture();

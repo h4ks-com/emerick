@@ -88,6 +88,7 @@ QVariantList utf16Ranges(const std::string& title, const std::vector<core::Match
 }
 
 bool isEnabled(const Action& entry) { return !entry.enabled || entry.enabled(); }
+bool isShown(const Action& entry) { return !entry.shown || entry.shown(); }
 
 class NestedRun {
 public:
@@ -516,6 +517,15 @@ Json Registry::setSetting(const std::string& id, const Json& given) {
     return value;
 }
 
+Json Registry::privateValue(const std::string& key) const {
+    const QVariant stored = store_->value("private/" + qs(key));
+    return stored.isValid() ? Json::parse(stored.toString().toStdString(), nullptr, false) : Json{};
+}
+
+void Registry::setPrivateValue(const std::string& key, const Json& value) {
+    store_->setValue("private/" + qs(key), qs(value.dump()));
+}
+
 Json Registry::state(const std::string& name) const {
     const auto found = stateProviders_.find(name);
     if (found == stateProviders_.end()) {
@@ -660,7 +670,7 @@ QVariantMap Registry::menus() const {
         items.append(item);
         result.insert(menu, items);
     };
-    for (const Action& entry : actions_) {
+    for (const Action& entry : actions_ | std::views::filter(isShown)) {
         QVariantMap item{{"id", qs(entry.id)},
                          {"title", qs(entry.title)},
                          {"shortcut", qs(entry.shortcut)},
@@ -688,7 +698,7 @@ QVariantList Registry::palette(const QString& query) const {
     for (const SearchHit& hit : search(query.toStdString())) {
         const Action* entry = action(hit.id);
         // A submenu action needs one of its choices, which only a menu offers.
-        if (entry != nullptr && entry->submenu) {
+        if (entry != nullptr && (entry->submenu || !isShown(*entry))) {
             continue;
         }
         result.append(QVariantMap{{"id", qs(hit.id)},

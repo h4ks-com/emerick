@@ -189,6 +189,15 @@ ApplicationWindow {
             TransportDisplay {
                 anchors.verticalCenter: parent.verticalCenter
             }
+            Repeater {
+                model: Registry.transportBadges
+                Loader {
+                    required property string modelData
+                    anchors.verticalCenter: parent.verticalCenter
+                    visible: item !== null && item.shown
+                    source: modelData
+                }
+            }
             IconImage {
                 id: startReason
                 objectName: "transport.startReason"
@@ -457,6 +466,14 @@ ApplicationWindow {
         anchors.fill: parent
         active: Nav.librariesOpen
         sourceComponent: LibrariesPanel {}
+    }
+    Repeater {
+        model: Registry.overlays
+        Loader {
+            required property string modelData
+            anchors.fill: parent
+            source: modelData
+        }
     }
 
     Popup {

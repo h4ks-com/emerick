@@ -21,6 +21,7 @@ public:
     [[nodiscard]] double confidence() const { return confidence_; }
 
 private:
+    [[nodiscard]] bool plucked(double meanSquare) const;
     [[nodiscard]] double folded(double heard) const;
 
     bool shown_ = false;

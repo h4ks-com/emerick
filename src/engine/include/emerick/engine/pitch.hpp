@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstddef>
 #include <optional>
 #include <span>
 #include <string>
@@ -8,6 +9,8 @@ namespace emerick::engine {
 
 inline constexpr double kLowestPitchHz = 30.0;
 inline constexpr double kHighestPitchHz = 2000.0;
+// A tuner measures a frame every hop, and its frames overlap by this many hops.
+inline constexpr std::size_t kPitchHopsPerFrame = 4;
 
 struct PitchReading {
     double hz = 0.0;

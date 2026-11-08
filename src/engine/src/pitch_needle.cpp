@@ -4,6 +4,7 @@
 #include <array>
 #include <cmath>
 #include <cstddef>
+#include <span>
 
 namespace emerick::engine {
 
@@ -14,7 +15,6 @@ constexpr double kEaseSeconds = 0.15;
 constexpr double kSameNote = 0.5;
 constexpr std::size_t kMedianReadings = 5;
 constexpr double kPluckRise = 1.25;
-constexpr std::size_t kFrameReadings = 4;
 constexpr int kA4 = 69;
 constexpr double kSemitones = 12.0;
 constexpr double kThirdHarmonicSemitones = 19.019550008653874;
@@ -27,6 +27,18 @@ double median(std::vector<double> values) {
 }
 
 }  // namespace
+
+// Readings overlap, so we compare against one a whole frame back to see a soft attack, and a tremolo only returns to
+// a level the frame before that already reached, so we ask the attack to beat that frame too.
+bool PitchNeedle::plucked(double meanSquare) const {
+    if (energies_.empty()) {
+        return false;
+    }
+    const std::size_t frameBack = energies_.size() > kPitchHopsPerFrame ? energies_.size() - kPitchHopsPerFrame : 0;
+    return meanSquare > kPluckRise * energies_[frameBack] &&
+           std::ranges::all_of(std::span(energies_).first(frameBack),
+                               [&](double before) { return meanSquare > before; });
+}
 
 double PitchNeedle::folded(double heard) const {
     if (!shown_ || readingsSincePluck_ < kMedianReadings) {
@@ -50,14 +62,13 @@ void PitchNeedle::feed(const std::optional<PitchReading>& reading, double second
     }
     silentSeconds_ = 0.0;
     confidence_ = reading->confidence;
-    // Readings overlap, so we compare against one a whole frame back to see a soft attack.
-    if (!energies_.empty() && reading->meanSquare > kPluckRise * energies_.front()) {
+    if (plucked(reading->meanSquare)) {
         readingsSincePluck_ = 0;
         recent_.clear();
     }
     ++readingsSincePluck_;
     energies_.push_back(reading->meanSquare);
-    if (energies_.size() > kFrameReadings) {
+    if (energies_.size() > 2 * kPitchHopsPerFrame) {
         energies_.erase(energies_.begin());
     }
     recent_.push_back(folded(kA4 + (kSemitones * std::log2(reading->hz / referenceHz))));

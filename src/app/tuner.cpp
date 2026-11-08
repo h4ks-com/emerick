@@ -14,7 +14,6 @@ namespace {
 constexpr const char* kTapOwner = "tuner";
 constexpr SourceRule kSourceRule{.liveInput = true};
 constexpr double kFrameSeconds = 0.064;
-constexpr int kHopsPerFrame = 4;
 constexpr int kTickMs = 33;
 constexpr auto kSilentAfter = std::chrono::milliseconds{250};
 constexpr int kA4 = 69;
@@ -119,8 +118,8 @@ void Tuner::follow() {
         const auto frame = std::bit_ceil(static_cast<std::size_t>(sampleRate * kFrameSeconds));
         PitchFrames frames{.history = std::vector<float>(frame),
                            .frame = std::vector<float>(frame),
-                           .hop = frame / kHopsPerFrame,
-                           .untilHop = frame / kHopsPerFrame,
+                           .hop = frame / engine::kPitchHopsPerFrame,
+                           .untilHop = frame / engine::kPitchHopsPerFrame,
                            .sampleRate = sampleRate};
         reader_ = std::make_unique<TapReader>(tap, [this, frames](std::span<const float> samples) mutable {
             frames.add(samples, [this](const std::optional<engine::PitchReading>& reading) {

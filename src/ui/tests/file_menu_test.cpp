@@ -106,6 +106,7 @@ TEST_CASE("a menu marks a command that turns something on while it is on") {
     main.rig.run("test.toggleMarking");
     emit main.rig.registry.menusChanged();
     CHECK(processUntil([&] { return menuItem(view, "Enable marking")->property("marked").toBool(); }));
+    main.rig.registry.removeAction("test.toggleMarking");
     // The rebuilt menu deletes its old items later, and they must go before the app does.
     QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
 }

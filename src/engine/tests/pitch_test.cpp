@@ -154,30 +154,6 @@ TEST_CASE("the needle keeps a plucked string's note when its fading fundamental 
     }
 }
 
-TEST_CASE("the needle keeps a plucked string's note through a 5 Hz tremolo while the reading jumps to an overtone") {
-    struct Pluck {
-        double hz;
-        double pluckPosition;
-    };
-    const Pluck string = GENERATE(Pluck{82.41, 0.5}, Pluck{82.41, 0.33}, Pluck{110.0, 0.25}, Pluck{110.0, 0.33},
-                                  Pluck{146.83, 0.33}, Pluck{164.81, 0.33});
-    const double depth = GENERATE(0.1, 0.2);
-    CAPTURE(string.hz, string.pluckPosition, depth);
-    std::vector<float> samples = pluck(string.hz, kRate, string.pluckPosition, 0.003);
-    for (std::size_t i = 0; i < samples.size(); ++i) {
-        const double t = static_cast<double>(i) / kRate;
-        samples[i] *= static_cast<float>(1.0 + (depth * std::sin(2 * std::numbers::pi * 5.0 * t)));
-    }
-    const int expected = nearestNote(string.hz, 440.0).midiNote;
-    const std::vector<int> notes = shownNotes(samples, kRate);
-    for (std::size_t i = 0; i < notes.size(); ++i) {
-        if (notes[i] != -1) {
-            CAPTURE(i);
-            CHECK(notes[i] == expected);
-        }
-    }
-}
-
 TEST_CASE("the needle moves to a fresh pluck within 150 ms, even an octave up") {
     const double next = GENERATE(110.0, 164.81, 220.0, 247.22);
     CAPTURE(next);

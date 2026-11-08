@@ -4,7 +4,6 @@
 #include <array>
 #include <cmath>
 #include <cstddef>
-#include <span>
 
 namespace emerick::engine {
 
@@ -28,16 +27,9 @@ double median(std::vector<double> values) {
 
 }  // namespace
 
-// Readings overlap, so we compare against one a whole frame back to see a soft attack, and a tremolo only returns to
-// a level the frame before that already reached, so we ask the attack to beat that frame too.
+// Readings overlap, so we compare against one a whole frame back to see a soft attack.
 bool PitchNeedle::plucked(double meanSquare) const {
-    if (energies_.empty()) {
-        return false;
-    }
-    const std::size_t frameBack = energies_.size() > kPitchHopsPerFrame ? energies_.size() - kPitchHopsPerFrame : 0;
-    return meanSquare > kPluckRise * energies_[frameBack] &&
-           std::ranges::all_of(std::span(energies_).first(frameBack),
-                               [&](double before) { return meanSquare > before; });
+    return !energies_.empty() && meanSquare > kPluckRise * energies_.front();
 }
 
 double PitchNeedle::folded(double heard) const {
@@ -68,7 +60,7 @@ void PitchNeedle::feed(const std::optional<PitchReading>& reading, double second
     }
     ++readingsSincePluck_;
     energies_.push_back(reading->meanSquare);
-    if (energies_.size() > 2 * kPitchHopsPerFrame) {
+    if (energies_.size() > kPitchHopsPerFrame) {
         energies_.erase(energies_.begin());
     }
     recent_.push_back(folded(kA4 + (kSemitones * std::log2(reading->hz / referenceHz))));

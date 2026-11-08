@@ -80,7 +80,7 @@ jobs:
         uses: actions/cache@v5
         with:
           path: build/_deps
-          key: deps-${{ matrix.os }}-${{ hashFiles('cmake/Dependencies.cmake') }}
+          key: deps-${{ matrix.os }}-${{ hashFiles('cmake/Dependencies.cmake', 'cmake/*.patch') }}
 
       # A push lints the files it changed and the files that include a changed header; the nightly run lints every file.
       - name: Check format, lint and test

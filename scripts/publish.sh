@@ -7,6 +7,7 @@ fail() {
 }
 
 cd "$(git rev-parse --show-toplevel)"
+gh auth status >/dev/null 2>&1 || fail "gh is not signed in to GitHub, run gh auth login and then make publish again."
 version=$(<VERSION)
 git fetch --quiet origin main
 sha=$(git rev-parse origin/main)
@@ -15,7 +16,7 @@ sha=$(git rev-parse origin/main)
 
 run=""
 for _ in $(seq 120); do
-    run=$(gh run list --workflow ci.yml --event push --commit "$sha" --json databaseId --jq '.[0].databaseId')
+    run=$(gh run list --workflow ci.yml --event push --commit "$sha" --json databaseId --jq '.[0].databaseId' || true)
     [[ -n $run ]] && break
     sleep 5
 done

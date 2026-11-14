@@ -67,7 +67,7 @@ private:
     void writeZeros(Frames frames);
     void writeSamples(std::uint32_t frames);
     void writeToFile(std::uint32_t frames);
-    void addPeaks(std::uint32_t frames);
+    void addPeaks(std::uint32_t frames, std::vector<float>& channelPeaks);
     void markDamaged(std::string error);
     void finish();
 

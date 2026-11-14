@@ -225,6 +225,7 @@ struct RecordedTake {
     std::string error;                  // set when part or all of the take was lost
     std::uint64_t samples = 0;          // audio samples written, every channel counted
     std::uint64_t clippedSamples = 0;   // of those, the ones at full scale
+    std::vector<float> channelPeaks;    // the loudest sample of each audio channel
     // NaN or infinite input samples, written as zeros.
     std::uint64_t nonFiniteSamples = 0;
     // Frames the writer fell behind on, written as silence so later audio stays in time.

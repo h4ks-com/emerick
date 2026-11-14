@@ -235,23 +235,23 @@ TEST_CASE("the track list moves, removes and restores rows to follow the documen
     CHECK(resets == 0);
 }
 
-TEST_CASE("the default audio routes start on the first device that fits") {
+TEST_CASE("the default audio routes start on the first device that fits, the input on its first channel") {
     const ProjectRig rig;
-    CHECK(rig.registry.settingValue("audio.defaultInput") == Json{{"device", "interface"}, {"channels", {1, 2}}});
+    CHECK(rig.registry.settingValue("audio.defaultInput") == Json{{"device", "interface"}, {"channels", {1}}});
     CHECK(rig.registry.settingValue("audio.defaultOutput") == Json{{"device", "interface"}, {"channels", {1, 2}}});
 }
 
 TEST_CASE("new audio tracks take the default input and output") {
     ProjectRig rig;
     CHECK(rig.registry.setSetting("audio.defaultInput", {{"device", kMotuId}}) ==
-          Json{{"device", kMotuId}, {"channels", {1, 2}}});
+          Json{{"device", kMotuId}, {"channels", {1}}});
     rig.registry.setSetting("audio.defaultOutput", {{"device", kMotuId}, {"channels", {3, 4}}});
     rig.registry.setSetting("audio.defaultOutput", {{"channels", {3}}});
 
     const Json track = rig.run("track.addAudio");
 
     CHECK(track.at("audioIn").at("device") == kMotuId);
-    CHECK(track.at("audioIn").at("channels") == Json{1, 2});
+    CHECK(track.at("audioIn").at("channels") == Json{1});
     CHECK(track.at("audioOut").at("device") == kMotuId);
     CHECK(track.at("audioOut").at("channels") == Json{3});
 }

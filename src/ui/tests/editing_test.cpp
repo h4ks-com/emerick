@@ -64,7 +64,7 @@ TEST_CASE("the device picker filters as you type, picks with Enter and shows the
     qInstallMessageHandler(previous);
 
     CHECK(trackOf(main, vox).audioIn.deviceId == kMotuId);
-    CHECK(trackOf(main, vox).audioIn.channels == std::vector{1, 2});
+    CHECK(trackOf(main, vox).audioIn.channels == std::vector{1});
     CHECK(main.item(picker + ":search")->property("text").toString() == "MOTU M2");
     CHECK(warnings().filter("polish() loop").isEmpty());
 }
@@ -347,7 +347,7 @@ TEST_CASE("the default input picker in Settings sets the default and its button 
     processUntil([] { return false; }, 50);
 
     pick(main, "audio.defaultInput", "motu");
-    CHECK(main.rig.registry.settingValue("audio.defaultInput") == Json{{"device", kMotuId}, {"channels", {1, 2}}});
+    CHECK(main.rig.registry.settingValue("audio.defaultInput") == Json{{"device", kMotuId}, {"channels", {1}}});
     pick(main, "audio.defaultInput:channel", "2");
     CHECK(main.rig.registry.settingValue("audio.defaultInput").at("channels") == Json{2});
     main.click(main.item("track.setAllAudioIn"));

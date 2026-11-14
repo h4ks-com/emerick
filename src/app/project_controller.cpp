@@ -10,6 +10,7 @@
 #include <cstdint>
 #include <format>
 #include <iterator>
+#include <optional>
 #include <ranges>
 #include <stdexcept>
 #include <string>
@@ -41,6 +42,25 @@ constexpr double kLocateWindowSeconds = 0.25;
 constexpr auto kAutosaveDelay = std::chrono::seconds{2};
 constexpr double kPercent = 100.0;
 constexpr double kMillisecondsPerSecond = 1000.0;
+// A side below -80 dBFS while the other passes -40 dBFS means a mono source on a stereo input.
+constexpr float kSilentPeak = 1e-4F;
+constexpr float kAudiblePeak = 1e-2F;
+
+// Plugins that mix both sides to mono hear a one-sided stereo take 6 dB quieter than the source.
+std::optional<std::string> silentSideText(const engine::RecordedTake& take) {
+    if (take.channelPeaks.size() != 2) {
+        return std::nullopt;
+    }
+    const float left = take.channelPeaks[0];
+    const float right = take.channelPeaks[1];
+    if (std::min(left, right) >= kSilentPeak || std::max(left, right) < kAudiblePeak) {
+        return std::nullopt;
+    }
+    return std::format(
+        "the {} input stayed silent, so effects hear this take at half level; set the track input to "
+        "the single input your source uses",
+        left < right ? "left" : "right");
+}
 
 std::string clippedText(const engine::RecordedTake& take) {
     const double share = kPercent * static_cast<double>(take.clippedSamples) /
@@ -58,6 +78,9 @@ std::vector<std::string> takeProblems(const engine::RecordedTake& take, double s
     }
     if (take.clippedSamples > 0) {
         problems.push_back(clippedText(take));
+    }
+    if (auto silent = silentSideText(take)) {
+        problems.push_back(std::move(*silent));
     }
     if (take.droppedFrames > 0) {
         problems.push_back(std::format(

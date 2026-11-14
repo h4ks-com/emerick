@@ -146,6 +146,7 @@ void TakeRecorder::start(Ticks startTick) {
                          .error = {},
                          .samples = 0,
                          .clippedSamples = 0,
+                         .channelPeaks = std::vector<float>(static_cast<std::size_t>(channels_), 0.0F),
                          .nonFiniteSamples = 0,
                          .droppedFrames = 0,
                          .droppedMidiEvents = 0};
@@ -226,18 +227,23 @@ void TakeRecorder::writeToFile(std::uint32_t frames) {
     if (!take_ || !file_) {
         return;
     }
+    RecordedTake& take = *take_;
     if (sf_writef_float(file_.get(), samples_.data(), frames) != frames) {
-        markDamaged("cannot write all audio to " + take_->audioFile.string());
+        markDamaged("cannot write all audio to " + take.audioFile.string());
     }
-    addPeaks(frames);
+    addPeaks(frames, take.channelPeaks);
 }
 
-void TakeRecorder::addPeaks(std::uint32_t frames) {
+void TakeRecorder::addPeaks(std::uint32_t frames, std::vector<float>& channelPeaks) {
     const auto width = static_cast<std::size_t>(channels_);
     std::vector<float> minimum;
     std::vector<float> maximum;
     for (std::size_t frame = 0; frame < frames; ++frame) {
-        const auto [low, high] = std::ranges::minmax(std::span(samples_).subspan(frame * width, width));
+        const std::span<const float> samples = std::span(samples_).subspan(frame * width, width);
+        const auto [low, high] = std::ranges::minmax(samples);
+        for (std::size_t channel = 0; channel < width; ++channel) {
+            channelPeaks[channel] = std::max(channelPeaks[channel], std::abs(samples[channel]));
+        }
         peakLow_ = peakFrames_ == 0 ? low : std::min(peakLow_, low);
         peakHigh_ = peakFrames_ == 0 ? high : std::max(peakHigh_, high);
         if (++peakFrames_ == kTakePeakFrames) {

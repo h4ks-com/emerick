@@ -105,6 +105,22 @@ TEST_CASE("a clipped input lights the track's meter and the take reports it") {
     CHECK(errors.at(0).at("message").get<std::string>().starts_with("the input reached full scale on 2 samples"));
 }
 
+TEST_CASE("a stereo take with one silent side tells the user to record from the single input") {
+    ProjectRig rig;
+    const std::string id = rig.run("track.addAudio", {{"name", "Guitar"}}).at("id");
+    rig.run("track.setAudioIn", {{"track", id}, {"channels", {1, 2}}});
+    rig.run("track.setArm", {{"track", id}, {"value", true}});
+    recordWhile(rig, [&] {
+        rig.audio->setInput("interface", 1, std::vector<float>(4800, 0.25F));
+        rig.audio->process(4800);
+    });
+    REQUIRE(rig.waitForTakes(1) == 1);
+
+    const Json errors = projectState(*rig.controller).at("takeErrors");
+    REQUIRE(errors.size() == 1);
+    CHECK(errors.at(0).at("message").get<std::string>().starts_with("the right input stayed silent"));
+}
+
 TEST_CASE("a device that stops calling back stops the transport, keeps the take and reports it until it runs again") {
     ProjectRig rig;
     const std::string id = rig.run("track.addAudio", {{"name", "Vox"}}).at("id");

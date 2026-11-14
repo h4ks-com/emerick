@@ -211,6 +211,7 @@ TEST_CASE("an input meter reports the peak and full scale samples, and a take co
     REQUIRE(takes.size() == 1);
     CHECK(takes[0].samples == static_cast<std::uint64_t>(kBlock));
     CHECK(takes[0].clippedSamples == 2);
+    CHECK(takes[0].channelPeaks == std::vector{1.0F});
 }
 
 TEST_CASE("an armed audio track records its input to WAV, and the take plays back") {

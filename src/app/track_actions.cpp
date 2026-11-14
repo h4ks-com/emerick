@@ -21,9 +21,12 @@ namespace {
 
 enum class Direction : std::uint8_t { input, output };
 
-std::vector<int> defaultChannels(int count) { return count >= 2 ? std::vector{1, 2} : std::vector{1}; }
+// Most sources plugged into one input are mono, so an input starts on channel 1 alone and an output on 1-2.
+std::vector<int> defaultChannels(int count, Direction direction) {
+    return direction == Direction::output && count >= 2 ? std::vector{1, 2} : std::vector{1};
+}
 
-// A field missing from params keeps its value in route, except that a new device without channels gets 1-2, or 1.
+// A field missing from params keeps its value in route, except that a new device without channels gets the default.
 model::AudioRoute mergeAudioRoute(ProjectController& controller, model::AudioRoute route, const Json& params,
                                   Direction direction) {
     const auto deviceId = optionalParam<std::string>(params, "device");
@@ -44,7 +47,7 @@ model::AudioRoute mergeAudioRoute(ProjectController& controller, model::AudioRou
     }
     const int count = direction == Direction::input ? device->inputChannels : device->outputChannels;
     if (newDevice && count > 0) {
-        route.channels = defaultChannels(count);
+        route.channels = defaultChannels(count, direction);
     }
     if (route.channels.empty() || std::ranges::any_of(route.channels, [&](int c) { return c < 1 || c > count; })) {
         throw AppError("channels for " + device->name + " must be 1 to " + std::to_string(count));
@@ -119,7 +122,7 @@ model::AudioRoute defaultAudioRoute(ProjectController& controller, Direction dir
     if (device == devices.end()) {
         return {};
     }
-    return {device->id, defaultChannels(channels(*device))};
+    return {device->id, defaultChannels(channels(*device), direction)};
 }
 
 Json routeJson(const model::AudioRoute& route) { return {{"device", route.deviceId}, {"channels", route.channels}}; }

@@ -131,6 +131,27 @@ ColumnLayout {
                         available: slot.modelData.plugin !== undefined
                         params: ({insert: slot.modelData.id})
                     }
+                    GlassMenu {
+                        id: copyFrom
+                        objectName: "insert.copyState:" + slot.modelData.id
+                        title: "Copy settings from"
+                        enabled: samePlugins.count > 0
+                        Instantiator {
+                            id: samePlugins
+                            model: slot.modelData.plugin === undefined ? []
+                                   : list.inserts.filter(other => other.id !== slot.modelData.id && other.plugin !== undefined
+                                                                  && other.plugin.id === slot.modelData.plugin.id)
+                            delegate: ActionMenuItem {
+                                required property var modelData
+                                objectName: "insert.copyState:" + slot.modelData.id + ":" + modelData.id
+                                actionId: "insert.copyState"
+                                title: modelData.title + " in slot " + (list.inserts.findIndex(entry => entry.id === modelData.id) + 1)
+                                params: ({insert: slot.modelData.id, from: modelData.id})
+                            }
+                            onObjectAdded: (index, object) => copyFrom.insertItem(index, object)
+                            onObjectRemoved: (index, object) => copyFrom.removeItem(object)
+                        }
+                    }
                     ActionMenuItem {
                         objectName: "insert.params:" + slot.modelData.id
                         actionId: "insert.params"

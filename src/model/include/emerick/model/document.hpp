@@ -204,6 +204,8 @@ struct Track {
     double recordDelayMs = 0.0;
     nlohmann::json data;  // plugin-owned, the model never interprets it
     std::optional<PluginSlot> instrument;
+    // The name of the channel strip preset the track loaded or saved last.
+    std::string preset;
 
     bool operator==(const Track&) const = default;
 };

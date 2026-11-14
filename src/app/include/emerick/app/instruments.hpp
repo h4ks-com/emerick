@@ -102,6 +102,9 @@ public:
     // label. Throws AppError for a missing instrument or param, a value out of its range and a label no choice has.
     ParamSet setParam(const model::TrackId& id, std::uint32_t param, const ParamValue& given);
     ParamSet setParam(const model::InsertId& id, std::uint32_t param, const ParamValue& given);
+    // Loads the state into the insert's live plugin, as a project load does. Throws AppError when the plugin is not
+    // loaded or refuses the state, and then keeps the state it had.
+    void loadState(const model::InsertId& id, const std::vector<std::uint8_t>& state);
 
 private:
     struct Live {

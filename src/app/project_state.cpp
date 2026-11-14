@@ -224,6 +224,7 @@ Json trackState(const model::Track& track, const core::TempoMap& tempo,
                            return Json{{"param", lane.param}, {"pointCount", lane.points.size()}};
                        }) | std::ranges::to<Json::array_t>()},
         {"recordDelayMs", track.recordDelayMs},
+        {"preset", track.preset},
         {"data", track.data}};
 }
 

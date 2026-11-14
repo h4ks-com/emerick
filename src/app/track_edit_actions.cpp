@@ -40,7 +40,6 @@ constexpr std::array kTrackFlags{TrackFlag{kMuteKeys.id, kMuteKeys.title, "silen
                                            &model::Track::monitor, nullptr, true}};
 
 constexpr double kMaxRecordDelayMs = 1000.0;
-constexpr double kMaxTrimDb = 24.0;
 
 constexpr std::array<std::string_view, kTrackColors> kColorNames{"Teal",  "Blue",  "Violet", "Rose",
                                                                  "Amber", "Green", "Sand",   "Steel"};

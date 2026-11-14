@@ -117,6 +117,8 @@ std::optional<PluginSlot> slotFromJson(const nlohmann::json& json) {
                       *std::move(state),   *format,           json.value("vendor", "")};
 }
 
+}  // namespace
+
 nlohmann::json insertToJson(const Insert& insert) {
     return {{"id", insert.id.value},
             {"type", insert.type},
@@ -129,6 +131,8 @@ Insert insertFromJson(const nlohmann::json& json) {
     return {InsertId{json.at("id")}, json.at("type"), json.at("bypass"), json.at("params"),
             slotFromJson(json.value("plugin", nlohmann::json{}))};
 }
+
+namespace {
 
 core::FadeShape fadeShapeFromJson(const nlohmann::json& json, const char* key) {
     const std::string id = json.value(key, std::string{core::fadeShapeId(core::FadeShape::linear)});
@@ -275,7 +279,8 @@ nlohmann::json trackToJson(const Track& track) {
          track.automation | std::views::transform(laneToJson) | std::ranges::to<nlohmann::json::array_t>()},
         {"recordDelayMs", track.recordDelayMs},
         {"data", track.data},
-        {"instrument", slotToJson(track.instrument)}};
+        {"instrument", slotToJson(track.instrument)},
+        {"preset", track.preset}};
 }
 
 // Format 10 saved a MIDI track with an instrument as its own instrument kind.
@@ -312,7 +317,8 @@ Track trackFromJson(const nlohmann::json& json) {
                     std::ranges::to<std::vector>(),
                 json.value("recordDelayMs", 0.0),
                 json.at("data"),
-                slotFromJson(json.value("instrument", nlohmann::json{}))};
+                slotFromJson(json.value("instrument", nlohmann::json{})),
+                json.value("preset", std::string{})};
     for (const auto& clip : json.at("clips")) {
         track.clips.push_back(clipFromJson(clip));
     }
@@ -382,19 +388,22 @@ Document documentFromJson(const nlohmann::json& json) {
     return document;
 }
 
-void saveProject(const Document& document, const std::filesystem::path& folder) {
-    std::filesystem::create_directories(folder / "audio");
-    const std::filesystem::path path = folder / "project.json";
+void writeJsonFile(const nlohmann::json& json, const std::filesystem::path& path) {
     std::filesystem::path temporary = path;
     temporary += ".tmp";
     std::ofstream out(temporary);
-    out << toJson(document).dump(2) << '\n';
+    out << json.dump(2) << '\n';
     out.close();
     if (!out) {
         std::filesystem::remove(temporary);
         throw std::runtime_error("cannot write " + path.string());
     }
     std::filesystem::rename(temporary, path);
+}
+
+void saveProject(const Document& document, const std::filesystem::path& folder) {
+    std::filesystem::create_directories(folder / "audio");
+    writeJsonFile(toJson(document), folder / "project.json");
 }
 
 Document loadProject(const std::filesystem::path& folder) {

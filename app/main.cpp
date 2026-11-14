@@ -242,6 +242,7 @@ int run(int argc, char** argv) {
                         : pluginSearchFolders(appFolder, libraryFolder(profileFolder))});
     registerPluginActions(registry, nav, plugins);
     registerInstrumentActions(registry, controller, nav, plugins, libraryFolder(profileFolder));
+    registerTrackPresetActions(registry, controller, nav, plugins, profileSubfolder(profileFolder, "presets"));
     const auto yamaha = emerick::yamaha::registerWith(registry, controller, nav);
     const auto broadcasts = emerick::broadcast::registerWith(registry, controller, nav);
     const auto monitors = registerMonitors(registry, controller, nav);
@@ -268,10 +269,7 @@ int run(int argc, char** argv) {
     LuaHost lua(registry, ui);
     Console console(registry, lua);
     registerConsoleActions(registry, nav, console);
-    const std::filesystem::path userScripts =
-        (profileFolder.isEmpty() ? QStandardPaths::writableLocation(QStandardPaths::AppDataLocation) : profileFolder)
-            .toStdString() +
-        "/scripts";
+    const std::filesystem::path userScripts = profileSubfolder(profileFolder, "scripts");
     copyExampleScripts(userScripts);
     ScriptLibrary scripts(registry, console, userScripts);
     registerScriptActions(registry, scripts, nav);

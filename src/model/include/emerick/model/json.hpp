@@ -20,6 +20,15 @@ nlohmann::json toJson(const Document& document);
 // Throws std::runtime_error for an unknown format and nlohmann::json::exception for missing or mistyped fields.
 Document documentFromJson(const nlohmann::json& json);
 
+// One insert as the project holds it, which a channel strip preset holds too. insertFromJson throws as
+// documentFromJson does.
+nlohmann::json insertToJson(const Insert& insert);
+Insert insertFromJson(const nlohmann::json& json);
+
+// Writes the JSON beside path and renames it into place, so a failed write keeps the file that was there. Throws
+// std::runtime_error when the file cannot be written.
+void writeJsonFile(const nlohmann::json& json, const std::filesystem::path& path);
+
 // A project is a folder holding project.json; audio files live in <folder>/audio/ and clips reference them relatively.
 // Both throw std::runtime_error when the file cannot be read or written.
 void saveProject(const Document& document, const std::filesystem::path& folder);

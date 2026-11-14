@@ -338,12 +338,14 @@ QVariant TrackListModel::data(const QModelIndex& index, int role) const {
                        ? QVariantMap{{"action", qs(type->fileDrop.action)},
                                      {"extensions", toVariant(Json(type->fileDrop.extensions))}}
                        : QVariant{};
+        case Role::preset:
+            return qs(track.preset);
     }
     return {};
 }
 
 QHash<int, QByteArray> TrackListModel::roleNames() const {
-    static constexpr std::array<std::pair<Role, const char*>, 39> kNames{
+    static constexpr std::array<std::pair<Role, const char*>, 40> kNames{
         {{Role::id, "trackId"},
          {Role::name, "name"},
          {Role::kind, "kind"},
@@ -382,7 +384,8 @@ QHash<int, QByteArray> TrackListModel::roleNames() const {
          {Role::takePreview, "takePreview"},
          {Role::takeFrozen, "takeFrozen"},
          {Role::inspectorComponent, "inspectorComponent"},
-         {Role::fileDrop, "fileDrop"}}};
+         {Role::fileDrop, "fileDrop"},
+         {Role::preset, "preset"}}};
     QHash<int, QByteArray> names;
     for (const auto& [role, name] : kNames) {
         names.insert(static_cast<int>(role), name);

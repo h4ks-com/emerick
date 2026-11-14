@@ -36,6 +36,10 @@ void registerInstrumentActions(Registry& registry, ProjectController& controller
                                const std::filesystem::path& libraryFolder = {});
 // Adds insert.addPlugin, which insert.add runs for a plugin.
 void registerPluginInsertActions(Registry& registry, ProjectController& controller, Nav& nav, PluginCatalog& catalog);
+// track.savePreset, track.loadPreset and track.presets, which keep a track's inserts and trim as named presets in
+// folder.
+void registerTrackPresetActions(Registry& registry, ProjectController& controller, Nav& nav, PluginCatalog& catalog,
+                                const std::filesystem::path& folder);
 // Adds dexed.programs and dexed.load, which pick the DX7 program a Dexed instrument plays.
 void registerDexedActions(Registry& registry, ProjectController& controller, Nav& nav, PluginCatalog& catalog);
 // The credit {id, name, license, url} of each DX7 cartridge Emerick ships.

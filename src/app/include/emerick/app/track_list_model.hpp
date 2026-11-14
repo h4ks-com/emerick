@@ -64,6 +64,7 @@ public:
         takeFrozen,
         inspectorComponent,
         fileDrop,
+        preset,
     };
 
     TrackListModel(ProjectController& controller, const Registry& registry, QObject* parent = nullptr);

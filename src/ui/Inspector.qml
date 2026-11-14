@@ -12,6 +12,7 @@ Rectangle {
         target: inspector
     }
     readonly property bool severalTracks: Nav.selectedTracks.length > 1
+    readonly property bool presetsShown: Registry.actionInfo("track.loadPreset").title !== undefined
 
     function mixed(role) {
         return severalTracks && Tracks.revision >= 0 && !Tracks.sameAcross(Nav.selectedTracks, role)
@@ -132,6 +133,7 @@ Rectangle {
                 required property string inspectorComponent
                 required property var sends
                 required property var inserts
+                required property string preset
                 required property var audioIn
                 required property var audioOut
                 required property var midiIn
@@ -376,6 +378,12 @@ Rectangle {
                 }
 
                 RouteLabel { text: "Inserts"; visible: panel.playsAudio }
+                TrackPresetButton {
+                    visible: panel.playsAudio && !Registry.readOnly && inspector.presetsShown
+                    trackId: panel.trackId
+                    preset: panel.preset
+                    Layout.fillWidth: true
+                }
                 InsertList {
                     visible: panel.playsAudio
                     trackId: panel.trackId

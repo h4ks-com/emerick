@@ -60,14 +60,17 @@ Json programJson(const LibraryProgram& program) {
 
 }  // namespace
 
+std::filesystem::path profileSubfolder(const QString& profileFolder, const std::string& name,
+                                       QStandardPaths::StandardLocation location) {
+    const QString base = profileFolder.isEmpty() ? QStandardPaths::writableLocation(location) : profileFolder;
+    return std::filesystem::path{base.toStdString()} / name;
+}
+
 std::filesystem::path libraryFolder(const QString& profileFolder) {
     if (const QString folder = qEnvironmentVariable("EMERICK_LIBRARY_DIR"); !folder.isEmpty()) {
         return folder.toStdString();
     }
-    const QString base = profileFolder.isEmpty()
-                             ? QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation)
-                             : profileFolder;
-    return std::filesystem::path{base.toStdString()} / "libraries";
+    return profileSubfolder(profileFolder, "libraries", QStandardPaths::AppLocalDataLocation);
 }
 
 // UI thread: downloads one library into a temporary file while hashing it, then extracts it with the system tar.

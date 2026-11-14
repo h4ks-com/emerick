@@ -2,6 +2,7 @@
 
 #include <QNetworkAccessManager>
 #include <QObject>
+#include <QStandardPaths>
 #include <QString>
 #include <QVariantList>
 #include <cstdint>
@@ -75,6 +76,9 @@ std::vector<Library> curatedLibraries();
 std::vector<std::string> libraryIdsToInstall(const std::vector<std::string>& given,
                                              const std::vector<Library>& catalog);
 
+// The folder name in the folder of a --profile run, else in the user's location for the app.
+std::filesystem::path profileSubfolder(const QString& profileFolder, const std::string& name,
+                                       QStandardPaths::StandardLocation location = QStandardPaths::AppDataLocation);
 // EMERICK_LIBRARY_DIR, else the libraries folder of a --profile run, else the user's app data folder.
 std::filesystem::path libraryFolder(const QString& profileFolder);
 

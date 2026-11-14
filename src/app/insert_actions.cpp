@@ -1,3 +1,5 @@
+#include "emerick/app/insert_actions.hpp"
+
 #include <algorithm>
 #include <cmath>
 #include <ranges>
@@ -17,39 +19,29 @@ namespace emerick::app {
 
 namespace {
 
-constexpr const char* kCategory = "Tracks / Inserts";
+constexpr const char* kCategory = kInsertCategory;
 
-struct InsertRef {
-    model::TrackId track;
-    model::InsertId insert;
-};
+model::Insert& insertIn(model::Track& track, const model::InsertId& id) {
+    return *std::ranges::find(track.inserts, id, &model::Insert::id);
+}
+
+}  // namespace
 
 // An automation target names a param as "<insert id>.<param id>", so we accept that in place of the insert param.
-InsertRef insertParam(const ProjectController& controller, const Json& params) {
+InsertRef insertParam(const ProjectController& controller, const Json& params, const std::string& key) {
     std::string id;
-    if (const auto named = optionalParam<std::string>(params, "insert")) {
+    if (const auto named = optionalParam<std::string>(params, key)) {
         id = *named;
     } else if (const auto target = optionalParam<std::string>(params, "param"); target && target->contains('.')) {
         id = target->substr(0, target->find('.'));
     } else {
-        throw AppError("missing param insert");
+        throw AppError("missing param " + key);
     }
     const model::Track* track = model::trackWithInsert(controller.project().document(), model::InsertId{id});
     if (track == nullptr) {
         throw AppError("no insert " + id + ", read the track's inserts from state.get");
     }
     return {track->id, model::InsertId{id}};
-}
-
-// A plugin's param name may hold a dot, so we strip only the insert id the target starts with.
-std::string paramName(const Json& params, const InsertRef& ref) {
-    const auto name = param<std::string>(params, "param");
-    const std::string prefix = ref.insert.value + ".";
-    return name.starts_with(prefix) ? name.substr(prefix.size()) : name;
-}
-
-model::Insert& insertIn(model::Track& track, const model::InsertId& id) {
-    return *std::ranges::find(track.inserts, id, &model::Insert::id);
 }
 
 const model::Insert& insertOf(const ProjectController& controller, const InsertRef& ref) {
@@ -78,6 +70,20 @@ std::shared_ptr<engine::Plugin> livePlugin(ProjectController& controller, const 
                        " is not loaded, see the track's warning");
     }
     return plugin;
+}
+
+Json insertSchema(Json properties, const std::vector<std::string>& required) {
+    properties["insert"] = {{"type", "string"}};
+    return {{"required", required}, {"properties", std::move(properties)}};
+}
+
+namespace {
+
+// A plugin's param name may hold a dot, so we strip only the insert id the target starts with.
+std::string paramName(const Json& params, const InsertRef& ref) {
+    const auto name = param<std::string>(params, "param");
+    const std::string prefix = ref.insert.value + ".";
+    return name.starts_with(prefix) ? name.substr(prefix.size()) : name;
 }
 
 ParamValue givenValue(const Json& params) {
@@ -120,11 +126,6 @@ model::TrackId audioTrack(const Registry& registry, const ProjectController& con
         throw AppError(playsNoAudio(type, target, "add inserts to an audio track or a bus"));
     }
     return track;
-}
-
-Json insertSchema(Json properties, const std::vector<std::string>& required) {
-    properties["insert"] = {{"type", "string"}};
-    return {{"required", required}, {"properties", std::move(properties)}};
 }
 
 void registerInsertEdits(Registry& registry, ProjectController& controller) {
@@ -391,6 +392,7 @@ void registerPluginInsertActions(Registry& registry, ProjectController& controll
                  return insertResult(controller, {track, insert.id});
              },
          .submenu = effects});
+    registerPluginStateActions(registry, controller);
 }
 
 }  // namespace emerick::app

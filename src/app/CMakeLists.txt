@@ -78,6 +78,7 @@ qt_add_library(emerick_app STATIC
     include/emerick/app/dexed.hpp
     include/emerick/app/effect_catalog.hpp
     include/emerick/app/event_wait.hpp
+    include/emerick/app/insert_actions.hpp
     include/emerick/app/instruments.hpp
     include/emerick/app/introspector.hpp
     include/emerick/app/key_focus.hpp
@@ -148,6 +149,7 @@ qt_add_library(emerick_app STATIC
     piano_roll_actions.cpp
     plugin_actions.cpp
     plugin_catalog.cpp
+    plugin_state_actions.cpp
     project_actions.cpp
     project_bundle.cpp
     project_files.cpp
@@ -170,6 +172,7 @@ qt_add_library(emerick_app STATIC
     track_edit_actions.cpp
     track_list_model.cpp
     track_meters.cpp
+    track_presets.cpp
     tuner.cpp
     timeline_video.cpp
     ui_api.cpp
@@ -213,6 +216,7 @@ if(EMERICK_BUILD_TESTS)
         tests/hostile_params_test.cpp
         tests/insert_test.cpp
         tests/plugin_insert_test.cpp
+        tests/plugin_state_test.cpp
         tests/instrument_test.cpp
         tests/introspector_test.cpp
         tests/libraries_test.cpp

@@ -468,6 +468,19 @@ ParamSet Instruments::setPluginParam(const std::string& key, std::uint32_t param
     return {.state = live.slot.state, .value = value, .text = live.instrument->paramText(param, value)};
 }
 
+void Instruments::loadState(const model::InsertId& id, const std::vector<std::uint8_t>& state) {
+    const auto found = live_.find(id.value);
+    if (found == live_.end() || !found->second.instrument) {
+        throw AppError(found == live_.end() ? "no plugin insert " + id.value : found->second.error);
+    }
+    Live& live = found->second;
+    if (!live.instrument->loadState(state)) {
+        live.instrument->loadState(live.slot.state.empty() ? live.defaults : live.slot.state);
+        throw AppError(live.slot.name + " refused the state, so it keeps its settings");
+    }
+    live.slot.state = state;
+}
+
 void Instruments::closeEditor(Live& live) {
     if (live.window) {
         live.window->disconnect();

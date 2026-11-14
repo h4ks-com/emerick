@@ -32,8 +32,8 @@ const std::set<std::string> kUnreachable = {
     "script.list",        "script.run",   "transport.setClockOut", "yamaha.chart.text",
 };
 
-// Listings for agents, which menus leave out.
-const std::set<std::string> kAgentOnly = {"dexed.programs"};
+// Listings for agents and the raw plugin state they pass as base64, which menus leave out.
+const std::set<std::string> kAgentOnly = {"dexed.programs", "insert.state", "insert.setState", "track.presets"};
 
 std::string qmlSource() {
     std::string source;
@@ -85,6 +85,7 @@ void withEveryAction(const std::function<void(const Registry&)>& check) {
     PluginCatalog plugins({.cacheFolder = rig.path("cache"), .scanner = {}, .folders = {}});
     registerPluginActions(rig.registry, rig.nav, plugins);
     registerInstrumentActions(rig.registry, *rig.controller, rig.nav, plugins);
+    registerTrackPresetActions(rig.registry, *rig.controller, rig.nav, plugins, rig.path("presets"));
     const auto yamaha = emerick::yamaha::registerWith(rig.registry, *rig.controller, rig.nav);
     const auto broadcasts = emerick::broadcast::registerWith(rig.registry, *rig.controller, rig.nav);
     const auto monitors = registerMonitors(rig.registry, *rig.controller, rig.nav);

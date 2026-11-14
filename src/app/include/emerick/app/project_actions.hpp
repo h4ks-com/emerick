@@ -14,6 +14,9 @@ namespace emerick::app {
 
 class ViewEngine;
 
+// The most a track's trim raises or lowers its signal, in dB.
+inline constexpr double kMaxTrimDb = 24.0;
+
 // Every project, track, clip, transport, device and export action, and the "project", "transport" and "devices"
 // state providers.
 // The tempo with the bpm, numerator and denominator params applied, or an AppError naming the valid range.

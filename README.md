@@ -30,7 +30,7 @@ The app opens with an empty project. Press Cmd+K to search every action, from ad
 - Records and plays audio and MIDI tracks of clips, with a metronome and count-in.
 - Hosts CLAP and VST3 instruments and effects, each in its own plugin window.
 - Ships a General MIDI instrument with the GeneralUser GS SoundFont, so MIDI plays with no setup.
-- Mixes through buses and sends with ten built-in effects (EQ, compressor, delay, reverb, limiter, gate, filter, saturation, chorus, utility) and automation on any parameter.
+- Mixes through buses and sends with eleven built-in effects (EQ, compressor, delay, reverb, limiter, gate, filter, saturation, chorus, utility, guitar amp) and automation on any parameter.
 - Compensates plugin latency so tracks stay aligned.
 - Opens a tuner and a spectrogram on any track, bus or the master.
 - Exports WAV, FLAC, Ogg, Opus and MP3 at a target loudness (LUFS) and true-peak ceiling.

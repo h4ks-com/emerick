@@ -1,11 +1,13 @@
 #include <sndfile.h>
 
+#include <algorithm>
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 #include <string>
 #include <vector>
 
 #include "emerick/app/automation_params.hpp"
+#include "emerick/app/effect_catalog.hpp"
 #include "emerick/app/session_mapping.hpp"
 #include "emerick/engine/sound_file.hpp"
 #include "project_rig.hpp"
@@ -171,6 +173,38 @@ TEST_CASE("an insert's number and switch params are automation params, and their
     CHECK(lanes.front().target == engine::AutomationTarget::insert);
     CHECK(lanes.front().insert == eq);
     CHECK(lanes.front().param == 14);
+}
+
+TEST_CASE("the insert menu and the effect catalog list the amp, which adds with its defaults and takes a model") {
+    ProjectRig rig;
+    const std::vector<MenuChoice> choices = rig.registry.action("insert.add")->submenu();
+    CHECK(std::ranges::any_of(choices, [](const MenuChoice& choice) { return choice.title == "Amp"; }));
+
+    const QVariantList params = EffectCatalog::params(QStringLiteral("amp"));
+    REQUIRE(params.size() == 9);
+    CHECK(params.at(0).toMap().value("choices").toStringList() ==
+          QStringList{QStringLiteral("British"), QStringLiteral("American"), QStringLiteral("Crunch")});
+    CHECK(params.at(7).toMap().value("choices").toStringList().contains(QStringLiteral("1x12")));
+
+    const std::string guitar = rig.run("track.addAudio").at("id");
+    const Json added = rig.run("insert.add", {{"track", guitar}, {"type", "amp"}});
+    CHECK(added.at("title") == "Amp");
+    CHECK(added.at("params").at("gain") == 4.0);
+    CHECK(added.at("params").at("cabinet") == 2.0);
+    const std::string amp = added.at("id");
+    CHECK(rig.run("insert.setParam", {{"insert", amp}, {"param", "model"}, {"value", "Crunch"}})
+              .at("params")
+              .at("model") == 2.0);
+    CHECK(rig.run("insert.setParam", {{"param", amp + ".cabinet"}, {"value", "4x12"}}).at("params").at("cabinet") ==
+          3.0);
+    CHECK(rig.run("insert.setParam", {{"insert", amp}, {"param", "output"}, {"value", 40}}).at("params").at("output") ==
+          12.0);
+
+    rig.run("automation.addPoint", {{"track", guitar}, {"param", amp + ".gain"}, {"tick", 0}, {"value", 8.0}});
+    const auto lanes = toSession(rig.controller->project().document(), rig.registry, {}).tracks.at(0).automation;
+    REQUIRE(lanes.size() == 1);
+    CHECK(lanes.front().insert == amp);
+    CHECK(lanes.front().param == 1);
 }
 
 TEST_CASE("each standard effect adds by its type, takes a param and automates another") {

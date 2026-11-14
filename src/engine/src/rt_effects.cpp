@@ -21,8 +21,11 @@ constexpr double kLowCutRest = 5.0;
 constexpr double kHighCutRest = 0.49;
 constexpr float kSilenceDb = -160.0F;
 
-enum class FilterShape : std::uint8_t { lowPass, highPass, lowShelf, highShelf, peak };
+// NOLINTEND(readability-magic-numbers)
 
+}  // namespace
+
+// NOLINTBEGIN(readability-magic-numbers): the cookbook's constants.
 Biquad design(FilterShape shape, double frequency, double gainDb, double q, double sampleRate) {
     const double w0 = 2.0 * std::numbers::pi * std::clamp(frequency, 1.0, sampleRate * kHighCutRest) / sampleRate;
     const double cosine = std::cos(w0);
@@ -77,6 +80,11 @@ Biquad design(FilterShape shape, double frequency, double gainDb, double q, doub
     }
     return {.b0 = b0 / a0, .b1 = b1 / a0, .b2 = b2 / a0, .a1 = a1 / a0, .a2 = a2 / a0};
 }
+// NOLINTEND(readability-magic-numbers)
+
+namespace {
+
+// NOLINTBEGIN(readability-magic-numbers): DSP constants are named where they are used.
 
 double magnitudeDb(const Biquad& filter, double frequency, double sampleRate) {
     const std::complex<double> z1 = std::polar(1.0, -2.0 * std::numbers::pi * frequency / sampleRate);
@@ -173,11 +181,7 @@ void Equalizer::process(std::span<float* const> channels, Frames offset, Frames 
             BiquadState& state = states.at(index);
             float* samples = channels[channel] + offset;
             for (Frames frame = 0; frame < frames; ++frame) {
-                const double input = samples[frame];
-                const double output = (filter.b0 * input) + state.z1;
-                state.z1 = (filter.b1 * input) - (filter.a1 * output) + state.z2;
-                state.z2 = (filter.b2 * input) - (filter.a2 * output);
-                samples[frame] = static_cast<float>(output);
+                samples[frame] = static_cast<float>(filterSample(filter, state, samples[frame]));
             }
         }
     }
@@ -365,8 +369,8 @@ void Reverb::process(std::span<float* const> channels, Frames offset, Frames fra
 
 namespace {
 
-std::variant<Equalizer, Compressor, Delay, Reverb, Limiter, Gate, Filter, Saturation, Chorus, Utility> makeProcessor(
-    EffectType type, std::size_t channels, double sampleRate) {
+std::variant<Equalizer, Compressor, Delay, Reverb, Limiter, Gate, Filter, Saturation, Chorus, Utility, Amp>
+makeProcessor(EffectType type, std::size_t channels, double sampleRate) {
     switch (type) {
         case EffectType::eq:
             return Equalizer{channels};
@@ -388,6 +392,8 @@ std::variant<Equalizer, Compressor, Delay, Reverb, Limiter, Gate, Filter, Satura
             return Chorus{channels, sampleRate};
         case EffectType::utility:
             return Utility{};
+        case EffectType::amp:
+            return Amp{channels};
     }
     return Equalizer{channels};
 }

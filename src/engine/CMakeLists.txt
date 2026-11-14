@@ -26,6 +26,7 @@ add_library(emerick_engine
     src/pitch.cpp
     src/pitch_needle.cpp
     src/plugin.cpp
+    src/rt_amp.cpp
     src/rt_clap.cpp
     src/rt_metronome.cpp
     src/rt_effects.cpp

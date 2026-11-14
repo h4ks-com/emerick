@@ -285,7 +285,7 @@ void registerInsertActions(Registry& registry, ProjectController& controller, Na
         {.id = "insert.add",
          .title = "Add insert",
          .aliases = {"add effect", "insert plugin", "add eq", "add compressor", "add delay", "add reverb",
-                     "add limiter", "add gate", "add filter", "add saturation", "add chorus", "add utility"},
+                     "add limiter", "add gate", "add filter", "add saturation", "add chorus", "add utility", "add amp"},
          .category = kCategory,
          .schema = {{"properties",
                      {{"track", {{"type", "string"}}},

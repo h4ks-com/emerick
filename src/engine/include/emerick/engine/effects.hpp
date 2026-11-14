@@ -20,7 +20,8 @@ enum class EffectType : std::uint8_t {
     filter,
     saturation,
     chorus,
-    utility
+    utility,
+    amp
 };
 
 enum class ParamKind : std::uint8_t { number, toggle, choice };
@@ -70,12 +71,17 @@ enum class FilterParam : std::uint8_t { mode, cutoff, resonance, slope };
 enum class SaturationParam : std::uint8_t { drive, character, output, mix };
 enum class ChorusParam : std::uint8_t { rate, depth, delay, feedback, mix };
 enum class UtilityParam : std::uint8_t { gain, width, mono, invertLeft, invertRight, balance };
+enum class AmpParam : std::uint8_t { model, gain, bass, mids, treble, presence, master, cabinet, output };
 
 enum class FilterMode : std::uint8_t { lowPass, highPass, bandPass };
 inline constexpr std::array<std::string_view, 3> kFilterModes{"Low pass", "High pass", "Band pass"};
 inline constexpr std::array<std::string_view, 2> kFilterSlopes{"12 dB/oct", "24 dB/oct"};
 enum class SaturationCharacter : std::uint8_t { softClip, tape, tube };
 inline constexpr std::array<std::string_view, 3> kSaturationCharacters{"Soft clip", "Tape", "Tube"};
+enum class AmpModel : std::uint8_t { british, american, crunch };
+inline constexpr std::array<std::string_view, 3> kAmpModels{"British", "American", "Crunch"};
+enum class AmpCabinet : std::uint8_t { off, oneByTwelve, twoByTwelve, fourByTwelve };
+inline constexpr std::array<std::string_view, 4> kAmpCabinets{"Off", "1x12", "2x12", "4x12"};
 inline constexpr float kMaxChorusDelayMs = 30.0F;
 inline constexpr float kMaxChorusDepthMs = 5.0F;
 
@@ -197,6 +203,17 @@ inline constexpr std::array kUtilityParams{
     EffectParam{"invertRight", "Invert right", "", 0, 1, 0, ParamKind::toggle},
     EffectParam{"balance", "Balance", "%", -100, 100, 0},
 };
+inline constexpr std::array kAmpParams{
+    EffectParam{"model", "Model", "", 0, kAmpModels.size() - 1, 0, ParamKind::choice, false, kAmpModels},
+    EffectParam{"gain", "Gain", "", 0, 10, 4},
+    EffectParam{"bass", "Bass", "", 0, 10, 5},
+    EffectParam{"mids", "Mids", "", 0, 10, 5},
+    EffectParam{"treble", "Treble", "", 0, 10, 5},
+    EffectParam{"presence", "Presence", "", 0, 10, 5},
+    EffectParam{"master", "Master", "", 0, 10, 5},
+    EffectParam{"cabinet", "Cabinet", "", 0, kAmpCabinets.size() - 1, 2, ParamKind::choice, false, kAmpCabinets},
+    EffectParam{"output", "Output", "dB", -24, 12, 0},
+};
 // NOLINTEND(readability-magic-numbers)
 
 // We index the table by EffectType, so its rows follow the enum's order.
@@ -211,6 +228,7 @@ inline constexpr std::array kEffects{
     EffectSpec{EffectType::saturation, "saturation", "Saturation", kSaturationParams},
     EffectSpec{EffectType::chorus, "chorus", "Chorus", kChorusParams},
     EffectSpec{EffectType::utility, "utility", "Utility", kUtilityParams},
+    EffectSpec{EffectType::amp, "amp", "Amp", kAmpParams},
 };
 
 const EffectSpec& effectSpec(EffectType type);

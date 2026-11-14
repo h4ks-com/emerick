@@ -12,6 +12,8 @@
 
 #include "emerick/engine/effects.hpp"
 #include "emerick/engine/session.hpp"
+#include "rt_amp.hpp"
+#include "rt_biquad.hpp"
 #include "rt_limiter.hpp"
 #include "rt_standard_effects.hpp"
 
@@ -45,19 +47,6 @@ inline float readBetween(const std::vector<float>& line, double position) {
     const auto fraction = static_cast<float>(position - std::floor(position));
     return std::lerp(line[whole % line.size()], line[(whole + 1) % line.size()], fraction);
 }
-
-struct Biquad {
-    double b0 = 1.0;
-    double b1 = 0.0;
-    double b2 = 0.0;
-    double a1 = 0.0;
-    double a2 = 0.0;
-};
-
-struct BiquadState {
-    double z1 = 0.0;
-    double z2 = 0.0;
-};
 
 // Each cut band cascades up to four filters for its slope, so the EQ has a fixed slot per filter and a band turning on
 // never moves another band's state.
@@ -188,7 +177,8 @@ private:
 
     EffectType type_;
     EffectContext context_;
-    std::variant<Equalizer, Compressor, Delay, Reverb, Limiter, Gate, Filter, Saturation, Chorus, Utility> processor_;
+    std::variant<Equalizer, Compressor, Delay, Reverb, Limiter, Gate, Filter, Saturation, Chorus, Utility, Amp>
+        processor_;
     EffectParams current_{};
     bool primed_ = false;
     float wet_ = 1.0F;

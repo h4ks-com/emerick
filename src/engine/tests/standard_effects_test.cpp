@@ -171,3 +171,98 @@ TEST_CASE("utility gain and balance scale each channel") {
     CHECK(output.at(0).back() == Approx(0.5F * std::pow(10.0F, -6.0F / 20.0F) * 0.5F));
     CHECK(output.at(1).back() == Approx(0.5F * std::pow(10.0F, -6.0F / 20.0F)));
 }
+
+TEST_CASE("an amp turns silence into silence even at full gain") {
+    const Channels silence{std::vector<float>(4800, 0.0F), std::vector<float>(4800, 0.0F)};
+    const EffectParams loud = paramsWith(EffectType::amp, {{"gain", 10}, {"master", 10}, {"model", 2}});
+    CHECK(run(EffectType::amp, silence, loud) == silence);
+}
+
+TEST_CASE("an amp keeps a quiet sine nearly clean at low gain and adds odd and even harmonics at high gain") {
+    const std::vector<float> input = sine(200, 48000, 0.1F);
+    const auto harmonicsDb = [&](float gain) {
+        const std::vector<float> output = runMono(
+            EffectType::amp, input, paramsWith(EffectType::amp, {{"gain", gain}, {"model", 2}, {"cabinet", 0}}));
+        const double fundamental = toneDb(secondHalf(output), 200);
+        return std::pair{toneDb(secondHalf(output), 400) - fundamental, toneDb(secondHalf(output), 600) - fundamental};
+    };
+    const auto [cleanEven, cleanOdd] = harmonicsDb(0);
+    CHECK(cleanEven < -30.0);
+    CHECK(cleanOdd < -30.0);
+    const auto [drivenEven, drivenOdd] = harmonicsDb(10);
+    CHECK(drivenEven > -30.0);
+    CHECK(drivenOdd > -20.0);
+}
+
+TEST_CASE("an amp's cabinet rolls 10 kHz off well below 1 kHz") {
+    const auto spreadDb = [](float cabinet) {
+        const EffectParams params = paramsWith(EffectType::amp, {{"gain", 0}, {"cabinet", cabinet}});
+        const std::vector<float> low = sine(1000, 24000, 0.05F);
+        const std::vector<float> high = sine(10000, 24000, 0.05F);
+        return gainDb(high, runMono(EffectType::amp, high, params)) -
+               gainDb(low, runMono(EffectType::amp, low, params));
+    };
+    const double open = spreadDb(0);
+    for (const float cabinet : {1.0F, 2.0F, 3.0F}) {
+        INFO(cabinet);
+        CHECK(spreadDb(cabinet) < open - 20.0);
+    }
+}
+
+TEST_CASE("each amp model shapes its frequency response its own way") {
+    const auto responseDb = [](float model) {
+        std::vector<double> response;
+        const EffectParams params = paramsWith(EffectType::amp, {{"gain", 0}, {"cabinet", 0}, {"model", model}});
+        const auto levelDb = [&](double frequency) {
+            const std::vector<float> input = sine(frequency, 24000, 0.02F);
+            return gainDb(input, runMono(EffectType::amp, input, params));
+        };
+        // We compare the shape around 400 Hz, since each model's drive also sets its overall level.
+        const double reference = levelDb(400.0);
+        for (const double frequency : {100.0, 1000.0, 3000.0}) {
+            response.push_back(levelDb(frequency) - reference);
+        }
+        return response;
+    };
+    const std::vector<std::vector<double>> models{responseDb(0), responseDb(1), responseDb(2)};
+    for (std::size_t first = 0; first < models.size(); ++first) {
+        for (std::size_t second = first + 1; second < models.size(); ++second) {
+            INFO(first << " " << second);
+            double largest = 0.0;
+            for (std::size_t point = 0; point < models[first].size(); ++point) {
+                largest = std::max(largest, std::abs(models[first][point] - models[second][point]));
+            }
+            CHECK(largest > 1.0);
+        }
+    }
+}
+
+TEST_CASE("an amp stays finite at extreme params") {
+    std::vector<float> input = sine(110, 9600, 4.0F);
+    input.at(100) = 50.0F;
+    for (const float model : {0.0F, 1.0F, 2.0F}) {
+        for (const float cabinet : {0.0F, 3.0F}) {
+            for (const float knobs : {0.0F, 10.0F}) {
+                const EffectParams params = paramsWith(EffectType::amp, {{"model", model},
+                                                                         {"cabinet", cabinet},
+                                                                         {"gain", knobs},
+                                                                         {"bass", knobs},
+                                                                         {"mids", knobs},
+                                                                         {"treble", knobs},
+                                                                         {"presence", knobs},
+                                                                         {"master", knobs},
+                                                                         {"output", knobs > 0 ? 12.0F : -24.0F}});
+                const std::vector<float> output = runMono(EffectType::amp, input, params);
+                CHECK(std::ranges::all_of(output, [](float sample) { return std::isfinite(sample); }));
+                CHECK(std::ranges::max(output) < 100.0F);
+            }
+        }
+    }
+}
+
+TEST_CASE("an amp plays the same signal on both channels to the same output") {
+    const std::vector<float> guitar = sine(196, 9600, 0.3F);
+    const Channels output = run(EffectType::amp, {guitar, guitar}, paramsWith(EffectType::amp, {{"gain", 8}}));
+    CHECK(output.at(0) == output.at(1));
+    CHECK(output.at(0) != guitar);
+}

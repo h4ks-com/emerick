@@ -142,12 +142,34 @@ std::vector<MidiEvent> clipEvents(const MidiClip& clip) {
     return placed | std::views::transform(&Placed::event) | std::ranges::to<std::vector>();
 }
 
-Ticks quantized(Ticks at, Ticks grid, double strength) {
+Ticks quantized(Ticks at, Ticks grid, double strength, double swing) {
     if (grid <= 0) {
         return at;
     }
-    const Ticks nearest = (at + grid / 2) / grid * grid;
-    return at + static_cast<Ticks>(std::llround(static_cast<double>(nearest - at) * std::clamp(strength, 0.0, 1.0)));
+    const Ticks step = std::llround(static_cast<double>(at) / static_cast<double>(grid));
+    const Ticks swingOffset =
+        step % 2 == 0
+            ? 0
+            : std::llround(static_cast<double>(grid) * (std::clamp(swing, 0.0, kMaxSwing) / kStraightSwing - 1.0));
+    const Ticks target = step * grid + swingOffset;
+    return at + static_cast<Ticks>(std::llround(static_cast<double>(target - at) * std::clamp(strength, 0.0, 1.0)));
+}
+
+void humanize(Note& note, Ticks clipLength, const Humanize& amounts, std::mt19937& random) {
+    const auto unit = [&random] { return static_cast<double>(random()) / static_cast<double>(std::mt19937::max()); };
+    // We sum uniform draws by hand because std::normal_distribution gives other numbers on each standard library.
+    const auto spread = [&unit] { return (unit() + unit() + unit()) * (2.0 / 3.0) - 1.0; };
+    const Ticks lastEnd = std::max(clipLength, note.start + note.length);
+    const bool moves = unit() >= amounts.keep;
+    const double shift = spread();
+    if (moves) {
+        note.start = std::clamp<Ticks>(note.start + std::llround(shift * static_cast<double>(amounts.timing)), 0,
+                                       clipLength - 1);
+    }
+    note.velocity =
+        std::clamp(note.velocity + static_cast<int>(std::lround(spread() * amounts.velocity)), 1, kMaxVelocity);
+    const Ticks length = std::llround(static_cast<double>(note.length) * (1.0 + spread() * amounts.length));
+    note.length = std::clamp<Ticks>(length, 1, std::max<Ticks>(1, lastEnd - note.start));
 }
 
 }  // namespace emerick::model

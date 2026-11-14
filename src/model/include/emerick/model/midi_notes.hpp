@@ -1,5 +1,6 @@
 #pragma once
 
+#include <random>
 #include <vector>
 
 #include "emerick/model/document.hpp"
@@ -24,7 +25,25 @@ MidiClip unrolled(const MidiClip& clip);
 // same tick.
 std::vector<MidiEvent> clipEvents(const MidiClip& clip);
 
-// Moves at toward the nearest multiple of grid by strength, from 0 (unchanged) to 1 (on the grid).
-Ticks quantized(Ticks at, Ticks grid, double strength);
+inline constexpr double kStraightSwing = 50.0;
+inline constexpr double kMaxSwing = 100.0;
+
+// Moves at toward its nearest grid step by strength, from 0 (unchanged) to 1 (on the grid). Swing from 0 to 100 places
+// every odd step at swing / 50 grid steps after the step before it: 50 is straight, 66.7 a triplet feel and 75 dotted.
+Ticks quantized(Ticks at, Ticks grid, double strength, double swing = kStraightSwing);
+
+// The largest random change humanize makes to a note.
+struct Humanize {
+    Ticks timing = 0;
+    // The chance from 0 to 1 that a note's start stays where it is.
+    double keep = 0.0;
+    int velocity = 0;
+    // A share of the note's length.
+    double length = 0.0;
+};
+
+// Moves the note's start, velocity and length by random amounts up to each spread, small ones more often than large,
+// keeping its start inside the clip, its end no further past the clip end than before and its velocity from 1 to 127.
+void humanize(Note& note, Ticks clipLength, const Humanize& amounts, std::mt19937& random);
 
 }  // namespace emerick::model

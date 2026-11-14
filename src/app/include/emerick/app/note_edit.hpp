@@ -12,6 +12,17 @@
 namespace emerick::app {
 
 inline constexpr const char* kGridSetting = "midi.grid";
+inline constexpr const char* kSwingSetting = "midi.swing";
+inline constexpr const char* kHumanizeTimingSetting = "midi.humanizeTiming";
+inline constexpr const char* kHumanizeKeepSetting = "midi.humanizeKeep";
+inline constexpr const char* kHumanizeVelocitySetting = "midi.humanizeVelocity";
+inline constexpr const char* kHumanizeLengthSetting = "midi.humanizeLength";
+inline constexpr int kPercent = 100;
+// Recorded drummers leave about 70 percent of hits on their spot and move the rest by up to about 0.03 beats.
+inline constexpr double kDefaultHumanizeTiming = 0.03;
+inline constexpr int kDefaultHumanizeKeep = 70;
+inline constexpr int kDefaultHumanizeVelocity = 8;
+inline constexpr int kDefaultHumanizeLength = 5;
 
 // What a new note gets when the caller names no length or velocity: the last ones the user set.
 struct NoteDefaults {

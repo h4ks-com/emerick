@@ -1,12 +1,18 @@
 #include <algorithm>
+#include <cmath>
+#include <cstdint>
+#include <limits>
 #include <memory>
+#include <random>
 #include <ranges>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "emerick/app/action_params.hpp"
 #include "emerick/app/note_edit.hpp"
 #include "emerick/app/project_actions.hpp"
+#include "emerick/core/time.hpp"
 #include "emerick/model/midi_notes.hpp"
 
 namespace emerick::app {
@@ -133,17 +139,57 @@ Json transpose(ProjectController& controller, const Nav& nav, const Json& params
     return notesResult(controller, clip, ids);
 }
 
+double numberParam(const Registry& registry, const Json& params, const std::string& key, const char* setting) {
+    return optionalParam<double>(params, key).value_or(registry.settingValue(setting).get<double>());
+}
+
 Json quantize(const Registry& registry, ProjectController& controller, const Nav& nav, const Json& params) {
     const model::ClipId clip = targetClip(controller, nav, params);
     const auto ids = targetNotes(controller, nav, clip, params, AllWhenNone::yes);
     const auto grid = optionalParam<core::Ticks>(params, "grid").value_or(gridTicks(registry));
     const double strength = std::clamp(optionalParam<double>(params, "strength").value_or(1.0), 0.0, 1.0);
+    const double swing = numberParam(registry, params, "swing", kSwingSetting);
     editNotes(controller, clip, "quantize notes", [&](model::MidiClip& edited) {
         forNotes(edited, ids, [&](model::Note& note) {
-            note.start = std::clamp<core::Ticks>(model::quantized(note.start, grid, strength), 0, edited.length - 1);
+            const core::Ticks onProjectGrid = model::quantized(edited.start + note.start, grid, strength, swing);
+            note.start = std::clamp<core::Ticks>(onProjectGrid - edited.start, 0, edited.length - 1);
         });
     });
     return notesResult(controller, clip, ids);
+}
+
+std::uint32_t seedParam(const Json& params) {
+    const auto seed = optionalParam<std::int64_t>(params, "seed");
+    if (!seed) {
+        return std::random_device{}();
+    }
+    if (!std::in_range<std::uint32_t>(*seed)) {
+        throw AppError("seed must be from 0 to 4294967295, got " + std::to_string(*seed));
+    }
+    return static_cast<std::uint32_t>(*seed);
+}
+
+Json humanize(const Registry& registry, ProjectController& controller, const Nav& nav, const Json& params) {
+    const model::ClipId clip = targetClip(controller, nav, params);
+    const auto ids = targetNotes(controller, nav, clip, params, AllWhenNone::yes);
+    const auto percent = [&](const std::string& key, const char* setting) {
+        return std::clamp(numberParam(registry, params, key, setting), 0.0, double{kPercent}) / kPercent;
+    };
+    const model::Humanize amounts{
+        .timing = std::llround(std::max(0.0, numberParam(registry, params, "timing", kHumanizeTimingSetting)) *
+                               core::kTicksPerQuarter),
+        .keep = percent("keep", kHumanizeKeepSetting),
+        .velocity = static_cast<int>(std::clamp(numberParam(registry, params, "velocity", kHumanizeVelocitySetting),
+                                                0.0, double{model::kMaxVelocity})),
+        .length = percent("length", kHumanizeLengthSetting)};
+    const std::uint32_t seed = seedParam(params);
+    std::mt19937 random(seed);
+    editNotes(controller, clip, "humanize notes", [&](model::MidiClip& edited) {
+        forNotes(edited, ids, [&](model::Note& note) { model::humanize(note, edited.length, amounts, random); });
+    });
+    Json result = notesResult(controller, clip, ids);
+    result["seed"] = seed;
+    return result;
 }
 
 void registerNoteEdits(Registry& registry, ProjectController& controller, Nav& nav,
@@ -262,16 +308,44 @@ void registerNoteEdits(Registry& registry, ProjectController& controller, Nav& n
     registry.addAction(
         {.id = "midi.quantize",
          .title = "Quantize notes",
-         .description = "Moves the starts of the selected notes, or of every note in the clip, toward the grid. "
+         .description = "Moves the starts of the selected notes, or of every note in the clip, toward the grid, "
+                        "which counts from bar 1. "
                         "Strength 1 puts them on the grid and 0.5 moves them halfway; grid is in ticks and defaults to "
-                        "the piano roll grid.",
-         .aliases = {"quantise", "snap notes to grid", "fix timing"},
+                        "the piano roll grid. Swing from 0 to 100 places every second grid step at swing / 50 steps "
+                        "into its pair: 50 is straight, 66.67 the triplet and 75 the dotted position, below 50 pushes "
+                        "it early; it defaults to the Quantize swing setting. Strength applies after swing.",
+         .aliases = {"quantise", "snap notes to grid", "fix timing", "swing", "shuffle"},
          .category = "MIDI",
          .shortcut = "Q",
-         .schema = {{"properties", withNoteSchema({{"strength", {{"type", "number"}, {"minimum", 0}, {"maximum", 1}}},
-                                                   {"grid", {{"type", "integer"}, {"minimum", 1}}}})}},
+         .schema = {{"properties",
+                     withNoteSchema({{"strength", {{"type", "number"}, {"minimum", 0}, {"maximum", 1}}},
+                                     {"grid", {{"type", "integer"}, {"minimum", 1}}},
+                                     {"swing", {{"type", "number"}, {"minimum", 0}, {"maximum", model::kMaxSwing}}}})}},
          .run = [&registry, &controller,
                  &nav](const Json& params) { return quantize(registry, controller, nav, params); },
+         .menus = {kEditMenu}});
+    registry.addAction(
+        {.id = "midi.humanize",
+         .title = "Humanize notes",
+         .description =
+             "Moves the starts, velocities and lengths of the selected notes, or of every note in the clip, by random "
+             "amounts, small ones more often than large. Timing is the largest move in beats, keep the percent of "
+             "starts that stay, velocity the largest velocity change and length the largest length change in "
+             "percent; each defaults to its Humanize setting. Notes stay inside the clip with velocity from 1 to 127. "
+             "The same seed gives the same result, and the result returns the seed used.",
+         .aliases = {"humanise", "loosen timing", "randomize notes", "human feel"},
+         .category = "MIDI",
+         .schema = {{"properties",
+                     withNoteSchema({{"timing", {{"type", "number"}, {"minimum", 0}, {"maximum", 1}}},
+                                     {"keep", {{"type", "number"}, {"minimum", 0}, {"maximum", kPercent}}},
+                                     {"velocity", {{"type", "integer"}, {"minimum", 0}, {"maximum", 127}}},
+                                     {"length", {{"type", "number"}, {"minimum", 0}, {"maximum", kPercent}}},
+                                     {"seed",
+                                      {{"type", "integer"},
+                                       {"minimum", 0},
+                                       {"maximum", std::numeric_limits<std::uint32_t>::max()}}}})}},
+         .run = [&registry, &controller,
+                 &nav](const Json& params) { return humanize(registry, controller, nav, params); },
          .menus = {kEditMenu}});
     registry.addAction(
         {.id = "midi.transpose",

@@ -5,8 +5,11 @@
 #include <variant>
 #include <vector>
 
+#include "emerick/app/mcp_server.hpp"
+#include "emerick/app/mcp_tools.hpp"
 #include "emerick/app/note_edit.hpp"
 #include "emerick/app/session_mapping.hpp"
+#include "emerick/app/ui_api.hpp"
 #include "emerick/model/json.hpp"
 #include "midi_file.hpp"
 #include "project_rig.hpp"
@@ -134,6 +137,91 @@ TEST_CASE("quantize moves note starts toward the grid by its strength") {
     keys.run("midi.quantize", {});
     CHECK((keys.note(early).start == 0 && keys.note(late).start == 960));
     CHECK(keys.note(early).length == 240);
+}
+
+TEST_CASE("quantize swings every second step of the grid it uses") {
+    NoteRig keys;
+    const Json sixteenth = keys.add(60, 250);
+    const Json eighth = keys.add(62, 1500);
+    const Json lightEighth = keys.add(64, 1400);
+    keys.run("midi.quantize", {{"notes", {sixteenth.at("id")}}, {"swing", 75}});
+    CHECK(keys.note(sixteenth).start == 360);
+    keys.rig.registry.setSetting("midi.swing", 75);
+    keys.rig.registry.setSetting("midi.grid", 8);
+    keys.run("midi.quantize", {{"notes", {eighth.at("id")}}});
+    CHECK(keys.note(eighth).start == 1680);
+    keys.run("midi.quantize", {{"notes", {lightEighth.at("id")}}, {"swing", 60}});
+    CHECK(keys.note(lightEighth).start == 1536);
+}
+
+TEST_CASE("quantize swings on the project grid in a clip that starts mid-bar") {
+    ProjectRig rig;
+    const std::string track = rig.run("track.addMidi", {{"name", "Keys"}}).at("id");
+    const std::string clip = rig.run("midi.addClip", {{"track", track}, {"at", 240}}).at("id");
+    const auto add = [&](core::Ticks start) {
+        return rig.run("midi.addNote", {{"clip", clip}, {"pitch", 60}, {"start", start}}).at("notes").at(0).at("id");
+    };
+    const Json offbeat = add(0);
+    const Json downbeat = add(240);
+    const Json offGrid = add(600);
+    rig.run("midi.quantize", {{"clip", clip}, {"notes", {offbeat, downbeat}}, {"swing", 75}});
+    rig.run("midi.quantize", {{"clip", clip}, {"notes", {offGrid}}, {"grid", 960}});
+    const auto& notes = std::get<model::MidiClip>(*rig.controller->project().findClip(model::ClipId{clip})->clip).notes;
+    const auto start = [&](const Json& id) {
+        return std::ranges::find(notes, model::NoteId{id}, &model::Note::id)->start;
+    };
+    CHECK(start(offbeat) == 120);
+    CHECK(start(downbeat) == 240);
+    CHECK(start(offGrid) == 720);
+}
+
+TEST_CASE("humanize with a seed repeats its result as one undo step") {
+    NoteRig keys;
+    for (int index = 0; index < 16; ++index) {
+        keys.add(60, index * 240, 240, 100);
+    }
+    const auto before = keys.midi().notes;
+    const Json params = {{"seed", 42}, {"keep", 0}, {"timing", 0.1}, {"velocity", 20}, {"length", 20}};
+    const Json first = keys.run("midi.humanize", params);
+    CHECK(first.at("seed") == 42);
+    CHECK(keys.rig.controller->project().undoName() == "humanize notes");
+    const auto humanized = keys.midi().notes;
+    CHECK(humanized != before);
+    keys.rig.run("project.undo");
+    CHECK(keys.midi().notes == before);
+    keys.run("midi.humanize", params);
+    CHECK(keys.midi().notes == humanized);
+
+    keys.rig.run("project.undo");
+    const Json unseeded = keys.run("midi.humanize", {});
+    const auto random = keys.midi().notes;
+    keys.rig.run("project.undo");
+    keys.run("midi.humanize", {{"seed", unseeded.at("seed")}});
+    CHECK(keys.midi().notes == random);
+    CHECK_THROWS_AS(keys.run("midi.humanize", {{"seed", -1}}), AppError);
+}
+
+TEST_CASE("humanize runs over MCP and comes back with its seed") {
+    NoteRig keys;
+    keys.add(60, 480);
+    UiApi ui{keys.rig.registry};
+    McpServer server{keys.rig.registry, mcpTools(keys.rig.registry, ui, nullptr)};
+    const Json arguments = {{"id", "midi.humanize"}, {"params", {{"clip", keys.clip}, {"seed", 9}}}};
+    const auto call = [&server, &arguments] {
+        return server
+            .handle({{"jsonrpc", "2.0"},
+                     {"id", 1},
+                     {"method", "tools/call"},
+                     {"params", {{"name", "actions.run"}, {"arguments", arguments}}}})
+            ->at("result");
+    };
+    const Json first = call();
+    CHECK(first.at("isError") == false);
+    CHECK(first.at("structuredContent").at("result").at("seed") == 9);
+    const auto humanized = keys.midi().notes;
+    keys.rig.run("project.undo");
+    call();
+    CHECK(keys.midi().notes == humanized);
 }
 
 TEST_CASE("transpose keeps every pitch from 0 to 127 or refuses the whole edit") {
